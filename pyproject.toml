@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "okf-llm-wiki-mcp"
+version = "0.1.0"
+description = "An LLM-maintained personal wiki in Google OKF, fed by a coding-agent CLI (claude/copilot/gemini), with an MCP search server."
+readme = "README.md"
+requires-python = ">=3.12"
+# Ingest runs through a coding-agent CLI you already have logged in, so there is
+# no LLM SDK / API-key dependency here — just the MCP server SDK and a YAML parser.
+dependencies = ["mcp>=1.2", "pyyaml>=6.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+# uv installs the `dev` group by default on `uv sync` (PEP 735).
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[project.scripts]
+okf-wiki = "okf_wiki.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/okf_wiki"]
