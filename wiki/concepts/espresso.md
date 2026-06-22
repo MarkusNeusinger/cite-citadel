@@ -3,12 +3,11 @@ type: Concept
 title: Espresso
 description: A coffee brewing method using pressure and finely-ground coffee.
 tags:
-- brewing
 - coffee
-- method
-- pressure
-resource: raw/espresso.md
-timestamp: '2026-06-22T06:50:06Z'
+- brewing
+- espresso
+resource: raw/coffee.md
+timestamp: '2026-06-22T13:50:29Z'
 ---
 **Espresso** is a coffee brewing method in which hot water is forced through finely-ground, compacted coffee under pressure.[^s1] The result is a concentrated, rich shot of coffee.
 
@@ -25,6 +24,11 @@ The grind must be fine—finer than table salt—as grind size is the main varia
 ### Dose and Ratio
 
 A double shot uses approximately 18 g of coffee in the basket.[^s1] The standard ratio is roughly 1:2: 18 g of coffee yields approximately 36 g of liquid espresso.[^s1]
+
+By the traditional Italian standard, a single shot uses about 7 g of coffee (≈14 g for a double), pulled in about 25 seconds to yield roughly 25–30 ml.[^s3]
+
+> [!CONTRADICTION]
+> raw/espresso.md gives a modern double of ~18 g of coffee yielding ~36 g [^s1], while raw/coffee.md gives the traditional Italian standard of ~7 g per single (≈14 g per double) yielding ~25–30 ml [^s3].
 
 ### Shot Time
 
@@ -50,7 +54,14 @@ Espresso serves as the base for many coffee drinks, where only the milk or water
 - Americano
 - Macchiato
 
+## See also
+
+- [Coffee](./coffee.md)
+- [Caffeine Content in Coffee](./caffeine-content-in-coffee.md)
+- [Moka Pot](./moka-pot.md)
+
 ## Sources
 
 [^s1]: [raw/espresso.md](../../raw/espresso.md) — Espresso brewing method, technique, and parameters (ingested 2026-06-22)
 [^s2]: [raw/caffeine.md](../../raw/caffeine.md) — Caffeine content across coffee types and brewing methods (ingested 2026-06-22)
+[^s3]: [raw/coffee.md](../../raw/coffee.md) — Traditional Italian espresso dose, timing, and yield (ingested 2026-06-22)

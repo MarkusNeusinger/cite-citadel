@@ -2,11 +2,21 @@
 
 - [Arabica and Robusta](arabica-and-robusta.md) — Arabica and Robusta: The two primary coffee species that account for most global production, compared by altitude, flavor, caffeine content, cost, and geographic origins.
 - [Caffeine Content in Coffee](caffeine-content-in-coffee.md) — How caffeine varies by coffee species, brew method, and serving size; debunking myths about espresso and dark roast.
+- [Coffee and Health](coffee-and-health.md) — The health effects of coffee in moderation versus excess — its role as a mild stimulant and diuretic, and the wide individual variation in sensitivity.
 - [Coffee Brewing Ratios](coffee-brewing-ratios.md) — Coffee-to-water ratios and brewing methods for different preparation techniques
+- [History of Coffee](coffee-history.md) — How coffee spread from the Ethiopian highlands through Yemen and the Arab world to Europe and the global "Bean Belt", and where it is grown today.
 - [Coffee Origins](coffee-origins.md) — Global coffee-producing regions and their characteristic flavor profiles, shaped by altitude, processing methods, and variety.
+- [Coffee Processing](coffee-processing.md) — How green coffee is processed — washed, natural, honey, and anaerobic methods — and why processing shapes the cup as much as variety or origin.
+- [Coffee Storage](coffee-storage.md) — How to store roasted coffee for freshness — whole, airtight, away from light, heat and moisture, and ground just before brewing.
+- [Coffee](coffee.md) — Overview of coffee — a brewed drink from the roasted seeds of the Coffea plant — and a hub linking the species, processing, roasting, brewing, caffeine, health, and storage pages.
 - [Cold Brew and Iced Coffee](cold-brew.md) — The difference between cold brew and iced coffee, preparation methods, and why they taste different.
+- [Decaffeination](decaffeination.md) — How decaffeinated coffee is made — removing 97%+ of caffeine from green beans by solvent, water, or CO₂ — and the small residual that remains.
+- [Espresso Extraction](espresso-extraction.md) — How an espresso shot extracts and how to dial it in — dose, yield, grind and time, extraction yield vs TDS, puck prep, pre-infusion, and temperature.
 - [Espresso](espresso.md) — A coffee brewing method using pressure and finely-ground coffee.
 - [French Press](french-press.md) — A full-immersion brewing method where coffee steeps directly in water, then a metal mesh plunger separates the grounds, producing a heavy-bodied, rich cup.
 - [Grind Size](grind-size.md) — How grind size affects extraction and why consistency matters more than absolute size
+- [Espresso Milk Drinks](milk-drinks.md) — Espresso-based milk drinks (macchiato, cortado, flat white, cappuccino, latte, mocha) organized by milk-to-foam ratio, plus milk steaming, microfoam, and latte art.
+- [Moka Pot](moka-pot.md) — A stovetop brewer that uses steam pressure to push water up through coffee grounds, producing a strong, concentrated cup.
 - [Pour-over](pour-over.md) — A manual filter brewing method using gravity to extract coffee through grounds and paper
 - [Roast Levels](roast-levels.md) — Coffee roast levels from light to dark, their colors, flavors, and characteristics.
+- [Water for Coffee](water-for-coffee.md) — How water chemistry — hardness, buffer/alkalinity, and TDS — shapes coffee flavor, the SCA targets to aim for, and what to avoid.
