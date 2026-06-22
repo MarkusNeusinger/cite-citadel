@@ -283,15 +283,63 @@ def _last_json_result_line(text: str) -> dict | None:
     return found
 
 
+def _json_object_spans(text: str, string_aware: bool = True) -> list[str]:
+    """Every top-level balanced ``{...}`` substring. With ``string_aware`` (default), braces
+    and quotes inside JSON string values are respected (so a body containing ``{`` is not
+    miscounted). With ``string_aware=False``, quotes are ignored and only braces are matched
+    — which recovers the real object when surrounding noise contains an UNBALANCED quote
+    (e.g. copilot printing ``python -c "`` in a tool-call transcript) that would otherwise
+    swallow the answer's opening brace under string-aware scanning."""
+    spans: list[str] = []
+    depth = 0
+    start = -1
+    in_str = False
+    esc = False
+    for i, ch in enumerate(text):
+        if string_aware and in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if string_aware and ch == '"':
+            in_str = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}" and depth > 0:
+            depth -= 1
+            if depth == 0 and start >= 0:
+                spans.append(text[start : i + 1])
+                start = -1
+    return spans
+
+
 def _extract_ops(text: str) -> dict:
     """Robustly pull a ``{"ops": [...]}`` object out of the model's reply.
 
-    Tries the whole string, any ```json fenced block, and the first balanced
-    brace span — returns the first that parses to a dict containing ``ops``.
+    Returns the first candidate that parses to a dict containing an ``ops`` list. Candidates
+    are gathered in this order: the whole string; any ```json fenced block; balanced
+    ``{...}`` spans (string-aware, then quote-ignoring) scanned LAST-first; each whole line
+    that looks like a JSON object, last-first; and finally a first-brace..last-brace span.
+
+    The last-first ordering and the quote-ignoring / line-based passes matter for *agentic*
+    CLIs (e.g. copilot) that print tool-call transcript noise — stray ``{...}`` fragments,
+    ``python -c "`` lines, "permission denied" — around the real answer, which is typically
+    the final JSON object (often on its own line).
     """
     candidates: list[str] = [text.strip()]
     for m in re.findall(r"```(?:json)?\s*(.*?)```", text, re.DOTALL):
         candidates.append(m.strip())
+    candidates.extend(reversed(_json_object_spans(text, string_aware=True)))
+    candidates.extend(reversed(_json_object_spans(text, string_aware=False)))
+    for line in reversed(text.splitlines()):
+        s = line.strip()
+        if s.startswith("{") and s.endswith("}"):
+            candidates.append(s)
     if "{" in text and "}" in text:
         candidates.append(text[text.find("{") : text.rfind("}") + 1])
 

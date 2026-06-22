@@ -142,8 +142,10 @@ def test_ingest_creates_pages(tmp_path, monkeypatch):
     # itself omits it.
     assert "resource: raw/notes.md" in text
 
-    # Page is the rel_path that ingest reported.
+    # Page is the rel_path that ingest reported — a CREATE (did not exist before).
     assert "concepts/transformer.md" in report.pages_written
+    assert "concepts/transformer.md" in report.pages_created
+    assert report.pages_updated == []
 
     # index.md regenerated and mentions the new page.
     index_text = (wiki / "index.md").read_text(encoding="utf-8")
@@ -152,7 +154,7 @@ def test_ingest_creates_pages(tmp_path, monkeypatch):
     # log.md appended.
     log_text = (wiki / "log.md").read_text(encoding="utf-8")
     assert "ingest" in log_text
-    assert "written" in log_text
+    assert "created" in log_text
     assert "deleted" in log_text
 
     # manifest updated with the source's hash.
@@ -599,3 +601,77 @@ def test_suggested_links_skips_already_linked(tmp_path, monkeypatch):
     report = lint.lint()
     caffeine_suggestions = [t for r, t in report.suggested_links if r == "concepts/caffeine.md"]
     assert not any("espresso.md" in s for s in caffeine_suggestions)
+
+
+# --- ingest progress reporting ---------------------------------------------------------
+
+
+def test_ingest_emits_progress_events(tmp_path, monkeypatch):
+    """ingest() drives a progress callback: start -> source_start/done -> finalize -> done."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(ingest.llm, "plan_pages", fake_plan_pages)
+    (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
+
+    events = []
+    ingest.ingest(progress=lambda ev, data: events.append((ev, data)))
+
+    names = [e for e, _ in events]
+    assert names[0] == "start"
+    for expected in ("source_start", "source_done", "finalize", "done"):
+        assert expected in names, f"missing event: {expected}"
+    start = next(d for e, d in events if e == "start")
+    assert start == {"pending": 1, "skipped": 0}
+    done = next(d for e, d in events if e == "source_done")
+    assert done["source"] == "raw/notes.md"
+    assert done["index"] == 1 and done["total"] == 1
+    assert done["created"] == 1 and done["updated"] == 0
+    assert "seconds" in done
+
+
+def test_ingest_progress_default_is_silent(tmp_path, monkeypatch):
+    """No progress arg -> no callback invoked (MCP/non-interactive path stays quiet)."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(ingest.llm, "plan_pages", fake_plan_pages)
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+    report = ingest.ingest()  # must not raise without a progress callback
+    assert "raw/notes.md" in report.processed
+
+
+def test_console_progress_renders_ascii_without_tty():
+    """ConsoleProgress on a non-TTY stream prints one plain line per file, ASCII-only."""
+    import io
+    from okf_wiki.progress import ConsoleProgress
+
+    buf = io.StringIO()  # isatty() -> False, so no spinner thread
+    p = ConsoleProgress(stream=buf)
+    p("start", {"pending": 2, "skipped": 1})
+    p("source_start", {"index": 1, "total": 2, "source": "raw/a.md"})
+    p("source_done", {"index": 1, "total": 2, "source": "raw/a.md",
+                      "created": 2, "updated": 1, "deleted": 1, "seconds": 12.4})
+    p("source_error", {"index": 2, "total": 2, "source": "raw/b.md",
+                       "error": "boom", "seconds": 1.0})
+    p("finalize", {})
+    out = buf.getvalue()
+
+    assert "Ingesting 2 file(s) (1 already up to date)" in out
+    assert "[1/2] OK  raw/a.md" in out and "2 created, 1 updated, 1 deleted" in out
+    assert "[2/2] ERR raw/b.md" in out and "boom" in out
+    assert "Rebuilding indexes" in out
+    out.encode("ascii")  # must be ASCII-only (safe on any Windows code page)
+
+
+def test_ingest_distinguishes_created_vs_updated(tmp_path, monkeypatch):
+    """First ingest of a page is a create; re-ingesting (existing page) is an update."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(ingest.llm, "plan_pages", fake_plan_pages)
+
+    (raw / "notes.md").write_text("first\n", encoding="utf-8")
+    r1 = ingest.ingest()
+    assert "concepts/transformer.md" in r1.pages_created
+    assert r1.pages_updated == []
+
+    # Change the raw file so it re-ingests; the page now exists -> update, not create.
+    (raw / "notes.md").write_text("second, changed\n", encoding="utf-8")
+    r2 = ingest.ingest()
+    assert "concepts/transformer.md" in r2.pages_updated
+    assert r2.pages_created == []

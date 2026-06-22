@@ -41,6 +41,11 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="*",
         help="Specific files or directories to ingest (default: every *.md under raw/).",
     )
+    p_ingest.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress the live per-file progress output (just print the final report).",
+    )
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_serve = sub.add_parser(
@@ -117,10 +122,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def cmd_ingest(args: argparse.Namespace) -> int:
-    """Run an ingest pass; return 1 if any source errored, else 0."""
+    """Run an ingest pass (with live progress unless --quiet); 1 if any source errored."""
     from . import ingest
 
-    report = ingest.ingest(args.paths or None)
+    progress = None
+    if not args.quiet:
+        from .progress import ConsoleProgress
+
+        progress = ConsoleProgress()
+    report = ingest.ingest(args.paths or None, progress=progress)
     print(report.render())
     return 1 if report.errors else 0
 

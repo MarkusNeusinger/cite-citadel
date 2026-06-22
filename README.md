@@ -61,11 +61,20 @@ This README uses the **portable** invocation that works identically on Linux, ma
 uv run python -m okf_wiki <subcommand>      # e.g. uv run python -m okf_wiki ingest
 ```
 
-`uv run okf-wiki <subcommand>` is an equivalent shorthand. Prefer `python -m` on Windows: uv's
-generated `okf-wiki.exe` launcher stub is sometimes quarantined by antivirus (e.g. Windows
-Defender, `os error 5`) and regenerated on every `uv sync` — `python -m okf_wiki` has no `.exe`
-and sidesteps that entirely. (If you want the shorthand back, add the venv's `Scripts/` folder
-to your AV exclusions.)
+`uv run okf-wiki <subcommand>` is a shorthand, but **on Windows it often fails** with
+`error: failed to spawn okf-wiki: program not found` — uv's generated `okf-wiki.exe` launcher
+stub gets quarantined by antivirus (e.g. Windows Defender, `os error 5`) and regenerated on every
+`uv sync`. Two AV-proof alternatives that need **no `.exe`**:
+
+```powershell
+uv run python -m okf_wiki <subcommand>   # works everywhere (Linux/macOS/Windows)
+.\okf-wiki <subcommand>                  # bundled wrapper (PowerShell/cmd) -> python -m
+```
+
+The bundled `okf-wiki.cmd` / `okf-wiki.ps1` are thin wrappers that just call
+`uv run python -m okf_wiki`, so there is no executable for AV to remove. (To get the
+`uv run okf-wiki` shorthand working instead, add the venv's `Scripts\` folder to your AV
+exclusions: `Add-MpPreference -ExclusionPath "<repo>\.venv\Scripts"`.)
 
 > Prefer pip? `python -m venv .venv && .venv/bin/pip install -e '.[dev]'` works too.
 
@@ -87,7 +96,11 @@ OKF_LLM_CLI=claude        # claude | copilot | gemini   (default: claude)
 OKF_INGEST_MODEL=sonnet   # claude model alias/id; opus or haiku also work
 ```
 
-`copilot`/`gemini` use their own default model. See `.env.example` for binary-path overrides,
+`claude` is the most reliable backend: it returns the page plan as clean JSON. `copilot` is
+**agentic** — it may try to run shell commands and print tool-call/"permission denied" transcript
+noise around the answer (the ops parser tolerates this), and it can be slower (raise
+`OKF_LLM_TIMEOUT` for big files). `copilot`/`gemini` use their own default model. See
+`.env.example` for binary-path overrides,
 the per-call timeout, and path overrides.
 
 ## Use
@@ -101,9 +114,13 @@ uv run python -m okf_wiki ingest docs/karpathy-llm-wiki.md   # or bootstrap from
 ```
 
 Ingest folds each source into the **best-fitting** existing pages and restructures as the corpus
-grows; the report lists pages written, pages deleted (restructured), and warns on any broken
-cross-link. Run several overlapping files (e.g. the bundled `raw/coffee*.md` set) and watch the
-wiki reorganize itself rather than accrete one page per file.
+grows; the report distinguishes pages **created**, **updated**, and **deleted** (restructured),
+and warns on any broken cross-link. Run several overlapping files (e.g. the bundled
+`raw/coffee*.md` set) and watch the wiki reorganize itself rather than accrete one page per file.
+
+There is **one LLM call per file**, so ingest shows live per-file progress on stderr (`[2/6] …
+2 created, 1 updated` with a spinner + elapsed time) so a multi-file run never looks hung — pass
+`--quiet` to suppress it and print only the final report.
 
 Ingest is **idempotent**: a committed manifest at `wiki/.okf_ingested.json` maps each source's
 repo-relative path to a sha256, so re-running with no new or changed files makes **zero** LLM
