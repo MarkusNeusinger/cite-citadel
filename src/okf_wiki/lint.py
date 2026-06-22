@@ -22,6 +22,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from . import config
 from . import okf
 from . import store
 from .okf import Page
@@ -29,6 +30,10 @@ from .okf import Page
 CONTRADICTION_MARKER = "> [!CONTRADICTION]"
 LINK_RE = re.compile(r"\]\(([^)]+\.md)\)")
 FOOTNOTE_RE = re.compile(r"\[\^[\w.-]+\]")
+# A model-supplied ("source: LLM") footnote marker, e.g. [^llm1]. These facts are added
+# from the model's own knowledge (essential, high-confidence, on-topic) rather than a raw
+# file, and are deliberately NOT required to cite a raw/ file.
+LLM_MARKER_RE = re.compile(r"\[\^llm[\w.-]*\]", re.IGNORECASE)
 
 
 @dataclass
@@ -39,11 +44,18 @@ class LintReport:
     broken_links: list[tuple[str, str]] = field(default_factory=list)   # (rel_path, target)
     missing_type: list[str] = field(default_factory=list)          # rel_paths
     stale: list[str] = field(default_factory=list)                 # rel_paths
+    bad_sources: list[tuple[str, str]] = field(default_factory=list)    # (rel_path, target)
+    llm_facts: list[str] = field(default_factory=list)             # rel_paths (advisory)
+    # (rel_path, "links to add"): page mentions another page's title but doesn't link it.
+    suggested_links: list[tuple[str, str]] = field(default_factory=list)  # advisory
 
     def ok(self) -> bool:
-        """True unless there are structural-integrity problems: missing_type OR
-        broken_links. The other categories are advisory and do NOT flip ok()."""
-        return not (self.missing_type or self.broken_links)
+        """True unless there are structural-integrity problems: missing_type, broken_links
+        OR bad_sources (a RAW fact citing a raw/ file that does not exist — fabricated or
+        mistyped provenance). The other categories — including llm_facts (pages carrying
+        model-supplied facts, surfaced for transparency) — are advisory and do NOT flip
+        ok()."""
+        return not (self.missing_type or self.broken_links or self.bad_sources)
 
     def render(self) -> str:
         """Human-readable report; lists every category with counts."""
@@ -75,8 +87,24 @@ class LintReport:
         for rel in self.stale:
             lines.append(f"  - {rel}")
 
+        lines.append(f"Fabricated/missing sources: {len(self.bad_sources)}")
+        for rel, target in self.bad_sources:
+            lines.append(f"  - {rel} -> {target}")
+
+        lines.append(f"Pages with model-supplied (LLM) facts: {len(self.llm_facts)}")
+        for rel in self.llm_facts:
+            lines.append(f"  - {rel}")
+
+        lines.append(f"Suggested links (un-linked mentions): {len(self.suggested_links)}")
+        for rel, target in self.suggested_links:
+            lines.append(f"  - {rel} -> {target}")
+
         lines.append("")
-        lines.append("OK" if self.ok() else "FAIL (missing type or broken links)")
+        lines.append(
+            "OK"
+            if self.ok()
+            else "FAIL (missing type, broken links, or fabricated sources)"
+        )
         return "\n".join(lines)
 
 
@@ -106,6 +134,75 @@ def _outbound_links(page: Page) -> list[str]:
 def _has_footnote(paragraph: str) -> bool:
     """True if a [^sN]-style footnote marker is present."""
     return FOOTNOTE_RE.search(paragraph) is not None
+
+
+_DEF_LINE_RE = re.compile(r"^\s*\[\^([\w.-]+)\]:\s*(.*)$")
+# First markdown link on a definition line; tolerates a <url> form and stops the URL at
+# whitespace so a `(url "title")` link title is not swallowed into the path.
+_DEF_LINK_RE = re.compile(r"\[[^\]]*\]\(\s*<?([^)\s>]+)>?")
+# A footnote marker USED on a fact (not a definition — i.e. not followed by ':').
+_USED_MARKER_RE = re.compile(r"\[\^([\w.-]+)\](?!:)")
+
+
+def _bad_source_targets(page: Page) -> list[str]:
+    """Structural guard against fabricated/unverifiable provenance. Returns a detail string
+    for each problem found:
+
+      1. a raw-fact definition (``[^sN]``, not ``[^llmN]``) whose linked file does not exist;
+      2. a raw-fact definition with no resolvable ``[..](path)`` link (bare/malformed line);
+      3. a footnote marker used on a fact but never defined in ``## Sources``.
+
+    Model-supplied (``[^llmN]``) facts are exempt — they cite "LLM", not a raw file. The
+    check is purely STRUCTURAL: it confirms a citation points at a real file and is defined;
+    it does NOT verify the cited file actually contains the fact. Definitions are read only
+    inside the ``## Sources`` section and code fences are skipped, so a page that documents
+    the citation format is not falsely flagged. Resolution is by path math from the page's
+    location under WIKI_DIR, so it works on synthetic (not-yet-written) pages too; only the
+    cited SOURCE file must exist on disk.
+    """
+    page_dir = os.path.dirname(str(config.WIKI_DIR / page.rel_path))
+    in_fence = False
+    in_sources = False
+    defined: set[str] = set()
+    used: set[str] = set()
+    bad: list[str] = []
+
+    for line in page.body.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if stripped.startswith("#"):
+            in_sources = bool(re.match(r"#+\s*sources\b", stripped, re.IGNORECASE))
+            continue
+
+        mdef = _DEF_LINE_RE.match(line)
+        if mdef and in_sources:
+            marker_id, rest = mdef.group(1), mdef.group(2)
+            defined.add(marker_id)
+            if marker_id.lower().startswith("llm"):
+                continue  # model-supplied fact: cites "LLM", no raw file expected
+            link = _DEF_LINK_RE.search(rest)
+            if not link:
+                bad.append(f"[^{marker_id}]: no resolvable source link")
+                continue
+            target = link.group(1).strip()
+            if "://" in target or target.startswith("#"):
+                continue
+            resolved = os.path.normpath(os.path.join(page_dir, target))
+            if not os.path.exists(resolved):
+                bad.append(target)
+            continue
+
+        # Usage line: collect every marker that is not itself a definition.
+        used.update(_USED_MARKER_RE.findall(line))
+
+    # A fact tagged with a marker that is never defined is unverifiable provenance.
+    for marker_id in sorted(used - defined):
+        bad.append(f"[^{marker_id}] used but undefined")
+    return bad
 
 
 def _is_stale(page: Page, stale_days: int) -> bool:
@@ -181,12 +278,31 @@ def _missing_cite_preview(page: Page) -> str | None:
     return None
 
 
+def _unlinked_mentions(
+    page: Page, title_index: list[tuple[str, str, str]], linked: set[str], cap: int = 8
+) -> list[str]:
+    """Other pages whose title appears (whole-word, case-insensitive) in this page's body
+    but which this page does not already link to — candidate cross-links to add. Advisory:
+    a high-precision nudge toward a denser knowledge graph, capped to avoid noise."""
+    body_lower = page.body.lower()
+    found: list[str] = []
+    for rel_path, title_lower, title in title_index:
+        if rel_path == page.rel_path or rel_path in linked:
+            continue
+        if re.search(rf"\b{re.escape(title_lower)}\b", body_lower):
+            found.append(f"{rel_path} (mentions '{title}')")
+            if len(found) >= cap:
+                break
+    return found
+
+
 def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
     """If pages is None, store.load(). Build the link graph; flag orphans (no inbound
     and no outbound non-raw links), contradictions (marker present), missing_type
     (okf.validate fails), broken_links (target rel_path not in the page set),
     missing_cites (a multi-sentence paragraph with no [^...] marker, not a
-    heading/code-fence/Sources), stale (timestamp older than stale_days)."""
+    heading/code-fence/Sources), stale (timestamp older than stale_days), bad_sources
+    (fabricated provenance), llm_facts and suggested_links (advisory)."""
     if pages is None:
         pages = store.load()
 
@@ -201,6 +317,13 @@ def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
         outbound[page.rel_path] = links
         for target in links:
             inbound_targets.add(target)
+
+    # Page titles long enough to match on (for the un-linked-mention suggestion).
+    title_index = [
+        (p.rel_path, p.title.strip().lower(), p.title.strip())
+        for p in pages
+        if len(p.title.strip()) >= 3
+    ]
 
     for page in pages:
         # missing_type
@@ -233,6 +356,18 @@ def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
         if _is_stale(page, stale_days):
             report.stale.append(page.rel_path)
 
+        # bad_sources: a RAW fact cites a raw/ source file that does not exist.
+        for target in _bad_source_targets(page):
+            report.bad_sources.append((page.rel_path, target))
+
+        # llm_facts (advisory): page carries one or more model-supplied facts.
+        if LLM_MARKER_RE.search(page.body):
+            report.llm_facts.append(page.rel_path)
+
+        # suggested_links (advisory): un-linked mentions of other pages' titles.
+        for sug in _unlinked_mentions(page, title_index, set(outbound[page.rel_path])):
+            report.suggested_links.append((page.rel_path, sug))
+
     # Deterministic ordering.
     report.contradictions.sort()
     report.orphans.sort()
@@ -240,4 +375,7 @@ def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
     report.broken_links.sort()
     report.missing_type.sort()
     report.stale.sort()
+    report.bad_sources.sort()
+    report.llm_facts.sort()
+    report.suggested_links.sort()
     return report

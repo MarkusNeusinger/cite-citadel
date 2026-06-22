@@ -152,7 +152,8 @@ def test_ingest_creates_pages(tmp_path, monkeypatch):
     # log.md appended.
     log_text = (wiki / "log.md").read_text(encoding="utf-8")
     assert "ingest" in log_text
-    assert "pages written" in log_text
+    assert "written" in log_text
+    assert "deleted" in log_text
 
     # manifest updated with the source's hash.
     import json
@@ -195,6 +196,152 @@ def test_reingest_is_noop(tmp_path, monkeypatch):
     assert _CALLS["n"] == 1
 
 
+def _seed_page(wiki: Path, rel_path: str, frontmatter: dict, body: str) -> None:
+    """Write an OKF page directly under the temp wiki (bypassing ingest)."""
+    from okf_wiki import okf
+
+    target = wiki / rel_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(okf.dump(frontmatter, body), encoding="utf-8")
+
+
+def test_merge_then_delete_with_redirect_repoints_links(tmp_path, monkeypatch):
+    """A merge expressed as write(survivor) + delete(absorbed, redirect=survivor):
+    the absorbed page is removed, the survivor holds the merged body, and an inbound
+    cross-link from a THIRD page is repointed to the survivor so nothing breaks."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+
+    # Seed two existing pages: one to be absorbed, and a third that links to it.
+    _seed_page(
+        wiki,
+        "concepts/attention.md",
+        {"type": "Concept", "title": "Attention", "resource": "raw/old.md"},
+        "Attention is a mechanism.[^s1]\n\n## Sources\n\n"
+        "[^s1]: [raw/old.md](../../raw/old.md) - old (ingested 2026-06-21)\n",
+    )
+    _seed_page(
+        wiki,
+        "concepts/linker.md",
+        {"type": "Concept", "title": "Linker", "resource": "raw/old.md"},
+        "See [Attention](./attention.md) for details.[^s1]\n\n## Sources\n\n"
+        "[^s1]: [raw/old.md](../../raw/old.md) - old (ingested 2026-06-21)\n",
+    )
+    (raw / "old.md").write_text("x\n", encoding="utf-8")
+    (raw / "notes.md").write_text("Self-attention merges attention.\n", encoding="utf-8")
+
+    def fake(raw_name, raw_text, digest):
+        return [
+            {
+                "op": "write",
+                "type": "Concept",
+                "title": "Self-Attention",
+                "rel_path": "concepts/self-attention.md",
+                "description": "merged",
+                "tags": ["ml"],
+                "body": (
+                    "Self-attention subsumes attention.[^s1]\n\n## Sources\n\n"
+                    "[^s1]: [raw/notes.md](../../raw/notes.md) - notes (ingested 2026-06-22)\n"
+                ),
+            },
+            {
+                "op": "delete",
+                "rel_path": "concepts/attention.md",
+                "redirect": "concepts/self-attention.md",
+            },
+        ]
+
+    monkeypatch.setattr(ingest.llm, "plan_pages", fake)
+    report = ingest.ingest([str(raw / "notes.md")])
+
+    assert not report.errors
+    assert "concepts/self-attention.md" in report.pages_written
+    assert "concepts/attention.md" in report.pages_deleted
+    # The absorbed page is gone; the survivor exists.
+    assert not (wiki / "concepts" / "attention.md").exists()
+    assert (wiki / "concepts" / "self-attention.md").exists()
+    # The third page's inbound link was repointed to the survivor — no broken link.
+    # (os.path.relpath yields 'self-attention.md', which resolves the same as './…'.)
+    linker = (wiki / "concepts" / "linker.md").read_text(encoding="utf-8")
+    assert "(self-attention.md)" in linker
+    assert "(./attention.md)" not in linker
+    assert report.broken_links == []
+    # And lint confirms the repointed link actually resolves (no broken links).
+    assert lint.lint().broken_links == []
+
+
+def test_delete_missing_page_is_reported_not_fatal(tmp_path, monkeypatch):
+    """A delete of a non-existent page is a non-fatal error; the source still finalises."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+
+    def fake(raw_name, raw_text, digest):
+        return [{"op": "delete", "rel_path": "concepts/ghost.md"}]
+
+    monkeypatch.setattr(ingest.llm, "plan_pages", fake)
+    report = ingest.ingest([str(raw / "notes.md")])
+
+    assert "raw/notes.md" in report.processed  # finalised despite the bad delete
+    assert any("no such page" in e for e in report.errors)
+    assert report.pages_deleted == []
+
+
+def test_delete_protected_file_refused(tmp_path, monkeypatch):
+    """A delete targeting a generated file (index.md) is refused; the file survives."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _seed_page(
+        wiki,
+        "concepts/real.md",
+        {"type": "Concept", "title": "Real", "resource": "raw/notes.md"},
+        "A real page.[^s1]\n\n## Sources\n\n"
+        "[^s1]: [raw/notes.md](../../raw/notes.md) - n (ingested 2026-06-22)\n",
+    )
+    store.rebuild_indexes()  # creates wiki/index.md and concepts/index.md
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+
+    def fake(raw_name, raw_text, digest):
+        # index.md is in the existing set (rebuild wrote concepts/index.md), but
+        # delete_page must refuse it regardless.
+        return [{"op": "delete", "rel_path": "concepts/index.md"}]
+
+    monkeypatch.setattr(ingest.llm, "plan_pages", fake)
+    report = ingest.ingest([str(raw / "notes.md")])
+
+    # Either refused as a protected-file error, or skipped as not-a-loadable-page; in
+    # both cases the index file must still exist and nothing is deleted.
+    assert report.pages_deleted == []
+    assert (wiki / "concepts" / "index.md").exists()
+
+
+def test_lint_flags_fabricated_source(tmp_path, monkeypatch):
+    """A page citing a raw file that does not exist is flagged and flips lint.ok()."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _seed_page(
+        wiki,
+        "concepts/made-up.md",
+        {"type": "Concept", "title": "Made Up", "resource": "raw/ghost.md"},
+        "An uncited-source fact.[^s1]\n\n## Sources\n\n"
+        "[^s1]: [raw/ghost.md](../../raw/ghost.md) - ghost (ingested 2026-06-22)\n",
+    )
+    report = lint.lint()
+    assert ("concepts/made-up.md", "../../raw/ghost.md") in report.bad_sources
+    assert not report.ok()
+
+
+def test_lint_clean_when_source_exists(tmp_path, monkeypatch):
+    """The same page passes once its cited raw file actually exists."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "real.md").write_text("real source\n", encoding="utf-8")
+    _seed_page(
+        wiki,
+        "concepts/grounded.md",
+        {"type": "Concept", "title": "Grounded", "resource": "raw/real.md"},
+        "A grounded fact.[^s1]\n\n## Sources\n\n"
+        "[^s1]: [raw/real.md](../../raw/real.md) - real (ingested 2026-06-22)\n",
+    )
+    report = lint.lint()
+    assert report.bad_sources == []
+
+
 def test_contradiction_marker_preserved(tmp_path, monkeypatch):
     """A contradiction marker in the op body survives the write and lint flags it."""
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
@@ -215,3 +362,240 @@ def test_contradiction_marker_preserved(tmp_path, monkeypatch):
     # lint over the freshly written wiki lists the page under contradictions.
     lint_report = lint.lint()
     assert written_rel in lint_report.contradictions
+
+
+# --- review-hardening regression tests -------------------------------------------------
+
+
+def test_delete_of_just_written_page_is_refused(tmp_path, monkeypatch):
+    """DATA-LOSS GUARD: an op list that both writes AND deletes the same rel_path must keep
+    the page (the delete is refused), even though writes apply before deletes."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+
+    def fake(raw_name, raw_text, digest):
+        return [
+            {
+                "op": "write", "type": "Concept", "title": "Big",
+                "rel_path": "concepts/big.md", "description": "d", "tags": [],
+                "body": "A fact.[^s1]\n\n## Sources\n\n"
+                        "[^s1]: [raw/notes.md](../../raw/notes.md) - n (ingested 2026-06-22)\n",
+            },
+            {"op": "delete", "rel_path": "concepts/big.md"},
+        ]
+
+    monkeypatch.setattr(ingest.llm, "plan_pages", fake)
+    report = ingest.ingest([str(raw / "notes.md")])
+
+    assert "concepts/big.md" in report.pages_written
+    assert report.pages_deleted == []
+    assert (wiki / "concepts" / "big.md").exists()  # NOT destroyed
+    assert any("just written" in e for e in report.errors)
+
+
+def test_recreate_slug_does_not_repoint_inbound_links(tmp_path, monkeypatch):
+    """If a slug deleted-with-redirect by one source is RECREATED by a later source in the
+    same run, inbound links must keep pointing at the live page, not the stale redirect."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    for rel, title in (("a", "A"), ("b", "B")):
+        _seed_page(
+            wiki, f"concepts/{rel}.md",
+            {"type": "Concept", "title": title, "resource": "raw/old.md"},
+            f"{title} page.[^s1]\n\n## Sources\n\n"
+            "[^s1]: [raw/old.md](../../raw/old.md) - o (ingested 2026-06-21)\n",
+        )
+    _seed_page(
+        wiki, "concepts/linker.md",
+        {"type": "Concept", "title": "Linker", "resource": "raw/old.md"},
+        "See [A](./a.md).[^s1]\n\n## Sources\n\n"
+        "[^s1]: [raw/old.md](../../raw/old.md) - o (ingested 2026-06-21)\n",
+    )
+    (raw / "old.md").write_text("x\n", encoding="utf-8")
+    (raw / "s1.md").write_text("delete a redirect b\n", encoding="utf-8")
+    (raw / "s2.md").write_text("recreate a\n", encoding="utf-8")
+
+    def fake(raw_name, raw_text, digest):
+        if raw_name.endswith("s1.md"):
+            return [{"op": "delete", "rel_path": "concepts/a.md", "redirect": "concepts/b.md"}]
+        return [{
+            "op": "write", "type": "Concept", "title": "A", "rel_path": "concepts/a.md",
+            "description": "new", "tags": [],
+            "body": "New A.[^s1]\n\n## Sources\n\n"
+                    "[^s1]: [raw/s2.md](../../raw/s2.md) - n (ingested 2026-06-22)\n",
+        }]
+
+    monkeypatch.setattr(ingest.llm, "plan_pages", fake)
+    report = ingest.ingest([str(raw / "s1.md"), str(raw / "s2.md")])
+
+    assert "concepts/a.md" in report.pages_deleted   # s1 removed it
+    assert "concepts/a.md" in report.pages_written   # s2 recreated it
+    assert (wiki / "concepts" / "a.md").exists()
+    linker = (wiki / "concepts" / "linker.md").read_text(encoding="utf-8")
+    assert "](./a.md)" in linker          # link NOT repointed to b.md
+    assert report.broken_links == []
+
+
+def test_rewrite_links_skips_code_fences_and_substrings():
+    """The link rewrite touches only genuine link spans: a literal ](old) inside a fenced
+    code block is left intact, and only the real cross-link is repointed."""
+    body = (
+        "See [Old](./old.md) for details.\n\n"
+        "```\n"
+        "documented syntax: [X](./old.md)\n"
+        "```\n\n"
+        "End.\n"
+    )
+    out = store._rewrite_body_links(
+        "concepts/page.md", body, {"concepts/old.md": "concepts/new.md"}
+    )
+    assert "[Old](new.md)" in out          # real link repointed
+    assert "[X](./old.md)" in out          # fenced literal left intact
+    assert out.count("(new.md)") == 1
+
+
+def test_lint_allows_and_surfaces_llm_sourced_fact(tmp_path, monkeypatch):
+    """A model-supplied [^llmN] fact is NOT flagged as fabricated, but IS surfaced under
+    llm_facts for transparency; the page still passes lint."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _seed_page(
+        wiki, "concepts/with-llm.md",
+        {"type": "Concept", "title": "With LLM", "resource": "raw/real.md"},
+        "An essential, high-confidence model fact.[^llm1]\n\n## Sources\n\n"
+        "[^llm1]: LLM - model knowledge, not from a raw file (added 2026-06-22)\n",
+    )
+    report = lint.lint()
+    assert report.bad_sources == []
+    assert "concepts/with-llm.md" in report.llm_facts
+    assert report.ok()
+
+
+def test_lint_flags_bare_and_undefined_sources(tmp_path, monkeypatch):
+    """A bare-path (un-linked) source def and a used-but-undefined marker are both flagged."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _seed_page(
+        wiki, "concepts/sloppy.md",
+        {"type": "Concept", "title": "Sloppy", "resource": "raw/x.md"},
+        "Fact one.[^s1] Fact two.[^s2]\n\n## Sources\n\n"
+        "[^s1]: raw/x.md (ingested 2026-06-22)\n",  # bare path, no markdown link; s2 undefined
+    )
+    report = lint.lint()
+    details = [t for r, t in report.bad_sources if r == "concepts/sloppy.md"]
+    assert any("no resolvable source link" in d for d in details)
+    assert any("[^s2] used but undefined" in d for d in details)
+    assert not report.ok()
+
+
+def test_lint_tolerates_link_title_and_code_fences(tmp_path, monkeypatch):
+    """A link title in a Sources def, and an example def inside a code fence, do not cause
+    false-positive fabricated-source failures."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "x.md").write_text("src\n", encoding="utf-8")
+    _seed_page(
+        wiki, "concepts/titled.md",
+        {"type": "Concept", "title": "Titled", "resource": "raw/x.md"},
+        'A fact.[^s1]\n\n'
+        '```\n'
+        '[^sN]: [raw/example.md](../../raw/example.md) - how to cite\n'
+        '```\n\n'
+        '## Sources\n\n'
+        '[^s1]: [raw/x.md](../../raw/x.md "the title") - note (ingested 2026-06-22)\n',
+    )
+    report = lint.lint()
+    assert report.bad_sources == []
+    assert report.ok()
+
+
+# --- OKF compliance + tags + backlinks + suggested-links --------------------------------
+
+
+def test_indexes_have_no_frontmatter(tmp_path, monkeypatch):
+    """OKF: index.md (top + per-folder) must NOT carry YAML frontmatter."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _seed_page(
+        wiki, "concepts/a.md",
+        {"type": "Concept", "title": "Alpha", "description": "d", "tags": ["x"]},
+        "Alpha body.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - n\n",
+    )
+    store.rebuild_indexes()
+    top = (wiki / "index.md").read_text(encoding="utf-8")
+    folder = (wiki / "concepts" / "index.md").read_text(encoding="utf-8")
+    assert top.startswith("# Wiki Index") and not top.startswith("---")
+    assert "type: Index" not in top
+    assert folder.startswith("# concepts") and not folder.startswith("---")
+    # tags surfaced as a section in the reserved index.md (no rogue tags.md)
+    assert "## Tags" in top and "### x (1)" in top
+    assert not (wiki / "tags.md").exists()
+
+
+def test_index_shows_backlinks(tmp_path, monkeypatch):
+    """The top index lists who references each page (the backlink graph)."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _seed_page(
+        wiki, "concepts/a.md", {"type": "Concept", "title": "Alpha", "resource": "raw/a.md"},
+        "Alpha.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - n\n",
+    )
+    _seed_page(
+        wiki, "concepts/b.md", {"type": "Concept", "title": "Beta", "resource": "raw/a.md"},
+        "See [Alpha](./a.md).[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - n\n",
+    )
+    store.rebuild_indexes()
+    top = (wiki / "index.md").read_text(encoding="utf-8")
+    assert "referenced by:" in top
+    assert "[Beta](concepts/b.md)" in top
+
+
+def test_log_is_frontmatter_free_with_date_headings(tmp_path, monkeypatch):
+    """OKF: log.md has no frontmatter and groups entries under ## YYYY-MM-DD headings."""
+    import re as _re
+
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    store.append_log("did a thing")
+    log = (wiki / "log.md").read_text(encoding="utf-8")
+    assert log.startswith("# Log") and not log.startswith("---")
+    assert "type: Log" not in log
+    assert _re.search(r"(?m)^## \d{4}-\d{2}-\d{2}$", log)
+    assert "did a thing" in log
+
+
+def test_tag_catalog_and_suggested_links(tmp_path, monkeypatch):
+    """tag_catalog groups pages by tag; lint suggests an un-linked mention (advisory)."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "a.md").write_text("src\n", encoding="utf-8")
+    _seed_page(
+        wiki, "concepts/espresso.md",
+        {"type": "Concept", "title": "Espresso", "tags": ["brewing", "coffee"], "resource": "raw/a.md"},
+        "Espresso is pressure brewing.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - n\n",
+    )
+    _seed_page(
+        wiki, "concepts/caffeine.md",
+        {"type": "Concept", "title": "Caffeine", "tags": ["coffee"], "resource": "raw/a.md"},
+        "Espresso carries caffeine.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - n\n",
+    )
+    catalog = store.tag_catalog()
+    assert set(catalog) == {"brewing", "coffee"}
+    assert {p.rel_path for p in catalog["coffee"]} == {
+        "concepts/espresso.md", "concepts/caffeine.md"
+    }
+
+    report = lint.lint()
+    assert (
+        "concepts/caffeine.md",
+        "concepts/espresso.md (mentions 'Espresso')",
+    ) in report.suggested_links
+    assert report.ok()  # advisory only
+
+
+def test_suggested_links_skips_already_linked(tmp_path, monkeypatch):
+    """A page that already links a concept is not nagged to link it again."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _seed_page(
+        wiki, "concepts/espresso.md", {"type": "Concept", "title": "Espresso", "resource": "raw/a.md"},
+        "Espresso.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - n\n",
+    )
+    _seed_page(
+        wiki, "concepts/caffeine.md", {"type": "Concept", "title": "Caffeine", "resource": "raw/a.md"},
+        "See [Espresso](./espresso.md).[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - n\n",
+    )
+    report = lint.lint()
+    caffeine_suggestions = [t for r, t in report.suggested_links if r == "concepts/caffeine.md"]
+    assert not any("espresso.md" in s for s in caffeine_suggestions)

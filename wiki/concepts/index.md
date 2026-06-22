@@ -1,6 +1,3 @@
----
-type: Index
----
 # concepts
 
 - [Arabica and Robusta](arabica-and-robusta.md) — Arabica and Robusta: The two primary coffee species that account for most global production, compared by altitude, flavor, caffeine content, cost, and geographic origins.

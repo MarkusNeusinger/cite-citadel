@@ -1,11 +1,13 @@
 """Human command-line entry point mirroring the MCP tools.
 
-``okf-wiki`` with four subcommands::
+``okf-wiki`` with six subcommands::
 
     okf-wiki ingest [paths ...]   # fold raw/ (or explicit paths) into the wiki
     okf-wiki serve                # run the MCP stdio server
-    okf-wiki search <query> [--limit N]
+    okf-wiki search <query> [--limit N] [--tag T]
+    okf-wiki tags [tag]           # browse pages by tag
     okf-wiki lint [--stale-days N]
+    okf-wiki view [--out PATH] [--no-open] [--obsidian]   # offline single-file HTML viewer
 
 Exit codes are CI-friendly: ingest returns 1 if any source errored (a missing or
 unusable LLM CLI surfaces as a per-source error in the report), lint returns 2 if
@@ -23,7 +25,7 @@ import sys
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the ``okf-wiki`` argument parser with its four subcommands."""
+    """Build the ``okf-wiki`` argument parser with its six subcommands."""
     parser = argparse.ArgumentParser(
         prog="okf-wiki",
         description="An LLM-maintained personal wiki in Google OKF, with an MCP search server.",
@@ -58,7 +60,24 @@ def build_parser() -> argparse.ArgumentParser:
         default=8,
         help="Maximum number of hits to return (default: 8).",
     )
+    p_search.add_argument(
+        "--tag",
+        default=None,
+        help="Restrict the search to pages carrying this tag (case-insensitive).",
+    )
     p_search.set_defaults(func=cmd_search)
+
+    p_tags = sub.add_parser(
+        "tags",
+        help="List all tags and the pages under each (browse the wiki by topic).",
+    )
+    p_tags.add_argument(
+        "tag",
+        nargs="?",
+        default=None,
+        help="Show only this tag's pages (default: list every tag).",
+    )
+    p_tags.set_defaults(func=cmd_tags)
 
     p_lint = sub.add_parser(
         "lint",
@@ -71,6 +90,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Pages older than this many days are flagged stale (default: 365).",
     )
     p_lint.set_defaults(func=cmd_lint)
+
+    p_view = sub.add_parser(
+        "view",
+        help="Generate and open a single-file, offline HTML viewer for the wiki.",
+    )
+    p_view.add_argument(
+        "--out",
+        default=None,
+        help="Where to write the .html (default: wiki/.okf_viewer.html).",
+    )
+    p_view.add_argument(
+        "--no-open",
+        dest="open_browser",
+        action="store_false",
+        help="Write the file but do not launch a browser.",
+    )
+    p_view.add_argument(
+        "--obsidian",
+        action="store_true",
+        help="Open the wiki folder as an Obsidian vault instead (best-effort deep link).",
+    )
+    p_view.set_defaults(func=cmd_view, open_browser=True)
 
     return parser
 
@@ -93,18 +134,56 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 
 def cmd_search(args: argparse.Namespace) -> int:
-    """Print ranked search hits for the query; return 0."""
+    """Print ranked search hits for the query (optionally filtered to a tag); return 0."""
     from . import store
 
-    hits = store.search(args.query, limit=args.limit)
+    pages = None
+    if args.tag:
+        want = args.tag.strip().lower()
+        pages = [p for p in store.load() if want in [str(t).lower() for t in p.tags]]
+        if not pages:
+            print(f"No pages tagged {args.tag!r}.")
+            return 0
+
+    hits = store.search(args.query, pages=pages, limit=args.limit)
     if not hits:
-        print(f"No matches for {args.query!r}.")
+        scope = f" (tag {args.tag!r})" if args.tag else ""
+        print(f"No matches for {args.query!r}{scope}.")
         return 0
     for page, score in hits:
         snippet = " ".join(page.body.split())[:120]
-        print(f"{page.rel_path}\t{page.title}\t{score:.2f}")
+        tags = (" [" + ", ".join(page.tags) + "]") if page.tags else ""
+        print(f"{page.rel_path}\t{page.title}\t{score:.2f}{tags}")
         if snippet:
             print(f"    {snippet}")
+    return 0
+
+
+def cmd_tags(args: argparse.Namespace) -> int:
+    """List all tags and their pages (or just one tag's pages); return 0."""
+    from . import store
+
+    catalog = store.tag_catalog()
+    if not catalog:
+        print("No tags yet.")
+        return 0
+
+    if args.tag:
+        want = args.tag.strip().lower()
+        pages = catalog.get(want)
+        if not pages:
+            print(f"No pages tagged {args.tag!r}.")
+            return 0
+        print(f"# {want} ({len(pages)})")
+        for page in pages:
+            print(f"- {page.rel_path}\t{page.title}")
+        return 0
+
+    for tag in sorted(catalog):
+        pages = catalog[tag]
+        print(f"{tag} ({len(pages)})")
+        for page in pages:
+            print(f"    {page.rel_path}\t{page.title}")
     return 0
 
 
@@ -115,6 +194,13 @@ def cmd_lint(args: argparse.Namespace) -> int:
     report = lint.lint(stale_days=args.stale_days)
     print(report.render())
     return 0 if report.ok() else 2
+
+
+def cmd_view(args: argparse.Namespace) -> int:
+    """Generate the offline single-file HTML viewer and open it (unless --no-open)."""
+    from . import viewer
+
+    return viewer.view(out=args.out, open_browser=args.open_browser, obsidian=args.obsidian)
 
 
 def main(argv: list[str] | None = None) -> int:

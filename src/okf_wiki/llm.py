@@ -32,22 +32,67 @@ from . import config
 # Standing rules appended to SCHEMA.md in the ingest prompt.
 INGEST_RULES = (
     "Standing ingest rules:\n"
-    "- Every factual sentence ends with a GFM footnote marker [^sN] (N = 1, 2, 3, ...).\n"
-    "- Define each marker once in a trailing \"## Sources\" section as "
-    "`[^sN]: [raw/<file>](RELPATH_TO_RAW) - short note (ingested <date>)`, where "
-    "RELPATH_TO_RAW is a RELATIVE path from the page to the raw file (a page in "
+    "\n"
+    "GROUNDING — raw files are the primary truth; any model-added fact must be labeled:\n"
+    "- Build the page from the facts in the RAW FILE text given below. Rephrase into clean, "
+    "well-formed sentences and reorganize freely, but NEVER change the meaning, the numbers, "
+    "the names, or the claims of a raw fact.\n"
+    "- You MAY add a fact from your own knowledge ONLY when ALL THREE hold: it is ESSENTIAL "
+    "to understanding the topic, you are HIGHLY CONFIDENT it is correct, and it stays strictly "
+    "on topic. Do not pad, speculate, or wander — when in doubt, leave it out.\n"
+    "- Cite EVERY factual sentence with a footnote marker: use [^sN] (N = 1, 2, 3, ...) for a "
+    "fact taken from a raw file, and [^llmN] (a SEPARATE numbering) for a fact you added from "
+    "your own knowledge.\n"
+    "- Define each marker once in a trailing \"## Sources\" section:\n"
+    "    * raw fact:   `[^sN]: [raw/<file>](RELPATH_TO_RAW) - short note (ingested <date>)`, "
+    "where RELPATH_TO_RAW is a RELATIVE path from the page to the raw file (a page in "
     "wiki/concepts/ reaches raw/ via ../../raw/<file>).\n"
-    "- Links to other wiki pages are RELATIVE markdown links (e.g. ../concepts/foo.md).\n"
-    "- Merge into the existing page given in the digest rather than duplicating; when you "
-    "rewrite a page, return the FULL merged body and keep prior facts and their [^sN] "
-    "markers intact.\n"
+    "    * model fact: `[^llmN]: LLM - model knowledge, not from a raw file (added <date>)` "
+    "(NO file link).\n"
+    "- A [^sN] marker MUST point to a real raw file — never invent provenance or attribute a "
+    "fact to a raw file it did not come from. A fact you are not highly confident about is "
+    "dropped, NOT guessed and labeled [^llmN].\n"
+    "\n"
+    "ROUTING & RESTRUCTURING — keep the wiki clean as it grows:\n"
+    "- Route each piece of information to the page where it best FITS. Prefer extending "
+    "or merging into an existing page from the digest over creating a new one; create a "
+    "new page only when no existing page is a good home. Do NOT mechanically make one new "
+    "page per raw file.\n"
+    "- When you merge into an existing page, return its FULL merged body and keep ALL "
+    "prior facts and their [^sN] markers intact (re-number/preserve the Sources section "
+    "so every kept fact still resolves).\n"
+    "- YOU MAY RESTRUCTURE THE WIKI. To SPLIT a page that has grown too large or mixes "
+    "unrelated topics, emit one write op per focused new page (each carrying the moved "
+    "facts WITH their [^sN] citations) plus one delete op for the original. To MERGE two "
+    "pages on the same topic, emit one write op for the surviving page (full merged body, "
+    "citations from BOTH pages preserved) plus one delete op for the absorbed page.\n"
+    "- ALWAYS preserve every fact and its citation across a split or merge — never drop a "
+    "cited fact. Use op=\"delete\" ONLY for a page you have just superseded by a write, or "
+    "one that is now redundant/obsolete; never delete a page whose facts you have not "
+    "preserved elsewhere. Never delete index.md or log.md (the system regenerates them).\n"
+    "- NEVER emit a delete for a rel_path that one of your write ops also targets (a page "
+    "you are writing this run is one you want to keep, not remove).\n"
+    "- When you delete a page because its content moved into another page, set that op's "
+    "\"redirect\" to the surviving page's rel_path. The system then repoints every "
+    "cross-link that pointed at the deleted page to the survivor, so no link breaks.\n"
+    "\n"
+    "LINKS, TAGS & CONFLICTS:\n"
+    "- Build a DENSELY connected graph. Link to other wiki pages with RELATIVE markdown "
+    "links (e.g. ../concepts/foo.md), linking the FIRST mention of any concept that has "
+    "(or clearly should have) its own page. Use the page catalog in the digest to find "
+    "targets. Links are standard markdown — never [[wiki-style]] links.\n"
+    "- End each page with a \"## See also\" section (AFTER the body, BEFORE \"## Sources\"): "
+    "a short bulleted list of relative links to the most closely related pages. Omit it "
+    "only when nothing is genuinely related.\n"
+    "- Give each page 2-5 lowercase \"tags\" drawn from a shared vocabulary, REUSING "
+    "existing tag names from the digest where they fit, so pages are searchable and "
+    "browsable by topic.\n"
     "- The page body is GitHub-flavored markdown ONLY: NEVER put a YAML \"---\" "
     "frontmatter block inside the body — the system writes frontmatter from your op "
     "fields (type/title/description/tags). The digest shows existing pages with their "
     "frontmatter stripped for this reason.\n"
     "- On conflict, never silently overwrite: insert a \"> [!CONTRADICTION]\" callout that "
     "names both claims with both source markers.\n"
-    "- Drop any claim you cannot cite to the raw file; never invent provenance.\n"
     "- Use op=\"skip\" if the raw file adds nothing new."
 )
 
@@ -56,11 +101,26 @@ OPS_FORMAT = (
     "OUTPUT FORMAT — this is strict:\n"
     "Reply with ONE JSON object and NOTHING else. No prose, no explanation, no "
     "markdown code fences. The object must be exactly:\n"
-    '{"ops": [ {"op": "write" | "skip", "type": "<OKF type, e.g. Concept, Entity, '
-    'Note>", "title": "<human title>", "rel_path": "<wiki-relative path, or empty '
-    'string to auto-route by type>", "description": "<one-line summary>", "tags": '
-    '["lowercase", "tags"], "body": "<full markdown page body, with each fact ending '
-    'in a [^sN] footnote and a trailing ## Sources section>"} ] }\n'
+    '{"ops": [ {"op": "write" | "skip" | "delete", "type": "<OKF type, e.g. Concept, '
+    'Entity, Note>", "title": "<human title>", "rel_path": "<wiki-relative path, or '
+    'empty string to auto-route by type>", "description": "<one-line summary>", "tags": '
+    '["lowercase", "tags"], "body": "<full markdown page body: each fact ends in a [^sN] '
+    '(raw) or [^llmN] (model knowledge) footnote, then an optional ## See also section of '
+    'relative links, then a trailing ## Sources section>"} ] }\n'
+    'A "delete" op needs only rel_path (other fields may be omitted), plus an optional '
+    '"redirect" naming the surviving page that absorbs its inbound links: '
+    '{"op": "delete", "rel_path": "concepts/old.md", "redirect": "concepts/new.md"}.\n'
+    "SPLIT example — break concepts/big.md into two focused pages:\n"
+    '{"ops": [ {"op": "write", "type": "Concept", "title": "Topic A", "rel_path": "", '
+    '"description": "...", "tags": [], "body": "...moved facts with their [^sN]..."}, '
+    '{"op": "write", "type": "Concept", "title": "Topic B", "rel_path": "", '
+    '"description": "...", "tags": [], "body": "...moved facts with their [^sN]..."}, '
+    '{"op": "delete", "rel_path": "concepts/big.md", "redirect": "concepts/topic-a.md"} ] }\n'
+    "MERGE example — fold concepts/attention.md into concepts/self-attention.md:\n"
+    '{"ops": [ {"op": "write", "rel_path": "concepts/self-attention.md", "type": '
+    '"Concept", "title": "Self-Attention", "description": "...", "tags": [], "body": '
+    '"...full merged body keeping [^sN] from BOTH pages..."}, {"op": "delete", '
+    '"rel_path": "concepts/attention.md", "redirect": "concepts/self-attention.md"} ] }\n'
     'For a source that adds nothing new, return {"ops": [{"op": "skip", "type": "", '
     '"title": "", "rel_path": "", "description": "", "tags": [], "body": ""}]}.'
 )
@@ -121,26 +181,44 @@ def _resolve_cli(cli: str) -> str:
     )
 
 
-def _build_argv(cli: str, cli_path: str, prompt: str) -> list[str]:
-    """Build the headless print-mode argv for the chosen CLI.
+def _build_invocation(cli: str, cli_path: str, prompt: str) -> tuple[list[str], str | None]:
+    """Return ``(argv, stdin_text)`` for the chosen CLI in headless print mode.
 
-    Mirrors the conventions in the user's existing workflow runner:
-    claude takes --model and --output-format json; copilot/gemini take just -p.
+    For the **claude** CLI the prompt is sent on STDIN (argv carries only flags). This
+    avoids the Windows command-line length limit (CreateProcessW caps an argv at ~32 KB),
+    which a large raw file or a budget-filled digest could otherwise exceed, and it sends
+    the prompt as UTF-8 regardless of the OS code page. ``claude -p`` reads the prompt from
+    stdin. copilot/gemini take the prompt as a ``-p`` argument (their documented form).
     """
     if cli == "claude":
-        argv = [cli_path, "-p", prompt, "--output-format", "json"]
+        argv = [cli_path, "-p", "--output-format", "json"]
         if config.INGEST_MODEL:
             argv.extend(["--model", config.INGEST_MODEL])
-        return argv
-    # copilot / gemini (and any unknown CLI): a plain headless prompt.
-    return [cli_path, "-p", prompt]
+        return argv, prompt
+    # copilot / gemini (and any unknown CLI): a plain headless prompt as an argument.
+    return [cli_path, "-p", prompt], None
 
 
-def _run_cli(cli: str, argv: list[str]) -> str:
-    """Run the CLI once and return the assistant's text (raises on failure)."""
+def _run_cli(cli: str, argv: list[str], stdin_text: str | None = None) -> str:
+    """Run the CLI once and return the assistant's text (raises on failure).
+
+    ``stdin_text`` (the claude prompt) is fed on stdin; for copilot/gemini it is None and
+    the prompt is already in ``argv``.
+    """
     try:
         proc = subprocess.run(
-            argv, capture_output=True, text=True, timeout=config.LLM_TIMEOUT
+            argv,
+            input=stdin_text,
+            capture_output=True,
+            text=True,
+            # Force UTF-8 on BOTH the piped prompt and the decoded stdout/stderr,
+            # regardless of the OS locale. Without this, `text=True` uses the platform
+            # default (e.g. cp1252 on German Windows) and a non-ASCII byte in the CLI's
+            # UTF-8 output raises UnicodeDecodeError. errors="replace" keeps a stray
+            # undecodable byte from killing the whole run.
+            encoding="utf-8",
+            errors="replace",
+            timeout=config.LLM_TIMEOUT,
         )
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(
@@ -241,5 +319,6 @@ def plan_pages(raw_name: str, raw_text: str, digest: str) -> list[dict]:
     cli = (config.LLM_CLI or "claude").strip().lower()
     cli_path = _resolve_cli(cli)
     prompt = build_prompt(_schema_text(), raw_name, raw_text, digest)
-    reply = _run_cli(cli, _build_argv(cli, cli_path, prompt))
+    argv, stdin_text = _build_invocation(cli, cli_path, prompt)
+    reply = _run_cli(cli, argv, stdin_text)
     return _extract_ops(reply)["ops"]

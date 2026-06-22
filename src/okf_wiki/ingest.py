@@ -13,7 +13,7 @@ one LLM call per source; no agent loop. The only outside call is
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import config, llm, manifest, okf, store
@@ -26,6 +26,9 @@ class IngestReport:
     skipped: list[str]
     pages_written: list[str]
     errors: list[str]
+    pages_deleted: list[str] = field(default_factory=list)
+    # (source_rel_path, target) cross-links left dangling after this run — should be empty.
+    broken_links: list[tuple[str, str]] = field(default_factory=list)
 
     def render(self) -> str:
         """Human-readable multi-line summary for CLI/MCP."""
@@ -34,6 +37,7 @@ class IngestReport:
             f"Ingest complete: {len(self.processed)} processed, "
             f"{len(self.skipped)} skipped, "
             f"{len(self.pages_written)} pages written, "
+            f"{len(self.pages_deleted)} pages deleted, "
             f"{len(self.errors)} errors."
         )
         if self.processed:
@@ -42,9 +46,15 @@ class IngestReport:
         if self.pages_written:
             lines.append("Pages written:")
             lines.extend(f"  - {p}" for p in self.pages_written)
+        if self.pages_deleted:
+            lines.append("Pages deleted (restructured):")
+            lines.extend(f"  - {p}" for p in self.pages_deleted)
         if self.skipped:
             lines.append("Skipped (already ingested):")
             lines.extend(f"  - {p}" for p in self.skipped)
+        if self.broken_links:
+            lines.append("WARNING — broken cross-links (run `okf-wiki lint`):")
+            lines.extend(f"  - {src} -> {tgt}" for src, tgt in self.broken_links)
         if self.errors:
             lines.append("Errors:")
             lines.extend(f"  - {e}" for e in self.errors)
@@ -111,7 +121,12 @@ def _catalog(pages: list[Page]) -> str:
     for type_ in sorted(by_type):
         lines.append(f"## {type_}")
         for page in by_type[type_]:
-            lines.append(f"- {page.rel_path} — {page.title}: {page.description}")
+            # The size hint lets the model judge when a page has grown "too big" and
+            # should be split.
+            lines.append(
+                f"- {page.rel_path} (~{len(page.body)} chars) — "
+                f"{page.title}: {page.description}"
+            )
         lines.append("")
     return "\n".join(lines).rstrip()
 
@@ -119,25 +134,39 @@ def _catalog(pages: list[Page]) -> str:
 def _build_digest(raw_text: str, pages: list[Page]) -> str:
     """Build the compare-against-existing context for the ingest prompt.
 
-    A catalog of every current page (so the model can see what already exists and
-    avoid duplicating), then the FULL serialized body of the top keyword matches
-    (so it can merge/patch them and spot contradictions). Both views derive from
-    the same in-memory ``pages``. Truncated to ``config.MAX_DIGEST_CHARS``.
+    A catalog of every current page (with a size hint so the model can spot pages that
+    grew too big), then the FULL serialized body of as many keyword-matched pages as fit
+    the ``config.MAX_DIGEST_CHARS`` budget (best matches first) — so the model can merge
+    into, patch, split, or delete them and spot contradictions. A small wiki is shown in
+    full; a large one fills the budget with the most relevant pages. Both views derive
+    from the same in-memory ``pages``.
     """
-    parts: list[str] = ["# CURRENT WIKI PAGES\n", _catalog(pages)]
+    parts: list[str] = [
+        "# CURRENT WIKI PAGES (you MAY rewrite, split, merge, or delete any of these)\n",
+        _catalog(pages),
+    ]
 
-    hits = store.search(raw_text, pages, limit=config.DIGEST_TOP_N)
+    hits = store.search(raw_text, pages, limit=config.DIGEST_CANDIDATE_N)
     if hits:
         parts.append(
-            "\n\n# TOP MATCHING PAGES (merge into / patch these; body shown WITHOUT "
-            "its frontmatter — do not reproduce a `---` block in your body)\n"
+            "\n\n# TOP MATCHING PAGES (merge into / patch / split / delete these; body "
+            "shown WITHOUT its frontmatter — do not reproduce a `---` block in your body; "
+            "you MAY rewrite, split, or delete any page shown here)\n"
         )
+        running = len("\n".join(parts))
         for page, _score in hits:
             meta = (
                 f"(type: {page.type} | title: {page.title} | "
-                f"resource: {page.frontmatter.get('resource', '')})"
+                f"resource: {page.frontmatter.get('resource', '')} | "
+                f"size: {len(page.body)} chars)"
             )
-            parts.append(f"\n## {page.rel_path}\n{meta}\n\n{page.body.rstrip()}\n")
+            block = f"\n## {page.rel_path}\n{meta}\n\n{page.body.rstrip()}\n"
+            # Stop once the next full body would overflow the budget (but always include
+            # at least the catalog + header that are already in `parts`).
+            if running + len(block) > config.MAX_DIGEST_CHARS:
+                break
+            parts.append(block)
+            running += len(block)
 
     digest = "\n".join(parts)
     if len(digest) > config.MAX_DIGEST_CHARS:
@@ -196,16 +225,66 @@ def ingest(paths: list[str] | None = None) -> IngestReport:
     pending, skipped = _partition_sources(paths)
     report.skipped = skipped
 
+    # OLD rel_path -> surviving rel_path, accumulated across the run from delete ops that
+    # carry a "redirect". Applied once at the end so every inbound cross-link to a
+    # merged/renamed page is repointed at the survivor (links keep working).
+    rename_map: dict[str, str] = {}
+
     for src in pending:
         rel_key = manifest.rel_key(src)
         try:
             raw_text = src.read_text(encoding="utf-8")
             digest = _build_digest(raw_text, pages)
             ops = llm.plan_pages(rel_key, raw_text, digest)
+
+            # The set of pages that exist as we apply this source's ops, so a delete can
+            # be validated and a redirect target confirmed.
+            existing = {p.rel_path for p in pages}
+            # Pages this source WRITES — a delete of one of these is a contradiction and
+            # would destroy a page we just (re)created, so it is refused below.
+            written_this_src: set[str] = set()
+
+            # Pass 1: writes first. A split/merge writes the survivor(s) BEFORE any
+            # delete runs, so a delete can never remove the only copy of a fact.
             for op in ops:
+                if op.get("op") == "delete":
+                    continue
                 rp = _apply_op(op, rel_key)
                 if rp:
                     report.pages_written.append(rp)
+                    existing.add(rp)
+                    written_this_src.add(rp)
+                    # If a slug deleted-with-redirect earlier in the run is now rewritten
+                    # with fresh content, it is no longer "renamed away" — drop the stale
+                    # mapping so inbound links are not repointed off the live page.
+                    rename_map.pop(rp, None)
+
+            # Pass 2: deletes, collecting redirects for the end-of-run link rewrite.
+            for op in ops:
+                if op.get("op") != "delete":
+                    continue
+                rel = (op.get("rel_path") or "").strip()
+                if rel in written_this_src:
+                    report.errors.append(
+                        f"{rel_key}: delete refused, {rel!r} was just written this run"
+                    )
+                    continue
+                if not rel or rel not in existing:
+                    report.errors.append(
+                        f"{rel_key}: delete skipped, no such page: {rel!r}"
+                    )
+                    continue
+                try:
+                    store.delete_page(rel)
+                except okf.OKFError as exc:
+                    report.errors.append(f"{rel_key}: delete {rel}: {exc}")
+                    continue
+                report.pages_deleted.append(rel)
+                existing.discard(rel)
+                redirect = (op.get("redirect") or op.get("into") or "").strip()
+                if redirect and redirect in existing:
+                    rename_map[rel] = redirect
+
             manifest.mark_done(manifest_dict, src)
             report.processed.append(rel_key)
             # Refresh so the NEXT source's digest sees the just-written pages.
@@ -215,9 +294,16 @@ def ingest(paths: list[str] | None = None) -> IngestReport:
 
     if report.processed:
         manifest.save(manifest_dict)
+        # Repoint inbound cross-links to any merged/renamed pages BEFORE rebuilding the
+        # indexes, so the regenerated catalog and the link graph agree.
+        if rename_map:
+            store.rewrite_links(rename_map)
         store.rebuild_indexes()
+        # Surface any cross-link left dangling by a restructure so it is never silent.
+        report.broken_links = store.find_broken_links()
         store.append_log(
-            f"ingest {report.processed} -> {len(report.pages_written)} pages written"
+            f"ingest {report.processed} -> {len(report.pages_written)} written, "
+            f"{len(report.pages_deleted)} deleted"
         )
 
     return report

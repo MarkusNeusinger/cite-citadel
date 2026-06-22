@@ -84,3 +84,8 @@ LLM_TIMEOUT: int = int(os.environ.get("OKF_LLM_TIMEOUT", "300"))
 
 MAX_DIGEST_CHARS: int = 12000
 DIGEST_TOP_N: int = 6
+# How many keyword-matched pages to consider for the digest's full-body section. Their
+# bodies are appended in score order only while the digest stays under MAX_DIGEST_CHARS,
+# so a small wiki is shown in full and a large one fills the budget with the best matches
+# — giving the model enough context to merge/split/restructure soundly.
+DIGEST_CANDIDATE_N: int = 20

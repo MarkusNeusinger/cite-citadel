@@ -114,14 +114,33 @@ def default_rel_path(type_: str, title: str) -> str:
     return f"{folder_for_type(type_)}/{slugify(title)}.md"
 
 
+def rel_path_between(from_rel: str, to_rel: str) -> str:
+    """POSIX relative path FROM the page ``from_rel`` TO the page ``to_rel``.
+
+    e.g. ``rel_path_between('concepts/a.md', 'entities/b.md')`` -> ``'../entities/b.md'``.
+    The inverse of :func:`resolve_link`. Used to rewrite a cross-link's target when the
+    page it points to is renamed/merged."""
+    start = os.path.dirname(from_rel) or "."
+    return os.path.relpath(to_rel, start=start).replace(os.sep, "/")
+
+
+def resolve_link(from_rel: str, target: str) -> str:
+    """Resolve a markdown link ``target`` written in page ``from_rel`` to a
+    wiki-root-relative POSIX path.
+
+    e.g. ``resolve_link('concepts/a.md', './b.md')`` -> ``'concepts/b.md'`` and
+    ``resolve_link('concepts/a.md', '../entities/x.md')`` -> ``'entities/x.md'``. This is
+    the single source of truth for turning a relative cross-link into a page identity,
+    shared by lint (broken-link detection) and the store (link rewriting)."""
+    base = os.path.dirname(from_rel)
+    norm = os.path.normpath(os.path.join(base, target))
+    return norm.replace(os.sep, "/")
+
+
 def rel_link(from_rel: str, to_rel: str, text: str) -> str:
-    """Render a markdown link ``'[text](RELPATH)'`` where RELPATH is
-    ``os.path.relpath(to_rel, start=dirname(from_rel))`` using POSIX
-    separators."""
-    start = os.path.dirname(from_rel)
-    rel = os.path.relpath(to_rel, start=start or ".")
-    rel = rel.replace(os.sep, "/")
-    return f"[{text}]({rel})"
+    """Render a markdown link ``'[text](RELPATH)'`` where RELPATH is the POSIX
+    relative path from ``from_rel`` to ``to_rel``."""
+    return f"[{text}]({rel_path_between(from_rel, to_rel)})"
 
 
 def safe_join(base: Path, rel_path: str) -> Path:

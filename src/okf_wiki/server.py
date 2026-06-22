@@ -1,7 +1,7 @@
 """MCP stdio server exposing the OKF wiki to AI clients.
 
-A FastMCP instance over stdio with four tools: three read-only
-(wiki_search / wiki_read / wiki_index) and one mutating (wiki_ingest).
+A FastMCP instance over stdio with five tools: four read-only
+(wiki_search / wiki_read / wiki_index / wiki_tags) and one mutating (wiki_ingest).
 Every tool returns a plain markdown/text string, which an LLM consumes
 best, and NEVER raises out of the tool: not-found / unsafe-path /
 missing-or-unusable-LLM-CLI conditions are returned as clear error strings
@@ -47,32 +47,78 @@ def _snippet(query: str, body: str, width: int = _SNIPPET_CHARS) -> str:
 
 
 @mcp.tool()
-def wiki_search(query: str, limit: int = 8) -> str:
+def wiki_search(query: str, limit: int = 8, tag: str = "") -> str:
     """Keyword search across all OKF wiki pages (title/tags/description/body).
 
-    Returns a ranked markdown list; each entry gives the page rel_path, its
-    score, the title, and a short body snippet around the first matching
-    token. The primary 'make the wiki usable' tool: an AI searches the
-    synthesized wiki instead of re-retrieving the raw sources.
+    Optionally restrict to pages carrying ``tag`` (case-insensitive). Returns a
+    ranked markdown list; each entry gives the page rel_path, its score, the
+    title, its tags, and a short body snippet around the first matching token.
+    The primary 'make the wiki usable' tool: an AI searches the synthesized wiki
+    instead of re-retrieving the raw sources.
     """
     from . import store
 
     try:
-        hits = store.search(query, limit=limit)
+        pages = None
+        if tag.strip():
+            want = tag.strip().lower()
+            pages = [
+                p for p in store.load() if want in [str(t).lower() for t in p.tags]
+            ]
+            if not pages:
+                return f"No pages tagged {tag!r}."
+        hits = store.search(query, pages=pages, limit=limit)
     except Exception as e:  # never raise out of the tool
         return f"error: search failed: {e}"
     if not hits:
-        return f"No matches for {query!r}."
+        scope = f" (tag {tag!r})" if tag.strip() else ""
+        return f"No matches for {query!r}{scope}."
     parts = [f"# Search results for {query!r} ({len(hits)})", ""]
     for page, score in hits:
         parts.append(f"## {page.rel_path} (score {score:.2f})")
         if page.title:
             parts.append(page.title)
+        if page.tags:
+            parts.append("tags: " + ", ".join(page.tags))
         snippet = _snippet(query, page.body)
         if snippet:
             parts.append(snippet)
         parts.append("")
     return "\n".join(parts).rstrip() + "\n"
+
+
+@mcp.tool()
+def wiki_tags(tag: str = "") -> str:
+    """Browse the wiki by topic. With no argument, list every tag and the pages
+    under it; with a ``tag``, list just that tag's pages. Tags are the OKF-native
+    ``tags`` frontmatter field — a second navigation axis alongside search and the
+    cross-link graph. Computed live so it is always current.
+    """
+    from . import store
+
+    try:
+        catalog = store.tag_catalog()
+    except Exception as e:  # never raise out of the tool
+        return f"error: could not read tags: {e}"
+    if not catalog:
+        return "No tags yet."
+
+    if tag.strip():
+        want = tag.strip().lower()
+        pages = catalog.get(want)
+        if not pages:
+            return f"No pages tagged {tag!r}."
+        lines = [f"# {want} ({len(pages)})", ""]
+        lines += [f"- [{p.title}]({p.rel_path}) — {p.description}" for p in pages]
+        return "\n".join(lines) + "\n"
+
+    lines = ["# Tags", ""]
+    for t in sorted(catalog):
+        pages = catalog[t]
+        lines.append(f"## {t} ({len(pages)})")
+        lines += [f"- [{p.title}]({p.rel_path}) — {p.description}" for p in pages]
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 @mcp.tool()

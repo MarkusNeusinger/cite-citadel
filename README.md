@@ -5,9 +5,24 @@ with an **MCP server** so an AI can search and read it.
 
 This is a KISS, pure-Python (3.12) implementation of Andrej Karpathy's
 [LLM-Wiki pattern](docs/karpathy-llm-wiki.md): you drop arbitrary markdown into `raw/`, and
-one LLM call per file folds each source into a cross-linked OKF wiki under `wiki/`. Every fact
-is cited back to the raw file it came from. An AI client then queries the synthesized wiki over
-the Model Context Protocol instead of re-reading your raw notes.
+one LLM call per file folds each source into a cross-linked OKF wiki under `wiki/`. Instead of
+making one page per file, ingest **routes each fact to the page it best fits and restructures**
+(splits / merges) existing pages as the wiki grows. Every fact is cited back to the raw file it
+came from — and the model uses **only** what is in `raw/`, never its own knowledge. An AI client
+then queries the synthesized wiki over the Model Context Protocol instead of re-reading your raw
+notes.
+
+**Three guarantees that hold as the wiki grows** (see [`SCHEMA.md`](SCHEMA.md)):
+
+- **It stays organized.** Ingest merges overlapping notes, splits pages that grow too big, and
+  deletes pages whose content moved elsewhere — it does not pile up one page per raw file.
+- **Links keep working.** When a page is merged or renamed, the system *mechanically* repoints
+  every inbound cross-link to the survivor; any dangling link fails `okf-wiki lint`.
+- **Honest provenance.** Raw facts are restated faithfully (same meaning/numbers) and cite
+  their `raw/` file as `[^sN]`. The model **may** add a fact from its own knowledge only when
+  it is essential, high-confidence, and on-topic — and must label it `[^llmN]` (source: `LLM`),
+  never disguised as a raw citation. A `[^sN]` citing a missing raw file fails `okf-wiki lint`;
+  `[^llmN]` facts are surfaced by lint for audit.
 
 Ingest runs through a **coding-agent CLI you already have** (`claude`, `copilot`, or `gemini`)
 — so it uses your existing subscription (e.g. a Claude Max plan) and **needs no API key**.
@@ -24,8 +39,9 @@ authoritative rules — that file is also injected verbatim into the ingest mode
    edits them. The seed articles in `docs/` are also ingestable on demand.
 2. **`wiki/`** — the LLM-owned OKF bundle: markdown pages with YAML frontmatter, routed into
    `concepts/`, `entities/`, and `misc/`, cross-linked with relative links, each fact carrying
-   a footnote citation to its `raw/` source. Mechanically-regenerated `index.md` catalogs and
-   an append-only `log.md` live alongside.
+   a footnote citation to its `raw/` source. The two OKF-reserved files are generated, not
+   authored, and per OKF carry **no frontmatter**: `index.md` (catalog + backlinks + a `## Tags`
+   section) and an append-only `log.md` with `## YYYY-MM-DD` headings.
 3. **[`SCHEMA.md`](SCHEMA.md)** — the schema/config layer: allowed types, folder routing,
    the per-fact provenance grammar, cross-linking and contradiction conventions. Editing it
    changes how the wiki is built with **no code change**.
@@ -37,14 +53,27 @@ uv sync                       # creates .venv, installs deps + the dev group + o
 ```
 
 Runtime dependencies are just `mcp` and `pyyaml` (no LLM SDK). Then either activate the venv
-(`source .venv/bin/activate`) or prefix commands with `uv run` (e.g. `uv run okf-wiki ...`).
+(`source .venv/bin/activate`) or prefix commands with `uv run`.
+
+This README uses the **portable** invocation that works identically on Linux, macOS, and Windows:
+
+```bash
+uv run python -m okf_wiki <subcommand>      # e.g. uv run python -m okf_wiki ingest
+```
+
+`uv run okf-wiki <subcommand>` is an equivalent shorthand. Prefer `python -m` on Windows: uv's
+generated `okf-wiki.exe` launcher stub is sometimes quarantined by antivirus (e.g. Windows
+Defender, `os error 5`) and regenerated on every `uv sync` — `python -m okf_wiki` has no `.exe`
+and sidesteps that entirely. (If you want the shorthand back, add the venv's `Scripts/` folder
+to your AV exclusions.)
 
 > Prefer pip? `python -m venv .venv && .venv/bin/pip install -e '.[dev]'` works too.
 
 ## Configure — pick your CLI (no API key)
 
 Ingest shells out to a coding-agent CLI on your machine. Make sure it is installed and logged
-in; the read-only tools (`search`, `read`, `index`) and `lint` need **no** CLI at all.
+in; everything else — `search`, `tags`, `lint`, `view`, and the read-only MCP tools — needs
+**no** CLI at all.
 
 ```bash
 # default backend is the Claude Code CLI:
@@ -67,9 +96,14 @@ the per-call timeout, and path overrides.
 
 ```bash
 cp ~/notes/q3-planning.md raw/
-uv run okf-wiki ingest                      # ingest all new/changed files in raw/
-uv run okf-wiki ingest docs/karpathy-llm-wiki.md   # or bootstrap from a specific file
+uv run python -m okf_wiki ingest                    # ingest all new/changed files in raw/
+uv run python -m okf_wiki ingest docs/karpathy-llm-wiki.md   # or bootstrap from a specific file
 ```
+
+Ingest folds each source into the **best-fitting** existing pages and restructures as the corpus
+grows; the report lists pages written, pages deleted (restructured), and warns on any broken
+cross-link. Run several overlapping files (e.g. the bundled `raw/coffee*.md` set) and watch the
+wiki reorganize itself rather than accrete one page per file.
 
 Ingest is **idempotent**: a committed manifest at `wiki/.okf_ingested.json` maps each source's
 repo-relative path to a sha256, so re-running with no new or changed files makes **zero** LLM
@@ -79,15 +113,23 @@ one LLM call per source — no agent loop.
 **Search** the synthesized wiki:
 
 ```bash
-uv run okf-wiki search "caffeine content"   # ranked keyword hits across all pages
+uv run python -m okf_wiki search "caffeine content"        # ranked keyword hits across all pages
+uv run python -m okf_wiki search "caffeine" --tag brewing   # ...restricted to a tag
+uv run python -m okf_wiki tags                              # browse every tag and its pages
 ```
 
+**Navigate by links and tags.** Pages cross-link densely (each ends with a `## See also`), and
+the generated `index.md` lists, per page, who references it (`↳ referenced by: …`) plus a
+`## Tags` section — so you can browse by topic, not just search. `lint` even **suggests** missing
+links (a page that names another page without linking it).
+
 **Lint** — a pure, offline health check (contradictions, orphaned pages, facts missing
-citations, broken cross-links, pages missing `type`, stale pages). Exit code is non-zero when
-the wiki is unhealthy, so it drops cleanly into CI:
+citations, broken cross-links, pages missing `type`, stale pages, and **fabricated sources** —
+a fact citing a `raw/` file that does not exist). Exit code is non-zero when the wiki is
+unhealthy (missing `type`, broken links, or fabricated sources), so it drops cleanly into CI:
 
 ```bash
-uv run okf-wiki lint
+uv run python -m okf_wiki lint
 ```
 
 ## Per-fact provenance
@@ -105,30 +147,35 @@ Robusta has about twice the caffeine of Arabica.[^s1]
 ```
 
 This renders on GitHub for free, is trivially greppable (`grep -rn '\[\^s' wiki/`), and needs
-zero custom tooling. The page's frontmatter `resource:` names the primary raw source. Claims
-that cannot be cited to a raw file are dropped, not invented. Conflicting sources produce a
-`> [!CONTRADICTION]` callout rather than a silent overwrite.
+zero custom tooling. The page's frontmatter `resource:` names the primary raw source. A raw
+claim that cannot be cited is dropped, never invented. A fact the model adds from its own
+knowledge — allowed only when essential, high-confidence, and on-topic — is labeled with a
+separate `[^llmN]` marker defined as `LLM - model knowledge` (grep them with `grep -rn '\[\^llm'
+wiki/`). Conflicting sources produce a `> [!CONTRADICTION]` callout rather than a silent
+overwrite.
 
 ## MCP server
 
 Expose the wiki to an AI client over stdio:
 
 ```bash
-uv run okf-wiki serve        # or: uv run python -m okf_wiki.server
+uv run python -m okf_wiki serve        # or: uv run okf-wiki serve
 ```
 
-It serves four tools: `wiki_search`, `wiki_read`, `wiki_index` (read-only), and `wiki_ingest`
-(the only mutating tool, routed through the same path-safe ingest pipeline).
+It serves five tools: `wiki_search` (with an optional `tag` filter), `wiki_read`, `wiki_index`,
+`wiki_tags` (read-only), and `wiki_ingest` (the only mutating tool, routed through the same
+path-safe ingest pipeline).
 
-Wire it into an MCP client (e.g. Claude Desktop's `claude_desktop_config.json`). No API key in
-the env — ingest uses the CLI's own login:
+Wire it into an MCP client (e.g. Claude Desktop's `claude_desktop_config.json`). The `python -m`
+form needs no `.exe`, so it is the safe choice on Windows. No API key in the env — ingest uses
+the CLI's own login:
 
 ```json
 {
   "mcpServers": {
     "okf-wiki": {
-      "command": "okf-wiki",
-      "args": ["serve"],
+      "command": "uv",
+      "args": ["run", "python", "-m", "okf_wiki", "serve"],
       "env": { "OKF_LLM_CLI": "claude", "OKF_INGEST_MODEL": "sonnet" }
     }
   }
@@ -138,6 +185,35 @@ the env — ingest uses the CLI's own login:
 Now an AI can `wiki_index()` to orient, `wiki_search(...)` to find pages, and `wiki_read(...)`
 to pull full cited context — answering from your synthesized wiki instead of re-retrieving raw
 documents.
+
+## Viewing
+
+Browse the wiki visually with a built-in, dependency-free viewer:
+
+```bash
+uv run python -m okf_wiki view            # generate + open in your browser
+uv run python -m okf_wiki view --no-open  # just (re)generate the file
+uv run python -m okf_wiki view --out /tmp/wiki.html
+```
+
+This writes a **single self-contained** `wiki/.okf_viewer.html` — the pages, the cross-link
+graph, and the tags embedded inline, rendered by a tiny hand-rolled markdown renderer and graph
+in vanilla JS. It opens straight from `file://` with **no server and no network**: nothing is
+fetched from a CDN, so **your wiki never leaves the machine**. The file is a regenerable
+artifact (like `index.md`), gitignored, and skipped by the loader. On a headless box / WSL with
+no browser, the command prints the `file://` path to open manually instead of failing.
+
+### Open in Obsidian
+
+The `wiki/` directory also opens **as-is** as an [Obsidian](https://obsidian.md) vault (*Open
+folder as vault*) — frontmatter, `tags`, GFM footnote citations, `> [!CONTRADICTION]` callouts,
+and the cross-link graph/backlinks all work natively and fully locally. Two notes:
+
+- The `## Sources` footnotes link to `../../raw/*.md`, which sit **outside** a `wiki/`-only
+  vault. Open the **repository root** as the vault if you want those citation links to resolve.
+- Keep OKF's **standard markdown links** — do **not** convert to `[[wikilinks]]`, or the
+  link-graph, rewrite, and lint machinery break. (`okf-wiki view --obsidian` prints a best-effort
+  deep link + the folder path.)
 
 ## Reference
 
