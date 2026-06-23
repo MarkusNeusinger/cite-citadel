@@ -5,8 +5,8 @@ with an **MCP server** so an AI can search and read it.
 
 This is a KISS, pure-Python (3.12) implementation of Andrej Karpathy's
 [LLM-Wiki pattern](docs/karpathy-llm-wiki.md): you drop arbitrary markdown into `raw/`, and
-one LLM call per file folds each source into a cross-linked OKF wiki under `wiki/`. Instead of
-making one page per file, ingest **routes each fact to the page it best fits and restructures**
+one agentic CLI session per file folds each source into a cross-linked OKF wiki under `wiki/`.
+Instead of making one page per file, ingest **routes each fact to the page it best fits and restructures**
 (splits / merges) existing pages as the wiki grows. Every fact is cited back to the raw file it
 came from — and the model uses **only** what is in `raw/`, never its own knowledge. An AI client
 then queries the synthesized wiki over the Model Context Protocol instead of re-reading your raw
@@ -16,8 +16,9 @@ notes.
 
 - **It stays organized.** Ingest merges overlapping notes, splits pages that grow too big, and
   deletes pages whose content moved elsewhere — it does not pile up one page per raw file.
-- **Links keep working.** When a page is merged or renamed, the system *mechanically* repoints
-  every inbound cross-link to the survivor; any dangling link fails `okf-wiki lint`.
+- **Links keep working.** When a page is merged or renamed, the agent repoints the inbound
+  cross-links to the survivor (and the system mechanically repoints a pure rename as a safety
+  net); any dangling link fails `okf-wiki lint` / `okf-wiki check`.
 - **Honest provenance.** Raw facts are restated faithfully (same meaning/numbers) and cite
   their `raw/` file as `[^sN]`. The model **may** add a fact from its own knowledge only when
   it is essential, high-confidence, and on-topic — and must label it `[^llmN]` (source: `LLM`),
@@ -96,12 +97,13 @@ OKF_LLM_CLI=claude        # claude | copilot | gemini   (default: claude)
 OKF_INGEST_MODEL=sonnet   # claude model alias/id; opus or haiku also work
 ```
 
-`claude` is the most reliable backend: it returns the page plan as clean JSON. `copilot` is
-**agentic** — it may try to run shell commands and print tool-call/"permission denied" transcript
-noise around the answer (the ops parser tolerates this), and it can be slower (raise
-`OKF_LLM_TIMEOUT` for big files). `copilot`/`gemini` use their own default model. See
-`.env.example` for binary-path overrides,
-the per-call timeout, and path overrides.
+Ingest runs the CLI **agentically**: it is pointed at the repo and edits the wiki page files
+itself (reads the raw file, searches the wiki, writes/merges/splits pages), so each backend runs
+with autonomous file tools — `claude` with `acceptEdits` + a tool allowlist, `copilot` with
+`--allow-all-tools`, `gemini` with `--approval-mode yolo`. `claude` takes a model alias;
+`copilot`/`gemini` use their own default model. A backend can be slower on big files — raise
+`OKF_LLM_TIMEOUT`. See `.env.example` for binary-path and timeout overrides. (Run ingest on a
+clean git tree so any stray edit is easy to spot.)
 
 ## Use
 
@@ -118,14 +120,15 @@ grows; the report distinguishes pages **created**, **updated**, and **deleted** 
 and warns on any broken cross-link. Run several overlapping files (e.g. the bundled
 `raw/coffee*.md` set) and watch the wiki reorganize itself rather than accrete one page per file.
 
-There is **one LLM call per file**, so ingest shows live per-file progress on stderr (`[2/6] …
-2 created, 1 updated` with a spinner + elapsed time) so a multi-file run never looks hung — pass
-`--quiet` to suppress it and print only the final report.
+There is **one agent session per file**, so ingest shows live per-file progress on stderr
+(`[2/6] … 2 created, 1 updated` with a spinner + elapsed time) so a multi-file run never looks
+hung — pass `--quiet` to suppress it and print only the final report.
 
 Ingest is **idempotent**: a committed manifest at `wiki/.okf_ingested.json` maps each source's
-repo-relative path to a sha256, so re-running with no new or changed files makes **zero** LLM
-calls. Edit a raw file (new sha) and it is re-ingested, patching the existing pages. Exactly
-one LLM call per source — no agent loop.
+repo-relative path to a sha256, so re-running with no new or changed files runs **zero** agent
+sessions. Edit a raw file (new sha) and it is re-ingested, patching the existing pages. Exactly
+one agent session per source; if a session fails or times out, that source's wiki changes are
+rolled back and it is retried next run.
 
 **Search** the synthesized wiki:
 
@@ -140,10 +143,20 @@ the generated `index.md` lists, per page, who references it (`↳ referenced by:
 `## Tags` section — so you can browse by topic, not just search. `lint` even **suggests** missing
 links (a page that names another page without linking it).
 
+**Check** — the strict per-page gate that re-imposes the invariants the agent must honor:
+required fields (`type`/`title`/`description`/`tags`/`resource`), honest/defined citations, and
+relative non-broken links (no `[[wiki-links]]`). Ingest runs it automatically (a forgotten field
+fails the run) and the ingest agent self-checks with it; you can also run it directly:
+
+```bash
+uv run python -m okf_wiki check                 # the whole wiki
+uv run python -m okf_wiki check concepts/x.md   # just one page
+```
+
 **Lint** — a pure, offline health check (contradictions, orphaned pages, facts missing
-citations, broken cross-links, pages missing `type`, stale pages, and **fabricated sources** —
-a fact citing a `raw/` file that does not exist). Exit code is non-zero when the wiki is
-unhealthy (missing `type`, broken links, or fabricated sources), so it drops cleanly into CI:
+citations, broken cross-links, pages missing `type`, stale pages, **fabricated sources** — a
+fact citing a `raw/` file that does not exist — and `[[wiki-style]]` links). Exit code is
+non-zero when the wiki is unhealthy, so it drops cleanly into CI:
 
 ```bash
 uv run python -m okf_wiki lint
@@ -179,9 +192,9 @@ Expose the wiki to an AI client over stdio:
 uv run python -m okf_wiki serve        # or: uv run okf-wiki serve
 ```
 
-It serves five tools: `wiki_search` (with an optional `tag` filter), `wiki_read`, `wiki_index`,
-`wiki_tags` (read-only), and `wiki_ingest` (the only mutating tool, routed through the same
-path-safe ingest pipeline).
+It serves six tools: `wiki_search` (with an optional `tag` filter), `wiki_read`, `wiki_index`,
+`wiki_tags`, and `wiki_validate` (read-only), and `wiki_ingest` (the only mutating tool, routed
+through the same path-safe ingest pipeline).
 
 Wire it into an MCP client (e.g. Claude Desktop's `claude_desktop_config.json`). The `python -m`
 form needs no `.exe`, so it is the safe choice on Windows. No API key in the env — ingest uses

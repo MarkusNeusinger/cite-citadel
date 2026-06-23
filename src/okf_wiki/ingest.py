@@ -1,23 +1,36 @@
-"""Orchestrate one ingest run with no cleverness.
+"""Orchestrate one ingest run: drive an agentic CLI, then re-impose the invariants.
 
-For each pending source: build a compare-against-existing digest, call
-``llm.plan_pages`` ONCE (which shells out to a coding-agent CLI), apply the
-returned ops via ``store.write_page`` (defaulting ``rel_path`` via
-``okf.default_rel_path``; non-Concept/Entity types route to ``misc/``), mark the
-source done, then once per run rebuild all indexes and append a log line.
+For each pending source the agent (``llm.run_ingest_session``) reads the raw file, searches
+the wiki, and **edits the wiki page files directly** — there is no ops JSON to apply. This
+module does the deterministic work around that autonomy:
 
-Idempotent: sources whose sha already matches the manifest are skipped. Exactly
-one LLM call per source; no agent loop. The only outside call is
-``llm.plan_pages`` (tests monkeypatch it).
+- **back up** ``wiki/`` first, so a failed/half-finished session is rolled back (each source
+  is all-or-nothing);
+- snapshot the wiki BEFORE and AFTER the session and **diff by content hash** to learn what
+  the agent created/updated/deleted (no return value needed);
+- **validate + re-stamp** every changed page (``validate.validate_page`` re-imposes required
+  fields / citations / link form; ``store.write_page`` canonicalizes YAML and stamps the
+  ``timestamp`` the agent was told not to write); collect any validation errors;
+- **repair renames** the agent may not have fully repointed (deterministic inbound-link fix
+  via ``store.rewrite_links``, derived from the diff);
+- once per run, rebuild indexes, surface broken links, and append a log line.
+
+Idempotent: sources whose sha already matches the manifest are skipped, and a source is
+marked done only on a clean session. ``llm.run_ingest_session`` is the single outside call
+(tests monkeypatch it with a fake that writes files into the temp wiki).
 """
 
 from __future__ import annotations
 
+import hashlib
+import os
+import shutil
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import config, llm, manifest, okf, store
+from . import config, llm, manifest, okf, store, validate
 from .okf import Page
 
 
@@ -115,121 +128,143 @@ def _partition_sources(paths: list[str] | None) -> tuple[list[Path], list[str]]:
     return sorted(pending), skipped
 
 
-def _catalog(pages: list[Page]) -> str:
-    """Render a cheap one-line-per-page catalog grouped by type (from the
-    in-memory pages, so it stays consistent with the rest of the digest within a
-    single run — never reads the on-disk index, which lags between sources)."""
-    if not pages:
-        return "(the wiki is currently empty)"
-    by_type: dict[str, list[Page]] = {}
+def _hash_pages(pages: list[Page]) -> dict[str, str]:
+    """``{rel_path: sha256(on-disk bytes)}`` for the given pages. Hash the bytes (not the
+    parsed body) so a frontmatter-only change still registers; skip a page that vanished
+    mid-read."""
+    snap: dict[str, str] = {}
     for page in pages:
-        by_type.setdefault(page.type or "Untyped", []).append(page)
-    lines: list[str] = []
-    for type_ in sorted(by_type):
-        lines.append(f"## {type_}")
-        for page in by_type[type_]:
-            # The size hint lets the model judge when a page has grown "too big" and
-            # should be split.
-            lines.append(
-                f"- {page.rel_path} (~{len(page.body)} chars) — "
-                f"{page.title}: {page.description}"
-            )
-        lines.append("")
-    return "\n".join(lines).rstrip()
+        try:
+            target = okf.safe_join(config.WIKI_DIR, page.rel_path)
+            snap[page.rel_path] = hashlib.sha256(target.read_bytes()).hexdigest()
+        except (okf.OKFError, OSError):
+            continue
+    return snap
 
 
-def _build_digest(raw_text: str, pages: list[Page]) -> str:
-    """Build the compare-against-existing context for the ingest prompt.
-
-    A catalog of every current page (with a size hint so the model can spot pages that
-    grew too big), then the FULL serialized body of as many keyword-matched pages as fit
-    the ``config.MAX_DIGEST_CHARS`` budget (best matches first) — so the model can merge
-    into, patch, split, or delete them and spot contradictions. A small wiki is shown in
-    full; a large one fills the budget with the most relevant pages. Both views derive
-    from the same in-memory ``pages``.
-    """
-    parts: list[str] = [
-        "# CURRENT WIKI PAGES (you MAY rewrite, split, merge, or delete any of these)\n",
-        _catalog(pages),
-    ]
-
-    hits = store.search(raw_text, pages, limit=config.DIGEST_CANDIDATE_N)
-    if hits:
-        parts.append(
-            "\n\n# TOP MATCHING PAGES (merge into / patch / split / delete these; body "
-            "shown WITHOUT its frontmatter — do not reproduce a `---` block in your body; "
-            "you MAY rewrite, split, or delete any page shown here)\n"
-        )
-        running = len("\n".join(parts))
-        for page, _score in hits:
-            meta = (
-                f"(type: {page.type} | title: {page.title} | "
-                f"resource: {page.frontmatter.get('resource', '')} | "
-                f"size: {len(page.body)} chars)"
-            )
-            block = f"\n## {page.rel_path}\n{meta}\n\n{page.body.rstrip()}\n"
-            # Stop once the next full body would overflow the budget (but always include
-            # at least the catalog + header that are already in `parts`).
-            if running + len(block) > config.MAX_DIGEST_CHARS:
-                break
-            parts.append(block)
-            running += len(block)
-
-    digest = "\n".join(parts)
-    if len(digest) > config.MAX_DIGEST_CHARS:
-        digest = digest[: config.MAX_DIGEST_CHARS]
-    return digest
+def _snapshot() -> dict[str, str]:
+    """Content-hash snapshot of every CURRENT non-reserved wiki page. Reuses ``store.load``
+    so reserved files (index.md, log.md, ``*/index.md``, dotfiles) are excluded by the
+    loader's own rule — one source of truth for 'what is a page'."""
+    return _hash_pages(store.load())
 
 
-def _apply_op(op: dict, source_rel: str) -> str | None:
-    """Apply one page op. ``op=="skip"`` -> None; else write the page and return rel_path.
+def _diff(
+    before: dict[str, str], after: dict[str, str]
+) -> tuple[list[str], list[str], list[str]]:
+    """``(created, updated, deleted)``, each sorted. created = in after not before;
+    deleted = in before not after; updated = in both with a changed hash."""
+    created = sorted(k for k in after if k not in before)
+    deleted = sorted(k for k in before if k not in after)
+    updated = sorted(k for k in after if k in before and after[k] != before[k])
+    return created, updated, deleted
 
-    Frontmatter is ``{type, title, description, tags, resource}``. ``resource`` is the
-    page-level pointer to the PRIMARY raw file this page was derived from: the model
-    may override it via ``op['resource']``, otherwise it defaults to ``source_rel``
-    (the raw file being ingested). ``rel_path`` defaults to
-    ``okf.default_rel_path(op['type'], op['title'])`` when not given. ``store.write_page``
-    enforces path-safety and stamps the timestamp.
-    """
-    if op.get("op") == "skip":
+
+def _validate_and_restamp(rel_paths: list[str], rel_key: str) -> list[str]:
+    """Re-impose invariants on each changed page (``validate.validate_page``) and, if clean,
+    canonicalize + re-stamp it through ``store.write_page`` (so the YAML is canonical, the
+    ``type`` is enforced, and a fresh UTC ``timestamp`` is set even though the agent wrote the
+    file). Returns one error string per error-severity validation issue; when any are returned
+    the caller rolls the whole source back (all-or-nothing), so an invalid page never persists
+    in the wiki — the issues are surfaced in the report instead."""
+    errors: list[str] = []
+    for rel_path in sorted(set(rel_paths)):
+        try:
+            page = store.read_page(rel_path)
+        except (FileNotFoundError, okf.OKFError) as exc:
+            errors.append(f"{rel_key}: re-read {rel_path}: {exc}")
+            continue
+        bad = [
+            issue
+            for issue in validate.validate_page(rel_path, page.frontmatter, page.body)
+            if issue.severity == "error"
+        ]
+        if bad:
+            for issue in bad:
+                errors.append(
+                    f"{rel_key}: invalid page {rel_path}: {issue.category}: {issue.detail}"
+                )
+            continue
+        try:
+            store.write_page(rel_path, page.frontmatter, page.body)
+        except okf.OKFError as exc:
+            errors.append(f"{rel_key}: rewrite {rel_path}: {exc}")
+    return errors
+
+
+def _repair_renames(
+    before_pages: list[Page], created: list[str], deleted: list[str]
+) -> None:
+    """Deterministic safety net for inbound links the agent may not have fully repointed.
+
+    A page that was DELETED while a page with the SAME title was CREATED this source is a
+    rename/move; repoint every inbound cross-link from the old path to the new one via the
+    tested ``store.rewrite_links``. A merge into a page whose title CHANGES (or a pre-existing
+    survivor) is not auto-derivable here — the agent is asked to repoint those itself, and
+    ``find_broken_links``/``lint`` surface anything missed."""
+    if not deleted or not created:
+        return
+    created_by_title: dict[str, list[str]] = {}
+    for rel_path in created:
+        try:
+            page = store.read_page(rel_path)
+        except (FileNotFoundError, okf.OKFError):
+            continue
+        title = str(page.frontmatter.get("title") or "").strip().lower()
+        if title:
+            created_by_title.setdefault(title, []).append(rel_path)
+
+    before_by_path = {p.rel_path: p for p in before_pages}
+    rename_map: dict[str, str] = {}
+    for old in deleted:
+        page = before_by_path.get(old)
+        if not page:
+            continue
+        title = str(page.frontmatter.get("title") or "").strip().lower()
+        matches = created_by_title.get(title, [])
+        if title and len(matches) == 1 and matches[0] != old:
+            rename_map[old] = matches[0]
+    if rename_map:
+        store.rewrite_links(rename_map)
+
+
+def _backup_wiki() -> str | None:
+    """Copy ``wiki/`` to a fresh temp dir and return that dir (the rollback point), or None
+    if the wiki does not exist yet (first run)."""
+    src = config.WIKI_DIR
+    if not src.is_dir():
         return None
+    tmp = tempfile.mkdtemp(prefix="okf_wiki_bak_")
+    shutil.copytree(src, os.path.join(tmp, "wiki"))
+    return tmp
 
-    type_ = op.get("type", "")
-    title = op.get("title", "")
 
-    frontmatter: dict = {
-        "type": type_,
-        "title": title,
-        "description": op.get("description", ""),
-        "tags": op.get("tags", []) or [],
-        "resource": op.get("resource") or source_rel,
-    }
-
-    body = op.get("body", "")
-    # Defensive: some models echo a YAML frontmatter block into the body (mimicking
-    # the digest). Strip a leading "---...---" block so write_page's own frontmatter
-    # is not duplicated.
-    if body.lstrip().startswith("---"):
-        body = okf.parse(body.lstrip("\n"))[1]
-
-    rel_path = op.get("rel_path") or okf.default_rel_path(type_, title)
-    store.write_page(rel_path, frontmatter, body)
-    return rel_path
+def _restore_wiki(backup_tmp: str | None) -> None:
+    """Restore ``wiki/`` from a backup made by :func:`_backup_wiki`. If there was no backup
+    (the wiki did not exist before this source), remove whatever the agent created."""
+    dst = config.WIKI_DIR
+    if backup_tmp is None:
+        if dst.exists():
+            shutil.rmtree(dst, ignore_errors=True)
+        return
+    if dst.exists():
+        shutil.rmtree(dst, ignore_errors=True)
+    shutil.copytree(os.path.join(backup_tmp, "wiki"), dst)
 
 
 def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
-    """Run one ingest. Exactly one ``llm.plan_pages`` call per pending source.
+    """Run one ingest. Exactly one ``llm.run_ingest_session`` call per pending source.
 
-    On a per-source exception (including a missing/unusable LLM CLI), the error is
-    collected and the source is left un-recorded (so it is retried next run).
-    Finalization (manifest.save + rebuild_indexes + append_log) happens once, only
-    if any source was processed.
+    Per source: back up the wiki, snapshot it, run the agent (which edits ``wiki/`` directly),
+    snapshot again, diff to learn what changed, validate + re-stamp the changed pages, and
+    repoint any renamed-page links. On a per-source exception (a missing/unusable CLI, a
+    timeout, etc.) the wiki is rolled back to its pre-source state and the error is collected,
+    so the source is retried next run. Finalization (manifest.save + rebuild_indexes +
+    find_broken_links + append_log) happens once, only if any source was processed.
 
-    ``progress`` is an optional callable ``progress(event: str, data: dict)`` invoked at
-    run start, before/after each source, and before finalization — so a CLI can show live
-    progress (one LLM call per file can take many seconds). It is None for non-interactive
-    callers (e.g. the MCP server), keeping their output clean. A failing callback never
-    breaks ingest.
+    ``progress`` is an optional ``progress(event, data)`` callback (run start, before/after
+    each source, before finalization); None for non-interactive callers. A failing callback
+    never breaks ingest.
     """
 
     def emit(event: str, **data) -> None:
@@ -240,97 +275,67 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 pass
 
     manifest_dict = manifest.load()
-    pages = store.load()
     report = IngestReport([], [], [], [])
 
     pending, skipped = _partition_sources(paths)
     report.skipped = skipped
     emit("start", pending=len(pending), skipped=len(skipped))
 
-    # OLD rel_path -> surviving rel_path, accumulated across the run from delete ops that
-    # carry a "redirect". Applied once at the end so every inbound cross-link to a
-    # merged/renamed page is repointed at the survivor (links keep working).
-    rename_map: dict[str, str] = {}
-
     for index, src in enumerate(pending, 1):
         rel_key = manifest.rel_key(src)
         emit("source_start", index=index, total=len(pending), source=rel_key)
         started = time.monotonic()
-        created0 = len(report.pages_created)
-        updated0 = len(report.pages_updated)
-        deleted0 = len(report.pages_deleted)
+        backup: str | None = None
         try:
-            raw_text = src.read_text(encoding="utf-8")
-            digest = _build_digest(raw_text, pages)
-            ops = llm.plan_pages(rel_key, raw_text, digest)
+            backup = _backup_wiki()
+            before_pages = store.load()
+            before = _hash_pages(before_pages)
 
-            # The set of pages that exist as we apply this source's ops, so a delete can
-            # be validated and a redirect target confirmed.
-            existing = {p.rel_path for p in pages}
-            # Pages this source WRITES — a delete of one of these is a contradiction and
-            # would destroy a page we just (re)created, so it is refused below.
-            written_this_src: set[str] = set()
+            llm.run_ingest_session(rel_key)  # the agent edits wiki/ directly
 
-            # Pass 1: writes first. A split/merge writes the survivor(s) BEFORE any
-            # delete runs, so a delete can never remove the only copy of a fact.
-            for op in ops:
-                if op.get("op") == "delete":
-                    continue
-                rp = _apply_op(op, rel_key)
-                if rp:
-                    report.pages_written.append(rp)
-                    # ``existing`` (loaded pages + anything written so far) still reflects
-                    # the PRE-write state here, so membership decides created vs updated.
-                    (report.pages_updated if rp in existing
-                     else report.pages_created).append(rp)
-                    existing.add(rp)
-                    written_this_src.add(rp)
-                    # If a slug deleted-with-redirect earlier in the run is now rewritten
-                    # with fresh content, it is no longer "renamed away" — drop the stale
-                    # mapping so inbound links are not repointed off the live page.
-                    rename_map.pop(rp, None)
+            after = _snapshot()
+            created, updated, deleted = _diff(before, after)
 
-            # Pass 2: deletes, collecting redirects for the end-of-run link rewrite.
-            for op in ops:
-                if op.get("op") != "delete":
-                    continue
-                rel = (op.get("rel_path") or "").strip()
-                if rel in written_this_src:
-                    report.errors.append(
-                        f"{rel_key}: delete refused, {rel!r} was just written this run"
-                    )
-                    continue
-                if not rel or rel not in existing:
-                    report.errors.append(
-                        f"{rel_key}: delete skipped, no such page: {rel!r}"
-                    )
-                    continue
-                try:
-                    store.delete_page(rel)
-                except okf.OKFError as exc:
-                    report.errors.append(f"{rel_key}: delete {rel}: {exc}")
-                    continue
-                report.pages_deleted.append(rel)
-                existing.discard(rel)
-                redirect = (op.get("redirect") or op.get("into") or "").strip()
-                if redirect and redirect in existing:
-                    rename_map[rel] = redirect
+            # Re-impose invariants on (and re-stamp) every changed page. A validation error
+            # means the agent produced an invalid page (missing field, fabricated citation,
+            # leaked artifact, ...): roll the WHOLE source back (all-or-nothing) and leave it
+            # un-done so it is retried next run, rather than committing an invalid wiki state.
+            val_errors = _validate_and_restamp(created + updated, rel_key)
+            if val_errors:
+                _restore_wiki(backup)
+                report.errors.extend(val_errors)
+                emit(
+                    "source_error",
+                    index=index,
+                    total=len(pending),
+                    source=rel_key,
+                    error=val_errors[0],
+                    seconds=time.monotonic() - started,
+                )
+                continue
+
+            # Repoint inbound links for any rename the agent did not fully fix.
+            _repair_renames(before_pages, created, deleted)
+
+            report.pages_created.extend(created)
+            report.pages_updated.extend(updated)
+            report.pages_written.extend(created + updated)
+            report.pages_deleted.extend(deleted)
 
             manifest.mark_done(manifest_dict, src)
             report.processed.append(rel_key)
-            # Refresh so the NEXT source's digest sees the just-written pages.
-            pages = store.load()
             emit(
                 "source_done",
                 index=index,
                 total=len(pending),
                 source=rel_key,
-                created=len(report.pages_created) - created0,
-                updated=len(report.pages_updated) - updated0,
-                deleted=len(report.pages_deleted) - deleted0,
+                created=len(created),
+                updated=len(updated),
+                deleted=len(deleted),
                 seconds=time.monotonic() - started,
             )
-        except Exception as exc:  # noqa: BLE001 - collect per-source, keep going
+        except Exception as exc:  # noqa: BLE001 - collect per-source, roll back, keep going
+            _restore_wiki(backup)
             report.errors.append(f"{rel_key}: {exc}")
             emit(
                 "source_error",
@@ -340,14 +345,13 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 error=str(exc),
                 seconds=time.monotonic() - started,
             )
+        finally:
+            if backup:
+                shutil.rmtree(backup, ignore_errors=True)
 
     if report.processed:
         emit("finalize")
         manifest.save(manifest_dict)
-        # Repoint inbound cross-links to any merged/renamed pages BEFORE rebuilding the
-        # indexes, so the regenerated catalog and the link graph agree.
-        if rename_map:
-            store.rewrite_links(rename_map)
         store.rebuild_indexes()
         # Surface any cross-link left dangling by a restructure so it is never silent.
         report.broken_links = store.find_broken_links()

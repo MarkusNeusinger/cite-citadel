@@ -106,15 +106,21 @@ they fit). Tags are the OKF-native `tags` frontmatter field and a second navigat
 boost search ranking, power `okf-wiki tags` / `search --tag` / the MCP `wiki_tags` tool, and
 are surfaced as a `## Tags` section in the generated `index.md`.
 
-## Contradictions — flag, don't overwrite
+## Contradictions — flag, resolve, don't overwrite
 
-If a raw file contradicts an existing page, **do not silently overwrite**. Insert a callout
-that names both claims with both source markers:
+If a source contradicts another (a different raw file, or a claim already on a wiki page),
+**do not silently overwrite** or drop either side. Keep both claims, attributed, in a callout
+that names each with its own source marker:
 
 ```
 > [!CONTRADICTION]
 > raw/a.md says revenue grew 12% [^s1]; raw/b.md says it grew 9% [^s2].
 ```
+
+Then, **only when highly confident**, add a short resolving line stating which is correct and
+why, as a model-knowledge `[^llmN]` fact (defined in `## Sources`). If unsure, leave it flagged
+without taking sides — never guess. (Multiple sources that *agree* on a fact are cited together
+behind it: `... fact.[^s1][^s2]`.)
 
 ## Restructuring — keep the wiki clean as it grows
 
@@ -131,19 +137,29 @@ needed:
   (citations from both preserved) and `delete` the absorbed page.
 - **Preserve every fact and citation** across a split or merge — never drop a cited fact.
 
-**Links keep working.** When a page is deleted because its content moved into another page,
-the delete names a `redirect` to the survivor, and the system **mechanically repoints every
-inbound cross-link** to it — so restructuring never leaves a broken link. Any link left
-dangling is surfaced by ingest and fails `okf-wiki lint`.
+**Links keep working.** When you delete or rename a page because its content moved, repoint
+the inbound cross-links to the survivor yourself (grep the wiki for relative links to the old
+file). For a pure rename (same title, new path) the system also repoints inbound links
+mechanically as a safety net; any link left dangling is surfaced by ingest and fails
+`okf-wiki lint` / `okf-wiki check`.
 
 ## Workflows
 
-- **Ingest** — for each new/changed `raw/` file: read it, compare against the existing wiki
-  pages in the digest, and return page operations (`write` / `skip` / `delete`) that route
-  facts to the best page and **merge / split / restructure** rather than duplicate. Use only
-  facts from the raw file. Cite every fact. Flag contradictions. (One model call per file.)
+- **Ingest** — for each new/changed `raw/` file, an agentic CLI (one session per file) reads
+  the raw file, searches the existing wiki, and **edits the wiki page files directly** —
+  routing facts to the best page and **merging / splitting / restructuring** rather than
+  duplicating. Use only facts from the raw file. Cite every fact. Flag contradictions. See
+  [`AGENT_INGEST.md`](AGENT_INGEST.md) for the operational rules. After the session, the system
+  diffs the wiki, re-validates and re-stamps every changed page, repoints renamed-page links,
+  and rebuilds the indexes.
 - **Query** — an AI searches the wiki via the MCP server (`wiki_search`, `wiki_read`,
-  `wiki_index`) and synthesizes cited answers from the pages — it does not re-read `raw/`.
+  `wiki_index`, `wiki_tags`) and synthesizes cited answers from the pages — it does not re-read
+  `raw/`.
+- **Check** — the strict per-page gate (`okf-wiki check`, MCP `wiki_validate`): required
+  fields (type/title/description/tags/resource), honest citations, and relative non-broken
+  links (no `[[wiki-links]]`). The ingest agent runs it on its own edits before finishing, and
+  ingest re-runs it as a hard gate so a forgotten field fails the run.
 - **Lint** — a periodic health check (`okf-wiki lint`) surfaces contradictions, orphaned
-  pages, facts missing citations, broken cross-links, pages missing `type`, stale pages, and
-  **fabricated sources** (a fact citing a `raw/` file that does not exist).
+  pages, facts missing citations, broken cross-links, pages missing `type`, stale pages,
+  **fabricated sources** (a fact citing a `raw/` file that does not exist), and
+  `[[wiki-style]]` links.

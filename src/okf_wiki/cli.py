@@ -7,12 +7,14 @@
     okf-wiki search <query> [--limit N] [--tag T]
     okf-wiki tags [tag]           # browse pages by tag
     okf-wiki lint [--stale-days N]
+    okf-wiki check [paths ...]    # validate links/format/required-fields (the ingest gate)
     okf-wiki view [--out PATH] [--no-open] [--obsidian]   # offline single-file HTML viewer
 
-Exit codes are CI-friendly: ingest returns 1 if any source errored (a missing or
-unusable LLM CLI surfaces as a per-source error in the report), lint returns 2 if
-the report is not clean, and any RuntimeError raised by a subcommand prints to
-stderr and returns 1.
+Exit codes are CI-friendly: ingest returns 1 if any source errored OR a structural
+problem remains (a broken cross-link or a page that failed validation — a missing or
+unusable LLM CLI also surfaces as a per-source error), lint returns 2 if the report is
+not clean, check returns 1 on any validation error, and any RuntimeError raised by a
+subcommand prints to stderr and returns 1.
 
 ``serve`` imports the MCP server lazily inside cmd_serve, so merely importing
 this module never requires the ``mcp`` package.
@@ -25,7 +27,7 @@ import sys
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the ``okf-wiki`` argument parser with its six subcommands."""
+    """Build the ``okf-wiki`` argument parser with its seven subcommands."""
     parser = argparse.ArgumentParser(
         prog="okf-wiki",
         description="An LLM-maintained personal wiki in Google OKF, with an MCP search server.",
@@ -96,6 +98,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_lint.set_defaults(func=cmd_lint)
 
+    p_check = sub.add_parser(
+        "check",
+        help="Validate page links, file format, and required fields (the ingest gate).",
+    )
+    p_check.add_argument(
+        "paths",
+        nargs="*",
+        help="Wiki pages to check (rel_path or file path); default: the whole wiki.",
+    )
+    p_check.set_defaults(func=cmd_check)
+
     p_view = sub.add_parser(
         "view",
         help="Generate and open a single-file, offline HTML viewer for the wiki.",
@@ -132,7 +145,9 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         progress = ConsoleProgress()
     report = ingest.ingest(args.paths or None, progress=progress)
     print(report.render())
-    return 1 if report.errors else 0
+    # Non-zero on a per-source error OR a structural problem left behind (a broken
+    # cross-link the agent introduced) — so ingest gates the wiki's integrity in CI.
+    return 1 if (report.errors or report.broken_links) else 0
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
@@ -204,6 +219,33 @@ def cmd_lint(args: argparse.Namespace) -> int:
     report = lint.lint(stale_days=args.stale_days)
     print(report.render())
     return 0 if report.ok() else 2
+
+
+def cmd_check(args: argparse.Namespace) -> int:
+    """Validate the wiki (or specific pages) for links/format/required-fields; print the
+    issues and return 1 if any error. This is the strict per-page gate the ingest agent runs
+    on its own edits before finishing."""
+    import os
+    from pathlib import Path
+
+    from . import config, validate
+
+    issues = validate.validate_all()
+    if args.paths:
+        wiki_root = config.WIKI_DIR.resolve()
+        wanted: set[str] = set()
+        for arg in args.paths:
+            rel = arg.replace(os.sep, "/")
+            try:
+                resolved = Path(arg).resolve()
+                if resolved.is_relative_to(wiki_root):
+                    rel = str(resolved.relative_to(wiki_root)).replace(os.sep, "/")
+            except (OSError, ValueError):
+                pass
+            wanted.add(rel)
+        issues = [i for i in issues if i.rel_path in wanted]
+    print(validate.render_issues(issues))
+    return 1 if validate.has_errors(issues) else 0
 
 
 def cmd_view(args: argparse.Namespace) -> int:

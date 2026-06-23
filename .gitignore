@@ -223,3 +223,6 @@ wiki/.okf_viewer.html
 
 # JetBrains IDE
 .idea/
+
+# Playwright MCP test artifacts
+.playwright-mcp/

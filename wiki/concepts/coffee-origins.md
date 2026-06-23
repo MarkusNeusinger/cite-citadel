@@ -1,50 +1,57 @@
 ---
 type: Concept
 title: Coffee Origins
-description: Global coffee-producing regions and their characteristic flavor profiles,
-  shaped by altitude, processing methods, and variety.
+description: Where coffee grows around the world and how origin affects flavor
 tags:
 - coffee
 - origins
 - geography
-- regions
-- arabica
-- robusta
+- flavor
 resource: raw/coffee-origins.md
-timestamp: '2026-06-22T06:46:14Z'
+timestamp: '2026-06-23T17:59:44Z'
 ---
-Coffee grows in the "Bean Belt" around the equator.[^s1] Each region produces coffee with distinctive flavor profiles based on altitude, climate, processing methods, and variety.
+
+Coffee grows in the "Bean Belt" around the equator.[^s1] The origin of coffee—the country or region where it is grown—significantly influences its flavor profile, along with factors like altitude, [processing method](../concepts/coffee-processing.md), and [bean variety](../concepts/arabica-and-robusta.md).
 
 ## Major Coffee Origins
 
 ### Ethiopia
 
-Ethiopia is the birthplace of [Arabica](./arabica-and-robusta.md) coffee.[^s1] Washed Ethiopian coffees are floral and tea-like; natural process coffees display berry-forward and wild characteristics.[^s1] The country grows heirloom [Arabica](./arabica-and-robusta.md) varieties.[^s1]
+Ethiopia is the birthplace of [Arabica](../concepts/arabica-and-robusta.md).[^s1] Ethiopian coffees are known for their complexity and range: washed coffees are floral and tea-like, while natural-process coffees are berry-forward and wild.[^s1] Ethiopia grows heirloom varieties with distinctive flavor characteristics.[^s1]
 
 ### Colombia
 
-Colombia produces balanced, sweet, and approachable [Arabica](./arabica-and-robusta.md) coffee with a reliable year-round supply.[^s1]
+Colombian coffee is typically balanced, sweet, and approachable [Arabica](../concepts/arabica-and-robusta.md).[^s1] The country provides a reliable year-round supply to the global coffee market.[^s1]
 
 ### Brazil
 
-Brazil is the world's largest coffee producer.[^s1] Brazilian coffee is typically nutty, chocolatey, and low-acid, making it a key backbone in espresso blends.[^s1] The country grows both [Arabica](./arabica-and-robusta.md) and [Robusta](./arabica-and-robusta.md) varieties.[^s1]
+Brazil is the world's largest coffee producer.[^s1] Brazilian coffees are characteristically nutty, chocolatey, and low-acid, and serve as a backbone in espresso blends.[^s1] Brazil grows both [Arabica and Robusta](../concepts/arabica-and-robusta.md).[^s1]
 
 ### Kenya
 
-Kenyan coffee is characterized by bright, blackcurrant acidity and juicy flavors.[^s1]
+Kenyan coffees are bright with distinctive blackcurrant acidity and a juicy mouthfeel.[^s1]
 
 ### Vietnam
 
-Vietnam is the world's second-largest coffee producer and is dominated by [Robusta](./arabica-and-robusta.md) coffee.[^s1] Much of Vietnam's coffee goes into instant coffee and blends.[^s1]
+Vietnam is the world's second-largest coffee producer, dominated by [Robusta](../concepts/arabica-and-robusta.md).[^s1] Much Vietnamese coffee goes into instant coffee products and espresso blends.[^s1]
 
-### Central America (Guatemala and Costa Rica)
+### Guatemala and Costa Rica
 
-Guatemala and Costa Rica produce clean, sweet Central American [Arabica](./arabica-and-robusta.md) coffee.[^s1]
+Guatemala and Costa Rica produce clean, sweet Central American [Arabica](../concepts/arabica-and-robusta.md).[^s1]
 
-## Factors Affecting Coffee Character
+## Factors Beyond Origin
 
-Beyond origin country, altitude, processing method (washed, natural, or honey), and variety significantly influence flavor.[^s1] Higher-grown [Arabica](./arabica-and-robusta.md) generally tastes more complex.[^s1]
+Altitude, [processing method](../concepts/coffee-processing.md) (washed, natural, or honey process), and [coffee variety](../concepts/arabica-and-robusta.md) matter as much as the country of origin.[^s1] Higher-grown Arabica generally develops a more complex flavor profile.[^s1]
+
+## See also
+
+- [Coffee History](../concepts/coffee-history.md) — where coffee originates and how it spread globally
+- [Coffee Trade](../concepts/coffee-trade.md) — coffee as a global commodity and its producing countries
+- [Arabica and Robusta](../concepts/arabica-and-robusta.md) — coffee varieties and their flavor profiles
+- [Coffee Processing](../concepts/coffee-processing.md) — how processing methods affect flavor
+- [Roasting](../concepts/roasting.md) — how roasting interacts with origin character
+- [Caffeine in Coffee](../concepts/caffeine-in-coffee.md)
 
 ## Sources
 
-[^s1]: [raw/coffee-origins.md](../../raw/coffee-origins.md) — Coffee-producing regions and their flavor profiles (ingested 2026-06-22)
+[^s1]: [raw/coffee-origins.md](../../raw/coffee-origins.md) — Where coffee comes from (ingested 2026-06-23)

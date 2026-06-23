@@ -72,6 +72,9 @@ RAW_DIR: Path = Path(os.environ.get("OKF_RAW_DIR", REPO_ROOT / "raw")).resolve()
 DOCS_DIR: Path = Path(os.environ.get("OKF_DOCS_DIR", REPO_ROOT / "docs")).resolve()
 
 SCHEMA_PATH: Path = REPO_ROOT / "SCHEMA.md"
+# The direct-edit ingest rules the agentic CLI reads (by path) each run. Referenced in
+# the short ingest prompt; Python does not read it.
+AGENT_RULES_PATH: Path = REPO_ROOT / "AGENT_INGEST.md"
 INDEX_PATH: Path = WIKI_DIR / "index.md"
 LOG_PATH: Path = WIKI_DIR / "log.md"
 MANIFEST_PATH: Path = WIKI_DIR / ".okf_ingested.json"
@@ -80,7 +83,7 @@ MANIFEST_PATH: Path = WIKI_DIR / ".okf_ingested.json"
 # CLI) which model alias/id to pass. No API key is used.
 LLM_CLI: str = os.environ.get("OKF_LLM_CLI", "claude")
 INGEST_MODEL: str = os.environ.get("OKF_INGEST_MODEL", "sonnet")
-LLM_TIMEOUT: int = int(os.environ.get("OKF_LLM_TIMEOUT", "300"))
+LLM_TIMEOUT: int = int(os.environ.get("OKF_LLM_TIMEOUT", "1200"))
 
 MAX_DIGEST_CHARS: int = 12000
 DIGEST_TOP_N: int = 6

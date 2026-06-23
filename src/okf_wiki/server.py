@@ -1,8 +1,8 @@
 """MCP stdio server exposing the OKF wiki to AI clients.
 
-A FastMCP instance over stdio with five tools: four read-only
-(wiki_search / wiki_read / wiki_index / wiki_tags) and one mutating (wiki_ingest).
-Every tool returns a plain markdown/text string, which an LLM consumes
+A FastMCP instance over stdio with six tools: five read-only
+(wiki_search / wiki_read / wiki_index / wiki_tags / wiki_validate) and one mutating
+(wiki_ingest). Every tool returns a plain markdown/text string, which an LLM consumes
 best, and NEVER raises out of the tool: not-found / unsafe-path /
 missing-or-unusable-LLM-CLI conditions are returned as clear error strings
 so the server stays up.
@@ -157,6 +157,27 @@ def wiki_index() -> str:
         return "error: wiki index not found (run `okf-wiki ingest` first)."
     except Exception as e:  # never raise out of the tool
         return f"error: could not read index: {e}"
+
+
+@mcp.tool()
+def wiki_validate(rel_path: str = "") -> str:
+    """Validate wiki pages for links, file format, and required fields (type/title/
+    description/tags/resource, honest citations, relative non-broken links) — the same checks
+    the ingest gate enforces. With no ``rel_path``, validate the whole wiki; with a rel_path
+    like 'concepts/transformer.md', validate just that page. Returns a human-readable issue
+    list. The ingest agent should call this on each page it created or changed before
+    finishing, and fix every reported error. Never raises out of the tool.
+    """
+    from . import validate
+
+    try:
+        issues = validate.validate_all()
+        if rel_path.strip():
+            want = rel_path.strip().replace("\\", "/")
+            issues = [i for i in issues if i.rel_path == want]
+        return validate.render_issues(issues)
+    except Exception as e:  # never raise out of the tool
+        return f"error: validation failed: {e}"
 
 
 @mcp.tool()
