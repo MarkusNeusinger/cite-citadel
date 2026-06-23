@@ -83,7 +83,7 @@ MANIFEST_PATH: Path = WIKI_DIR / ".okf_ingested.json"
 # CLI) which model alias/id to pass. No API key is used.
 LLM_CLI: str = os.environ.get("OKF_LLM_CLI", "claude")
 INGEST_MODEL: str = os.environ.get("OKF_INGEST_MODEL", "sonnet")
-LLM_TIMEOUT: int = int(os.environ.get("OKF_LLM_TIMEOUT", "600"))
+LLM_TIMEOUT: int = int(os.environ.get("OKF_LLM_TIMEOUT", "1200"))
 
 MAX_DIGEST_CHARS: int = 12000
 DIGEST_TOP_N: int = 6
