@@ -1,10 +1,11 @@
-"""Offline integration tests for ingest: idempotency, apply-ops, contradiction marker.
+"""Offline integration tests for the agentic ingest (no CLI, no network).
 
-``llm.plan_pages`` is monkeypatched to a deterministic fake, so these run with NO
-network and NO API key (the anthropic SDK need not even be installed). All filesystem
-state is redirected to ``tmp_path`` by monkeypatching ``config.*`` attributes, so every
-module that references ``config.WIKI_DIR`` / ``config.RAW_DIR`` / etc. at call-time picks
-up the temp layout.
+``llm.run_ingest_session`` is monkeypatched to a deterministic fake that WRITES FILES into the
+temp wiki (simulating the agent editing the wiki directly). This exercises the real
+snapshot/diff/validate-and-restamp/rename-repair/rollback path against ``tmp_path`` — a stronger
+integration test than stubbing a return value. All filesystem state is redirected to ``tmp_path``
+by monkeypatching ``config.*`` (including ``REPO_ROOT``, which is exactly what the agentic
+session's ``cwd`` reads), so no real CLI is ever spawned.
 """
 
 from __future__ import annotations
@@ -13,80 +14,59 @@ from pathlib import Path
 
 import pytest
 
-from okf_wiki import config, ingest, lint, store
+from okf_wiki import config, ingest, lint, okf, store, validate
 
 
-# A counter so tests can assert the fake LLM is called exactly once per source.
+# A counter so tests can assert the fake session runs exactly once per source.
 _CALLS: dict[str, int] = {"n": 0}
 
 
-def fake_plan_pages(raw_name, raw_text, digest):
-    """Deterministic stand-in for the single Anthropic structured-output call.
+def _agent_write(rel_path: str, frontmatter: dict, body: str) -> None:
+    """Simulate the agent writing a wiki page file directly (no timestamp — the system
+    stamps it). Writes canonical OKF via okf.dump into the temp WIKI_DIR."""
+    target = config.WIKI_DIR / rel_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(okf.dump(frontmatter, body), encoding="utf-8")
 
-    Returns a fixed ops list: one Concept page with a per-fact GFM footnote that links
-    relatively to the raw file, plus a trailing '## Sources' section.
-    """
+
+def fake_session_transformer(rel_key):
+    """Deterministic stand-in for one agentic ingest session: writes a single Concept page
+    with a per-fact GFM footnote linking relatively to the raw file + a ## Sources section."""
     _CALLS["n"] += 1
-    return [
+    _agent_write(
+        "concepts/transformer.md",
         {
-            "op": "write",
             "type": "Concept",
             "title": "Transformer",
-            "rel_path": "",
             "description": "self-attention model",
             "tags": ["ml"],
-            "body": (
-                "Transformers use self-attention.[^s1]\n\n"
-                "## Sources\n\n"
-                "[^s1]: [raw/notes.md](../../raw/notes.md) - notes (ingested 2026-06-21)\n"
-            ),
-        }
-    ]
+            "resource": "raw/notes.md",
+        },
+        "Transformers use self-attention.[^s1]\n\n"
+        "## Sources\n\n"
+        "[^s1]: [raw/notes.md](../../raw/notes.md) - notes (ingested 2026-06-21)\n",
+    )
 
 
-def fake_plan_pages_contradiction(raw_name, raw_text, digest):
-    """Fake op whose body contains a '> [!CONTRADICTION]' callout."""
+def fake_session_contradiction(rel_key):
+    """A session that writes a page containing a '> [!CONTRADICTION]' callout (type Note -> misc)."""
     _CALLS["n"] += 1
-    return [
+    _agent_write(
+        "misc/q3-revenue.md",
         {
-            "op": "write",
             "type": "Note",
             "title": "Q3 Revenue",
-            "rel_path": "",
             "description": "Conflicting revenue figures.",
             "tags": ["finance"],
-            "body": (
-                "Revenue figures conflict across sources.[^s1][^s2]\n\n"
-                "> [!CONTRADICTION]\n"
-                "> raw/a.md says revenue grew 12% [^s1]; "
-                "raw/b.md says it grew 9% [^s2].\n\n"
-                "## Sources\n\n"
-                "[^s1]: [raw/a.md](../../raw/a.md) - report a (ingested 2026-06-21)\n"
-                "[^s2]: [raw/b.md](../../raw/b.md) - report b (ingested 2026-06-21)\n"
-            ),
-        }
-    ]
-
-
-def fake_plan_pages_echoed_frontmatter(raw_name, raw_text, digest):
-    """Fake whose body wrongly starts with a YAML frontmatter block — as some models
-    do when they mimic the digest. _apply_op must strip it."""
-    _CALLS["n"] += 1
-    return [
-        {
-            "op": "write",
-            "type": "Concept",
-            "title": "Transformer",
-            "rel_path": "",
-            "description": "self-attention model",
-            "tags": ["ml"],
-            "body": (
-                "---\ntype: Concept\ntitle: Transformer\n---\n\n"
-                "Transformers use self-attention.[^s1]\n\n"
-                "## Sources\n\n[^s1]: [raw/notes.md](../../raw/notes.md) - notes\n"
-            ),
-        }
-    ]
+            "resource": "raw/a.md",
+        },
+        "Revenue figures conflict across sources.[^s1][^s2]\n\n"
+        "> [!CONTRADICTION]\n"
+        "> raw/a.md says revenue grew 12% [^s1]; raw/b.md says it grew 9% [^s2].\n\n"
+        "## Sources\n\n"
+        "[^s1]: [raw/a.md](../../raw/a.md) - report a (ingested 2026-06-21)\n"
+        "[^s2]: [raw/b.md](../../raw/b.md) - report b (ingested 2026-06-21)\n",
+    )
 
 
 def _wire_tmp_wiki(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
@@ -109,6 +89,7 @@ def _wire_tmp_wiki(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
     monkeypatch.setattr(config, "RAW_DIR", raw, raising=False)
     monkeypatch.setattr(config, "DOCS_DIR", docs, raising=False)
     monkeypatch.setattr(config, "SCHEMA_PATH", schema_path, raising=False)
+    monkeypatch.setattr(config, "AGENT_RULES_PATH", repo / "AGENT_INGEST.md", raising=False)
     monkeypatch.setattr(config, "INDEX_PATH", wiki / "index.md", raising=False)
     monkeypatch.setattr(config, "LOG_PATH", wiki / "log.md", raising=False)
     monkeypatch.setattr(
@@ -117,10 +98,20 @@ def _wire_tmp_wiki(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
     return wiki, raw
 
 
+def _seed_page(wiki: Path, rel_path: str, frontmatter: dict, body: str) -> None:
+    """Write an OKF page directly under the temp wiki (bypassing ingest)."""
+    target = wiki / rel_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(okf.dump(frontmatter, body), encoding="utf-8")
+
+
+# --- core ingest flow -------------------------------------------------------------------
+
+
 def test_ingest_creates_pages(tmp_path, monkeypatch):
-    """Creates a page with the footnote, regenerates index, appends log, updates manifest."""
+    """The agent's edits are discovered via the diff, validated + re-stamped, indexed, logged."""
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
-    monkeypatch.setattr(ingest.llm, "plan_pages", fake_plan_pages)
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake_session_transformer)
 
     (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
 
@@ -136,54 +127,30 @@ def test_ingest_creates_pages(tmp_path, monkeypatch):
     assert "[^s1]" in text
     assert "## Sources" in text
     assert "../../raw/notes.md" in text
-    # write_page stamps a timestamp into frontmatter.
+    # write_page (the re-stamp) stamps a timestamp into frontmatter.
     assert "timestamp:" in text
-    # page-level resource: defaults to the primary raw source even when the op
-    # itself omits it.
     assert "resource: raw/notes.md" in text
 
-    # Page is the rel_path that ingest reported — a CREATE (did not exist before).
     assert "concepts/transformer.md" in report.pages_written
     assert "concepts/transformer.md" in report.pages_created
     assert report.pages_updated == []
 
-    # index.md regenerated and mentions the new page.
     index_text = (wiki / "index.md").read_text(encoding="utf-8")
     assert "transformer.md" in index_text
 
-    # log.md appended.
     log_text = (wiki / "log.md").read_text(encoding="utf-8")
-    assert "ingest" in log_text
-    assert "created" in log_text
-    assert "deleted" in log_text
+    assert "ingest" in log_text and "created" in log_text and "deleted" in log_text
 
-    # manifest updated with the source's hash.
     import json
 
-    manifest_text = (wiki / ".okf_ingested.json").read_text(encoding="utf-8")
-    manifest_data = json.loads(manifest_text)
+    manifest_data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
     assert "raw/notes.md" in manifest_data
-
-
-def test_ingest_strips_echoed_frontmatter(tmp_path, monkeypatch):
-    """A body that wrongly includes its own frontmatter block is cleaned, so the
-    written page has exactly one frontmatter block (no doubling)."""
-    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
-    monkeypatch.setattr(ingest.llm, "plan_pages", fake_plan_pages_echoed_frontmatter)
-    (raw / "notes.md").write_text("x\n", encoding="utf-8")
-
-    ingest.ingest()
-    text = (wiki / "concepts" / "transformer.md").read_text(encoding="utf-8")
-    # Exactly two lines that are exactly '---' (one frontmatter block: open + close).
-    assert text.split("\n").count("---") == 2
-    assert text.startswith("---\n")
-    assert "Transformers use self-attention.[^s1]" in text
 
 
 def test_reingest_is_noop(tmp_path, monkeypatch):
     """Running ingest twice on the same raw file is idempotent: 2nd processes nothing."""
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
-    monkeypatch.setattr(ingest.llm, "plan_pages", fake_plan_pages)
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake_session_transformer)
 
     (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
 
@@ -194,124 +161,389 @@ def test_reingest_is_noop(tmp_path, monkeypatch):
     second = ingest.ingest()
     assert second.processed == []
     assert "raw/notes.md" in second.skipped
-    # The fake LLM was NOT called a second time.
+    assert _CALLS["n"] == 1  # the fake session was NOT run a second time
+
+
+def test_ingest_distinguishes_created_vs_updated(tmp_path, monkeypatch):
+    """First ingest of a page is a create; re-ingesting (existing page) is an update."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake_session_transformer)
+
+    (raw / "notes.md").write_text("first\n", encoding="utf-8")
+    r1 = ingest.ingest()
+    assert "concepts/transformer.md" in r1.pages_created
+    assert r1.pages_updated == []
+
+    # Change the raw file so it re-ingests; the page now exists -> update, not create.
+    (raw / "notes.md").write_text("second, changed\n", encoding="utf-8")
+    r2 = ingest.ingest()
+    assert "concepts/transformer.md" in r2.pages_updated
+    assert r2.pages_created == []
+
+
+def test_restamp_canonicalizes_and_stamps(tmp_path, monkeypatch):
+    """A page the agent wrote without a timestamp comes out with a system-set timestamp."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake_session_transformer)
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+
+    report = ingest.ingest()
+    assert not report.errors
+    text = (wiki / "concepts" / "transformer.md").read_text(encoding="utf-8")
+    # Exactly one frontmatter block (open + close), and a stamped timestamp.
+    assert text.split("\n").count("---") == 2
+    assert text.startswith("---\n")
+    assert "timestamp:" in text
+
+
+def test_embedded_frontmatter_in_body_is_error(tmp_path, monkeypatch):
+    """If the agent echoes a second '---' YAML block into the BODY, validation flags it."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+
+    def fake(rel_key):
+        _agent_write(
+            "concepts/echoed.md",
+            {
+                "type": "Concept",
+                "title": "Echoed",
+                "description": "d",
+                "tags": ["x"],
+                "resource": "raw/notes.md",
+            },
+            "---\ntype: Concept\ntitle: Echoed\n---\n\nA fact.[^s1]\n\n"
+            "## Sources\n\n[^s1]: [raw/notes.md](../../raw/notes.md) - n\n",
+        )
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+
+    report = ingest.ingest([str(raw / "notes.md")])
+    assert any("embedded_frontmatter" in e for e in report.errors)
+
+
+def test_ingest_missing_type_is_error(tmp_path, monkeypatch):
+    """A page the agent wrote with no 'type' is a collected error; the source still finalizes."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+
+    def fake(rel_key):
+        _agent_write(
+            "concepts/bad.md",
+            {"title": "Bad", "description": "d", "tags": ["x"], "resource": "raw/notes.md"},
+            "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/notes.md](../../raw/notes.md) - n\n",
+        )
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+
+    report = ingest.ingest([str(raw / "notes.md")])
+    assert "raw/notes.md" in report.processed  # finalized despite the bad page
+    assert any("invalid page concepts/bad.md" in e and "type" in e for e in report.errors)
+    assert (wiki / "concepts" / "bad.md").exists()  # left on disk so it's visible
+
+
+def test_missing_required_field_is_error(tmp_path, monkeypatch):
+    """STRICT: a page missing 'tags' (or any required field) fails the ingest gate."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+
+    def fake(rel_key):
+        _agent_write(
+            "concepts/notags.md",
+            {"type": "Concept", "title": "No Tags", "description": "d", "resource": "raw/notes.md"},
+            "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/notes.md](../../raw/notes.md) - n\n",
+        )
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+
+    report = ingest.ingest([str(raw / "notes.md")])
+    assert any("tags" in e for e in report.errors)
+
+
+def test_ingest_no_changes_marks_done(tmp_path, monkeypatch):
+    """An agent that changes nothing is still 'processed' (and re-runs skip it)."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+
+    def fake(rel_key):
+        _CALLS["n"] += 1  # writes nothing
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    (raw / "notes.md").write_text("nothing new\n", encoding="utf-8")
+
+    report = ingest.ingest()
+    assert "raw/notes.md" in report.processed
+    assert report.pages_created == [] and report.pages_updated == [] and report.pages_deleted == []
+    assert not report.errors
+
+    second = ingest.ingest()
+    assert "raw/notes.md" in second.skipped
     assert _CALLS["n"] == 1
 
 
-def _seed_page(wiki: Path, rel_path: str, frontmatter: dict, body: str) -> None:
-    """Write an OKF page directly under the temp wiki (bypassing ingest)."""
-    from okf_wiki import okf
+def test_diff_classifies_created_updated_deleted():
+    """Unit test of the content-hash diff."""
+    before = {"a.md": "h1", "b.md": "h2", "c.md": "h3"}
+    after = {"a.md": "h1", "b.md": "CHANGED", "d.md": "h4"}
+    created, updated, deleted = ingest._diff(before, after)
+    assert created == ["d.md"]
+    assert updated == ["b.md"]
+    assert deleted == ["c.md"]
 
-    target = wiki / rel_path
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(okf.dump(frontmatter, body), encoding="utf-8")
 
-
-def test_merge_then_delete_with_redirect_repoints_links(tmp_path, monkeypatch):
-    """A merge expressed as write(survivor) + delete(absorbed, redirect=survivor):
-    the absorbed page is removed, the survivor holds the merged body, and an inbound
-    cross-link from a THIRD page is repointed to the survivor so nothing breaks."""
+def test_reserved_files_excluded_from_diff(tmp_path, monkeypatch):
+    """Even if the agent scribbles on a reserved file, it is excluded from the diff and
+    regenerated; only real pages are reported."""
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
 
-    # Seed two existing pages: one to be absorbed, and a third that links to it.
+    def fake(rel_key):
+        _agent_write(
+            "concepts/foo.md",
+            {"type": "Concept", "title": "Foo", "description": "d", "tags": ["x"], "resource": "raw/notes.md"},
+            "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/notes.md](../../raw/notes.md) - n\n",
+        )
+        (config.WIKI_DIR / "index.md").write_text("GARBAGE the agent should not write\n", encoding="utf-8")
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+
+    report = ingest.ingest([str(raw / "notes.md")])
+    assert "concepts/foo.md" in report.pages_created
+    assert "index.md" not in report.pages_created and "index.md" not in report.pages_updated
+    # index.md was regenerated by finalize, not left as the agent's garbage.
+    assert (wiki / "index.md").read_text(encoding="utf-8").startswith("# Wiki Index")
+
+
+def test_agent_merge_repoints_inbound_link(tmp_path, monkeypatch):
+    """A merge: the agent writes the survivor, deletes the absorbed page, AND repoints the
+    inbound link itself (its job). No broken link remains."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "old.md").write_text("x\n", encoding="utf-8")
+    (raw / "notes.md").write_text("Self-attention merges attention.\n", encoding="utf-8")
+
     _seed_page(
-        wiki,
-        "concepts/attention.md",
-        {"type": "Concept", "title": "Attention", "resource": "raw/old.md"},
+        wiki, "concepts/attention.md",
+        {"type": "Concept", "title": "Attention", "description": "d", "tags": ["ml"], "resource": "raw/old.md"},
         "Attention is a mechanism.[^s1]\n\n## Sources\n\n"
         "[^s1]: [raw/old.md](../../raw/old.md) - old (ingested 2026-06-21)\n",
     )
     _seed_page(
-        wiki,
-        "concepts/linker.md",
-        {"type": "Concept", "title": "Linker", "resource": "raw/old.md"},
+        wiki, "concepts/linker.md",
+        {"type": "Concept", "title": "Linker", "description": "d", "tags": ["ml"], "resource": "raw/old.md"},
         "See [Attention](./attention.md) for details.[^s1]\n\n## Sources\n\n"
         "[^s1]: [raw/old.md](../../raw/old.md) - old (ingested 2026-06-21)\n",
     )
-    (raw / "old.md").write_text("x\n", encoding="utf-8")
-    (raw / "notes.md").write_text("Self-attention merges attention.\n", encoding="utf-8")
 
-    def fake(raw_name, raw_text, digest):
-        return [
-            {
-                "op": "write",
-                "type": "Concept",
-                "title": "Self-Attention",
-                "rel_path": "concepts/self-attention.md",
-                "description": "merged",
-                "tags": ["ml"],
-                "body": (
-                    "Self-attention subsumes attention.[^s1]\n\n## Sources\n\n"
-                    "[^s1]: [raw/notes.md](../../raw/notes.md) - notes (ingested 2026-06-22)\n"
-                ),
-            },
-            {
-                "op": "delete",
-                "rel_path": "concepts/attention.md",
-                "redirect": "concepts/self-attention.md",
-            },
-        ]
+    def fake(rel_key):
+        _agent_write(
+            "concepts/self-attention.md",
+            {"type": "Concept", "title": "Self-Attention", "description": "merged", "tags": ["ml"], "resource": "raw/notes.md"},
+            "Self-attention subsumes attention.[^s1]\n\n## Sources\n\n"
+            "[^s1]: [raw/notes.md](../../raw/notes.md) - notes (ingested 2026-06-22)\n",
+        )
+        (config.WIKI_DIR / "concepts" / "attention.md").unlink()
+        # The agent repoints the inbound link itself.
+        _agent_write(
+            "concepts/linker.md",
+            {"type": "Concept", "title": "Linker", "description": "d", "tags": ["ml"], "resource": "raw/old.md"},
+            "See [Self-Attention](./self-attention.md) for details.[^s1]\n\n## Sources\n\n"
+            "[^s1]: [raw/old.md](../../raw/old.md) - old (ingested 2026-06-21)\n",
+        )
 
-    monkeypatch.setattr(ingest.llm, "plan_pages", fake)
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
     report = ingest.ingest([str(raw / "notes.md")])
 
     assert not report.errors
     assert "concepts/self-attention.md" in report.pages_written
     assert "concepts/attention.md" in report.pages_deleted
-    # The absorbed page is gone; the survivor exists.
     assert not (wiki / "concepts" / "attention.md").exists()
     assert (wiki / "concepts" / "self-attention.md").exists()
-    # The third page's inbound link was repointed to the survivor — no broken link.
-    # (os.path.relpath yields 'self-attention.md', which resolves the same as './…'.)
     linker = (wiki / "concepts" / "linker.md").read_text(encoding="utf-8")
-    assert "(self-attention.md)" in linker
-    assert "(./attention.md)" not in linker
+    assert "self-attention.md" in linker and "(./attention.md)" not in linker
     assert report.broken_links == []
-    # And lint confirms the repointed link actually resolves (no broken links).
     assert lint.lint().broken_links == []
 
 
-def test_delete_missing_page_is_reported_not_fatal(tmp_path, monkeypatch):
-    """A delete of a non-existent page is a non-fatal error; the source still finalises."""
+def test_repair_renames_repoints_after_rename(tmp_path, monkeypatch):
+    """A pure rename (delete old + create same-title new) where the agent forgot the inbound
+    link: the deterministic Python safety net repoints it via store.rewrite_links."""
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
-    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+    (raw / "old.md").write_text("x\n", encoding="utf-8")
+    (raw / "notes.md").write_text("rename a\n", encoding="utf-8")
 
-    def fake(raw_name, raw_text, digest):
-        return [{"op": "delete", "rel_path": "concepts/ghost.md"}]
+    _seed_page(
+        wiki, "concepts/a.md",
+        {"type": "Concept", "title": "Alpha", "description": "d", "tags": ["x"], "resource": "raw/old.md"},
+        "Alpha.[^s1]\n\n## Sources\n\n[^s1]: [raw/old.md](../../raw/old.md) - o\n",
+    )
+    _seed_page(
+        wiki, "concepts/linker.md",
+        {"type": "Concept", "title": "Linker", "description": "d", "tags": ["x"], "resource": "raw/old.md"},
+        "See [Alpha](./a.md).[^s1]\n\n## Sources\n\n[^s1]: [raw/old.md](../../raw/old.md) - o\n",
+    )
 
-    monkeypatch.setattr(ingest.llm, "plan_pages", fake)
+    def fake(rel_key):
+        # Rename a.md -> aa.md (SAME title 'Alpha'); do NOT touch linker.
+        (config.WIKI_DIR / "concepts" / "a.md").unlink()
+        _agent_write(
+            "concepts/aa.md",
+            {"type": "Concept", "title": "Alpha", "description": "d", "tags": ["x"], "resource": "raw/old.md"},
+            "Alpha (renamed).[^s1]\n\n## Sources\n\n[^s1]: [raw/old.md](../../raw/old.md) - o\n",
+        )
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
     report = ingest.ingest([str(raw / "notes.md")])
 
-    assert "raw/notes.md" in report.processed  # finalised despite the bad delete
-    assert any("no such page" in e for e in report.errors)
-    assert report.pages_deleted == []
+    assert "concepts/a.md" in report.pages_deleted
+    assert "concepts/aa.md" in report.pages_created
+    linker = (wiki / "concepts" / "linker.md").read_text(encoding="utf-8")
+    assert "aa.md" in linker and "(./a.md)" not in linker
+    assert report.broken_links == []
 
 
-def test_delete_protected_file_refused(tmp_path, monkeypatch):
-    """A delete targeting a generated file (index.md) is refused; the file survives."""
+def test_agent_delete_leaves_broken_link_surfaced(tmp_path, monkeypatch):
+    """If the agent deletes a page and forgets an inbound link (and it's not a rename the net
+    can fix), the broken link is SURFACED in the report and fails lint."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "old.md").write_text("x\n", encoding="utf-8")
+    (raw / "notes.md").write_text("delete a\n", encoding="utf-8")
+
+    _seed_page(
+        wiki, "concepts/a.md",
+        {"type": "Concept", "title": "Alpha", "description": "d", "tags": ["x"], "resource": "raw/old.md"},
+        "Alpha.[^s1]\n\n## Sources\n\n[^s1]: [raw/old.md](../../raw/old.md) - o\n",
+    )
+    _seed_page(
+        wiki, "concepts/linker.md",
+        {"type": "Concept", "title": "Linker", "description": "d", "tags": ["x"], "resource": "raw/old.md"},
+        "See [Alpha](./a.md).[^s1]\n\n## Sources\n\n[^s1]: [raw/old.md](../../raw/old.md) - o\n",
+    )
+
+    def fake(rel_key):
+        (config.WIKI_DIR / "concepts" / "a.md").unlink()  # nothing created in its place
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    report = ingest.ingest([str(raw / "notes.md")])
+
+    assert "concepts/a.md" in report.pages_deleted
+    assert ("concepts/linker.md", "concepts/a.md") in report.broken_links
+    assert lint.lint().broken_links != []
+
+
+def test_failed_session_rolls_back(tmp_path, monkeypatch):
+    """A session that raises after a partial write is rolled back: the wiki returns to its
+    pre-source state, the source is NOT marked done, and the error is collected."""
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
     _seed_page(
-        wiki,
-        "concepts/real.md",
-        {"type": "Concept", "title": "Real", "resource": "raw/notes.md"},
-        "A real page.[^s1]\n\n## Sources\n\n"
-        "[^s1]: [raw/notes.md](../../raw/notes.md) - n (ingested 2026-06-22)\n",
+        wiki, "concepts/keep.md",
+        {"type": "Concept", "title": "Keep", "description": "d", "tags": ["x"], "resource": "raw/old.md"},
+        "Keep me.[^s1]\n\n## Sources\n\n[^s1]: [raw/old.md](../../raw/old.md) - o\n",
     )
-    store.rebuild_indexes()  # creates wiki/index.md and concepts/index.md
+    (raw / "old.md").write_text("x\n", encoding="utf-8")
     (raw / "notes.md").write_text("x\n", encoding="utf-8")
 
-    def fake(raw_name, raw_text, digest):
-        # index.md is in the existing set (rebuild wrote concepts/index.md), but
-        # delete_page must refuse it regardless.
-        return [{"op": "delete", "rel_path": "concepts/index.md"}]
+    def fake(rel_key):
+        _agent_write(
+            "concepts/partial.md",
+            {"type": "Concept", "title": "Partial", "description": "d", "tags": ["x"], "resource": "raw/notes.md"},
+            "Half-written.[^s1]\n\n## Sources\n\n[^s1]: [raw/notes.md](../../raw/notes.md) - n\n",
+        )
+        raise RuntimeError("boom mid-session")
 
-    monkeypatch.setattr(ingest.llm, "plan_pages", fake)
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
     report = ingest.ingest([str(raw / "notes.md")])
 
-    # Either refused as a protected-file error, or skipped as not-a-loadable-page; in
-    # both cases the index file must still exist and nothing is deleted.
-    assert report.pages_deleted == []
-    assert (wiki / "concepts" / "index.md").exists()
+    assert "raw/notes.md" not in report.processed
+    assert any("boom mid-session" in e for e in report.errors)
+    assert not (wiki / "concepts" / "partial.md").exists()  # rolled back
+    assert (wiki / "concepts" / "keep.md").exists()  # untouched
+
+    # Source is retried next run (not in the manifest).
+    import json
+
+    manifest_path = wiki / ".okf_ingested.json"
+    if manifest_path.exists():
+        assert "raw/notes.md" not in json.loads(manifest_path.read_text(encoding="utf-8"))
+
+
+def test_contradiction_marker_preserved(tmp_path, monkeypatch):
+    """A contradiction marker the agent wrote survives the validate+restamp and lint flags it."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake_session_contradiction)
+
+    (raw / "a.md").write_text("Revenue grew 12%.\n", encoding="utf-8")
+    (raw / "b.md").write_text("Revenue grew 9%.\n", encoding="utf-8")
+
+    report = ingest.ingest()
+    assert not report.errors
+    assert report.pages_written
+
+    written_rel = report.pages_written[0]
+    page = wiki / Path(written_rel)
+    assert page.exists()
+    text = page.read_text(encoding="utf-8")
+    assert "> [!CONTRADICTION]" in text
+
+    lint_report = lint.lint()
+    assert written_rel in lint_report.contradictions
+
+
+# --- progress reporting -----------------------------------------------------------------
+
+
+def test_ingest_emits_progress_events(tmp_path, monkeypatch):
+    """ingest() drives a progress callback: start -> source_start/done -> finalize -> done."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake_session_transformer)
+    (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
+
+    events = []
+    ingest.ingest(progress=lambda ev, data: events.append((ev, data)))
+
+    names = [e for e, _ in events]
+    assert names[0] == "start"
+    for expected in ("source_start", "source_done", "finalize", "done"):
+        assert expected in names, f"missing event: {expected}"
+    start = next(d for e, d in events if e == "start")
+    assert start == {"pending": 1, "skipped": 0}
+    done = next(d for e, d in events if e == "source_done")
+    assert done["source"] == "raw/notes.md"
+    assert done["index"] == 1 and done["total"] == 1
+    assert done["created"] == 1 and done["updated"] == 0
+    assert "seconds" in done
+
+
+def test_ingest_progress_default_is_silent(tmp_path, monkeypatch):
+    """No progress arg -> no callback invoked (MCP/non-interactive path stays quiet)."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake_session_transformer)
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+    report = ingest.ingest()  # must not raise without a progress callback
+    assert "raw/notes.md" in report.processed
+
+
+def test_console_progress_renders_ascii_without_tty():
+    """ConsoleProgress on a non-TTY stream prints one plain line per file, ASCII-only."""
+    import io
+    from okf_wiki.progress import ConsoleProgress
+
+    buf = io.StringIO()  # isatty() -> False, so no spinner thread
+    p = ConsoleProgress(stream=buf)
+    p("start", {"pending": 2, "skipped": 1})
+    p("source_start", {"index": 1, "total": 2, "source": "raw/a.md"})
+    p("source_done", {"index": 1, "total": 2, "source": "raw/a.md",
+                      "created": 2, "updated": 1, "deleted": 1, "seconds": 12.4})
+    p("source_error", {"index": 2, "total": 2, "source": "raw/b.md",
+                       "error": "boom", "seconds": 1.0})
+    p("finalize", {})
+    out = buf.getvalue()
+
+    assert "Ingesting 2 file(s) (1 already up to date)" in out
+    assert "[1/2] OK  raw/a.md" in out and "2 created, 1 updated, 1 deleted" in out
+    assert "[2/2] ERR raw/b.md" in out and "boom" in out
+    assert "Rebuilding indexes" in out
+    out.encode("ascii")  # must be ASCII-only (safe on any Windows code page)
+
+
+# --- lint / store / okf-compliance (independent of the ingest mechanism) ----------------
 
 
 def test_lint_flags_fabricated_source(tmp_path, monkeypatch):
@@ -344,97 +576,18 @@ def test_lint_clean_when_source_exists(tmp_path, monkeypatch):
     assert report.bad_sources == []
 
 
-def test_contradiction_marker_preserved(tmp_path, monkeypatch):
-    """A contradiction marker in the op body survives the write and lint flags it."""
+def test_lint_flags_wikilink(tmp_path, monkeypatch):
+    """A [[wiki-style]] link is flagged and flips lint.ok()."""
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
-    monkeypatch.setattr(ingest.llm, "plan_pages", fake_plan_pages_contradiction)
-
-    (raw / "a.md").write_text("Revenue grew 12%.\n", encoding="utf-8")
-
-    report = ingest.ingest()
-    assert not report.errors
-    assert report.pages_written
-
-    written_rel = report.pages_written[0]
-    page = wiki / Path(written_rel)
-    assert page.exists()
-    text = page.read_text(encoding="utf-8")
-    assert "> [!CONTRADICTION]" in text
-
-    # lint over the freshly written wiki lists the page under contradictions.
-    lint_report = lint.lint()
-    assert written_rel in lint_report.contradictions
-
-
-# --- review-hardening regression tests -------------------------------------------------
-
-
-def test_delete_of_just_written_page_is_refused(tmp_path, monkeypatch):
-    """DATA-LOSS GUARD: an op list that both writes AND deletes the same rel_path must keep
-    the page (the delete is refused), even though writes apply before deletes."""
-    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
-    (raw / "notes.md").write_text("x\n", encoding="utf-8")
-
-    def fake(raw_name, raw_text, digest):
-        return [
-            {
-                "op": "write", "type": "Concept", "title": "Big",
-                "rel_path": "concepts/big.md", "description": "d", "tags": [],
-                "body": "A fact.[^s1]\n\n## Sources\n\n"
-                        "[^s1]: [raw/notes.md](../../raw/notes.md) - n (ingested 2026-06-22)\n",
-            },
-            {"op": "delete", "rel_path": "concepts/big.md"},
-        ]
-
-    monkeypatch.setattr(ingest.llm, "plan_pages", fake)
-    report = ingest.ingest([str(raw / "notes.md")])
-
-    assert "concepts/big.md" in report.pages_written
-    assert report.pages_deleted == []
-    assert (wiki / "concepts" / "big.md").exists()  # NOT destroyed
-    assert any("just written" in e for e in report.errors)
-
-
-def test_recreate_slug_does_not_repoint_inbound_links(tmp_path, monkeypatch):
-    """If a slug deleted-with-redirect by one source is RECREATED by a later source in the
-    same run, inbound links must keep pointing at the live page, not the stale redirect."""
-    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
-    for rel, title in (("a", "A"), ("b", "B")):
-        _seed_page(
-            wiki, f"concepts/{rel}.md",
-            {"type": "Concept", "title": title, "resource": "raw/old.md"},
-            f"{title} page.[^s1]\n\n## Sources\n\n"
-            "[^s1]: [raw/old.md](../../raw/old.md) - o (ingested 2026-06-21)\n",
-        )
+    (raw / "a.md").write_text("src\n", encoding="utf-8")
     _seed_page(
-        wiki, "concepts/linker.md",
-        {"type": "Concept", "title": "Linker", "resource": "raw/old.md"},
-        "See [A](./a.md).[^s1]\n\n## Sources\n\n"
-        "[^s1]: [raw/old.md](../../raw/old.md) - o (ingested 2026-06-21)\n",
+        wiki, "concepts/wikilinked.md",
+        {"type": "Concept", "title": "Wikilinked", "resource": "raw/a.md"},
+        "See [[Some Page]] for more.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - n\n",
     )
-    (raw / "old.md").write_text("x\n", encoding="utf-8")
-    (raw / "s1.md").write_text("delete a redirect b\n", encoding="utf-8")
-    (raw / "s2.md").write_text("recreate a\n", encoding="utf-8")
-
-    def fake(raw_name, raw_text, digest):
-        if raw_name.endswith("s1.md"):
-            return [{"op": "delete", "rel_path": "concepts/a.md", "redirect": "concepts/b.md"}]
-        return [{
-            "op": "write", "type": "Concept", "title": "A", "rel_path": "concepts/a.md",
-            "description": "new", "tags": [],
-            "body": "New A.[^s1]\n\n## Sources\n\n"
-                    "[^s1]: [raw/s2.md](../../raw/s2.md) - n (ingested 2026-06-22)\n",
-        }]
-
-    monkeypatch.setattr(ingest.llm, "plan_pages", fake)
-    report = ingest.ingest([str(raw / "s1.md"), str(raw / "s2.md")])
-
-    assert "concepts/a.md" in report.pages_deleted   # s1 removed it
-    assert "concepts/a.md" in report.pages_written   # s2 recreated it
-    assert (wiki / "concepts" / "a.md").exists()
-    linker = (wiki / "concepts" / "linker.md").read_text(encoding="utf-8")
-    assert "](./a.md)" in linker          # link NOT repointed to b.md
-    assert report.broken_links == []
+    report = lint.lint()
+    assert ("concepts/wikilinked.md", "Some Page") in report.wikilinks
+    assert not report.ok()
 
 
 def test_rewrite_links_skips_code_fences_and_substrings():
@@ -507,9 +660,6 @@ def test_lint_tolerates_link_title_and_code_fences(tmp_path, monkeypatch):
     assert report.ok()
 
 
-# --- OKF compliance + tags + backlinks + suggested-links --------------------------------
-
-
 def test_indexes_have_no_frontmatter(tmp_path, monkeypatch):
     """OKF: index.md (top + per-folder) must NOT carry YAML frontmatter."""
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
@@ -524,7 +674,6 @@ def test_indexes_have_no_frontmatter(tmp_path, monkeypatch):
     assert top.startswith("# Wiki Index") and not top.startswith("---")
     assert "type: Index" not in top
     assert folder.startswith("# concepts") and not folder.startswith("---")
-    # tags surfaced as a section in the reserved index.md (no rogue tags.md)
     assert "## Tags" in top and "### x (1)" in top
     assert not (wiki / "tags.md").exists()
 
@@ -601,77 +750,3 @@ def test_suggested_links_skips_already_linked(tmp_path, monkeypatch):
     report = lint.lint()
     caffeine_suggestions = [t for r, t in report.suggested_links if r == "concepts/caffeine.md"]
     assert not any("espresso.md" in s for s in caffeine_suggestions)
-
-
-# --- ingest progress reporting ---------------------------------------------------------
-
-
-def test_ingest_emits_progress_events(tmp_path, monkeypatch):
-    """ingest() drives a progress callback: start -> source_start/done -> finalize -> done."""
-    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
-    monkeypatch.setattr(ingest.llm, "plan_pages", fake_plan_pages)
-    (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
-
-    events = []
-    ingest.ingest(progress=lambda ev, data: events.append((ev, data)))
-
-    names = [e for e, _ in events]
-    assert names[0] == "start"
-    for expected in ("source_start", "source_done", "finalize", "done"):
-        assert expected in names, f"missing event: {expected}"
-    start = next(d for e, d in events if e == "start")
-    assert start == {"pending": 1, "skipped": 0}
-    done = next(d for e, d in events if e == "source_done")
-    assert done["source"] == "raw/notes.md"
-    assert done["index"] == 1 and done["total"] == 1
-    assert done["created"] == 1 and done["updated"] == 0
-    assert "seconds" in done
-
-
-def test_ingest_progress_default_is_silent(tmp_path, monkeypatch):
-    """No progress arg -> no callback invoked (MCP/non-interactive path stays quiet)."""
-    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
-    monkeypatch.setattr(ingest.llm, "plan_pages", fake_plan_pages)
-    (raw / "notes.md").write_text("x\n", encoding="utf-8")
-    report = ingest.ingest()  # must not raise without a progress callback
-    assert "raw/notes.md" in report.processed
-
-
-def test_console_progress_renders_ascii_without_tty():
-    """ConsoleProgress on a non-TTY stream prints one plain line per file, ASCII-only."""
-    import io
-    from okf_wiki.progress import ConsoleProgress
-
-    buf = io.StringIO()  # isatty() -> False, so no spinner thread
-    p = ConsoleProgress(stream=buf)
-    p("start", {"pending": 2, "skipped": 1})
-    p("source_start", {"index": 1, "total": 2, "source": "raw/a.md"})
-    p("source_done", {"index": 1, "total": 2, "source": "raw/a.md",
-                      "created": 2, "updated": 1, "deleted": 1, "seconds": 12.4})
-    p("source_error", {"index": 2, "total": 2, "source": "raw/b.md",
-                       "error": "boom", "seconds": 1.0})
-    p("finalize", {})
-    out = buf.getvalue()
-
-    assert "Ingesting 2 file(s) (1 already up to date)" in out
-    assert "[1/2] OK  raw/a.md" in out and "2 created, 1 updated, 1 deleted" in out
-    assert "[2/2] ERR raw/b.md" in out and "boom" in out
-    assert "Rebuilding indexes" in out
-    out.encode("ascii")  # must be ASCII-only (safe on any Windows code page)
-
-
-def test_ingest_distinguishes_created_vs_updated(tmp_path, monkeypatch):
-    """First ingest of a page is a create; re-ingesting (existing page) is an update."""
-    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
-    monkeypatch.setattr(ingest.llm, "plan_pages", fake_plan_pages)
-
-    (raw / "notes.md").write_text("first\n", encoding="utf-8")
-    r1 = ingest.ingest()
-    assert "concepts/transformer.md" in r1.pages_created
-    assert r1.pages_updated == []
-
-    # Change the raw file so it re-ingests; the page now exists -> update, not create.
-    (raw / "notes.md").write_text("second, changed\n", encoding="utf-8")
-    r2 = ingest.ingest()
-    assert "concepts/transformer.md" in r2.pages_updated
-    assert r2.pages_created == []

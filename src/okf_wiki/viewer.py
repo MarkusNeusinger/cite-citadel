@@ -173,14 +173,27 @@ body { margin:0; font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-ser
            text-decoration:none; }
 .navitem:hover { background:var(--card); }
 #content { flex:1; display:flex; flex-direction:column; overflow:hidden; }
-#graph-pane { height:44vh; min-height:200px; border-bottom:1px solid var(--line);
-              background:var(--card); }
-#graph { width:100%; height:100%; }
+#graph-pane { height:44vh; min-height:170px; border-bottom:1px solid var(--line);
+              background:var(--card); display:flex; flex-direction:column; }
+#graph-bar { display:flex; align-items:center; gap:6px; padding:4px 8px; flex:0 0 auto;
+             border-bottom:1px solid var(--line); user-select:none; }
+#graph-title { font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
+               color:var(--muted); }
+#graph-bar .spacer { flex:1; }
+.gbtn { border:1px solid var(--line); background:var(--bg); color:var(--fg); border-radius:6px;
+        min-width:24px; height:22px; line-height:20px; text-align:center; cursor:pointer;
+        font-size:13px; padding:0 6px; }
+.gbtn:hover { background:var(--card); border-color:var(--accent); color:var(--accent); }
+#graph { flex:1; width:100%; min-height:0; cursor:grab; touch-action:none; user-select:none; }
+#graph.grabbing { cursor:grabbing; }
 #graph .node { cursor:pointer; }
 #graph .node circle { stroke:var(--bg); stroke-width:1.5; }
-#graph .node.active circle { stroke:var(--accent); stroke-width:3; }
+#graph .node:hover circle { stroke:var(--accent); stroke-width:2.5; }
+#graph .node.active circle { stroke:var(--accent); stroke-width:3.5; }
 #graph .node text { font-size:9px; fill:var(--fg); pointer-events:none; }
 #graph line { stroke:var(--line); stroke-width:1; }
+#content.map-collapsed #graph-pane { height:auto; min-height:0; }
+#content.map-collapsed #graph { display:none; }
 #reader { flex:1; overflow:auto; padding:20px 28px; max-width:920px; }
 #reader h1 { margin:.2em 0 .1em; }
 #reader .meta { color:var(--muted); font-size:13px; margin-bottom:6px; }
@@ -383,68 +396,215 @@ _VIEWER_JS = r'''
     nav.innerHTML = html || "<p class='ext'>No pages.</p>";
   }
 
-  // Hand-rolled spring layout -> SVG via innerHTML (so no SVG-namespace URL appears).
-  function renderGraph() {
-    var W = 600, H = 420, n = BUNDLE.pages.length || 1;
-    var nodes = BUNDLE.pages.map(function (p, k) {
-      var a = 2 * Math.PI * k / n;
-      return { id: p.rel_path, type: p.type, title: p.title,
-               x: W / 2 + Math.cos(a) * 150, y: H / 2 + Math.sin(a) * 150 };
-    });
-    var idx = {};
-    nodes.forEach(function (nd, k) { idx[nd.id] = k; });
-    var edges = BUNDLE.edges.filter(function (e) {
-      return idx[e.source] != null && idx[e.target] != null;
-    });
-    var k = Math.sqrt((W * H) / n) * 0.6;
-    for (var it = 0; it < 120; it++) {
-      var disp = nodes.map(function () { return { x: 0, y: 0 }; });
-      for (var a = 0; a < nodes.length; a++) {
-        for (var b = a + 1; b < nodes.length; b++) {
+  // Interactive force-directed graph: hand-rolled, dependency-free. Built as an SVG string via
+  // innerHTML (so the SVG-namespace URL is never emitted — keeps the file fully offline).
+  // Supports pan (drag the background), zoom (wheel / buttons), and draggable nodes that pull
+  // their neighbours via a live spring relaxation. A node click (no drag) opens the page.
+  var Graph = (function () {
+    var svg, gzoom;
+    var nodes = [], edges = [], idx = {};
+    var view = { x: 0, y: 0, k: 1 };
+    var activeRel = "";
+    var raf = null, animating = false;
+    var dragNode = null, panning = false, last = null, moved = false;
+    var W = 600, H = 420;
+
+    function r2(v) { return Math.round(v * 10) / 10; }
+
+    function buildModel() {
+      var n = BUNDLE.pages.length || 1;
+      nodes = BUNDLE.pages.map(function (p, i) {
+        var a = 2 * Math.PI * i / n;
+        return { id: p.rel_path, type: p.type, title: p.title,
+                 x: W / 2 + Math.cos(a) * 150, y: H / 2 + Math.sin(a) * 150,
+                 vx: 0, vy: 0, fx: null, fy: null };
+      });
+      idx = {};
+      nodes.forEach(function (nd, i) { idx[nd.id] = i; });
+      edges = BUNDLE.edges.filter(function (e) {
+        return idx[e.source] != null && idx[e.target] != null;
+      }).map(function (e) { return { s: idx[e.source], t: idx[e.target] }; });
+    }
+
+    // Proven Fruchterman-Reingold settle for the INITIAL layout (clamped to the WxH box).
+    function settle() {
+      var n = nodes.length; if (!n) return;
+      var k = Math.sqrt((W * H) / n) * 0.6;
+      for (var it = 0; it < 130; it++) {
+        var disp = nodes.map(function () { return { x: 0, y: 0 }; });
+        for (var a = 0; a < n; a++) for (var b = a + 1; b < n; b++) {
           var dx = nodes[a].x - nodes[b].x, dy = nodes[a].y - nodes[b].y;
           var d = Math.sqrt(dx * dx + dy * dy) || 0.01, f = k * k / d;
           disp[a].x += dx / d * f; disp[a].y += dy / d * f;
           disp[b].x -= dx / d * f; disp[b].y -= dy / d * f;
         }
+        edges.forEach(function (e) {
+          var dx = nodes[e.s].x - nodes[e.t].x, dy = nodes[e.s].y - nodes[e.t].y;
+          var d = Math.sqrt(dx * dx + dy * dy) || 0.01, f = d * d / k;
+          disp[e.s].x -= dx / d * f; disp[e.s].y -= dy / d * f;
+          disp[e.t].x += dx / d * f; disp[e.t].y += dy / d * f;
+        });
+        var temp = Math.max(2, 30 * (1 - it / 130));
+        nodes.forEach(function (nd, kk) {
+          var dl = Math.sqrt(disp[kk].x * disp[kk].x + disp[kk].y * disp[kk].y) || 0.01;
+          nd.x += disp[kk].x / dl * Math.min(dl, temp);
+          nd.y += disp[kk].y / dl * Math.min(dl, temp);
+          nd.x = Math.max(18, Math.min(W - 18, nd.x));
+          nd.y = Math.max(18, Math.min(H - 18, nd.y));
+        });
+      }
+    }
+
+    // Light live relaxation used while dragging, so neighbours follow: springs + capped
+    // repulsion + a gentle pull toward the cluster centroid, damped. Returns the largest
+    // per-node movement so the animation loop knows when to stop.
+    function simStep() {
+      var n = nodes.length; if (!n) return 0;
+      var cx = 0, cy = 0, i, j;
+      for (i = 0; i < n; i++) { cx += nodes[i].x; cy += nodes[i].y; }
+      cx /= n; cy /= n;
+      var L = 80, REP = 2400, SPR = 0.03, GRAV = 0.012, DAMP = 0.9, MAXV = 50;
+      for (i = 0; i < n; i++) for (j = i + 1; j < n; j++) {
+        var dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
+        var d2 = dx * dx + dy * dy + 0.01, d = Math.sqrt(d2);
+        var f = Math.min(REP / d2, 40), ux = dx / d * f, uy = dy / d * f;
+        nodes[i].vx += ux; nodes[i].vy += uy;
+        nodes[j].vx -= ux; nodes[j].vy -= uy;
       }
       edges.forEach(function (e) {
-        var a = idx[e.source], b = idx[e.target];
-        var dx = nodes[a].x - nodes[b].x, dy = nodes[a].y - nodes[b].y;
-        var d = Math.sqrt(dx * dx + dy * dy) || 0.01, f = d * d / k;
-        disp[a].x -= dx / d * f; disp[a].y -= dy / d * f;
-        disp[b].x += dx / d * f; disp[b].y += dy / d * f;
+        var a = nodes[e.s], b = nodes[e.t];
+        var dx = b.x - a.x, dy = b.y - a.y, d = Math.sqrt(dx * dx + dy * dy) || 0.01;
+        var f = (d - L) * SPR, ux = dx / d * f, uy = dy / d * f;
+        a.vx += ux; a.vy += uy; b.vx -= ux; b.vy -= uy;
       });
-      var temp = Math.max(2, 30 * (1 - it / 120));
-      nodes.forEach(function (nd, kk) {
-        var dl = Math.sqrt(disp[kk].x * disp[kk].x + disp[kk].y * disp[kk].y) || 0.01;
-        nd.x += disp[kk].x / dl * Math.min(dl, temp);
-        nd.y += disp[kk].y / dl * Math.min(dl, temp);
-        nd.x = Math.max(18, Math.min(W - 18, nd.x));
-        nd.y = Math.max(18, Math.min(H - 18, nd.y));
-      });
+      var maxd = 0;
+      for (i = 0; i < n; i++) {
+        var nd = nodes[i];
+        if (nd.fx != null) { nd.x = nd.fx; nd.y = nd.fy; nd.vx = 0; nd.vy = 0; continue; }
+        nd.vx = (nd.vx + (cx - nd.x) * GRAV) * DAMP;
+        nd.vy = (nd.vy + (cy - nd.y) * GRAV) * DAMP;
+        nd.vx = Math.max(-MAXV, Math.min(MAXV, nd.vx));
+        nd.vy = Math.max(-MAXV, Math.min(MAXV, nd.vy));
+        nd.x += nd.vx; nd.y += nd.vy;
+        maxd = Math.max(maxd, Math.abs(nd.vx) + Math.abs(nd.vy));
+      }
+      return maxd;
     }
-    var svg = document.getElementById("graph");
-    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
-    var s = "";
-    edges.forEach(function (e) {
-      var a = nodes[idx[e.source]], b = nodes[idx[e.target]];
-      s += "<line x1='" + a.x + "' y1='" + a.y + "' x2='" + b.x + "' y2='" + b.y + "'/>";
-    });
-    nodes.forEach(function (nd) {
-      var label = nd.title.length > 16 ? nd.title.slice(0, 15) + "…" : nd.title;
-      s += "<g class='node' data-page='" + nd.id + "'><circle cx='" + nd.x + "' cy='" + nd.y +
-        "' r='6' fill='" + (typeColor[nd.type] || "#888") + "'/><text x='" + nd.x + "' y='" +
-        (nd.y - 9) + "' text-anchor='middle'>" + esc(label) + "</text></g>";
-    });
-    svg.innerHTML = s;
-  }
 
-  function highlight(rel) {
-    var nodes = document.querySelectorAll("#graph .node");
-    for (var i = 0; i < nodes.length; i++) {
-      nodes[i].classList.toggle("active", nodes[i].getAttribute("data-page") === rel);
+    function draw() {
+      if (!gzoom) return;
+      var s = "", i;
+      for (i = 0; i < edges.length; i++) {
+        var a = nodes[edges[i].s], b = nodes[edges[i].t];
+        s += "<line x1='" + r2(a.x) + "' y1='" + r2(a.y) + "' x2='" + r2(b.x) +
+             "' y2='" + r2(b.y) + "'/>";
+      }
+      for (i = 0; i < nodes.length; i++) {
+        var nd = nodes[i];
+        var label = nd.title.length > 18 ? nd.title.slice(0, 17) + "…" : nd.title;
+        s += "<g class='node" + (nd.id === activeRel ? " active" : "") + "' data-page='" +
+             esc(nd.id) + "'><circle cx='" + r2(nd.x) + "' cy='" + r2(nd.y) + "' r='7' fill='" +
+             (typeColor[nd.type] || "#888") + "'/><text x='" + r2(nd.x) + "' y='" +
+             r2(nd.y - 11) + "' text-anchor='middle'>" + esc(label) + "</text></g>";
+      }
+      gzoom.innerHTML = s;
+      gzoom.setAttribute("transform", "translate(" + r2(view.x) + "," + r2(view.y) +
+        ") scale(" + (Math.round(view.k * 1000) / 1000) + ")");
     }
-  }
+
+    function frame() {
+      var moving = simStep();
+      draw();
+      if (dragNode || moving > 0.4) { raf = requestAnimationFrame(frame); }
+      else { animating = false; raf = null; }
+    }
+    function reheat() { if (!animating) { animating = true; raf = requestAnimationFrame(frame); } }
+
+    function size() {
+      var r = svg.getBoundingClientRect();
+      return { w: r.width || 600, h: r.height || 360, left: r.left, top: r.top };
+    }
+
+    function refit() {
+      if (!svg) return;
+      if (!nodes.length) { draw(); return; }
+      var sz = size(), minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+      nodes.forEach(function (n) {
+        minx = Math.min(minx, n.x); miny = Math.min(miny, n.y);
+        maxx = Math.max(maxx, n.x); maxy = Math.max(maxy, n.y);
+      });
+      var bw = (maxx - minx) || 1, bh = (maxy - miny) || 1, pad = 50;
+      view.k = Math.max(0.2, Math.min(2, Math.min((sz.w - pad) / bw, (sz.h - pad) / bh)));
+      view.x = sz.w / 2 - (minx + maxx) / 2 * view.k;
+      view.y = sz.h / 2 - (miny + maxy) / 2 * view.k;
+      draw();
+    }
+
+    function zoomAt(factor, px, py) {
+      var nk = Math.max(0.2, Math.min(4, view.k * factor));
+      var wx = (px - view.x) / view.k, wy = (py - view.y) / view.k;
+      view.k = nk; view.x = px - wx * nk; view.y = py - wy * nk;
+      draw();
+    }
+    function zoom(factor) { var sz = size(); zoomAt(factor, sz.w / 2, sz.h / 2); }
+
+    function toWorld(ev) {
+      var sz = size();
+      return { x: (ev.clientX - sz.left - view.x) / view.k,
+               y: (ev.clientY - sz.top - view.y) / view.k };
+    }
+
+    function onDown(ev) {
+      var g = ev.target.closest ? ev.target.closest(".node") : null;
+      last = { x: ev.clientX, y: ev.clientY }; moved = false;
+      if (g) {
+        dragNode = nodes[idx[g.getAttribute("data-page")]];
+        dragNode.fx = dragNode.x; dragNode.fy = dragNode.y;  // pin in place until moved
+      } else { panning = true; svg.classList.add("grabbing"); }
+      ev.preventDefault();
+    }
+    function onMove(ev) {
+      if (!dragNode && !panning) return;
+      var dx = ev.clientX - last.x, dy = ev.clientY - last.y;
+      if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+      if (dragNode) {
+        var w = toWorld(ev);
+        dragNode.fx = w.x; dragNode.fy = w.y; dragNode.x = w.x; dragNode.y = w.y;
+        reheat();
+      } else if (panning) { view.x += dx; view.y += dy; draw(); }
+      last = { x: ev.clientX, y: ev.clientY };
+    }
+    function onUp() {
+      if (dragNode) {
+        var node = dragNode;
+        dragNode.fx = null; dragNode.fy = null; dragNode = null;
+        if (!moved) { openPage(node.id); }  // a click (no drag) opens the page
+        reheat();
+      }
+      panning = false; if (svg) svg.classList.remove("grabbing");
+    }
+
+    function init() {
+      svg = document.getElementById("graph");
+      svg.innerHTML = "<g id='gzoom'></g>";
+      gzoom = document.getElementById("gzoom");
+      buildModel();
+      settle();
+      refit();
+      svg.addEventListener("mousedown", onDown);
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+      svg.addEventListener("wheel", function (ev) {
+        ev.preventDefault();
+        var sz = size();
+        zoomAt(ev.deltaY < 0 ? 1.12 : 1 / 1.12, ev.clientX - sz.left, ev.clientY - sz.top);
+      }, { passive: false });
+    }
+
+    function setActive(rel) { activeRel = rel; draw(); }
+
+    return { init: init, zoom: zoom, refit: refit, setActive: setActive };
+  })();
 
   function openPage(rel) {
     var p = PAGES[rel];
@@ -464,10 +624,12 @@ _VIEWER_JS = r'''
       (p.description ? "<p class='desc'>" + esc(p.description) + "</p>" : "") + back + "<hr>" +
       mdToHtml(p.body, p.rel_path);
     document.getElementById("reader").scrollTop = 0;
-    highlight(rel);
+    Graph.setActive(rel);
   }
 
   document.addEventListener("click", function (ev) {
+    // The graph pane (nodes + toolbar) handles its own pointer events.
+    if (ev.target.closest && ev.target.closest("#graph-pane")) return;
     var a = ev.target.closest("[data-page]");
     if (a) { ev.preventDefault(); openPage(a.getAttribute("data-page")); return; }
     var tg = ev.target.closest("[data-tag]");
@@ -481,7 +643,30 @@ _VIEWER_JS = r'''
 
   renderTags();
   renderSidebar();
-  renderGraph();
+  Graph.init();
+
+  // Map toolbar: collapse (give the reader full height), zoom, fit.
+  var content = document.getElementById("content");
+  var collapseBtn = document.getElementById("g-collapse");
+  function setCollapsed(c) {
+    content.classList.toggle("map-collapsed", c);
+    collapseBtn.textContent = c ? "▸" : "▾";  // ▸ / ▾
+    collapseBtn.title = c ? "Show map" : "Collapse map";
+    try { localStorage.setItem("okf_map_collapsed", c ? "1" : "0"); } catch (e) {}
+    if (!c) Graph.refit();  // pane size changed — re-fit the layout
+  }
+  collapseBtn.addEventListener("click", function () {
+    setCollapsed(!content.classList.contains("map-collapsed"));
+  });
+  document.getElementById("g-zoomin").addEventListener("click", function () { Graph.zoom(1.25); });
+  document.getElementById("g-zoomout").addEventListener("click", function () { Graph.zoom(0.8); });
+  document.getElementById("g-fit").addEventListener("click", function () { Graph.refit(); });
+  try { if (localStorage.getItem("okf_map_collapsed") === "1") setCollapsed(true); } catch (e) {}
+  var rt;
+  window.addEventListener("resize", function () {
+    clearTimeout(rt); rt = setTimeout(function () { Graph.refit(); }, 150);
+  });
+
   var initial = decodeURIComponent((location.hash || "").slice(1));
   if (initial && PAGES[initial]) openPage(initial);
   else if (BUNDLE.pages.length) openPage(BUNDLE.pages[0].rel_path);
@@ -505,7 +690,17 @@ _TEMPLATE = """<!doctype html>
     <nav id="page-list"></nav>
   </aside>
   <main id="content">
-    <section id="graph-pane"><svg id="graph"></svg></section>
+    <section id="graph-pane">
+      <div id="graph-bar">
+        <span id="graph-title">Map</span>
+        <span class="spacer"></span>
+        <button class="gbtn" id="g-zoomout" title="Zoom out" type="button">&#8722;</button>
+        <button class="gbtn" id="g-zoomin" title="Zoom in" type="button">+</button>
+        <button class="gbtn" id="g-fit" title="Fit to view" type="button">&#10530;</button>
+        <button class="gbtn" id="g-collapse" title="Collapse map" type="button">&#9662;</button>
+      </div>
+      <svg id="graph"></svg>
+    </section>
     <article id="reader"></article>
   </main>
 </div>

@@ -8,11 +8,13 @@ Pure static analysis over the loaded wiki:
   (5) missing_type   = frontmatter without a 'type'
   (6) stale          = timestamp older than stale_days
 
-REFINEMENT: ok() returns True unless there are missing_type OR broken_links (the
-structural-integrity problems). contradictions/orphans/missing_cites/stale are
-ADVISORY — render() still lists every category with counts, but they do NOT flip
-ok(). This keeps `okf-wiki lint` green on an empty seeded wiki and avoids failing
-on the advisory missing-cites heuristic.
+REFINEMENT: ok() returns True unless there are STRUCTURAL problems — missing_type,
+broken_links, bad_sources (a fact citing a missing raw/ file), or wikilinks (a
+``[[wiki-style]]`` link). contradictions/orphans/missing_cites/stale/llm_facts/
+suggested_links are ADVISORY — render() lists every category with counts, but they do
+NOT flip ok(). The per-page citation (source) and wikilink checks are shared with the
+ingest gate via :mod:`okf_wiki.validate`. This keeps `okf-wiki lint` green on an empty
+seeded wiki and avoids failing on the advisory missing-cites heuristic.
 """
 
 from __future__ import annotations
@@ -22,9 +24,9 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from . import config
 from . import okf
 from . import store
+from . import validate
 from .okf import Page
 
 CONTRADICTION_MARKER = "> [!CONTRADICTION]"
@@ -48,14 +50,18 @@ class LintReport:
     llm_facts: list[str] = field(default_factory=list)             # rel_paths (advisory)
     # (rel_path, "links to add"): page mentions another page's title but doesn't link it.
     suggested_links: list[tuple[str, str]] = field(default_factory=list)  # advisory
+    wikilinks: list[tuple[str, str]] = field(default_factory=list)  # (rel_path, [[target]])
 
     def ok(self) -> bool:
-        """True unless there are structural-integrity problems: missing_type, broken_links
-        OR bad_sources (a RAW fact citing a raw/ file that does not exist — fabricated or
-        mistyped provenance). The other categories — including llm_facts (pages carrying
-        model-supplied facts, surfaced for transparency) — are advisory and do NOT flip
+        """True unless there are structural-integrity problems: missing_type, broken_links,
+        bad_sources (a RAW fact citing a raw/ file that does not exist — fabricated or
+        mistyped provenance), OR wikilinks (a ``[[wiki-style]]`` link, which this wiki does not
+        use — it silently breaks navigation). The other categories — including llm_facts (pages
+        carrying model-supplied facts, surfaced for transparency) — are advisory and do NOT flip
         ok()."""
-        return not (self.missing_type or self.broken_links or self.bad_sources)
+        return not (
+            self.missing_type or self.broken_links or self.bad_sources or self.wikilinks
+        )
 
     def render(self) -> str:
         """Human-readable report; lists every category with counts."""
@@ -99,11 +105,15 @@ class LintReport:
         for rel, target in self.suggested_links:
             lines.append(f"  - {rel} -> {target}")
 
+        lines.append(f"Wiki-style [[links]] (not allowed): {len(self.wikilinks)}")
+        for rel, target in self.wikilinks:
+            lines.append(f"  - {rel} -> [[{target}]]")
+
         lines.append("")
         lines.append(
             "OK"
             if self.ok()
-            else "FAIL (missing type, broken links, or fabricated sources)"
+            else "FAIL (missing type, broken links, fabricated sources, or [[wiki-links]])"
         )
         return "\n".join(lines)
 
@@ -134,75 +144,6 @@ def _outbound_links(page: Page) -> list[str]:
 def _has_footnote(paragraph: str) -> bool:
     """True if a [^sN]-style footnote marker is present."""
     return FOOTNOTE_RE.search(paragraph) is not None
-
-
-_DEF_LINE_RE = re.compile(r"^\s*\[\^([\w.-]+)\]:\s*(.*)$")
-# First markdown link on a definition line; tolerates a <url> form and stops the URL at
-# whitespace so a `(url "title")` link title is not swallowed into the path.
-_DEF_LINK_RE = re.compile(r"\[[^\]]*\]\(\s*<?([^)\s>]+)>?")
-# A footnote marker USED on a fact (not a definition — i.e. not followed by ':').
-_USED_MARKER_RE = re.compile(r"\[\^([\w.-]+)\](?!:)")
-
-
-def _bad_source_targets(page: Page) -> list[str]:
-    """Structural guard against fabricated/unverifiable provenance. Returns a detail string
-    for each problem found:
-
-      1. a raw-fact definition (``[^sN]``, not ``[^llmN]``) whose linked file does not exist;
-      2. a raw-fact definition with no resolvable ``[..](path)`` link (bare/malformed line);
-      3. a footnote marker used on a fact but never defined in ``## Sources``.
-
-    Model-supplied (``[^llmN]``) facts are exempt — they cite "LLM", not a raw file. The
-    check is purely STRUCTURAL: it confirms a citation points at a real file and is defined;
-    it does NOT verify the cited file actually contains the fact. Definitions are read only
-    inside the ``## Sources`` section and code fences are skipped, so a page that documents
-    the citation format is not falsely flagged. Resolution is by path math from the page's
-    location under WIKI_DIR, so it works on synthetic (not-yet-written) pages too; only the
-    cited SOURCE file must exist on disk.
-    """
-    page_dir = os.path.dirname(str(config.WIKI_DIR / page.rel_path))
-    in_fence = False
-    in_sources = False
-    defined: set[str] = set()
-    used: set[str] = set()
-    bad: list[str] = []
-
-    for line in page.body.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        if stripped.startswith("#"):
-            in_sources = bool(re.match(r"#+\s*sources\b", stripped, re.IGNORECASE))
-            continue
-
-        mdef = _DEF_LINE_RE.match(line)
-        if mdef and in_sources:
-            marker_id, rest = mdef.group(1), mdef.group(2)
-            defined.add(marker_id)
-            if marker_id.lower().startswith("llm"):
-                continue  # model-supplied fact: cites "LLM", no raw file expected
-            link = _DEF_LINK_RE.search(rest)
-            if not link:
-                bad.append(f"[^{marker_id}]: no resolvable source link")
-                continue
-            target = link.group(1).strip()
-            if "://" in target or target.startswith("#"):
-                continue
-            resolved = os.path.normpath(os.path.join(page_dir, target))
-            if not os.path.exists(resolved):
-                bad.append(target)
-            continue
-
-        # Usage line: collect every marker that is not itself a definition.
-        used.update(_USED_MARKER_RE.findall(line))
-
-    # A fact tagged with a marker that is never defined is unverifiable provenance.
-    for marker_id in sorted(used - defined):
-        bad.append(f"[^{marker_id}] used but undefined")
-    return bad
 
 
 def _is_stale(page: Page, stale_days: int) -> bool:
@@ -357,8 +298,12 @@ def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
             report.stale.append(page.rel_path)
 
         # bad_sources: a RAW fact cites a raw/ source file that does not exist.
-        for target in _bad_source_targets(page):
+        for target in validate.source_issues(page.rel_path, page.body):
             report.bad_sources.append((page.rel_path, target))
+
+        # wikilinks (structural): [[wiki-style]] links are not allowed.
+        for target in validate.wikilink_targets(page.body):
+            report.wikilinks.append((page.rel_path, target))
 
         # llm_facts (advisory): page carries one or more model-supplied facts.
         if LLM_MARKER_RE.search(page.body):
@@ -378,4 +323,5 @@ def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
     report.bad_sources.sort()
     report.llm_facts.sort()
     report.suggested_links.sort()
+    report.wikilinks.sort()
     return report

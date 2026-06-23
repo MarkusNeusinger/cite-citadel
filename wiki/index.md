@@ -3,117 +3,133 @@
 See also: [concepts](concepts/index.md)
 
 ## Concept
-- [Arabica and Robusta](concepts/arabica-and-robusta.md) — Arabica and Robusta: The two primary coffee species that account for most global production, compared by altitude, flavor, caffeine content, cost, and geographic origins.
-  - ↳ referenced by: [Caffeine Content in Coffee](concepts/caffeine-content-in-coffee.md), [History of Coffee](concepts/coffee-history.md), [Coffee Origins](concepts/coffee-origins.md), [Coffee Processing](concepts/coffee-processing.md), [Coffee](concepts/coffee.md), [Espresso](concepts/espresso.md)
-- [Caffeine Content in Coffee](concepts/caffeine-content-in-coffee.md) — How caffeine varies by coffee species, brew method, and serving size; debunking myths about espresso and dark roast.
-  - ↳ referenced by: [Coffee and Health](concepts/coffee-and-health.md), [Coffee](concepts/coffee.md), [Cold Brew and Iced Coffee](concepts/cold-brew.md), [Decaffeination](concepts/decaffeination.md), [Espresso](concepts/espresso.md)
-- [Coffee and Health](concepts/coffee-and-health.md) — The health effects of coffee in moderation versus excess — its role as a mild stimulant and diuretic, and the wide individual variation in sensitivity.
-  - ↳ referenced by: [Coffee](concepts/coffee.md), [Decaffeination](concepts/decaffeination.md)
-- [Coffee Brewing Ratios](concepts/coffee-brewing-ratios.md) — Coffee-to-water ratios and brewing methods for different preparation techniques
-  - ↳ referenced by: [Caffeine Content in Coffee](concepts/caffeine-content-in-coffee.md), [Coffee](concepts/coffee.md), [Cold Brew and Iced Coffee](concepts/cold-brew.md), [Espresso Extraction](concepts/espresso-extraction.md), [French Press](concepts/french-press.md), [Moka Pot](concepts/moka-pot.md), [Pour-over](concepts/pour-over.md), [Water for Coffee](concepts/water-for-coffee.md)
-- [History of Coffee](concepts/coffee-history.md) — How coffee spread from the Ethiopian highlands through Yemen and the Arab world to Europe and the global "Bean Belt", and where it is grown today.
-  - ↳ referenced by: [Coffee](concepts/coffee.md)
-- [Coffee Origins](concepts/coffee-origins.md) — Global coffee-producing regions and their characteristic flavor profiles, shaped by altitude, processing methods, and variety.
-  - ↳ referenced by: [History of Coffee](concepts/coffee-history.md), [Coffee Processing](concepts/coffee-processing.md), [Coffee](concepts/coffee.md), [Roast Levels](concepts/roast-levels.md)
-- [Coffee Processing](concepts/coffee-processing.md) — How green coffee is processed — washed, natural, honey, and anaerobic methods — and why processing shapes the cup as much as variety or origin.
-  - ↳ referenced by: [Coffee](concepts/coffee.md)
-- [Coffee Storage](concepts/coffee-storage.md) — How to store roasted coffee for freshness — whole, airtight, away from light, heat and moisture, and ground just before brewing.
-  - ↳ referenced by: [Coffee](concepts/coffee.md)
-- [Coffee](concepts/coffee.md) — Overview of coffee — a brewed drink from the roasted seeds of the Coffea plant — and a hub linking the species, processing, roasting, brewing, caffeine, health, and storage pages.
-  - ↳ referenced by: [Coffee and Health](concepts/coffee-and-health.md), [History of Coffee](concepts/coffee-history.md), [Coffee Storage](concepts/coffee-storage.md), [Decaffeination](concepts/decaffeination.md), [Espresso](concepts/espresso.md), [Espresso Milk Drinks](concepts/milk-drinks.md), [Moka Pot](concepts/moka-pot.md), [Water for Coffee](concepts/water-for-coffee.md)
-- [Cold Brew and Iced Coffee](concepts/cold-brew.md) — The difference between cold brew and iced coffee, preparation methods, and why they taste different.
-  - ↳ referenced by: [Coffee](concepts/coffee.md)
-- [Decaffeination](concepts/decaffeination.md) — How decaffeinated coffee is made — removing 97%+ of caffeine from green beans by solvent, water, or CO₂ — and the small residual that remains.
-  - ↳ referenced by: [Coffee and Health](concepts/coffee-and-health.md), [Coffee](concepts/coffee.md)
-- [Espresso Extraction](concepts/espresso-extraction.md) — How an espresso shot extracts and how to dial it in — dose, yield, grind and time, extraction yield vs TDS, puck prep, pre-infusion, and temperature.
-  - ↳ referenced by: [Espresso Milk Drinks](concepts/milk-drinks.md), [Water for Coffee](concepts/water-for-coffee.md)
-- [Espresso](concepts/espresso.md) — A coffee brewing method using pressure and finely-ground coffee.
-  - ↳ referenced by: [Coffee](concepts/coffee.md), [Espresso Extraction](concepts/espresso-extraction.md), [Espresso Milk Drinks](concepts/milk-drinks.md), [Moka Pot](concepts/moka-pot.md), [Roast Levels](concepts/roast-levels.md), [Water for Coffee](concepts/water-for-coffee.md)
-- [French Press](concepts/french-press.md) — A full-immersion brewing method where coffee steeps directly in water, then a metal mesh plunger separates the grounds, producing a heavy-bodied, rich cup.
-  - ↳ referenced by: [Coffee](concepts/coffee.md)
-- [Grind Size](concepts/grind-size.md) — How grind size affects extraction and why consistency matters more than absolute size
-  - ↳ referenced by: [Coffee Processing](concepts/coffee-processing.md), [Coffee Storage](concepts/coffee-storage.md), [Coffee](concepts/coffee.md), [Espresso Extraction](concepts/espresso-extraction.md), [Water for Coffee](concepts/water-for-coffee.md)
-- [Espresso Milk Drinks](concepts/milk-drinks.md) — Espresso-based milk drinks (macchiato, cortado, flat white, cappuccino, latte, mocha) organized by milk-to-foam ratio, plus milk steaming, microfoam, and latte art.
-- [Moka Pot](concepts/moka-pot.md) — A stovetop brewer that uses steam pressure to push water up through coffee grounds, producing a strong, concentrated cup.
-  - ↳ referenced by: [Coffee](concepts/coffee.md), [Espresso](concepts/espresso.md)
-- [Pour-over](concepts/pour-over.md) — A manual filter brewing method using gravity to extract coffee through grounds and paper
-  - ↳ referenced by: [Coffee](concepts/coffee.md), [Moka Pot](concepts/moka-pot.md)
-- [Roast Levels](concepts/roast-levels.md) — Coffee roast levels from light to dark, their colors, flavors, and characteristics.
-  - ↳ referenced by: [Coffee Processing](concepts/coffee-processing.md), [Coffee](concepts/coffee.md), [Espresso Extraction](concepts/espresso-extraction.md)
-- [Water for Coffee](concepts/water-for-coffee.md) — How water chemistry — hardness, buffer/alkalinity, and TDS — shapes coffee flavor, the SCA targets to aim for, and what to avoid.
+- [AeroPress](concepts/aeropress.md) — A manual hybrid brewer combining immersion steeping with gentle pressure through a paper micro-filter
+  - ↳ referenced by: [Brewing Ratios](concepts/brewing-ratios.md), [French Press](concepts/french-press.md), [Pour-over](concepts/pour-over.md)
+- [Arabica and Robusta](concepts/arabica-and-robusta.md) — The two dominant coffee species accounting for almost all global coffee production
+  - ↳ referenced by: [Brewing Ratios](concepts/brewing-ratios.md), [Caffeine in Coffee](concepts/caffeine-in-coffee.md), [Coffee and Health](concepts/coffee-and-health.md), [Coffee History](concepts/coffee-history.md), [Coffee Origins](concepts/coffee-origins.md), [Coffee Processing](concepts/coffee-processing.md), [Coffee Trade](concepts/coffee-trade.md), [Espresso](concepts/espresso.md), [Roasting](concepts/roasting.md)
+- [Brewing Ratios](concepts/brewing-ratios.md) — Coffee-to-water weight ratios for different brewing methods
+  - ↳ referenced by: [AeroPress](concepts/aeropress.md), [Caffeine in Coffee](concepts/caffeine-in-coffee.md), [Coffee Grinders](concepts/coffee-grinders.md), [Coffee Processing](concepts/coffee-processing.md), [Coffee Storage](concepts/coffee-storage.md), [Cold Brew](concepts/cold-brew.md), [Espresso](concepts/espresso.md), [French Press](concepts/french-press.md), [Grinding](concepts/grinding.md), [Pour-over](concepts/pour-over.md), [Water for Coffee](concepts/water-for-coffee.md)
+- [Caffeine in Coffee](concepts/caffeine-in-coffee.md) — How much caffeine is in different coffee drinks and what factors affect it
+  - ↳ referenced by: [Arabica and Robusta](concepts/arabica-and-robusta.md), [Brewing Ratios](concepts/brewing-ratios.md), [Coffee and Health](concepts/coffee-and-health.md), [Coffee Origins](concepts/coffee-origins.md), [Cold Brew](concepts/cold-brew.md), [Decaf](concepts/decaf.md), [Espresso](concepts/espresso.md), [Roasting](concepts/roasting.md)
+- [Coffee and Health](concepts/coffee-and-health.md) — Health effects of coffee and caffeine — benefits, risks, pregnancy, antioxidants, and disease associations
+  - ↳ referenced by: [Caffeine in Coffee](concepts/caffeine-in-coffee.md), [Decaf](concepts/decaf.md)
+- [Coffee Grinders](concepts/coffee-grinders.md) — Blade vs burr grinders, burr geometries, adjustment, and the everyday issues of retention and static
+  - ↳ referenced by: [Espresso](concepts/espresso.md), [Grinding](concepts/grinding.md)
+- [Coffee History](concepts/coffee-history.md) — The origins and global spread of coffee cultivation and consumption
+  - ↳ referenced by: [Arabica and Robusta](concepts/arabica-and-robusta.md), [Coffee Origins](concepts/coffee-origins.md), [Coffee Trade](concepts/coffee-trade.md)
+- [Coffee Origins](concepts/coffee-origins.md) — Where coffee grows around the world and how origin affects flavor
+  - ↳ referenced by: [Arabica and Robusta](concepts/arabica-and-robusta.md), [Caffeine in Coffee](concepts/caffeine-in-coffee.md), [Coffee History](concepts/coffee-history.md), [Coffee Processing](concepts/coffee-processing.md), [Coffee Trade](concepts/coffee-trade.md), [Decaf](concepts/decaf.md), [Water for Coffee](concepts/water-for-coffee.md)
+- [Coffee Processing](concepts/coffee-processing.md) — Methods for separating coffee beans from fruit and drying them to stable moisture
+  - ↳ referenced by: [Coffee History](concepts/coffee-history.md), [Coffee Origins](concepts/coffee-origins.md), [Coffee Storage](concepts/coffee-storage.md), [Decaf](concepts/decaf.md), [Roasting](concepts/roasting.md)
+- [Coffee Storage](concepts/coffee-storage.md) — How to store roasted coffee beans to preserve freshness and flavor
+  - ↳ referenced by: [Coffee Grinders](concepts/coffee-grinders.md), [Coffee Processing](concepts/coffee-processing.md), [Cold Brew](concepts/cold-brew.md)
+- [Coffee Trade](concepts/coffee-trade.md) — Coffee as a global commodity — futures markets, price volatility, and fair-trade, direct-trade, and specialty movements
+  - ↳ referenced by: [Arabica and Robusta](concepts/arabica-and-robusta.md), [Coffee History](concepts/coffee-history.md), [Coffee Origins](concepts/coffee-origins.md)
+- [Cold Brew](concepts/cold-brew.md) — A smooth, low-acid coffee made by steeping grounds in cold water for 12–24 hours
+  - ↳ referenced by: [Brewing Ratios](concepts/brewing-ratios.md), [Coffee Grinders](concepts/coffee-grinders.md), [French Press](concepts/french-press.md), [Grinding](concepts/grinding.md), [Pour-over](concepts/pour-over.md), [Water for Coffee](concepts/water-for-coffee.md)
+- [Decaf](concepts/decaf.md) — Decaffeinated coffee and caffeine removal processes
+  - ↳ referenced by: [Coffee and Health](concepts/coffee-and-health.md)
+- [Espresso](concepts/espresso.md) — A concentrated coffee shot pulled under pressure and the foundation for milk-based coffee drinks
+  - ↳ referenced by: [AeroPress](concepts/aeropress.md), [Arabica and Robusta](concepts/arabica-and-robusta.md), [Brewing Ratios](concepts/brewing-ratios.md), [Coffee Grinders](concepts/coffee-grinders.md), [Coffee Trade](concepts/coffee-trade.md), [French Press](concepts/french-press.md), [Grinding](concepts/grinding.md), [Milk Drinks](concepts/milk-drinks.md), [Milk Steaming and Latte Art](concepts/milk-steaming-and-latte-art.md), [Pour-over](concepts/pour-over.md), [Water for Coffee](concepts/water-for-coffee.md)
+- [French Press](concepts/french-press.md) — A full-immersion brewing method using a metal mesh plunger to separate grounds
+  - ↳ referenced by: [AeroPress](concepts/aeropress.md), [Brewing Ratios](concepts/brewing-ratios.md), [Coffee Grinders](concepts/coffee-grinders.md), [Cold Brew](concepts/cold-brew.md), [Grinding](concepts/grinding.md), [Pour-over](concepts/pour-over.md), [Water for Coffee](concepts/water-for-coffee.md)
+- [Grinding](concepts/grinding.md) — How grind size controls extraction speed and how to choose the right grind for your brewing method
+  - ↳ referenced by: [AeroPress](concepts/aeropress.md), [Brewing Ratios](concepts/brewing-ratios.md), [Coffee Grinders](concepts/coffee-grinders.md), [Coffee Storage](concepts/coffee-storage.md), [Cold Brew](concepts/cold-brew.md), [Espresso](concepts/espresso.md), [French Press](concepts/french-press.md), [Milk Drinks](concepts/milk-drinks.md), [Pour-over](concepts/pour-over.md), [Roasting](concepts/roasting.md), [Water for Coffee](concepts/water-for-coffee.md)
+- [Milk Drinks](concepts/milk-drinks.md) — Espresso drinks with steamed milk in different proportions and milk steaming techniques
+  - ↳ referenced by: [Cold Brew](concepts/cold-brew.md), [Espresso](concepts/espresso.md), [Milk Steaming and Latte Art](concepts/milk-steaming-and-latte-art.md)
+- [Milk Steaming and Latte Art](concepts/milk-steaming-and-latte-art.md) — Steaming milk into microfoam and free-pouring it over crema to make hearts, rosettas, and tulips
+  - ↳ referenced by: [Espresso](concepts/espresso.md), [Milk Drinks](concepts/milk-drinks.md)
+- [Pour-over](concepts/pour-over.md) — A manual filter brewing method where hot water is poured over grounds
+  - ↳ referenced by: [AeroPress](concepts/aeropress.md), [Brewing Ratios](concepts/brewing-ratios.md), [Coffee Grinders](concepts/coffee-grinders.md), [Grinding](concepts/grinding.md), [Water for Coffee](concepts/water-for-coffee.md)
+- [Roasting](concepts/roasting.md) — How roasting develops coffee flavor and controls roast level darkness
+  - ↳ referenced by: [Arabica and Robusta](concepts/arabica-and-robusta.md), [Brewing Ratios](concepts/brewing-ratios.md), [Caffeine in Coffee](concepts/caffeine-in-coffee.md), [Coffee Origins](concepts/coffee-origins.md), [Coffee Processing](concepts/coffee-processing.md), [Coffee Storage](concepts/coffee-storage.md), [Coffee Trade](concepts/coffee-trade.md), [Decaf](concepts/decaf.md), [Espresso](concepts/espresso.md), [Grinding](concepts/grinding.md), [Milk Drinks](concepts/milk-drinks.md), [Milk Steaming and Latte Art](concepts/milk-steaming-and-latte-art.md)
+- [Water for Coffee](concepts/water-for-coffee.md) — Water chemistry and its critical impact on coffee flavor, extraction, and equipment
 
 ## Tags
 
-### arabica (2)
-- [Arabica and Robusta](concepts/arabica-and-robusta.md)
-- [Coffee Origins](concepts/coffee-origins.md)
+### antioxidants (1)
+- [Coffee and Health](concepts/coffee-and-health.md)
 
-### beverage (1)
-- [Coffee](concepts/coffee.md)
-
-### brewing (9)
-- [Caffeine Content in Coffee](concepts/caffeine-content-in-coffee.md)
-- [Coffee Brewing Ratios](concepts/coffee-brewing-ratios.md)
-- [Cold Brew and Iced Coffee](concepts/cold-brew.md)
-- [Espresso Extraction](concepts/espresso-extraction.md)
+### brewing (10)
+- [AeroPress](concepts/aeropress.md)
+- [Brewing Ratios](concepts/brewing-ratios.md)
+- [Caffeine in Coffee](concepts/caffeine-in-coffee.md)
+- [Cold Brew](concepts/cold-brew.md)
 - [Espresso](concepts/espresso.md)
 - [French Press](concepts/french-press.md)
-- [Moka Pot](concepts/moka-pot.md)
+- [Grinding](concepts/grinding.md)
+- [Milk Drinks](concepts/milk-drinks.md)
 - [Pour-over](concepts/pour-over.md)
 - [Water for Coffee](concepts/water-for-coffee.md)
 
-### caffeine (3)
-- [Caffeine Content in Coffee](concepts/caffeine-content-in-coffee.md)
-- [Coffee and Health](concepts/coffee-and-health.md)
-- [Decaffeination](concepts/decaffeination.md)
-
-### coffee (15)
+### caffeine (4)
 - [Arabica and Robusta](concepts/arabica-and-robusta.md)
+- [Caffeine in Coffee](concepts/caffeine-in-coffee.md)
 - [Coffee and Health](concepts/coffee-and-health.md)
-- [Coffee Brewing Ratios](concepts/coffee-brewing-ratios.md)
-- [History of Coffee](concepts/coffee-history.md)
+- [Decaf](concepts/decaf.md)
+
+### chemistry (1)
+- [Water for Coffee](concepts/water-for-coffee.md)
+
+### coffee (21)
+- [AeroPress](concepts/aeropress.md)
+- [Arabica and Robusta](concepts/arabica-and-robusta.md)
+- [Brewing Ratios](concepts/brewing-ratios.md)
+- [Caffeine in Coffee](concepts/caffeine-in-coffee.md)
+- [Coffee and Health](concepts/coffee-and-health.md)
+- [Coffee Grinders](concepts/coffee-grinders.md)
+- [Coffee History](concepts/coffee-history.md)
 - [Coffee Origins](concepts/coffee-origins.md)
 - [Coffee Processing](concepts/coffee-processing.md)
 - [Coffee Storage](concepts/coffee-storage.md)
-- [Coffee](concepts/coffee.md)
-- [Cold Brew and Iced Coffee](concepts/cold-brew.md)
-- [Decaffeination](concepts/decaffeination.md)
+- [Coffee Trade](concepts/coffee-trade.md)
+- [Cold Brew](concepts/cold-brew.md)
+- [Decaf](concepts/decaf.md)
 - [Espresso](concepts/espresso.md)
-- [Grind Size](concepts/grind-size.md)
-- [Moka Pot](concepts/moka-pot.md)
+- [French Press](concepts/french-press.md)
+- [Grinding](concepts/grinding.md)
+- [Milk Drinks](concepts/milk-drinks.md)
+- [Milk Steaming and Latte Art](concepts/milk-steaming-and-latte-art.md)
 - [Pour-over](concepts/pour-over.md)
-- [Roast Levels](concepts/roast-levels.md)
+- [Roasting](concepts/roasting.md)
+- [Water for Coffee](concepts/water-for-coffee.md)
 
 ### cold-brew (1)
-- [Cold Brew and Iced Coffee](concepts/cold-brew.md)
+- [Cold Brew](concepts/cold-brew.md)
+
+### commodity (1)
+- [Coffee Trade](concepts/coffee-trade.md)
+
+### culture (1)
+- [Coffee History](concepts/coffee-history.md)
 
 ### decaf (1)
-- [Decaffeination](concepts/decaffeination.md)
+- [Decaf](concepts/decaf.md)
 
-### drinks (1)
-- [Espresso Milk Drinks](concepts/milk-drinks.md)
+### economics (1)
+- [Coffee Trade](concepts/coffee-trade.md)
 
-### espresso (4)
-- [Espresso Extraction](concepts/espresso-extraction.md)
+### equipment (1)
+- [Coffee Grinders](concepts/coffee-grinders.md)
+
+### espresso (3)
 - [Espresso](concepts/espresso.md)
-- [Espresso Milk Drinks](concepts/milk-drinks.md)
+- [Milk Drinks](concepts/milk-drinks.md)
+- [Milk Steaming and Latte Art](concepts/milk-steaming-and-latte-art.md)
+
+### extraction (3)
+- [Coffee Grinders](concepts/coffee-grinders.md)
+- [Grinding](concepts/grinding.md)
 - [Water for Coffee](concepts/water-for-coffee.md)
 
-### extraction (4)
-- [Cold Brew and Iced Coffee](concepts/cold-brew.md)
-- [Espresso Extraction](concepts/espresso-extraction.md)
-- [Grind Size](concepts/grind-size.md)
-- [Water for Coffee](concepts/water-for-coffee.md)
-
-### fermentation (1)
-- [Coffee Processing](concepts/coffee-processing.md)
-
-### filter (1)
+### filter (2)
+- [AeroPress](concepts/aeropress.md)
 - [Pour-over](concepts/pour-over.md)
 
-### flavor (2)
+### flavor (3)
+- [Coffee Origins](concepts/coffee-origins.md)
 - [Coffee Processing](concepts/coffee-processing.md)
-- [Roast Levels](concepts/roast-levels.md)
+- [Roasting](concepts/roasting.md)
 
 ### freshness (1)
 - [Coffee Storage](concepts/coffee-storage.md)
@@ -121,63 +137,56 @@ See also: [concepts](concepts/index.md)
 ### geography (1)
 - [Coffee Origins](concepts/coffee-origins.md)
 
-### grind (1)
-- [Espresso Extraction](concepts/espresso-extraction.md)
+### grinding (2)
+- [Coffee Grinders](concepts/coffee-grinders.md)
+- [Grinding](concepts/grinding.md)
 
-### grinder (1)
-- [Grind Size](concepts/grind-size.md)
+### harvest (1)
+- [Coffee Processing](concepts/coffee-processing.md)
 
-### health (1)
+### health (2)
+- [Caffeine in Coffee](concepts/caffeine-in-coffee.md)
 - [Coffee and Health](concepts/coffee-and-health.md)
 
 ### history (1)
-- [History of Coffee](concepts/coffee-history.md)
+- [Coffee History](concepts/coffee-history.md)
 
-### iced-coffee (1)
-- [Cold Brew and Iced Coffee](concepts/cold-brew.md)
-
-### immersion (1)
+### immersion (2)
+- [AeroPress](concepts/aeropress.md)
 - [French Press](concepts/french-press.md)
 
-### maintenance (1)
-- [Water for Coffee](concepts/water-for-coffee.md)
+### latte-art (1)
+- [Milk Steaming and Latte Art](concepts/milk-steaming-and-latte-art.md)
 
-### method (2)
-- [Coffee Brewing Ratios](concepts/coffee-brewing-ratios.md)
+### methods (6)
+- [AeroPress](concepts/aeropress.md)
+- [Brewing Ratios](concepts/brewing-ratios.md)
+- [Cold Brew](concepts/cold-brew.md)
+- [Espresso](concepts/espresso.md)
 - [French Press](concepts/french-press.md)
+- [Pour-over](concepts/pour-over.md)
 
-### milk (1)
-- [Espresso Milk Drinks](concepts/milk-drinks.md)
+### milk (2)
+- [Milk Drinks](concepts/milk-drinks.md)
+- [Milk Steaming and Latte Art](concepts/milk-steaming-and-latte-art.md)
 
-### moka-pot (1)
-- [Moka Pot](concepts/moka-pot.md)
-
-### myth (1)
-- [Caffeine Content in Coffee](concepts/caffeine-content-in-coffee.md)
-
-### origins (3)
-- [Arabica and Robusta](concepts/arabica-and-robusta.md)
-- [History of Coffee](concepts/coffee-history.md)
+### origins (2)
+- [Coffee History](concepts/coffee-history.md)
 - [Coffee Origins](concepts/coffee-origins.md)
 
-### overview (1)
-- [Coffee](concepts/coffee.md)
+### preservation (1)
+- [Coffee Storage](concepts/coffee-storage.md)
 
-### processing (1)
+### processing (3)
 - [Coffee Processing](concepts/coffee-processing.md)
+- [Decaf](concepts/decaf.md)
+- [Roasting](concepts/roasting.md)
 
 ### ratios (1)
-- [Coffee Brewing Ratios](concepts/coffee-brewing-ratios.md)
-
-### regions (1)
-- [Coffee Origins](concepts/coffee-origins.md)
+- [Brewing Ratios](concepts/brewing-ratios.md)
 
 ### roasting (1)
-- [Roast Levels](concepts/roast-levels.md)
-
-### robusta (2)
-- [Arabica and Robusta](concepts/arabica-and-robusta.md)
-- [Coffee Origins](concepts/coffee-origins.md)
+- [Roasting](concepts/roasting.md)
 
 ### species (1)
 - [Arabica and Robusta](concepts/arabica-and-robusta.md)
@@ -185,9 +194,14 @@ See also: [concepts](concepts/index.md)
 ### storage (1)
 - [Coffee Storage](concepts/coffee-storage.md)
 
-### technique (2)
-- [Grind Size](concepts/grind-size.md)
-- [Espresso Milk Drinks](concepts/milk-drinks.md)
+### trade (1)
+- [Coffee Trade](concepts/coffee-trade.md)
+
+### varieties (1)
+- [Arabica and Robusta](concepts/arabica-and-robusta.md)
 
 ### water (1)
 - [Water for Coffee](concepts/water-for-coffee.md)
+
+### wellness (1)
+- [Coffee and Health](concepts/coffee-and-health.md)

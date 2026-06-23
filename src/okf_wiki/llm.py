@@ -1,131 +1,34 @@
 """The ONLY place that talks to an LLM — through a coding-agent CLI, not an API key.
 
-Ingest shells out to a CLI (``claude``, ``copilot``, or ``gemini``) in headless
-print mode, so calls run on whatever subscription that CLI is already logged into
-(e.g. a Claude Max plan) and **no ANTHROPIC_API_KEY is needed**.
+Ingest shells out to a CLI (``claude``, ``copilot``, or ``gemini``) in **agentic** mode:
+the CLI is pointed at the repo (``cwd`` = repo root) with autonomous file tools, reads the
+raw source and the existing wiki itself, and **edits the wiki page files directly**. We pass
+only a short instruction that references files BY PATH — never file content — so the argv
+stays tiny (this is what kills the old Windows ``WinError 206`` argv-length limit) and the
+agent can handle an arbitrarily large raw file.
 
-- Pick the backend with ``OKF_LLM_CLI`` (``claude`` | ``copilot`` | ``gemini``;
-  default ``claude``), read via ``config.LLM_CLI``.
+- Pick the backend with ``OKF_LLM_CLI`` (``claude`` | ``copilot`` | ``gemini``; default
+  ``claude``), read via ``config.LLM_CLI``.
 - Override the binary path with ``CLAUDE_CODE_PATH`` / ``COPILOT_CLI_PATH`` /
-  ``GEMINI_CLI_PATH`` (matching the conventions of the user's other workflows).
-- The model for the ``claude`` CLI comes from ``config.INGEST_MODEL`` (an alias
-  like ``sonnet``/``opus``/``haiku`` or a full id). ``copilot``/``gemini`` use
+  ``GEMINI_CLI_PATH``.
+- The model for the ``claude`` CLI comes from ``config.INGEST_MODEL``. copilot/gemini use
   their own default model.
 
-Exactly one function does real work: ``plan_pages(raw_name, raw_text, digest)``
-builds the prompt (SCHEMA.md + standing rules + raw + digest), runs the CLI once,
-and returns a validated list of page-op dicts parsed from the model's JSON. Since
-a CLI can't enforce a JSON schema the way the API's ``output_config`` does, the
-prompt demands a single bare JSON object and the parser extracts it robustly.
+One function does real work: ``run_ingest_session(rel_key)`` runs the chosen CLI once against
+the repo. It has no return value — the result is whatever the agent wrote under ``wiki/``,
+which ``ingest`` discovers via a filesystem diff. It raises ``RuntimeError`` on a missing/
+unusable CLI, a non-zero exit, a claude ``is_error`` envelope, or a timeout (the failure
+surface ``ingest``'s per-source ``try/except`` already expects).
 """
 
 from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
 
 from . import config
-
-# Standing rules appended to SCHEMA.md in the ingest prompt.
-INGEST_RULES = (
-    "Standing ingest rules:\n"
-    "\n"
-    "GROUNDING — raw files are the primary truth; any model-added fact must be labeled:\n"
-    "- Build the page from the facts in the RAW FILE text given below. Rephrase into clean, "
-    "well-formed sentences and reorganize freely, but NEVER change the meaning, the numbers, "
-    "the names, or the claims of a raw fact.\n"
-    "- You MAY add a fact from your own knowledge ONLY when ALL THREE hold: it is ESSENTIAL "
-    "to understanding the topic, you are HIGHLY CONFIDENT it is correct, and it stays strictly "
-    "on topic. Do not pad, speculate, or wander — when in doubt, leave it out.\n"
-    "- Cite EVERY factual sentence with a footnote marker: use [^sN] (N = 1, 2, 3, ...) for a "
-    "fact taken from a raw file, and [^llmN] (a SEPARATE numbering) for a fact you added from "
-    "your own knowledge.\n"
-    "- Define each marker once in a trailing \"## Sources\" section:\n"
-    "    * raw fact:   `[^sN]: [raw/<file>](RELPATH_TO_RAW) - short note (ingested <date>)`, "
-    "where RELPATH_TO_RAW is a RELATIVE path from the page to the raw file (a page in "
-    "wiki/concepts/ reaches raw/ via ../../raw/<file>).\n"
-    "    * model fact: `[^llmN]: LLM - model knowledge, not from a raw file (added <date>)` "
-    "(NO file link).\n"
-    "- A [^sN] marker MUST point to a real raw file — never invent provenance or attribute a "
-    "fact to a raw file it did not come from. A fact you are not highly confident about is "
-    "dropped, NOT guessed and labeled [^llmN].\n"
-    "\n"
-    "ROUTING & RESTRUCTURING — keep the wiki clean as it grows:\n"
-    "- Route each piece of information to the page where it best FITS. Prefer extending "
-    "or merging into an existing page from the digest over creating a new one; create a "
-    "new page only when no existing page is a good home. Do NOT mechanically make one new "
-    "page per raw file.\n"
-    "- When you merge into an existing page, return its FULL merged body and keep ALL "
-    "prior facts and their [^sN] markers intact (re-number/preserve the Sources section "
-    "so every kept fact still resolves).\n"
-    "- YOU MAY RESTRUCTURE THE WIKI. To SPLIT a page that has grown too large or mixes "
-    "unrelated topics, emit one write op per focused new page (each carrying the moved "
-    "facts WITH their [^sN] citations) plus one delete op for the original. To MERGE two "
-    "pages on the same topic, emit one write op for the surviving page (full merged body, "
-    "citations from BOTH pages preserved) plus one delete op for the absorbed page.\n"
-    "- ALWAYS preserve every fact and its citation across a split or merge — never drop a "
-    "cited fact. Use op=\"delete\" ONLY for a page you have just superseded by a write, or "
-    "one that is now redundant/obsolete; never delete a page whose facts you have not "
-    "preserved elsewhere. Never delete index.md or log.md (the system regenerates them).\n"
-    "- NEVER emit a delete for a rel_path that one of your write ops also targets (a page "
-    "you are writing this run is one you want to keep, not remove).\n"
-    "- When you delete a page because its content moved into another page, set that op's "
-    "\"redirect\" to the surviving page's rel_path. The system then repoints every "
-    "cross-link that pointed at the deleted page to the survivor, so no link breaks.\n"
-    "\n"
-    "LINKS, TAGS & CONFLICTS:\n"
-    "- Build a DENSELY connected graph. Link to other wiki pages with RELATIVE markdown "
-    "links (e.g. ../concepts/foo.md), linking the FIRST mention of any concept that has "
-    "(or clearly should have) its own page. Use the page catalog in the digest to find "
-    "targets. Links are standard markdown — never [[wiki-style]] links.\n"
-    "- End each page with a \"## See also\" section (AFTER the body, BEFORE \"## Sources\"): "
-    "a short bulleted list of relative links to the most closely related pages. Omit it "
-    "only when nothing is genuinely related.\n"
-    "- Give each page 2-5 lowercase \"tags\" drawn from a shared vocabulary, REUSING "
-    "existing tag names from the digest where they fit, so pages are searchable and "
-    "browsable by topic.\n"
-    "- The page body is GitHub-flavored markdown ONLY: NEVER put a YAML \"---\" "
-    "frontmatter block inside the body — the system writes frontmatter from your op "
-    "fields (type/title/description/tags). The digest shows existing pages with their "
-    "frontmatter stripped for this reason.\n"
-    "- On conflict, never silently overwrite: insert a \"> [!CONTRADICTION]\" callout that "
-    "names both claims with both source markers.\n"
-    "- Use op=\"skip\" if the raw file adds nothing new."
-)
-
-# How the model must shape its answer (the CLI can't enforce a json_schema).
-OPS_FORMAT = (
-    "OUTPUT FORMAT — this is strict:\n"
-    "Reply with ONE JSON object and NOTHING else. No prose, no explanation, no "
-    "markdown code fences. The object must be exactly:\n"
-    '{"ops": [ {"op": "write" | "skip" | "delete", "type": "<OKF type, e.g. Concept, '
-    'Entity, Note>", "title": "<human title>", "rel_path": "<wiki-relative path, or '
-    'empty string to auto-route by type>", "description": "<one-line summary>", "tags": '
-    '["lowercase", "tags"], "body": "<full markdown page body: each fact ends in a [^sN] '
-    '(raw) or [^llmN] (model knowledge) footnote, then an optional ## See also section of '
-    'relative links, then a trailing ## Sources section>"} ] }\n'
-    'A "delete" op needs only rel_path (other fields may be omitted), plus an optional '
-    '"redirect" naming the surviving page that absorbs its inbound links: '
-    '{"op": "delete", "rel_path": "concepts/old.md", "redirect": "concepts/new.md"}.\n'
-    "SPLIT example — break concepts/big.md into two focused pages:\n"
-    '{"ops": [ {"op": "write", "type": "Concept", "title": "Topic A", "rel_path": "", '
-    '"description": "...", "tags": [], "body": "...moved facts with their [^sN]..."}, '
-    '{"op": "write", "type": "Concept", "title": "Topic B", "rel_path": "", '
-    '"description": "...", "tags": [], "body": "...moved facts with their [^sN]..."}, '
-    '{"op": "delete", "rel_path": "concepts/big.md", "redirect": "concepts/topic-a.md"} ] }\n'
-    "MERGE example — fold concepts/attention.md into concepts/self-attention.md:\n"
-    '{"ops": [ {"op": "write", "rel_path": "concepts/self-attention.md", "type": '
-    '"Concept", "title": "Self-Attention", "description": "...", "tags": [], "body": '
-    '"...full merged body keeping [^sN] from BOTH pages..."}, {"op": "delete", '
-    '"rel_path": "concepts/attention.md", "redirect": "concepts/self-attention.md"} ] }\n'
-    'For a source that adds nothing new, return {"ops": [{"op": "skip", "type": "", '
-    '"title": "", "rel_path": "", "description": "", "tags": [], "body": ""}]}.'
-)
-
-_SCHEMA_TEXT: str | None = None
 
 # CLI binary resolution (env override name -> default binary name).
 _CLI_PATH_ENV = {
@@ -134,34 +37,6 @@ _CLI_PATH_ENV = {
     "gemini": "GEMINI_CLI_PATH",
 }
 _CLI_DEFAULT_BIN = {"claude": "claude", "copilot": "copilot", "gemini": "gemini"}
-
-
-def _schema_text() -> str:
-    """Read SCHEMA.md (via ``config.SCHEMA_PATH``) once and cache it."""
-    global _SCHEMA_TEXT
-    if _SCHEMA_TEXT is None:
-        try:
-            _SCHEMA_TEXT = config.SCHEMA_PATH.read_text(encoding="utf-8")
-        except OSError:
-            _SCHEMA_TEXT = ""
-    return _SCHEMA_TEXT
-
-
-def build_prompt(schema_text: str, raw_name: str, raw_text: str, digest: str) -> str:
-    """Assemble the full single-shot prompt for the CLI."""
-    return "\n\n".join(
-        [
-            "You are the ingest engine for a self-structuring wiki in Google's Open "
-            "Knowledge Format. Follow these house rules exactly:",
-            schema_text,
-            INGEST_RULES,
-            OPS_FORMAT,
-            f"RAW FILE: {raw_name}",
-            f"<<<RAW>>>\n{raw_text}\n<<<END RAW>>>",
-            "WIKI DIGEST (what already exists; merge into / patch these instead of "
-            "duplicating):\n" + digest,
-        ]
-    )
 
 
 def _resolve_cli(cli: str) -> str:
@@ -181,94 +56,82 @@ def _resolve_cli(cli: str) -> str:
     )
 
 
-def _build_invocation(cli: str, cli_path: str, prompt: str) -> tuple[list[str], str | None]:
-    """Return ``(argv, stdin_text)`` for the chosen CLI in headless print mode.
+def _build_instruction(rel_key: str) -> str:
+    """The short, paths-only ingest prompt. References the rules and the raw source BY PATH
+    (the agent opens them with its own tools), so it never embeds file content and stays a
+    few hundred chars regardless of raw-file size — the WinError 206 fix. ``rel_key`` is the
+    repo-relative posix path of the raw source (e.g. ``raw/notes.md``); ``cwd`` is the repo
+    root, so all paths here are repo-relative."""
+    return (
+        "You are the ingest engine for a self-structuring wiki in Google's Open Knowledge "
+        "Format. Read the rules in SCHEMA.md and AGENT_INGEST.md (current directory) and "
+        "follow them exactly.\n\n"
+        "Fold ONE raw source into the wiki by EDITING FILES DIRECTLY:\n"
+        f"1. Read the raw source file: {rel_key}\n"
+        "2. The wiki is under wiki/. Search and read existing pages (Grep/Glob/Read) before "
+        "writing — prefer extending or merging into an existing page over creating a new one.\n"
+        f"3. Create/update/merge/split page files under wiki/ so every fact from {rel_key} is "
+        "captured, cited ([^sN] for raw facts / [^llmN] for model facts, defined in a trailing "
+        "## Sources section), and densely cross-linked with relative markdown links. Set "
+        "frontmatter type, title, description, tags (>=1 lowercase), and resource; do NOT set "
+        "timestamp.\n"
+        "4. Never edit wiki/index.md, wiki/log.md, any */index.md, or any dotfile. Make no "
+        "changes outside wiki/.\n"
+        "5. When you delete or rename a page, repoint inbound relative links to it.\n"
+        "6. Before finishing, run `okf-wiki check` (or `uv run python -m okf_wiki check`) and "
+        "fix every reported error.\n"
+        f"If {rel_key} adds nothing new, make no edits and stop."
+    )
 
-    For the **claude** CLI the prompt is sent on STDIN (argv carries only flags). This
-    avoids the Windows command-line length limit (CreateProcessW caps an argv at ~32 KB),
-    which a large raw file or a budget-filled digest could otherwise exceed, and it sends
-    the prompt as UTF-8 regardless of the OS code page. ``claude -p`` reads the prompt from
-    stdin. copilot/gemini take the prompt as a ``-p`` argument (their documented form).
-    """
+
+def _build_invocation(
+    cli: str, cli_path: str, prompt: str
+) -> tuple[list[str], str | None]:
+    """Return ``(argv, stdin_text)`` for the chosen CLI in agentic, non-interactive mode.
+
+    Each CLI runs with autonomous file tools scoped to ``cwd`` (the repo root, set by
+    ``_run_session``). For **claude** the prompt goes on STDIN (argv carries only flags); for
+    copilot/gemini it is a ``-p`` argument — now safe because the prompt is tiny."""
     if cli == "claude":
-        argv = [cli_path, "-p", "--output-format", "json"]
+        # acceptEdits auto-applies file edits; the allowlist scopes tools (Read/Edit/Write to
+        # author pages, Grep/Glob to search the wiki, Bash so the agent can run `okf-wiki
+        # check`). cwd=repo root already contains raw/ and wiki/, so no --add-dir is needed.
+        argv = [
+            cli_path,
+            "-p",
+            "--output-format",
+            "json",
+            "--permission-mode",
+            "acceptEdits",
+            "--allowedTools",
+            "Read Edit Write Grep Glob Bash",
+        ]
         if config.INGEST_MODEL:
-            argv.extend(["--model", config.INGEST_MODEL])
+            argv += ["--model", config.INGEST_MODEL]
         return argv, prompt
-    # copilot / gemini (and any unknown CLI): a plain headless prompt as an argument.
+    if cli == "copilot":
+        # --allow-all-tools is required for non-interactive editing; --allow-all-paths lets it
+        # reach raw/ and wiki/ under cwd; --no-ask-user keeps it autonomous; -s trims stats.
+        return [
+            cli_path,
+            "-p",
+            prompt,
+            "--allow-all-tools",
+            "--allow-all-paths",
+            "--no-ask-user",
+            "-s",
+        ], None
+    if cli == "gemini":
+        # yolo auto-approves all tool calls (auto_edit still prompts for read/search tools,
+        # which would hang with no TTY).
+        return [cli_path, "-p", prompt, "--approval-mode", "yolo"], None
+    # Unknown CLI: a plain headless prompt as an argument (best effort).
     return [cli_path, "-p", prompt], None
 
 
-def _run_cli(cli: str, argv: list[str], stdin_text: str | None = None) -> str:
-    """Run the CLI once and return the assistant's text (raises on failure).
-
-    ``stdin_text`` (the claude prompt) is fed on stdin; for copilot/gemini it is None and
-    the prompt is already in ``argv``.
-    """
-    try:
-        proc = subprocess.run(
-            argv,
-            input=stdin_text,
-            capture_output=True,
-            text=True,
-            # Force UTF-8 on BOTH the piped prompt and the decoded stdout/stderr,
-            # regardless of the OS locale. Without this, `text=True` uses the platform
-            # default (e.g. cp1252 on German Windows) and a non-ASCII byte in the CLI's
-            # UTF-8 output raises UnicodeDecodeError. errors="replace" keeps a stray
-            # undecodable byte from killing the whole run.
-            encoding="utf-8",
-            errors="replace",
-            timeout=config.LLM_TIMEOUT,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(
-            f"the {cli!r} CLI timed out after {config.LLM_TIMEOUT}s"
-        ) from exc
-    except OSError as exc:
-        raise RuntimeError(f"failed to run the {cli!r} CLI: {exc}") from exc
-
-    out = (proc.stdout or "").strip()
-    err = (proc.stderr or "").strip()
-
-    if cli == "claude":
-        # `--output-format json` returns a single envelope:
-        # {"type":"result","is_error":bool,"api_error_status":int|null,"result":str,...}
-        if not out:
-            raise RuntimeError(
-                f"the claude CLI returned no output (exit {proc.returncode}): "
-                f"{err[:500]}"
-            )
-        try:
-            env = json.loads(out)
-        except json.JSONDecodeError:
-            env = _last_json_result_line(out)
-        if isinstance(env, dict):
-            if env.get("is_error"):
-                status = env.get("api_error_status")
-                raise RuntimeError(
-                    f"claude CLI error"
-                    + (f" ({status})" if status else "")
-                    + f": {env.get('result') or err or 'unknown error'}"
-                )
-            result = env.get("result")
-            if isinstance(result, str):
-                return result
-        # Unexpected envelope shape: surface it rather than guessing.
-        raise RuntimeError(f"unexpected claude CLI output: {out[:500]}")
-
-    # copilot / gemini: plain text on stdout.
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"the {cli!r} CLI failed (exit {proc.returncode}): {(err or out)[:500]}"
-        )
-    if not out:
-        raise RuntimeError(f"the {cli!r} CLI returned no output: {err[:500]}")
-    return out
-
-
-def _last_json_result_line(text: str) -> dict | None:
-    """Fallback parser for a stream-json transcript: last JSONL object whose
-    ``type`` is ``result``."""
+def _last_result_envelope(text: str) -> dict | None:
+    """Fallback for claude: the last JSONL object whose ``type`` is ``result`` (in case the
+    CLI streams instead of emitting one JSON object)."""
     found: dict | None = None
     for line in text.splitlines():
         line = line.strip()
@@ -283,90 +146,76 @@ def _last_json_result_line(text: str) -> dict | None:
     return found
 
 
-def _json_object_spans(text: str, string_aware: bool = True) -> list[str]:
-    """Every top-level balanced ``{...}`` substring. With ``string_aware`` (default), braces
-    and quotes inside JSON string values are respected (so a body containing ``{`` is not
-    miscounted). With ``string_aware=False``, quotes are ignored and only braces are matched
-    — which recovers the real object when surrounding noise contains an UNBALANCED quote
-    (e.g. copilot printing ``python -c "`` in a tool-call transcript) that would otherwise
-    swallow the answer's opening brace under string-aware scanning."""
-    spans: list[str] = []
-    depth = 0
-    start = -1
-    in_str = False
-    esc = False
-    for i, ch in enumerate(text):
-        if string_aware and in_str:
-            if esc:
-                esc = False
-            elif ch == "\\":
-                esc = True
-            elif ch == '"':
-                in_str = False
-            continue
-        if string_aware and ch == '"':
-            in_str = True
-        elif ch == "{":
-            if depth == 0:
-                start = i
-            depth += 1
-        elif ch == "}" and depth > 0:
-            depth -= 1
-            if depth == 0 and start >= 0:
-                spans.append(text[start : i + 1])
-                start = -1
-    return spans
+def _run_session(cli: str, argv: list[str], stdin_text: str | None) -> None:
+    """Run the agentic CLI once in ``config.REPO_ROOT``. Success = the session completed
+    without error; the agent's edits are on disk. Raises ``RuntimeError`` on timeout, a
+    spawn error, a non-zero exit, or (for claude) an ``is_error`` result envelope.
+
+    Note: empty stdout is NOT a failure — an agent that legitimately changed nothing prints
+    nothing and exits 0 (ingest's snapshot diff then simply shows no changes)."""
+    try:
+        proc = subprocess.run(
+            argv,
+            input=stdin_text,
+            capture_output=True,
+            text=True,
+            # Force UTF-8 on the piped prompt and the decoded stdout/stderr regardless of the
+            # OS locale (e.g. cp1252 on German Windows); errors="replace" keeps a stray
+            # undecodable byte from killing the run.
+            encoding="utf-8",
+            errors="replace",
+            timeout=config.LLM_TIMEOUT,
+            cwd=str(config.REPO_ROOT),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"the {cli!r} CLI timed out after {config.LLM_TIMEOUT}s"
+        ) from exc
+    except OSError as exc:
+        raise RuntimeError(f"failed to run the {cli!r} CLI: {exc}") from exc
+
+    out = (proc.stdout or "").strip()
+    err = (proc.stderr or "").strip()
+
+    if cli == "claude":
+        # `--output-format json` returns a single result envelope:
+        # {"type":"result","is_error":bool,"api_error_status":int|null,"result":str,...}.
+        # We read it ONLY to detect failure; the agent's work is on disk, not in `result`.
+        env: dict | None = None
+        if out:
+            try:
+                env = json.loads(out)
+            except json.JSONDecodeError:
+                env = _last_result_envelope(out)
+        if isinstance(env, dict) and env.get("is_error"):
+            status = env.get("api_error_status")
+            raise RuntimeError(
+                "claude CLI error"
+                + (f" ({status})" if status else "")
+                + f": {env.get('result') or err or 'unknown error'}"
+            )
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"the claude CLI failed (exit {proc.returncode}): {(err or out)[:500]}"
+            )
+        return
+
+    # copilot / gemini (and any unknown CLI): the exit code is the success signal.
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"the {cli!r} CLI failed (exit {proc.returncode}): {(err or out)[:500]}"
+        )
+    return
 
 
-def _extract_ops(text: str) -> dict:
-    """Robustly pull a ``{"ops": [...]}`` object out of the model's reply.
+def run_ingest_session(rel_key: str) -> None:
+    """Run the configured agentic CLI once to fold the raw source ``rel_key`` into the wiki.
 
-    Returns the first candidate that parses to a dict containing an ``ops`` list. Candidates
-    are gathered in this order: the whole string; any ```json fenced block; balanced
-    ``{...}`` spans (string-aware, then quote-ignoring) scanned LAST-first; each whole line
-    that looks like a JSON object, last-first; and finally a first-brace..last-brace span.
-
-    The last-first ordering and the quote-ignoring / line-based passes matter for *agentic*
-    CLIs (e.g. copilot) that print tool-call transcript noise — stray ``{...}`` fragments,
-    ``python -c "`` lines, "permission denied" — around the real answer, which is typically
-    the final JSON object (often on its own line).
-    """
-    candidates: list[str] = [text.strip()]
-    for m in re.findall(r"```(?:json)?\s*(.*?)```", text, re.DOTALL):
-        candidates.append(m.strip())
-    candidates.extend(reversed(_json_object_spans(text, string_aware=True)))
-    candidates.extend(reversed(_json_object_spans(text, string_aware=False)))
-    for line in reversed(text.splitlines()):
-        s = line.strip()
-        if s.startswith("{") and s.endswith("}"):
-            candidates.append(s)
-    if "{" in text and "}" in text:
-        candidates.append(text[text.find("{") : text.rfind("}") + 1])
-
-    for candidate in candidates:
-        if not candidate:
-            continue
-        try:
-            obj = json.loads(candidate)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(obj, dict) and isinstance(obj.get("ops"), list):
-            return obj
-    raise RuntimeError(
-        f"could not parse a JSON {{'ops': [...]}} object from the CLI reply: "
-        f"{text.strip()[:300]}"
-    )
-
-
-def plan_pages(raw_name: str, raw_text: str, digest: str) -> list[dict]:
-    """Run the configured CLI once and return its list of page-op dicts.
-
-    Raises RuntimeError (collected per-source by ingest) on a missing/failed CLI
-    or an unparseable reply.
-    """
+    Side-effecting only: the agent edits files under ``config.WIKI_DIR``. Returns None;
+    ``ingest`` discovers what changed via a filesystem diff. Raises ``RuntimeError`` (collected
+    per-source by ingest) on a missing/failed CLI or a timeout."""
     cli = (config.LLM_CLI or "claude").strip().lower()
     cli_path = _resolve_cli(cli)
-    prompt = build_prompt(_schema_text(), raw_name, raw_text, digest)
+    prompt = _build_instruction(rel_key)
     argv, stdin_text = _build_invocation(cli, cli_path, prompt)
-    reply = _run_cli(cli, argv, stdin_text)
-    return _extract_ops(reply)["ops"]
+    _run_session(cli, argv, stdin_text)

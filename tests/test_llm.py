@@ -1,62 +1,133 @@
-"""Offline tests for the LLM-reply parsing (no CLI, no network).
+"""Offline tests for the agentic CLI invocation + error handling (no CLI, no network).
 
-Focus: _extract_ops must dig the real {"ops": [...]} object out of an *agentic* CLI's
-reply (e.g. GitHub copilot), which interleaves tool-call transcript noise, "permission
-denied" lines, and stray {...} fragments around the actual answer.
+The old structured-output path returned a ``{"ops": [...]}`` JSON that Python parsed; that is
+gone. Ingest now runs the CLI agentically and the CLI edits the wiki itself. These tests cover
+how ``llm`` builds the (tiny, paths-only) prompt and per-CLI argv, and how ``_run_session``
+turns a CLI failure into a ``RuntimeError`` — all by monkeypatching ``subprocess.run`` so no
+real CLI is ever spawned.
 """
 
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
-from okf_wiki import llm
+from okf_wiki import config, llm
 
 
-def test_extract_ops_clean_reply():
-    reply = '{"ops": [{"op": "skip", "type": "", "title": "", "rel_path": "", "description": "", "tags": [], "body": ""}]}'
-    assert llm._extract_ops(reply)["ops"][0]["op"] == "skip"
+class _FakeProc:
+    def __init__(self, returncode=0, stdout="", stderr=""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
 
 
-def test_extract_ops_ignores_agentic_tool_noise():
-    """A copilot-style reply: a failed shell tool-call (with a stray single-quoted
-    {...}), a permission-denied line, THEN the real ops JSON at the end."""
-    reply = (
-        "✗ Evaluate ingest result (shell)\n"
-        '│ python -c "\n'
-        "│ result = { 'ops': [] }\n"
-        "└ Permission denied and could not request permission from user\n"
-        "\n"
-        '{"ops": [{"op": "skip", "type": "", "title": "", "rel_path": "", '
-        '"description": "", "tags": [], "body": ""}]}\n'
-    )
-    ops = llm._extract_ops(reply)["ops"]
-    assert ops == [
-        {"op": "skip", "type": "", "title": "", "rel_path": "",
-         "description": "", "tags": [], "body": ""}
-    ]
+def test_build_instruction_references_paths_not_content():
+    """The prompt references the rules + raw source BY PATH and never embeds content, so it
+    stays tiny — the regression guard against the old WinError 206 (argv too long)."""
+    prompt = llm._build_instruction("raw/notes.md")
+    assert "SCHEMA.md" in prompt
+    assert "AGENT_INGEST.md" in prompt
+    assert "raw/notes.md" in prompt
+    assert "wiki/" in prompt
+    # Must never embed a large blob — paths only.
+    assert len(prompt) < 2000
 
 
-def test_extract_ops_prefers_last_real_object():
-    """When several balanced {...} objects appear, the genuine final answer wins."""
-    reply = (
-        '{"ops": []}\n'
-        "✗ placeholder (shell)\n"
-        '{"ops": [{"op": "write", "type": "Concept", "title": "Espresso Milk Drinks", '
-        '"rel_path": "concepts/espresso-milk-drinks.md", "description": "d", "tags": [], '
-        '"body": "Body with a brace { and a quote \\" inside.[^s1]"}]}'
-    )
-    ops = llm._extract_ops(reply)["ops"]
-    assert len(ops) == 1
-    assert ops[0]["title"] == "Espresso Milk Drinks"
-    assert "{" in ops[0]["body"]  # braces inside JSON strings handled correctly
+def test_build_invocation_claude_uses_stdin_and_acceptedits(monkeypatch):
+    monkeypatch.setattr(config, "INGEST_MODEL", "sonnet", raising=False)
+    argv, stdin_text = llm._build_invocation("claude", "/bin/claude", "PROMPT")
+    assert "-p" in argv
+    assert "--permission-mode" in argv and "acceptEdits" in argv
+    assert "--allowedTools" in argv
+    assert "--model" in argv and "sonnet" in argv
+    # claude takes the prompt on STDIN (argv carries only flags).
+    assert stdin_text == "PROMPT"
+    assert "PROMPT" not in argv
 
 
-def test_extract_ops_raises_when_no_ops():
-    with pytest.raises(RuntimeError):
-        llm._extract_ops("just some prose, no json here")
+def test_build_invocation_copilot_prompt_in_argv(monkeypatch):
+    argv, stdin_text = llm._build_invocation("copilot", "/bin/copilot", "SHORT PROMPT")
+    assert stdin_text is None
+    assert "SHORT PROMPT" in argv
+    assert "--allow-all-tools" in argv
+    assert "--no-ask-user" in argv
 
 
-def test_json_object_spans_is_string_aware():
-    # A '}' inside a JSON string must not close the object early.
-    spans = llm._json_object_spans('prefix {"k": "a } b", "n": 1} suffix {"m": 2}')
-    assert spans == ['{"k": "a } b", "n": 1}', '{"m": 2}']
+def test_build_invocation_gemini_yolo():
+    argv, stdin_text = llm._build_invocation("gemini", "/bin/gemini", "SHORT PROMPT")
+    assert stdin_text is None
+    assert "SHORT PROMPT" in argv
+    assert "--approval-mode" in argv and "yolo" in argv
+
+
+def test_run_session_claude_is_error_raises(monkeypatch):
+    """A claude result envelope with is_error=true raises (e.g. quota/auth)."""
+    def fake_run(*a, **k):
+        return _FakeProc(
+            returncode=0,
+            stdout='{"type":"result","is_error":true,"api_error_status":429,"result":"quota"}',
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(RuntimeError) as exc:
+        llm._run_session("claude", ["claude", "-p"], "PROMPT")
+    assert "quota" in str(exc.value) or "429" in str(exc.value)
+
+
+def test_run_session_claude_success(monkeypatch):
+    """A clean claude envelope (is_error false, exit 0) does not raise."""
+    def fake_run(*a, **k):
+        return _FakeProc(returncode=0, stdout='{"type":"result","is_error":false,"result":"done"}')
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    llm._run_session("claude", ["claude", "-p"], "PROMPT")  # no raise
+
+
+def test_run_session_nonzero_exit_raises(monkeypatch):
+    def fake_run(*a, **k):
+        return _FakeProc(returncode=2, stdout="", stderr="boom")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(RuntimeError) as exc:
+        llm._run_session("copilot", ["copilot", "-p", "x"], None)
+    assert "copilot" in str(exc.value)
+
+
+def test_run_session_empty_output_is_success_for_copilot(monkeypatch):
+    """An agentic session that legitimately changed nothing prints nothing and exits 0 —
+    that must NOT be treated as a failure (this is the old 'no ops JSON' parse-bug fix)."""
+    def fake_run(*a, **k):
+        return _FakeProc(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    llm._run_session("copilot", ["copilot", "-p", "x"], None)  # no raise
+    llm._run_session("gemini", ["gemini", "-p", "x"], None)  # no raise
+
+
+def test_run_session_timeout_raises(monkeypatch):
+    def fake_run(*a, **k):
+        raise subprocess.TimeoutExpired(cmd="claude", timeout=config.LLM_TIMEOUT)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(RuntimeError) as exc:
+        llm._run_session("claude", ["claude", "-p"], "PROMPT")
+    assert "timed out" in str(exc.value)
+
+
+def test_run_ingest_session_wires_resolve_build_run(monkeypatch):
+    """run_ingest_session resolves the CLI, builds the invocation, and runs the session once."""
+    calls = {"resolve": 0, "run": 0}
+
+    monkeypatch.setattr(config, "LLM_CLI", "copilot", raising=False)
+    monkeypatch.setattr(llm, "_resolve_cli", lambda cli: (calls.__setitem__("resolve", calls["resolve"] + 1) or "/bin/copilot"))
+
+    def fake_run_session(cli, argv, stdin_text):
+        calls["run"] += 1
+        assert cli == "copilot"
+        assert "/bin/copilot" in argv[0]
+
+    monkeypatch.setattr(llm, "_run_session", fake_run_session)
+    llm.run_ingest_session("raw/notes.md")
+    assert calls == {"resolve": 1, "run": 1}
