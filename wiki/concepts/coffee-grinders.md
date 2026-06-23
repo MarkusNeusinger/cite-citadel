@@ -9,7 +9,7 @@ tags:
 - equipment
 - extraction
 resource: raw/coffee-grinders.md
-timestamp: '2026-06-23T17:51:17Z'
+timestamp: '2026-06-23T19:33:08Z'
 ---
 
 The grinder is arguably the single most important piece of coffee equipment, often more consequential than the brewer itself.[^s1] The reason is that how evenly the coffee is ground determines how evenly it extracts, and even extraction is what separates clean, sweet, balanced coffee from a cup that tastes muddy, sour, or harsh.[^s1] The fundamental dividing line among home and commercial grinders is between **blade grinders** and **burr grinders**.[^s1] In practice, grind consistency matters more than almost any other variable in brewing good coffee.[^s1]
@@ -74,5 +74,3 @@ Two everyday annoyances affect real-world grinder use:[^s1]
 ## Sources
 
 [^s1]: [raw/coffee-grinders.md](../../raw/coffee-grinders.md) — Coffee grinders: burr vs blade (ingested 2026-06-23)
-</content>
-</invoke>

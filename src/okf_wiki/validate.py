@@ -30,6 +30,9 @@ REQUIRED_FIELDS = ("type", "title", "description", "tags", "resource")
 
 # A [[wiki-style]] link — NOT allowed (the wiki uses relative markdown links).
 WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
+# Tool-call / agent-transcript artifacts that must never leak into a wiki page body
+# (an agentic CLI occasionally flushes these tokens at the end of a file it writes).
+ARTIFACT_RE = re.compile(r"antml:|</?(?:invoke|function_calls|parameter|content)\b", re.IGNORECASE)
 # A relative .md markdown link target (mirrors store._MD_LINK_RE / lint.LINK_RE).
 _MD_LINK_RE = re.compile(r"\]\(([^)]+\.md)\)")
 
@@ -185,6 +188,10 @@ def validate_page(rel_path: str, frontmatter: dict, body: str) -> list[Issue]:
     # non-empty dict — a markdown thematic-break "---" does not, so no false positive.
     if okf.parse(body)[0]:
         err("embedded_frontmatter", "body contains a '---' YAML frontmatter block")
+
+    artifact = ARTIFACT_RE.search(body)
+    if artifact:
+        err("artifact", "body contains a tool-call/transcript artifact: " + artifact.group(0))
 
     if type_:
         expected_folder = okf.folder_for_type(type_)

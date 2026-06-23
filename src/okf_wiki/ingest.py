@@ -164,9 +164,9 @@ def _validate_and_restamp(rel_paths: list[str], rel_key: str) -> list[str]:
     """Re-impose invariants on each changed page (``validate.validate_page``) and, if clean,
     canonicalize + re-stamp it through ``store.write_page`` (so the YAML is canonical, the
     ``type`` is enforced, and a fresh UTC ``timestamp`` is set even though the agent wrote the
-    file). Returns one error string per error-severity validation issue; an invalid page is
-    left on disk as-written so the problem is visible (and is also caught by ``okf-wiki
-    lint``/``check``)."""
+    file). Returns one error string per error-severity validation issue; when any are returned
+    the caller rolls the whole source back (all-or-nothing), so an invalid page never persists
+    in the wiki — the issues are surfaced in the report instead."""
     errors: list[str] = []
     for rel_path in sorted(set(rel_paths)):
         try:
@@ -296,8 +296,24 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
             after = _snapshot()
             created, updated, deleted = _diff(before, after)
 
-            # Re-impose invariants on (and re-stamp) every changed page.
-            report.errors.extend(_validate_and_restamp(created + updated, rel_key))
+            # Re-impose invariants on (and re-stamp) every changed page. A validation error
+            # means the agent produced an invalid page (missing field, fabricated citation,
+            # leaked artifact, ...): roll the WHOLE source back (all-or-nothing) and leave it
+            # un-done so it is retried next run, rather than committing an invalid wiki state.
+            val_errors = _validate_and_restamp(created + updated, rel_key)
+            if val_errors:
+                _restore_wiki(backup)
+                report.errors.extend(val_errors)
+                emit(
+                    "source_error",
+                    index=index,
+                    total=len(pending),
+                    source=rel_key,
+                    error=val_errors[0],
+                    seconds=time.monotonic() - started,
+                )
+                continue
+
             # Repoint inbound links for any rename the agent did not fully fix.
             _repair_renames(before_pages, created, deleted)
 

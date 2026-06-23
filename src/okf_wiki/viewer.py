@@ -235,7 +235,8 @@ _VIEWER_JS = r'''
   var activeTag = "";
 
   function esc(s) {
-    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
   // Port of okf.resolve_link: normalize dirname(fromRel)/target to a posix path.
@@ -257,7 +258,7 @@ _VIEWER_JS = r'''
       if (url.indexOf("://") >= 0) return "<span class='ext' title='" + url + "'>" + t + "</span>";
       var rel = resolveLink(fromRel, url);
       if (PAGES[rel]) {
-        return "<a href='#" + encodeURIComponent(rel) + "' data-page='" + rel + "'>" + t + "</a>";
+        return "<a href='#" + encodeURIComponent(rel) + "' data-page='" + esc(rel) + "'>" + t + "</a>";
       }
       return "<span class='ext' title='" + url + "'>" + t + "</span>";
     });
@@ -389,7 +390,7 @@ _VIEWER_JS = r'''
       html += "<details open><summary>" + esc(type) + " (" + rels.length + ")</summary>";
       rels.forEach(function (rel) {
         html += "<a class='navitem' href='#" + encodeURIComponent(rel) + "' data-page='" +
-          rel + "'>" + esc(PAGES[rel].title) + "</a>";
+          esc(rel) + "'>" + esc(PAGES[rel].title) + "</a>";
       });
       html += "</details>";
     });
@@ -617,7 +618,7 @@ _VIEWER_JS = r'''
       "</div>";
     var back = p.inbound.length ? "<div class='backlinks'>Referenced by: " +
       p.inbound.map(function (r) {
-        return "<a href='#" + encodeURIComponent(r) + "' data-page='" + r + "'>" +
+        return "<a href='#" + encodeURIComponent(r) + "' data-page='" + esc(r) + "'>" +
           esc(PAGES[r] ? PAGES[r].title : r) + "</a>";
       }).join(", ") + "</div>" : "";
     document.getElementById("reader").innerHTML = "<h1>" + esc(p.title) + "</h1>" + meta +

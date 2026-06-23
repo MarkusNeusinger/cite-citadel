@@ -114,6 +114,13 @@ def test_thematic_break_is_not_embedded_frontmatter(wiki):
     assert not any(i.category == "embedded_frontmatter" for i in _errors(issues))
 
 
+def test_tool_artifact_in_body_is_error(wiki):
+    """Leaked tool-call / transcript tokens in a page body are flagged as an error."""
+    body = _GOOD_BODY + "\n</content>\n</invoke>\n"
+    issues = validate.validate_page("concepts/transformer.md", dict(_GOOD_FM), body)
+    assert any(i.category == "artifact" for i in _errors(issues))
+
+
 def test_routing_and_filename_are_advisory(wiki):
     """A page in the wrong folder / with a non-slug filename is advisory, not an error."""
     issues = validate.validate_page("misc/Weird Name.md", dict(_GOOD_FM), _GOOD_BODY)

@@ -8,7 +8,7 @@ tags:
 - flavor
 - processing
 resource: raw/coffee.md
-timestamp: '2026-06-23T17:22:59Z'
+timestamp: '2026-06-23T19:33:08Z'
 ---
 
 Roasting green (raw) coffee beans applies heat to develop flavor compounds and transform the physical and chemical structure of the bean.[^s1] The roast level—how dark the beans are roasted—fundamentally changes the taste profile of the final cup.[^s1]
@@ -23,7 +23,12 @@ The longer and hotter a roast, the darker the bean and the more "roasty" (and le
 
 **Medium-dark roasts** show a rich brown color with oil on the surface, developing bittersweet and chocolatey flavor profiles.[^s2]
 
-**Dark roasts** appear near-black and oily, tasting bolder, smokier, and more bitter.[^s1][^s2] Most of the origin flavor is roasted away by the extended heat exposure.[^s1] These roasts are typically pulled after "second crack," another popping sound marking the boundary into the dark roast zone.[^s1] Dark roasts have slightly more caffeine than lighter roasts.[^s2]
+**Dark roasts** appear near-black and oily, tasting bolder, smokier, and more bitter.[^s1][^s2] Most of the origin flavor is roasted away by the extended heat exposure.[^s1] These roasts are typically pulled after "second crack," another popping sound marking the boundary into the dark roast zone.[^s1]
+
+> [!CONTRADICTION]
+> raw/roast-levels.md says dark roasts have slightly more caffeine than lighter roasts,[^s2] but raw/caffeine.md says roast level barely affects caffeine and that light roasts retain marginally more by mass.[^s3]
+>
+> Resolution: roast level has a negligible effect on caffeine; by mass, light roasts retain marginally more because roasting burns off a tiny amount, so the common "dark roast has more caffeine" belief is essentially a myth.[^llm1]
 
 ## Espresso Roasting
 
@@ -40,3 +45,5 @@ Espresso is often (but not always) roasted to a medium-dark level specifically f
 
 [^s1]: [raw/coffee.md](../../raw/coffee.md) — Coffee overview (ingested 2026-06-23)
 [^s2]: [raw/roast-levels.md](../../raw/roast-levels.md) — Roast levels and flavor profiles (ingested 2026-06-23)
+[^s3]: [raw/caffeine.md](../../raw/caffeine.md) — Caffeine in coffee (ingested 2026-06-23)
+[^llm1]: LLM - model knowledge, not from a raw file (added 2026-06-23)

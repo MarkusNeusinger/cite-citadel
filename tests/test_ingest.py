@@ -221,9 +221,17 @@ def test_embedded_frontmatter_in_body_is_error(tmp_path, monkeypatch):
     assert any("embedded_frontmatter" in e for e in report.errors)
 
 
-def test_ingest_missing_type_is_error(tmp_path, monkeypatch):
-    """A page the agent wrote with no 'type' is a collected error; the source still finalizes."""
+def test_ingest_missing_type_rolls_back(tmp_path, monkeypatch):
+    """A page the agent wrote with no 'type' fails validation -> the WHOLE source is rolled
+    back (all-or-nothing): error collected, source NOT processed, the invalid page is gone,
+    and a pre-existing page is left intact."""
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _seed_page(
+        wiki, "concepts/keep.md",
+        {"type": "Concept", "title": "Keep", "description": "d", "tags": ["x"], "resource": "raw/old.md"},
+        "Keep me.[^s1]\n\n## Sources\n\n[^s1]: [raw/old.md](../../raw/old.md) - o\n",
+    )
+    (raw / "old.md").write_text("x\n", encoding="utf-8")
 
     def fake(rel_key):
         _agent_write(
@@ -236,13 +244,15 @@ def test_ingest_missing_type_is_error(tmp_path, monkeypatch):
     (raw / "notes.md").write_text("x\n", encoding="utf-8")
 
     report = ingest.ingest([str(raw / "notes.md")])
-    assert "raw/notes.md" in report.processed  # finalized despite the bad page
+    assert "raw/notes.md" not in report.processed  # rolled back -> not marked done
     assert any("invalid page concepts/bad.md" in e and "type" in e for e in report.errors)
-    assert (wiki / "concepts" / "bad.md").exists()  # left on disk so it's visible
+    assert not (wiki / "concepts" / "bad.md").exists()  # rolled back, not left behind
+    assert (wiki / "concepts" / "keep.md").exists()  # pre-existing page untouched
 
 
-def test_missing_required_field_is_error(tmp_path, monkeypatch):
-    """STRICT: a page missing 'tags' (or any required field) fails the ingest gate."""
+def test_missing_required_field_rolls_back(tmp_path, monkeypatch):
+    """STRICT: a page missing 'tags' (or any required field) fails the gate and the source
+    is rolled back (not marked done)."""
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
 
     def fake(rel_key):
@@ -257,6 +267,8 @@ def test_missing_required_field_is_error(tmp_path, monkeypatch):
 
     report = ingest.ingest([str(raw / "notes.md")])
     assert any("tags" in e for e in report.errors)
+    assert "raw/notes.md" not in report.processed
+    assert not (wiki / "concepts" / "notags.md").exists()
 
 
 def test_ingest_no_changes_marks_done(tmp_path, monkeypatch):
