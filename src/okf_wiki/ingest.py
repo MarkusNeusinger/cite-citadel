@@ -286,6 +286,7 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
         emit("source_start", index=index, total=len(pending), source=rel_key)
         started = time.monotonic()
         backup: str | None = None
+        succeeded = False
         try:
             backup = _backup_wiki()
             before_pages = store.load()
@@ -302,7 +303,8 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
             # un-done so it is retried next run, rather than committing an invalid wiki state.
             val_errors = _validate_and_restamp(created + updated, rel_key)
             if val_errors:
-                _restore_wiki(backup)
+                # Invalid page(s): leave the source un-done and let `finally` roll the wiki
+                # back (succeeded is still False) — all-or-nothing, retried next run.
                 report.errors.extend(val_errors)
                 emit(
                     "source_error",
@@ -323,7 +325,12 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
             report.pages_deleted.extend(deleted)
 
             manifest.mark_done(manifest_dict, src)
+            # Persist progress immediately after each completed source: a later Ctrl+C (or a
+            # crash) must not erase sources already finished this run. (The old code saved the
+            # manifest only once, in finalization, which a propagating interrupt skipped.)
+            manifest.save(manifest_dict)
             report.processed.append(rel_key)
+            succeeded = True
             emit(
                 "source_done",
                 index=index,
@@ -335,7 +342,6 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 seconds=time.monotonic() - started,
             )
         except Exception as exc:  # noqa: BLE001 - collect per-source, roll back, keep going
-            _restore_wiki(backup)
             report.errors.append(f"{rel_key}: {exc}")
             emit(
                 "source_error",
@@ -346,12 +352,19 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 seconds=time.monotonic() - started,
             )
         finally:
+            # Roll back unless the source fully succeeded. Keeping the restore HERE (not only
+            # in `except Exception`) means a KeyboardInterrupt — or any other BaseException,
+            # which `except Exception` does NOT catch — still restores the wiki to its
+            # pre-source state instead of leaving a half-finished edit behind.
+            if not succeeded:
+                _restore_wiki(backup)
             if backup:
                 shutil.rmtree(backup, ignore_errors=True)
 
     if report.processed:
         emit("finalize")
-        manifest.save(manifest_dict)
+        # The manifest is already persisted incrementally (after each source) above, so a
+        # final save here would be redundant — just rebuild the derived files.
         store.rebuild_indexes()
         # Surface any cross-link left dangling by a restructure so it is never silent.
         report.broken_links = store.find_broken_links()

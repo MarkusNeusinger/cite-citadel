@@ -35,6 +35,23 @@ def test_build_instruction_references_paths_not_content():
     assert len(prompt) < 2000
 
 
+def test_build_instruction_uses_configured_wiki_dir(tmp_path, monkeypatch):
+    """Regression for the hardcoded-'wiki/' bug: the prompt must name the CONFIGURED wiki
+    directory (OKF_WIKI_DIR), so with OKF_WIKI_DIR=wikiET the agent searches and writes
+    wikiET/ — otherwise it edits 'wiki/' while ingest's snapshot/diff watches wikiET/ and sees
+    nothing."""
+    monkeypatch.setattr(config, "REPO_ROOT", tmp_path, raising=False)
+    monkeypatch.setattr(config, "WIKI_DIR", tmp_path / "wikiET", raising=False)
+    monkeypatch.setattr(config, "RAW_DIR", tmp_path / "raw", raising=False)
+
+    prompt = llm._build_instruction("raw/notes.md")
+
+    assert "wikiET/" in prompt        # the configured wiki dir is used throughout...
+    assert "wiki/" not in prompt      # ...and no hardcoded bare 'wiki/' survives
+    assert "raw/notes.md" in prompt   # the raw source path is still referenced verbatim
+    assert len(prompt) < 2000         # still tiny (paths-only) — WinError 206 guard
+
+
 def test_build_invocation_claude_uses_stdin_and_acceptedits(monkeypatch):
     monkeypatch.setattr(config, "INGEST_MODEL", "sonnet", raising=False)
     argv, stdin_text = llm._build_invocation("claude", "/bin/claude", "PROMPT")

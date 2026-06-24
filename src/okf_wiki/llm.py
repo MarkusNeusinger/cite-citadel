@@ -27,6 +27,7 @@ import json
 import os
 import shutil
 import subprocess
+from pathlib import Path
 
 from . import config
 
@@ -56,27 +57,45 @@ def _resolve_cli(cli: str) -> str:
     )
 
 
+def _repo_rel(path: Path) -> str:
+    """Repo-relative POSIX path for a configured directory. The agentic CLI runs with
+    ``cwd`` = ``config.REPO_ROOT``, so the prompt must name the wiki/raw directories relative
+    to the repo root — and honor ``OKF_WIKI_DIR`` / ``OKF_RAW_DIR`` overrides rather than a
+    hardcoded ``wiki/``. Falls back to the directory's own name if it is not under the repo
+    root (mirrors ``manifest.rel_key``)."""
+    try:
+        return path.resolve().relative_to(config.REPO_ROOT.resolve()).as_posix()
+    except ValueError:
+        return path.name
+
+
 def _build_instruction(rel_key: str) -> str:
     """The short, paths-only ingest prompt. References the rules and the raw source BY PATH
     (the agent opens them with its own tools), so it never embeds file content and stays a
     few hundred chars regardless of raw-file size — the WinError 206 fix. ``rel_key`` is the
     repo-relative posix path of the raw source (e.g. ``raw/notes.md``); ``cwd`` is the repo
-    root, so all paths here are repo-relative."""
+    root, so all paths here are repo-relative. The wiki/raw directory names are read from
+    config (``OKF_WIKI_DIR`` / ``OKF_RAW_DIR``) at CALL time, so a custom layout (e.g.
+    ``OKF_WIKI_DIR=wikiET``) is searched and written correctly instead of a hardcoded
+    ``wiki/``."""
+    wiki_rel = _repo_rel(config.WIKI_DIR)
+    raw_rel = _repo_rel(config.RAW_DIR)
     return (
         "You are the ingest engine for a self-structuring wiki in Google's Open Knowledge "
         "Format. Read the rules in SCHEMA.md and AGENT_INGEST.md (current directory) and "
         "follow them exactly.\n\n"
         "Fold ONE raw source into the wiki by EDITING FILES DIRECTLY:\n"
         f"1. Read the raw source file: {rel_key}\n"
-        "2. The wiki is under wiki/. Search and read existing pages (Grep/Glob/Read) before "
-        "writing — prefer extending or merging into an existing page over creating a new one.\n"
-        f"3. Create/update/merge/split page files under wiki/ so every fact from {rel_key} is "
-        "captured, cited ([^sN] for raw facts / [^llmN] for model facts, defined in a trailing "
-        "## Sources section), and densely cross-linked with relative markdown links. Set "
-        "frontmatter type, title, description, tags (>=1 lowercase), and resource; do NOT set "
-        "timestamp.\n"
-        "4. Never edit wiki/index.md, wiki/log.md, any */index.md, or any dotfile. Make no "
-        "changes outside wiki/.\n"
+        f"2. The wiki is under {wiki_rel}/ (raw sources under {raw_rel}/). Search and read "
+        "existing pages (Grep/Glob/Read) before writing — prefer extending or merging into an "
+        "existing page over creating a new one.\n"
+        f"3. Create/update/merge/split page files under {wiki_rel}/ so every fact from {rel_key} "
+        "is captured, cited ([^sN] for raw facts / [^llmN] for model facts, defined in a "
+        "trailing ## Sources section), and densely cross-linked with relative markdown links. "
+        "Set frontmatter type, title, description, tags (>=1 lowercase), and resource; do NOT "
+        "set timestamp.\n"
+        f"4. Never edit {wiki_rel}/index.md, {wiki_rel}/log.md, any */index.md, or any dotfile. "
+        f"Make no changes outside {wiki_rel}/.\n"
         "5. When you delete or rename a page, repoint inbound relative links to it.\n"
         "6. Before finishing, run `okf-wiki check` (or `uv run python -m okf_wiki check`) and "
         "fix every reported error.\n"
