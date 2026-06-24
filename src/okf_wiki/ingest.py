@@ -205,11 +205,20 @@ def _partition_sources(
         if not src.is_file():
             continue
         key = manifest.rel_key(src)
-        if not manifest.is_pending(manifest_dict, src):
+        try:
+            changed = manifest.is_pending(manifest_dict, src)
+        except OSError:
+            # is_pending() hashes the file when it is already tracked; an already-ingested source
+            # that became unreadable (permissions / transient IO) must NOT crash the whole run —
+            # it is already in the wiki, so treat it as skipped rather than a fresh source.
+            skipped.append(key)
+            continue
+        if not changed:
             skipped.append(key)
             continue
         # New/changed content. Hash once for move detection (and to fail closed on an OS read
-        # error by treating the file as unreadable).
+        # error — a brand-new source we cannot read — by treating it as unreadable). The hash is
+        # streamed (manifest.file_sha256), so even a large file stays memory-bounded.
         try:
             sha = manifest.file_sha256(src)
         except OSError:

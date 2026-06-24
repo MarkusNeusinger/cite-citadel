@@ -15,8 +15,14 @@ from . import config
 
 
 def file_sha256(path: Path) -> str:
-    """hashlib.sha256 of the file bytes, hexdigest."""
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    """hashlib.sha256 of the file bytes, hexdigest. Read in 1 MiB chunks rather than slurping the
+    whole file, so hashing a large source (a big PDF/CSV/…) stays memory-bounded — ingest now
+    accepts arbitrary file types, not just small markdown notes."""
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def rel_key(src: Path) -> str:

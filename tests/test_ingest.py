@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from okf_wiki import config, ingest, lint, okf, store, validate
+from okf_wiki import config, ingest, lint, manifest, okf, store, validate
 
 
 # A counter so tests can assert the fake session runs exactly once per source.
@@ -489,6 +489,41 @@ def test_rewrite_raw_references_repoints_resource_and_citation(tmp_path, monkeyp
     assert "resource: raw/ml/notes.md" in text
     assert "[^s1]: [raw/notes.md](../../raw/ml/notes.md)" in text  # real citation repointed
     assert "example: [old](../../raw/notes.md)" in text  # fenced literal left intact
+
+
+def test_file_sha256_streams_and_matches_oneshot(tmp_path):
+    """The chunk-streamed hash equals a one-shot hash of the whole bytes (memory-bounded, but
+    identical digest), across multiple read chunks."""
+    import hashlib
+
+    data = bytes(range(256)) * 9000  # ~2.3 MiB -> several 1 MiB chunks
+    p = tmp_path / "big.bin"
+    p.write_bytes(data)
+    assert manifest.file_sha256(p) == hashlib.sha256(data).hexdigest()
+
+
+def test_unreadable_already_ingested_file_does_not_crash(tmp_path, monkeypatch):
+    """An already-tracked raw file that becomes unreadable makes is_pending() (which hashes a
+    tracked file) raise OSError — that must NOT crash the run: it stays classified as skipped,
+    since it is already in the wiki."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake_session_transformer)
+    (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
+    assert ingest.ingest().processed == ["raw/notes.md"]
+
+    real = ingest.manifest.file_sha256
+
+    def boom(path):
+        if str(path).endswith("notes.md"):
+            raise OSError("permission denied")
+        return real(path)
+
+    monkeypatch.setattr(ingest.manifest, "file_sha256", boom)
+
+    report = ingest.ingest()  # must not raise
+    assert "raw/notes.md" in report.skipped
+    assert report.processed == []
+    assert not report.errors
 
 
 def test_diff_classifies_created_updated_deleted():
