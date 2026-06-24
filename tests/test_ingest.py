@@ -476,6 +476,98 @@ def test_failed_session_rolls_back(tmp_path, monkeypatch):
         assert "raw/notes.md" not in json.loads(manifest_path.read_text(encoding="utf-8"))
 
 
+def test_keyboardinterrupt_rolls_back_current_source(tmp_path, monkeypatch):
+    """A Ctrl+C (KeyboardInterrupt) raised mid-session must roll the wiki back to its
+    pre-source state, then propagate. KeyboardInterrupt is a BaseException, so the per-source
+    `except Exception` does NOT catch it — the rollback lives in `finally` (guarded by a
+    success flag), which a BaseException still runs on its way out."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _seed_page(
+        wiki, "concepts/keep.md",
+        {"type": "Concept", "title": "Keep", "description": "d", "tags": ["x"], "resource": "raw/old.md"},
+        "Keep me.[^s1]\n\n## Sources\n\n[^s1]: [raw/old.md](../../raw/old.md) - o\n",
+    )
+    (raw / "old.md").write_text("x\n", encoding="utf-8")
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+
+    def fake(rel_key):
+        _agent_write(
+            "concepts/partial.md",
+            {"type": "Concept", "title": "Partial", "description": "d", "tags": ["x"], "resource": "raw/notes.md"},
+            "Half-written.[^s1]\n\n## Sources\n\n[^s1]: [raw/notes.md](../../raw/notes.md) - n\n",
+        )
+        raise KeyboardInterrupt()
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    with pytest.raises(KeyboardInterrupt):
+        ingest.ingest([str(raw / "notes.md")])
+
+    assert not (wiki / "concepts" / "partial.md").exists()  # rolled back on the interrupt
+    assert (wiki / "concepts" / "keep.md").exists()         # pre-existing page untouched
+
+
+def test_completed_sources_persisted_before_interrupt(tmp_path, monkeypatch):
+    """Progress is written to the manifest right after each source completes, so a Ctrl+C
+    during a LATER source can't erase already-finished work. (The old code saved the manifest
+    only in finalization, which a propagating KeyboardInterrupt skipped entirely.)"""
+    import json
+
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "a.md").write_text("first\n", encoding="utf-8")
+    (raw / "b.md").write_text("second\n", encoding="utf-8")
+
+    def fake(rel_key):
+        if rel_key == "raw/a.md":
+            _agent_write(
+                "concepts/from-a.md",
+                {"type": "Concept", "title": "From A", "description": "d", "tags": ["x"], "resource": "raw/a.md"},
+                "Fact A.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - a\n",
+            )
+        else:  # raw/b.md — interrupt mid-session, after a.md already finished
+            raise KeyboardInterrupt()
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    with pytest.raises(KeyboardInterrupt):
+        ingest.ingest()  # processes raw/a.md then raw/b.md (sorted order)
+
+    manifest_path = wiki / ".okf_ingested.json"
+    assert manifest_path.exists()  # saved incrementally, not only at finalization
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert "raw/a.md" in data       # a finished -> persisted before the interrupt
+    assert "raw/b.md" not in data   # b interrupted -> not marked done
+    assert (wiki / "concepts" / "from-a.md").exists()  # a's page survived b's rollback
+
+
+def test_finalization_runs_for_completed_sources_on_interrupt(tmp_path, monkeypatch):
+    """If a Ctrl+C interrupts the run after some sources already completed, the derived files
+    (indexes + log) for that completed work are still rebuilt before the interrupt propagates.
+    Otherwise — since the manifest is now persisted per-source — a later run could find nothing
+    pending, skip finalization entirely, and leave the wiki's indexes/log permanently stale."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "a.md").write_text("first\n", encoding="utf-8")
+    (raw / "b.md").write_text("second\n", encoding="utf-8")
+
+    def fake(rel_key):
+        if rel_key == "raw/a.md":
+            _agent_write(
+                "concepts/from-a.md",
+                {"type": "Concept", "title": "From A", "description": "d", "tags": ["x"], "resource": "raw/a.md"},
+                "Fact A.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - a\n",
+            )
+        else:  # raw/b.md interrupts after a is already done
+            raise KeyboardInterrupt()
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    with pytest.raises(KeyboardInterrupt):
+        ingest.ingest()
+
+    # a's page is committed AND the indexes/log were rebuilt despite the interrupt — so the
+    # wiki is not stranded with content the navigation files don't reflect.
+    assert (wiki / "concepts" / "from-a.md").exists()
+    assert "from-a.md" in (wiki / "index.md").read_text(encoding="utf-8")
+    assert (wiki / "log.md").exists()
+
+
 def test_contradiction_marker_preserved(tmp_path, monkeypatch):
     """A contradiction marker the agent wrote survives the validate+restamp and lint flags it."""
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)

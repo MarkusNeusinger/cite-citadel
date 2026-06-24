@@ -281,11 +281,17 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
     report.skipped = skipped
     emit("start", pending=len(pending), skipped=len(skipped))
 
+    # A Ctrl+C (or other BaseException) raised mid-loop is captured here, not allowed to
+    # propagate immediately, so finalization still runs for the already-completed sources
+    # before it is re-raised. Without this, the per-source-persisted manifest could outlive a
+    # stale index/log: a later run with nothing pending would never rebuild the derived files.
+    pending_interrupt: BaseException | None = None
     for index, src in enumerate(pending, 1):
         rel_key = manifest.rel_key(src)
         emit("source_start", index=index, total=len(pending), source=rel_key)
         started = time.monotonic()
         backup: str | None = None
+        succeeded = False
         try:
             backup = _backup_wiki()
             before_pages = store.load()
@@ -302,7 +308,8 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
             # un-done so it is retried next run, rather than committing an invalid wiki state.
             val_errors = _validate_and_restamp(created + updated, rel_key)
             if val_errors:
-                _restore_wiki(backup)
+                # Invalid page(s): leave the source un-done and let `finally` roll the wiki
+                # back (succeeded is still False) — all-or-nothing, retried next run.
                 report.errors.extend(val_errors)
                 emit(
                     "source_error",
@@ -323,7 +330,12 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
             report.pages_deleted.extend(deleted)
 
             manifest.mark_done(manifest_dict, src)
+            # Persist progress immediately after each completed source: a later Ctrl+C (or a
+            # crash) must not erase sources already finished this run. (The old code saved the
+            # manifest only once, in finalization, which a propagating interrupt skipped.)
+            manifest.save(manifest_dict)
             report.processed.append(rel_key)
+            succeeded = True
             emit(
                 "source_done",
                 index=index,
@@ -335,7 +347,6 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 seconds=time.monotonic() - started,
             )
         except Exception as exc:  # noqa: BLE001 - collect per-source, roll back, keep going
-            _restore_wiki(backup)
             report.errors.append(f"{rel_key}: {exc}")
             emit(
                 "source_error",
@@ -345,13 +356,29 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 error=str(exc),
                 seconds=time.monotonic() - started,
             )
+        except BaseException as exc:  # noqa: BLE001 - Ctrl+C etc.: capture, finalize, re-raise
+            # A KeyboardInterrupt/SystemExit is not a per-source error to collect — capture it,
+            # let `finally` roll this in-flight source back, then stop the loop and re-raise it
+            # AFTER finalization (below) so the completed sources don't keep stale indexes.
+            pending_interrupt = exc
         finally:
+            # Roll back unless the source fully succeeded. This `finally` is the single rollback
+            # point for every non-success exit — the validation-error `continue`, an ordinary
+            # Exception, and a captured BaseException — so none of them can leave a half-edit.
+            if not succeeded:
+                _restore_wiki(backup)
             if backup:
                 shutil.rmtree(backup, ignore_errors=True)
 
+        # Stop taking new sources once an interrupt was captured, but fall through to
+        # finalization for the sources already completed this run.
+        if pending_interrupt is not None:
+            break
+
     if report.processed:
         emit("finalize")
-        manifest.save(manifest_dict)
+        # The manifest is already persisted incrementally (after each source) above, so a
+        # final save here would be redundant — just rebuild the derived files.
         store.rebuild_indexes()
         # Surface any cross-link left dangling by a restructure so it is never silent.
         report.broken_links = store.find_broken_links()
@@ -367,5 +394,11 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
             deleted=len(report.pages_deleted),
             broken=len(report.broken_links),
         )
+
+    # Now that the completed sources have been finalized, re-raise a captured Ctrl+C so the
+    # interrupt still aborts the run (the per-source `finally` already rolled back whichever
+    # source was in flight when it landed).
+    if pending_interrupt is not None:
+        raise pending_interrupt
 
     return report
