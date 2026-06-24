@@ -8,8 +8,13 @@
 
 ## Layers
 
-1. **Raw sources** — immutable files the model reads but never edits: `raw/*.md` (user
-   drops arbitrary markdown here) and the seed docs in `docs/`.
+1. **Raw sources** — immutable files the model reads but never edits: anything under `raw/`
+   (any text-bearing file type — markdown, plain text, code such as `.py`/`.sql`, JSON/CSV,
+   PDF, … — in any sub-folder) and the seed docs in `docs/`. Ingest tries to extract text from
+   **every** file; one with no readable text (a binary blob) is skipped and logged as
+   unreadable. A raw file that was only **moved/reorganized** (same bytes, new path) is
+   recognized and **not** re-ingested — its wiki `resource`/citation references are repointed
+   automatically.
 2. **The wiki** — LLM-generated OKF pages under `wiki/`: a directory of markdown files
    with YAML frontmatter, cross-linked into a knowledge graph.
 3. **The schema** — this file.

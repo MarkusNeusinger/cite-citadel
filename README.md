@@ -4,7 +4,8 @@ An **LLM-maintained personal wiki** in Google's [Open Knowledge Format](docs/okf
 with an **MCP server** so an AI can search and read it.
 
 This is a KISS, pure-Python (3.12) implementation of Andrej Karpathy's
-[LLM-Wiki pattern](docs/karpathy-llm-wiki.md): you drop arbitrary markdown into `raw/`, and
+[LLM-Wiki pattern](docs/karpathy-llm-wiki.md): you drop arbitrary text-bearing files into `raw/`
+(markdown, plain text, code, JSON/CSV, PDF, … — any sub-folder), and
 one agentic CLI session per file folds each source into a cross-linked OKF wiki under `wiki/`.
 Instead of making one page per file, ingest **routes each fact to the page it best fits and restructures**
 (splits / merges) existing pages as the wiki grows. Every fact is cited back to the raw file it
@@ -107,7 +108,8 @@ clean git tree so any stray edit is easy to spot.)
 
 ## Use
 
-**Ingest** — drop one or more arbitrary markdown files into `raw/`, then fold them in:
+**Ingest** — drop one or more arbitrary text-bearing files into `raw/` (any type — markdown,
+plain text, code, JSON/CSV, PDF, … — in any sub-folder), then fold them in:
 
 ```bash
 cp ~/notes/q3-planning.md raw/
@@ -128,7 +130,11 @@ Ingest is **idempotent**: a committed manifest at `wiki/.okf_ingested.json` maps
 repo-relative path to a sha256, so re-running with no new or changed files runs **zero** agent
 sessions. Edit a raw file (new sha) and it is re-ingested, patching the existing pages. Exactly
 one agent session per source; if a session fails or times out, that source's wiki changes are
-rolled back and it is retried next run.
+rolled back and it is retried next run. **Move or reorganize** a raw file (same bytes, new path,
+e.g. sorting `raw/` into sub-folders) and ingest recognizes it — it is **not** re-ingested, and
+the wiki's `resource`/citation references are repointed to the new path automatically. A file
+with **no extractable text** (a binary blob) is skipped and noted in `wiki/log.md` as
+unreadable rather than fed to the agent.
 
 **Search** the synthesized wiki:
 

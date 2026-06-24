@@ -33,6 +33,18 @@ from pathlib import Path
 from . import config, llm, manifest, okf, store, validate
 from .okf import Page
 
+# How many leading bytes to sniff when deciding whether a raw file holds text the agent can
+# read. 64 KiB is plenty to classify text vs. binary without reading a huge file into memory.
+_SNIFF_BYTES = 65536
+# Bytes that count as "text" (the classic git binary heuristic): printable ASCII, the common
+# whitespace/control bytes, plus EVERY high byte (0x80–0xFF) so UTF-8 / Latin-1 text is not
+# misread as binary. A NUL byte — or a high proportion of other control bytes — marks a file
+# binary. PDFs are detected separately by their magic header (the agent's reader extracts text
+# from them), so they are not rejected here.
+_TEXT_BYTES = bytes(
+    {7, 8, 9, 10, 11, 12, 13, 27} | set(range(0x20, 0x7F)) | set(range(0x80, 0x100))
+)
+
 
 @dataclass
 class IngestReport:
@@ -45,6 +57,11 @@ class IngestReport:
     broken_links: list[tuple[str, str]] = field(default_factory=list)
     pages_created: list[str] = field(default_factory=list)  # pages that did not exist before
     pages_updated: list[str] = field(default_factory=list)  # existing pages that were rewritten
+    # (old_rel_key, new_rel_key) for sources recognized as only MOVED/reorganized (same bytes
+    # under a new path) — not re-ingested; their wiki references are repointed deterministically.
+    moved: list[tuple[str, str]] = field(default_factory=list)
+    # rel-keys of sources with no extractable text (binary/unsupported) — NOT ingested, logged.
+    unreadable: list[str] = field(default_factory=list)
 
     def render(self) -> str:
         """Human-readable multi-line summary for CLI/MCP."""
@@ -55,6 +72,8 @@ class IngestReport:
             f"{len(self.pages_created)} created, "
             f"{len(self.pages_updated)} updated, "
             f"{len(self.pages_deleted)} deleted, "
+            f"{len(self.moved)} reorganized, "
+            f"{len(self.unreadable)} unreadable, "
             f"{len(self.errors)} errors."
         )
         if self.processed:
@@ -69,6 +88,12 @@ class IngestReport:
         if self.pages_deleted:
             lines.append("Pages deleted (restructured):")
             lines.extend(f"  - {p}" for p in self.pages_deleted)
+        if self.moved:
+            lines.append("Reorganized (recognized as moved; not re-ingested):")
+            lines.extend(f"  - {old} -> {new}" for old, new in self.moved)
+        if self.unreadable:
+            lines.append("Unreadable (no extractable text; not ingested):")
+            lines.extend(f"  - {p}" for p in self.unreadable)
         if self.skipped:
             lines.append("Skipped (already ingested):")
             lines.extend(f"  - {p}" for p in self.skipped)
@@ -81,35 +106,93 @@ class IngestReport:
         return "\n".join(lines)
 
 
-def _candidates(paths: list[str] | None) -> list[Path]:
-    """Resolve requested paths (or default to RAW_DIR/*.md) to a candidate list.
+def _walk_files(root: Path) -> list[Path]:
+    """Every file under ``root``, recursively, in deterministic order — skipping hidden files
+    and hidden directories (a leading ``.``: ``.gitkeep``, ``.git``, etc.).
 
-    A file is taken as-is; a directory contributes its top-level ``*.md`` files;
-    with no paths, default to every ``*.md`` directly under ``config.RAW_DIR``.
-    """
+    Unlike the old top-level ``*.md`` glob, this picks up ANY file type (``.txt``/``.py``/
+    ``.sql``/``.pdf``/…) and descends into sub-folders, so a user can organize ``raw/`` however
+    they like and drop in arbitrary sources. The agent decides what text it can extract; a
+    binary with no readable text is filtered out later by :func:`_is_ingestible`."""
+    out: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+        for name in sorted(filenames):
+            if name.startswith("."):
+                continue
+            out.append(Path(dirpath) / name)
+    return out
+
+
+def _candidates(paths: list[str] | None) -> list[Path]:
+    """Resolve requested paths (or default to all of ``RAW_DIR``) to a candidate list.
+
+    A file path is taken as-is; a directory contributes ALL of its files, recursively (any
+    extension, sub-folders included, hidden files/dirs skipped); with no paths, default to
+    every file under ``config.RAW_DIR``."""
     candidates: list[Path] = []
     if paths:
         for raw in paths:
             p = Path(raw)
             if p.is_dir():
-                candidates.extend(sorted(p.glob("*.md")))
+                candidates.extend(_walk_files(p))
             else:
                 candidates.append(p)
     elif config.RAW_DIR.exists():
-        candidates.extend(sorted(config.RAW_DIR.glob("*.md")))
+        candidates.extend(_walk_files(config.RAW_DIR))
     return candidates
 
 
-def _partition_sources(paths: list[str] | None) -> tuple[list[Path], list[str]]:
-    """Split candidates into ``(pending, skipped)`` in a single filesystem walk.
+def _is_ingestible(path: Path) -> bool:
+    """True if the agent has a realistic chance of extracting text from this raw file.
 
-    ``pending`` are existing files the manifest reports as new/changed (sorted,
-    de-duplicated by resolved path); ``skipped`` are the rel-keys of candidates
-    whose sha already matches the manifest.
+    We try to OPEN everything rather than allow-listing extensions: plain text and code
+    (``.txt``/``.py``/``.sql``/``.json``/…) read directly, and a PDF (detected by its ``%PDF-``
+    magic) is handed to the agent because its reader can pull text out. Only a "weird binary" —
+    a NUL byte, or a high proportion of non-text bytes in the sniffed prefix — is rejected; the
+    caller logs those as unreadable instead of spending an LLM session on a blob. An empty file
+    is ingestible (the agent simply finds nothing to add), not a binary failure."""
+    try:
+        with open(path, "rb") as fh:
+            chunk = fh.read(_SNIFF_BYTES)
+    except OSError:
+        return False
+    if not chunk:
+        return True
+    if chunk[:5] == b"%PDF-":
+        return True
+    if b"\x00" in chunk:
+        return False
+    nontext = chunk.translate(None, _TEXT_BYTES)
+    return (len(nontext) / len(chunk)) <= 0.30
+
+
+def _partition_sources(
+    paths: list[str] | None, manifest_dict: dict[str, str]
+) -> tuple[list[Path], list[str], list[tuple[str, str, str, bool]], list[Path]]:
+    """Split candidates into ``(pending, skipped, moved, unreadable)`` in one filesystem walk.
+
+    - ``pending``: new/changed files with novel, readable content — fed to the agent (sorted,
+      de-duplicated by resolved path).
+    - ``skipped``: rel-keys whose sha already matches the manifest (already ingested).
+    - ``moved``: ``(old_key, new_key, sha, old_gone)`` for a file that appeared under a NEW path
+      whose bytes were already ingested under another key — a reorganize (rename/move) or a
+      duplicate. Recognized, NOT re-ingested. ``old_gone`` is True when the prior path no longer
+      exists on disk (a real move, so its wiki references get repointed).
+    - ``unreadable``: files with no extractable text (binary/unsupported) — logged, not ingested.
+
+    Move/duplicate detection only fires for a genuinely NEW path (``key not in manifest_dict``):
+    an in-place edit of an already-tracked file is always re-ingested, even if its new content
+    happens to match another file.
     """
-    manifest_dict = manifest.load()
+    by_sha: dict[str, list[str]] = {}
+    for k, v in manifest_dict.items():
+        by_sha.setdefault(v, []).append(k)
+
     pending: list[Path] = []
     skipped: list[str] = []
+    moved: list[tuple[str, str, str, bool]] = []
+    unreadable: list[Path] = []
     seen: set[Path] = set()
     for src in _candidates(paths):
         try:
@@ -121,11 +204,29 @@ def _partition_sources(paths: list[str] | None) -> tuple[list[Path], list[str]]:
         seen.add(resolved)
         if not src.is_file():
             continue
-        if manifest.is_pending(manifest_dict, src):
-            pending.append(src)
-        else:
-            skipped.append(manifest.rel_key(src))
-    return sorted(pending), skipped
+        key = manifest.rel_key(src)
+        if not manifest.is_pending(manifest_dict, src):
+            skipped.append(key)
+            continue
+        # New/changed content. Hash once for move detection (and to fail closed on an OS read
+        # error by treating the file as unreadable).
+        try:
+            sha = manifest.file_sha256(src)
+        except OSError:
+            unreadable.append(src)
+            continue
+        if key not in manifest_dict:
+            prior = sorted(k for k in by_sha.get(sha, []) if k != key)
+            if prior:
+                gone = sorted(k for k in prior if not (config.REPO_ROOT / k).exists())
+                old_key = gone[0] if gone else prior[0]
+                moved.append((old_key, key, sha, bool(gone)))
+                continue
+        if not _is_ingestible(src):
+            unreadable.append(src)
+            continue
+        pending.append(src)
+    return sorted(pending), skipped, moved, unreadable
 
 
 def _hash_pages(pages: list[Page]) -> dict[str, str]:
@@ -255,12 +356,18 @@ def _restore_wiki(backup_tmp: str | None) -> None:
 def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
     """Run one ingest. Exactly one ``llm.run_ingest_session`` call per pending source.
 
-    Per source: back up the wiki, snapshot it, run the agent (which edits ``wiki/`` directly),
-    snapshot again, diff to learn what changed, validate + re-stamp the changed pages, and
-    repoint any renamed-page links. On a per-source exception (a missing/unusable CLI, a
+    Before the per-source loop, candidates are partitioned (``_partition_sources``) into
+    pending / already-ingested / **reorganized** (a file that only moved or is a byte-for-byte
+    duplicate — recognized, not re-ingested; a real move repoints the wiki's resource/citation
+    references and re-keys the manifest) / **unreadable** (no extractable text, e.g. a binary —
+    logged and marked done, never fed to the agent).
+
+    Per pending source: back up the wiki, snapshot it, run the agent (which edits ``wiki/``
+    directly), snapshot again, diff to learn what changed, validate + re-stamp the changed pages,
+    and repoint any renamed-page links. On a per-source exception (a missing/unusable CLI, a
     timeout, etc.) the wiki is rolled back to its pre-source state and the error is collected,
-    so the source is retried next run. Finalization (manifest.save + rebuild_indexes +
-    find_broken_links + append_log) happens once, only if any source was processed.
+    so the source is retried next run. Finalization (rebuild_indexes + find_broken_links +
+    append_log) happens once, if any source was processed, reorganized, or found unreadable.
 
     ``progress`` is an optional ``progress(event, data)`` callback (run start, before/after
     each source, before finalization); None for non-interactive callers. A failing callback
@@ -277,9 +384,50 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
     manifest_dict = manifest.load()
     report = IngestReport([], [], [], [])
 
-    pending, skipped = _partition_sources(paths)
+    pending, skipped, moved, unreadable = _partition_sources(paths, manifest_dict)
     report.skipped = skipped
-    emit("start", pending=len(pending), skipped=len(skipped))
+
+    # --- Reorganized sources: a file that only MOVED (or is a byte-for-byte duplicate) is
+    # recognized and NOT re-ingested. For a real move (the old path is gone) repoint the wiki's
+    # `resource` frontmatter and citation links to the new path so nothing breaks, then drop the
+    # stale manifest key. Either way, record the new key so future runs skip it immediately. ---
+    repointed = False
+    for old_key, new_key, sha, old_gone in moved:
+        if old_gone and old_key != new_key:
+            try:
+                if store.rewrite_raw_references(old_key, new_key):
+                    repointed = True
+            except Exception as exc:  # noqa: BLE001 - collect, don't re-key, retry next run
+                # Leave the manifest untouched so this move (and its repoint) is retried next
+                # run rather than being silently recorded with stale references behind it.
+                report.errors.append(f"{new_key}: repoint refs from {old_key}: {exc}")
+                continue
+            manifest_dict.pop(old_key, None)
+        manifest_dict[new_key] = sha
+        report.moved.append((old_key, new_key))
+    if report.moved:
+        manifest.save(manifest_dict)
+
+    # --- Unreadable sources: no extractable text (binary/unsupported). Mark them done (so they
+    # are not re-checked and re-logged every run) and surface + log them — the file "did not
+    # work", but it is not a hard error that should fail the whole run. ---
+    for src in unreadable:
+        key = manifest.rel_key(src)
+        try:
+            manifest_dict[key] = manifest.file_sha256(src)
+        except OSError:
+            continue
+        report.unreadable.append(key)
+    if unreadable:
+        manifest.save(manifest_dict)
+
+    emit(
+        "start",
+        pending=len(pending),
+        skipped=len(skipped),
+        moved=len(report.moved),
+        unreadable=len(report.unreadable),
+    )
 
     # A Ctrl+C (or other BaseException) raised mid-loop is captured here, not allowed to
     # propagate immediately, so finalization still runs for the already-completed sources
@@ -375,17 +523,28 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
         if pending_interrupt is not None:
             break
 
-    if report.processed:
+    if report.processed or report.moved or report.unreadable or repointed:
         emit("finalize")
-        # The manifest is already persisted incrementally (after each source) above, so a
-        # final save here would be redundant — just rebuild the derived files.
+        # The manifest is already persisted incrementally (after each source, and right after the
+        # move/unreadable bookkeeping) above, so a final save here would be redundant — just
+        # rebuild the derived files (a move repoint can have changed page bodies/frontmatter).
         store.rebuild_indexes()
         # Surface any cross-link left dangling by a restructure so it is never silent.
         report.broken_links = store.find_broken_links()
-        store.append_log(
-            f"ingest {report.processed} -> {len(report.pages_created)} created, "
-            f"{len(report.pages_updated)} updated, {len(report.pages_deleted)} deleted"
-        )
+        if report.processed:
+            store.append_log(
+                f"ingest {report.processed} -> {len(report.pages_created)} created, "
+                f"{len(report.pages_updated)} updated, {len(report.pages_deleted)} deleted"
+            )
+        for old_key, new_key in report.moved:
+            store.append_log(
+                f"reorganized {new_key}: same content already ingested as {old_key}; "
+                "recognized as moved, not re-ingested"
+            )
+        for key in report.unreadable:
+            store.append_log(
+                f"could not ingest {key}: no readable text found (binary or unsupported); skipped"
+            )
         emit(
             "done",
             processed=len(report.processed),
@@ -393,6 +552,8 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
             updated=len(report.pages_updated),
             deleted=len(report.pages_deleted),
             broken=len(report.broken_links),
+            moved=len(report.moved),
+            unreadable=len(report.unreadable),
         )
 
     # Now that the completed sources have been finalized, re-raise a captured Ctrl+C so the

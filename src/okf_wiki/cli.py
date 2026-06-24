@@ -41,7 +41,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_ingest.add_argument(
         "paths",
         nargs="*",
-        help="Specific files or directories to ingest (default: every *.md under raw/).",
+        help="Specific files or directories to ingest (default: every file under raw/, "
+        "recursively, any type).",
     )
     p_ingest.add_argument(
         "--quiet",

@@ -46,12 +46,20 @@ class ConsoleProgress:
     def _ignore(self, **_) -> None:
         pass
 
-    def on_start(self, pending: int, skipped: int) -> None:
+    def on_start(
+        self, pending: int, skipped: int, moved: int = 0, unreadable: int = 0
+    ) -> None:
+        bits = []
+        if skipped:
+            bits.append(f"{skipped} already up to date")
+        if moved:
+            bits.append(f"{moved} reorganized")
+        if unreadable:
+            bits.append(f"{unreadable} unreadable")
+        extra = f" ({', '.join(bits)})" if bits else ""
         if pending == 0:
-            extra = f" ({skipped} already up to date)" if skipped else ""
             self._writeln(f"Nothing to ingest{extra}.")
             return
-        extra = f" ({skipped} already up to date)" if skipped else ""
         self._writeln(f"Ingesting {pending} file(s){extra}...")
 
     def on_source_start(self, index: int, total: int, source: str) -> None:

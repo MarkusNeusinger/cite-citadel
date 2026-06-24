@@ -8,7 +8,13 @@
 
 ## What you are given
 
-- One **raw source file** path (e.g. `raw/notes.md`). Open and read it yourself.
+- One **raw source file** path (e.g. `raw/notes.md`, `raw/papers/attention.pdf`,
+  `raw/snippets/query.sql`). It may live in a **sub-folder** and be **any text-bearing file
+  type** — markdown, plain text, code (`.py`/`.sql`/…), JSON/CSV, PDF, etc. **Open and read it
+  yourself** and extract whatever text it contains, then ingest those facts. If the file holds
+  no usable text (a stray binary that slipped through), make no edits and stop — the system logs
+  it as unreadable. (Obvious binaries are filtered out before you run, so assume yours is
+  readable.)
 - The **wiki** lives under `wiki/`. Search and read it with your tools (Grep/Glob/Read)
   before writing — never assume a page does or doesn't exist; look.
 

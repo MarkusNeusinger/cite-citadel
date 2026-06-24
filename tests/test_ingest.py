@@ -291,6 +291,206 @@ def test_ingest_no_changes_marks_done(tmp_path, monkeypatch):
     assert _CALLS["n"] == 1
 
 
+# --- arbitrary file types, sub-folders, moves, and binaries -----------------------------
+
+
+def _make_fake(written: list[str]):
+    """A session fake that writes one valid Concept page per source, citing the raw file (which
+    may be any type/sub-folder), and records which rel_keys it was driven with."""
+
+    def fake(rel_key: str) -> None:
+        _CALLS["n"] += 1
+        written.append(rel_key)
+        slug = okf.slugify(rel_key)
+        _agent_write(
+            f"concepts/{slug}.md",
+            {
+                "type": "Concept",
+                "title": slug,
+                "description": "d",
+                "tags": ["x"],
+                "resource": rel_key,
+            },
+            f"A fact.[^s1]\n\n## Sources\n\n[^s1]: [{rel_key}](../../{rel_key}) - n\n",
+        )
+
+    return fake
+
+
+def test_candidates_walks_recursively_and_skips_hidden(tmp_path, monkeypatch):
+    """Discovery picks up ANY file type in ANY sub-folder, skipping hidden files/dirs — both for
+    the default (whole-raw/) scan and for an explicit directory argument."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "a.md").write_text("a\n", encoding="utf-8")
+    (raw / "sub").mkdir()
+    (raw / "sub" / "b.txt").write_text("b\n", encoding="utf-8")
+    (raw / "sub" / "c.py").write_text("c\n", encoding="utf-8")
+    (raw / ".hidden.md").write_text("h\n", encoding="utf-8")  # hidden file -> skipped
+    (raw / ".git").mkdir()
+    (raw / ".git" / "config").write_text("x\n", encoding="utf-8")  # hidden dir -> skipped
+
+    expected = {"a.md", "sub/b.txt", "sub/c.py"}
+    default = {str(p.relative_to(raw)).replace("\\", "/") for p in ingest._candidates(None)}
+    explicit = {str(p.relative_to(raw)).replace("\\", "/") for p in ingest._candidates([str(raw)])}
+    assert default == expected
+    assert explicit == expected
+
+
+def test_ingest_discovers_subfolders_and_nonmd(tmp_path, monkeypatch):
+    """A .txt at top level and .sql/.py in a sub-folder are all ingested; a hidden file is not."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    written: list[str] = []
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", _make_fake(written))
+
+    (raw / "top.txt").write_text("top level text source\n", encoding="utf-8")
+    (raw / "code").mkdir()
+    (raw / "code" / "query.sql").write_text("SELECT 1; -- a fact\n", encoding="utf-8")
+    (raw / "code" / "script.py").write_text("# a python fact\nprint('hi')\n", encoding="utf-8")
+    (raw / ".gitkeep").write_text("", encoding="utf-8")
+
+    report = ingest.ingest()
+    assert set(report.processed) == {"raw/top.txt", "raw/code/query.sql", "raw/code/script.py"}
+    assert "raw/.gitkeep" not in report.processed
+    assert len(report.pages_created) == 3
+    assert not report.errors
+    assert lint.lint().ok()
+
+
+def test_is_ingestible_classifies_text_pdf_binary(tmp_path, monkeypatch):
+    """Text/code/UTF-8/empty/PDF are ingestible; a NUL byte or a high non-text ratio is not."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+
+    def mk(name, data):
+        p = raw / name
+        p.write_bytes(data)
+        return p
+
+    assert ingest._is_ingestible(mk("a.txt", b"plain text\n"))
+    assert ingest._is_ingestible(mk("a.py", b"print('hi')\n"))
+    assert ingest._is_ingestible(mk("u.md", "Café — résumé ☕\n".encode("utf-8")))
+    assert ingest._is_ingestible(mk("a.pdf", b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\nstuff"))
+    assert ingest._is_ingestible(mk("empty", b""))
+    assert not ingest._is_ingestible(mk("nul.bin", b"text\x00more\x00data"))
+    assert not ingest._is_ingestible(mk("ctrl.bin", bytes([1, 2, 3, 4, 5, 6, 16, 17, 18, 19]) * 50))
+
+
+def test_binary_raw_file_is_logged_unreadable_not_ingested(tmp_path, monkeypatch):
+    """A binary blob is filtered out before the agent, surfaced as unreadable, logged in log.md,
+    and marked done so a re-run neither re-checks nor re-logs it — without failing the run."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake_session_transformer)
+
+    (raw / "blob.bin").write_bytes(b"\x00\x01\x02\x03BINARY\xff\xfe\x00")
+    (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
+
+    report = ingest.ingest()
+    assert _CALLS["n"] == 1  # only the readable text file ran a session
+    assert "raw/notes.md" in report.processed
+    assert "raw/blob.bin" in report.unreadable
+    assert "raw/blob.bin" not in report.processed
+    assert not report.errors  # unreadable is logged, NOT a hard error
+
+    log_text = (wiki / "log.md").read_text(encoding="utf-8")
+    assert "raw/blob.bin" in log_text and "no readable text" in log_text
+
+    import json
+
+    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    assert "raw/blob.bin" in data  # marked done
+
+    second = ingest.ingest()
+    assert "raw/blob.bin" in second.skipped
+    assert second.unreadable == []
+    assert _CALLS["n"] == 1  # not re-run
+
+
+def test_moved_raw_file_is_recognized_not_reingested(tmp_path, monkeypatch):
+    """Reorganizing a raw file (same bytes, new path) is recognized: NOT re-ingested, the manifest
+    is re-keyed, and the wiki's resource/citation references are repointed so lint stays clean."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake_session_transformer)
+
+    (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
+    first = ingest.ingest()
+    assert first.processed == ["raw/notes.md"] and _CALLS["n"] == 1
+    page = wiki / "concepts" / "transformer.md"
+    assert "../../raw/notes.md" in page.read_text(encoding="utf-8")
+
+    # Move the source into a sub-folder (byte-for-byte identical content).
+    (raw / "ml").mkdir()
+    (raw / "ml" / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
+    (raw / "notes.md").unlink()
+
+    second = ingest.ingest()
+    assert _CALLS["n"] == 1  # NOT re-ingested
+    assert second.processed == []
+    assert ("raw/notes.md", "raw/ml/notes.md") in second.moved
+    assert not second.errors
+
+    import json
+
+    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    assert "raw/ml/notes.md" in data and "raw/notes.md" not in data  # re-keyed
+
+    text = page.read_text(encoding="utf-8")
+    assert "resource: raw/ml/notes.md" in text
+    assert "../../raw/ml/notes.md" in text
+    assert "(../../raw/notes.md)" not in text
+    assert lint.lint().ok() and lint.lint().bad_sources == []
+
+    log_text = (wiki / "log.md").read_text(encoding="utf-8")
+    assert "raw/ml/notes.md" in log_text and "moved" in log_text
+
+
+def test_duplicate_raw_file_not_reingested(tmp_path, monkeypatch):
+    """A byte-for-byte COPY at a new path (original still present) is recognized as already-known
+    content and not re-ingested; the original's references are left intact (no repoint)."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake_session_transformer)
+
+    (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
+    ingest.ingest()
+    assert _CALLS["n"] == 1
+
+    (raw / "copy.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
+    report = ingest.ingest()
+    assert _CALLS["n"] == 1
+    assert ("raw/notes.md", "raw/copy.md") in report.moved
+
+    import json
+
+    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    assert "raw/notes.md" in data and "raw/copy.md" in data  # both tracked
+
+    text = (wiki / "concepts" / "transformer.md").read_text(encoding="utf-8")
+    assert "resource: raw/notes.md" in text  # original NOT repointed (still on disk)
+    assert lint.lint().ok()
+
+
+def test_rewrite_raw_references_repoints_resource_and_citation(tmp_path, monkeypatch):
+    """store.rewrite_raw_references repoints the `resource` frontmatter and real citation links to
+    a moved source, leaving a literal link inside a code fence untouched."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "ml").mkdir()
+    (raw / "ml" / "notes.md").write_text("x\n", encoding="utf-8")
+    _seed_page(
+        wiki, "concepts/t.md",
+        {"type": "Concept", "title": "T", "description": "d", "tags": ["x"], "resource": "raw/notes.md"},
+        "A fact.[^s1]\n\n"
+        "```\n"
+        "example: [old](../../raw/notes.md)\n"  # fenced literal -> untouched
+        "```\n\n"
+        "## Sources\n\n[^s1]: [raw/notes.md](../../raw/notes.md) - n\n",
+    )
+
+    changed = store.rewrite_raw_references("raw/notes.md", "raw/ml/notes.md")
+    assert changed == ["concepts/t.md"]
+    text = (wiki / "concepts" / "t.md").read_text(encoding="utf-8")
+    assert "resource: raw/ml/notes.md" in text
+    assert "[^s1]: [raw/notes.md](../../raw/ml/notes.md)" in text  # real citation repointed
+    assert "example: [old](../../raw/notes.md)" in text  # fenced literal left intact
+
+
 def test_diff_classifies_created_updated_deleted():
     """Unit test of the content-hash diff."""
     before = {"a.md": "h1", "b.md": "h2", "c.md": "h3"}
@@ -607,7 +807,7 @@ def test_ingest_emits_progress_events(tmp_path, monkeypatch):
     for expected in ("source_start", "source_done", "finalize", "done"):
         assert expected in names, f"missing event: {expected}"
     start = next(d for e, d in events if e == "start")
-    assert start == {"pending": 1, "skipped": 0}
+    assert start == {"pending": 1, "skipped": 0, "moved": 0, "unreadable": 0}
     done = next(d for e, d in events if e == "source_done")
     assert done["source"] == "raw/notes.md"
     assert done["index"] == 1 and done["total"] == 1
