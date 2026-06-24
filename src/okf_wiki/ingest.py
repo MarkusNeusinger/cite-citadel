@@ -281,6 +281,11 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
     report.skipped = skipped
     emit("start", pending=len(pending), skipped=len(skipped))
 
+    # A Ctrl+C (or other BaseException) raised mid-loop is captured here, not allowed to
+    # propagate immediately, so finalization still runs for the already-completed sources
+    # before it is re-raised. Without this, the per-source-persisted manifest could outlive a
+    # stale index/log: a later run with nothing pending would never rebuild the derived files.
+    pending_interrupt: BaseException | None = None
     for index, src in enumerate(pending, 1):
         rel_key = manifest.rel_key(src)
         emit("source_start", index=index, total=len(pending), source=rel_key)
@@ -351,15 +356,24 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 error=str(exc),
                 seconds=time.monotonic() - started,
             )
+        except BaseException as exc:  # noqa: BLE001 - Ctrl+C etc.: capture, finalize, re-raise
+            # A KeyboardInterrupt/SystemExit is not a per-source error to collect — capture it,
+            # let `finally` roll this in-flight source back, then stop the loop and re-raise it
+            # AFTER finalization (below) so the completed sources don't keep stale indexes.
+            pending_interrupt = exc
         finally:
-            # Roll back unless the source fully succeeded. Keeping the restore HERE (not only
-            # in `except Exception`) means a KeyboardInterrupt — or any other BaseException,
-            # which `except Exception` does NOT catch — still restores the wiki to its
-            # pre-source state instead of leaving a half-finished edit behind.
+            # Roll back unless the source fully succeeded. This `finally` is the single rollback
+            # point for every non-success exit — the validation-error `continue`, an ordinary
+            # Exception, and a captured BaseException — so none of them can leave a half-edit.
             if not succeeded:
                 _restore_wiki(backup)
             if backup:
                 shutil.rmtree(backup, ignore_errors=True)
+
+        # Stop taking new sources once an interrupt was captured, but fall through to
+        # finalization for the sources already completed this run.
+        if pending_interrupt is not None:
+            break
 
     if report.processed:
         emit("finalize")
@@ -380,5 +394,11 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
             deleted=len(report.pages_deleted),
             broken=len(report.broken_links),
         )
+
+    # Now that the completed sources have been finalized, re-raise a captured Ctrl+C so the
+    # interrupt still aborts the run (the per-source `finally` already rolled back whichever
+    # source was in flight when it landed).
+    if pending_interrupt is not None:
+        raise pending_interrupt
 
     return report

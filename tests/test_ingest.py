@@ -538,6 +538,36 @@ def test_completed_sources_persisted_before_interrupt(tmp_path, monkeypatch):
     assert (wiki / "concepts" / "from-a.md").exists()  # a's page survived b's rollback
 
 
+def test_finalization_runs_for_completed_sources_on_interrupt(tmp_path, monkeypatch):
+    """If a Ctrl+C interrupts the run after some sources already completed, the derived files
+    (indexes + log) for that completed work are still rebuilt before the interrupt propagates.
+    Otherwise — since the manifest is now persisted per-source — a later run could find nothing
+    pending, skip finalization entirely, and leave the wiki's indexes/log permanently stale."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "a.md").write_text("first\n", encoding="utf-8")
+    (raw / "b.md").write_text("second\n", encoding="utf-8")
+
+    def fake(rel_key):
+        if rel_key == "raw/a.md":
+            _agent_write(
+                "concepts/from-a.md",
+                {"type": "Concept", "title": "From A", "description": "d", "tags": ["x"], "resource": "raw/a.md"},
+                "Fact A.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - a\n",
+            )
+        else:  # raw/b.md interrupts after a is already done
+            raise KeyboardInterrupt()
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    with pytest.raises(KeyboardInterrupt):
+        ingest.ingest()
+
+    # a's page is committed AND the indexes/log were rebuilt despite the interrupt — so the
+    # wiki is not stranded with content the navigation files don't reflect.
+    assert (wiki / "concepts" / "from-a.md").exists()
+    assert "from-a.md" in (wiki / "index.md").read_text(encoding="utf-8")
+    assert (wiki / "log.md").exists()
+
+
 def test_contradiction_marker_preserved(tmp_path, monkeypatch):
     """A contradiction marker the agent wrote survives the validate+restamp and lint flags it."""
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
