@@ -5,7 +5,7 @@ with an **MCP server** so an AI can search and read it.
 
 This is a KISS, pure-Python (3.12) implementation of Andrej Karpathy's
 [LLM-Wiki pattern](docs/karpathy-llm-wiki.md): you drop arbitrary text-bearing files into `raw/`
-(markdown, plain text, code, JSON/CSV, PDF, … — any sub-folder), and
+(markdown, plain text, code, JSON/CSV, PDF, PowerPoint/Word `.pptx`/`.docx`, … — any sub-folder), and
 one agentic CLI session per file folds each source into a cross-linked OKF wiki under `wiki/`.
 Instead of making one page per file, ingest **routes each fact to the page it best fits and restructures**
 (splits / merges) existing pages as the wiki grows. Every fact is cited back to the raw file it
@@ -131,7 +131,7 @@ links. Ingest then grants the agentic CLI access to the out-of-repo locations au
 ## Use
 
 **Ingest** — drop one or more arbitrary text-bearing files into `raw/` (any type — markdown,
-plain text, code, JSON/CSV, PDF, … — in any sub-folder), then fold them in:
+plain text, code, JSON/CSV, PDF, PowerPoint/Word `.pptx`/`.docx`, … — in any sub-folder), then fold them in:
 
 ```bash
 cp ~/notes/q3-planning.md raw/
@@ -179,8 +179,11 @@ just when one is added:
   and ingest recognizes it — it is **not** re-ingested, and the wiki's `resource`/citation
   references are repointed to the new path automatically (a move is **not** treated as a delete).
 
-A file with **no extractable text** (a binary blob) is skipped and noted in `wiki/log.md` as
-unreadable rather than fed to the agent.
+A file with **no extractable text** (a binary blob, or an all-images `.pptx` with no text) is
+skipped and noted in `wiki/log.md` as unreadable rather than fed to the agent. PowerPoint/Word
+files (`.pptx`/`.docx`/`.pptm`/`.docm`) are handled by extracting their text first (slides +
+speaker notes / paragraphs + tables, standard-library only — no extra dependency); the wiki still
+cites the original Office file as the source. Legacy binary `.ppt`/`.doc` are not supported.
 
 **Search** the synthesized wiki:
 

@@ -68,19 +68,23 @@ def _agent_path(path: Path) -> str:
     return config.rel_or_abs_posix(path)
 
 
-def _external_dirs(rel_key: str) -> list[str]:
+def _external_dirs(rel_key: str, read_path: str | None = None) -> list[str]:
     """OS-native paths of the directories the agent must read/write that live OUTSIDE the repo, so
     the CLI can be granted access to them. The agent's ``cwd`` is the repo root (which already
     covers SCHEMA.md / AGENT_INGEST.md / the ``okf-wiki`` command), so this returns — de-duplicated
     and sorted — only the out-of-repo members of {wiki dir (written), raw dir, docs dir, the source
-    file's own parent}. Empty for the default in-repo layout, so the in-repo invocation is byte-for-
-    byte unchanged."""
+    file's own parent, and — for an Office source — the temp dir holding its extracted text}. Empty
+    for the default in-repo layout, so the in-repo invocation is byte-for-byte unchanged."""
     candidates = [
         config.WIKI_DIR,
         config.RAW_DIR,
         config.DOCS_DIR,
         config.source_path_for_key(rel_key).parent,
     ]
+    if read_path:
+        # The extracted-text file lives in a system temp dir (outside the repo); the agent must be
+        # granted access so it can read what to ingest.
+        candidates.append(Path(read_path).parent)
     out: dict[str, None] = {}
     for d in candidates:
         if config.is_outside_repo(d):
@@ -88,7 +92,7 @@ def _external_dirs(rel_key: str) -> list[str]:
     return sorted(out)
 
 
-def _build_instruction(rel_key: str, kind: str = "ingest") -> str:
+def _build_instruction(rel_key: str, kind: str = "ingest", read_path: str | None = None) -> str:
     """The short, paths-only agent prompt. References the rules and the raw source BY PATH
     (the agent opens them with its own tools), so it never embeds file content and stays paths-only
     — at most a couple thousand chars regardless of raw-file size, the WinError 206 fix. ``rel_key``
@@ -107,6 +111,10 @@ def _build_instruction(rel_key: str, kind: str = "ingest") -> str:
       or REMOVE the now-stale facts it had produced, not merely append new ones.
     - ``"delete"`` — the source was REMOVED from disk; strip the facts/citations that came
       only from it (this is the only prompt that must NOT try to open ``rel_key``).
+
+    ``read_path`` (ingest/reconcile only) is set when ``rel_key`` is a binary Office file the agent
+    cannot open: ingest has extracted its text to that path, so the agent is told to READ
+    ``read_path`` for content while still citing ``rel_key`` as the source of record.
     """
     wiki_rel = _agent_path(config.WIKI_DIR)
     raw_rel = _agent_path(config.RAW_DIR)
@@ -154,16 +162,30 @@ def _build_instruction(rel_key: str, kind: str = "ingest") -> str:
             "leave facts from OTHER raw sources and their citations intact.\n\n"
         )
 
+    if read_path:
+        # rel_key is a binary Office file (pptx/docx); its text was pre-extracted to read_path. The
+        # agent reads THAT for content but must cite the original rel_key as the source of record.
+        read_step = (
+            f"1. The raw source {rel_key} is a binary Office file (PowerPoint/Word) you cannot open "
+            f"directly. Its text has been EXTRACTED to {read_path} — read THAT file for the content. "
+            f"Treat {rel_key} as the source of record: set `resource: {rel_key}` and cite {rel_key} "
+            "(NOT the extracted file) in `## Sources`. If it holds no usable text, make no edits.\n"
+        )
+    else:
+        read_step = (
+            f"1. Open and read the raw source file: {rel_key}. It may be ANY text-bearing file type "
+            "(markdown, plain text, code such as .py/.sql, JSON/CSV, PDF, ...) — extract its text "
+            "and ingest the facts. For CODE/config/data, capture its PURPOSE, BEHAVIOR and the "
+            "external systems it touches (which database and HOW), NOT its structure — see 'Code & "
+            "structured sources' in SCHEMA.md. If it holds no usable text, make no edits.\n"
+        )
+
     return (
         header
         + note
         + "Fold ONE raw source into the wiki by EDITING FILES DIRECTLY:\n"
-        f"1. Open and read the raw source file: {rel_key}. It may be ANY text-bearing file type "
-        "(markdown, plain text, code such as .py/.sql, JSON/CSV, PDF, ...) — extract its text and "
-        "ingest the facts. For CODE/config/data, capture its PURPOSE, BEHAVIOR and the external "
-        "systems it touches (which database and HOW), NOT its structure — see 'Code & structured "
-        "sources' in SCHEMA.md. If it holds no usable text, make no edits.\n"
-        f"2. The wiki is under {wiki_rel}/ (raw sources under {raw_rel}/). Search and read "
+        + read_step
+        + f"2. The wiki is under {wiki_rel}/ (raw sources under {raw_rel}/). Search and read "
         "existing pages (Grep/Glob/Read) before writing — prefer extending or merging into an "
         "existing page over creating a new one.\n"
         f"3. Create/update/merge/split page files under {wiki_rel}/ so every fact from {rel_key} "
@@ -316,18 +338,22 @@ def _run_session(cli: str, argv: list[str], stdin_text: str | None) -> None:
     return
 
 
-def run_ingest_session(rel_key: str, kind: str = "ingest") -> None:
+def run_ingest_session(rel_key: str, kind: str = "ingest", read_path: str | None = None) -> None:
     """Run the configured agentic CLI once to propagate the raw source ``rel_key`` into the wiki.
 
     ``kind`` picks the propagation (see :func:`_build_instruction`): ``"ingest"`` folds in a new
     source, ``"reconcile"`` re-ingests a CHANGED source (updating/removing its stale facts), and
     ``"delete"`` strips the provenance of a source that was REMOVED from disk.
 
+    ``read_path`` (ingest/reconcile only) is the path to the pre-extracted text of a binary Office
+    source: when set, the agent is told to READ it for content while still citing ``rel_key``, and
+    its directory is granted to the CLI alongside any out-of-repo wiki/raw.
+
     Side-effecting only: the agent edits files under ``config.WIKI_DIR``. Returns None;
     ``ingest`` discovers what changed via a filesystem diff. Raises ``RuntimeError`` (collected
     per-source by ingest) on a missing/failed CLI or a timeout."""
     cli = (config.LLM_CLI or "claude").strip().lower()
     cli_path = _resolve_cli(cli)
-    prompt = _build_instruction(rel_key, kind)
-    argv, stdin_text = _build_invocation(cli, cli_path, prompt, _external_dirs(rel_key))
+    prompt = _build_instruction(rel_key, kind, read_path)
+    argv, stdin_text = _build_invocation(cli, cli_path, prompt, _external_dirs(rel_key, read_path))
     _run_session(cli, argv, stdin_text)

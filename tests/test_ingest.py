@@ -317,6 +317,23 @@ def _make_fake(written: list[str]):
     return fake
 
 
+def _make_pptx(path: Path, slides: list[list[str]]) -> None:
+    """Write a minimal real ``.pptx`` (a ZIP of slide XML) at ``path``; ``slides`` is a list of
+    slides, each a list of paragraph strings. An empty slide ([]) carries no text."""
+    import zipfile
+
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    p = "http://schemas.openxmlformats.org/presentationml/2006/main"
+    with zipfile.ZipFile(path, "w") as z:
+        for i, paras in enumerate(slides, 1):
+            runs = "".join(f"<a:p><a:r><a:t>{t}</a:t></a:r></a:p>" for t in paras)
+            z.writestr(
+                f"ppt/slides/slide{i}.xml",
+                f'<?xml version="1.0"?><p:sld xmlns:p="{p}" xmlns:a="{a}"><p:cSld><p:spTree>'
+                f"<p:sp><p:txBody>{runs}</p:txBody></p:sp></p:spTree></p:cSld></p:sld>",
+            )
+
+
 def test_candidates_walks_recursively_and_skips_hidden(tmp_path, monkeypatch):
     """Discovery picks up ANY file type in ANY sub-folder, skipping hidden files/dirs — both for
     the default (whole-raw/) scan and for an explicit directory argument."""
@@ -402,6 +419,99 @@ def test_binary_raw_file_is_logged_unreadable_not_ingested(tmp_path, monkeypatch
     assert "raw/blob.bin" in second.skipped
     assert second.unreadable == []
     assert _CALLS["n"] == 1  # not re-run
+
+
+def test_partition_classifies_office_text_vs_textless_once(tmp_path, monkeypatch):
+    """Office routing lives in _partition_sources: a deck with extractable text is pending (and its
+    text is cached for the agent step), a text-free deck is unreadable like any other binary — and
+    the file is parsed exactly once (the cache is what avoids a second parse)."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _make_pptx(raw / "withtext.pptx", [["A real fact."]])
+    _make_pptx(raw / "notext.pptx", [[]])
+
+    pending, skipped, moved, unreadable, deleted, office_text = ingest._partition_sources(None, {})
+
+    pending_keys = {manifest.rel_key(p) for p in pending}
+    unreadable_keys = {manifest.rel_key(p) for p in unreadable}
+    assert "raw/withtext.pptx" in pending_keys
+    assert "raw/notext.pptx" in unreadable_keys
+    # The extracted text is cached so the agent step reuses it (no second ZIP/XML parse).
+    assert any("A real fact." in t for t in office_text.values())
+    assert all(isinstance(p, Path) for p in office_text)   # keyed by the pending Path objects
+
+
+def test_office_pptx_extracted_to_temp_and_ingested(tmp_path, monkeypatch):
+    """A .pptx (binary the agent can't open) is extracted to a temp .md the agent READS, while the
+    wiki cites the ORIGINAL .pptx as its source. The temp file is cleaned up after the session."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _make_pptx(raw / "deck.pptx", [["Transformers use self-attention.", "Key idea: attention."]])
+
+    seen: dict[str, object] = {}
+
+    def fake(rel_key, kind="ingest", read_path=None):
+        _CALLS["n"] += 1
+        seen.update(rel_key=rel_key, kind=kind, read_path=read_path)
+        # The agent is pointed at the EXTRACTED text, not the binary; it must exist right now.
+        assert read_path is not None
+        seen["extracted"] = Path(read_path).read_text(encoding="utf-8")
+        _agent_write(
+            "concepts/transformer.md",
+            {"type": "Concept", "title": "Transformer", "description": "d", "tags": ["ml"],
+             "resource": rel_key},
+            f"Transformers use self-attention.[^s1]\n\n## Sources\n\n"
+            f"[^s1]: [{rel_key}](../../{rel_key}) - deck (ingested 2026-06-21)\n",
+        )
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+
+    report = ingest.ingest()
+
+    assert report.processed == ["raw/deck.pptx"]   # keyed by the original Office file
+    assert not report.errors
+    assert seen["rel_key"] == "raw/deck.pptx" and seen["kind"] == "ingest"
+    assert "self-attention" in str(seen["extracted"]).lower()
+    assert "## Slide 1" in str(seen["extracted"])   # the extractor's structure reached the agent
+
+    page = wiki / "concepts" / "transformer.md"
+    assert page.exists()
+    assert "resource: raw/deck.pptx" in page.read_text(encoding="utf-8")  # cites the .pptx
+    assert lint.lint().ok() and lint.lint().bad_sources == []
+
+    import json
+
+    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    assert "raw/deck.pptx" in data
+
+    # The extracted-text temp dir/file is removed once the session is done (no litter).
+    assert not Path(str(seen["read_path"])).exists()
+
+    # Re-running is idempotent on the .pptx key (no second extraction/session).
+    assert ingest.ingest().processed == []
+    assert _CALLS["n"] == 1
+
+
+def test_office_deck_without_text_is_unreadable(tmp_path, monkeypatch):
+    """An all-images .pptx (no extractable text) is logged unreadable and never fed to the agent —
+    no wasted session, marked done so a re-run does not re-check it."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _make_pptx(raw / "images.pptx", [[]])  # a slide with no text runs
+
+    def fake(rel_key, kind="ingest", read_path=None):
+        raise AssertionError(f"no session should run for a text-free deck (got {rel_key})")
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+
+    report = ingest.ingest()
+    assert "raw/images.pptx" in report.unreadable
+    assert report.processed == [] and not report.errors
+
+    log_text = (wiki / "log.md").read_text(encoding="utf-8")
+    assert "raw/images.pptx" in log_text and "no readable text" in log_text
+
+    import json
+
+    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    assert "raw/images.pptx" in data  # marked done
 
 
 def test_moved_raw_file_is_recognized_not_reingested(tmp_path, monkeypatch):
