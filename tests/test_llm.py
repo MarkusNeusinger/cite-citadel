@@ -52,6 +52,45 @@ def test_build_instruction_uses_configured_wiki_dir(tmp_path, monkeypatch):
     assert len(prompt) < 2000         # still tiny (paths-only) — WinError 206 guard
 
 
+def test_build_instruction_reconcile_says_update_and_remove():
+    """The reconcile prompt (changed source) tells the agent to UPDATE/REMOVE stale facts, not
+    just append — and still references the source by path and stays tiny."""
+    prompt = llm._build_instruction("raw/notes.md", "reconcile")
+    assert "raw/notes.md" in prompt
+    low = prompt.lower()
+    assert "changed" in low
+    assert "update" in low and "remove" in low
+    assert "re-ingest" in low or "reingest" in low
+    # A co-cited fact must NOT be dropped whole — only this source's marker is removed unless it
+    # was the last citation (mirrors the delete prompt; guards the Copilot-review fix).
+    assert "co-cited" in low and "only if" in low
+    assert len(prompt) < 2000  # still paths-only — WinError 206 guard
+
+
+def test_build_instruction_delete_strips_provenance_without_opening():
+    """The delete prompt (removed source) tells the agent NOT to open the file and to remove the
+    facts/citations that depended on it; it names the path so the agent can grep for it."""
+    prompt = llm._build_instruction("raw/gone.md", "delete")
+    assert "raw/gone.md" in prompt
+    low = prompt.lower()
+    assert "delete" in low and "no longer exists" in low
+    assert "do not try" in low and "open it" in low  # must not re-read a missing file
+    assert "resource" in low and "[^s" in prompt     # points at both provenance forms
+    assert len(prompt) < 2000
+
+
+def test_build_instruction_delete_honors_configured_wiki_dir(tmp_path, monkeypatch):
+    """The delete prompt names the CONFIGURED wiki dir (OKF_WIKI_DIR), never a hardcoded
+    'wiki/', so a custom layout is searched/edited correctly."""
+    monkeypatch.setattr(config, "REPO_ROOT", tmp_path, raising=False)
+    monkeypatch.setattr(config, "WIKI_DIR", tmp_path / "wikiET", raising=False)
+    monkeypatch.setattr(config, "RAW_DIR", tmp_path / "raw", raising=False)
+
+    prompt = llm._build_instruction("raw/gone.md", "delete")
+    assert "wikiET/" in prompt
+    assert "wiki/" not in prompt
+
+
 def test_build_invocation_claude_uses_stdin_and_acceptedits(monkeypatch):
     monkeypatch.setattr(config, "INGEST_MODEL", "sonnet", raising=False)
     argv, stdin_text = llm._build_invocation("claude", "/bin/claude", "PROMPT")

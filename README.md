@@ -128,12 +128,28 @@ hung — pass `--quiet` to suppress it and print only the final report.
 
 Ingest is **idempotent**: a committed manifest at `wiki/.okf_ingested.json` maps each source's
 repo-relative path to a sha256, so re-running with no new or changed files runs **zero** agent
-sessions. Edit a raw file (new sha) and it is re-ingested, patching the existing pages. Exactly
-one agent session per source; if a session fails or times out, that source's wiki changes are
-rolled back and it is retried next run. **Move or reorganize** a raw file (same bytes, new path,
-e.g. sorting `raw/` into sub-folders) and ingest recognizes it — it is **not** re-ingested, and
-the wiki's `resource`/citation references are repointed to the new path automatically. A file
-with **no extractable text** (a binary blob) is skipped and noted in `wiki/log.md` as
+sessions. Exactly one agent session per source; if a session fails or times out, that source's
+wiki changes are rolled back and it is retried next run.
+
+Crucially, ingest keeps the wiki in sync when a raw file **changes** or **disappears** — not
+just when one is added:
+
+- **Edit a raw file** (new sha) and it is **re-ingested in reconcile mode**: the agent re-reads
+  the current bytes and **updates or removes the now-stale facts** it previously derived from
+  that file (e.g. a corrected number overwrites the old one), rather than only appending new
+  ones — existing facts from *other* sources stay untouched.
+- **Delete a raw file** and a full `ingest` run **detects the vanished source** (its key is in
+  the manifest but the file is gone) and runs a **cleanup session** that strips every fact and
+  `[^sN]` citation that depended on it — dropping a co-cited fact's marker but keeping the fact
+  when another source still supports it, and deleting a page that loses its last source. The
+  cleanup is **all-or-nothing**: it is rolled back and retried unless *no* page references the
+  removed file afterwards, then the manifest key is dropped. (Deletion is swept only on a full
+  run, so `ingest <one-file>` never surprise-prunes.)
+- **Move or reorganize** a raw file (same bytes, new path, e.g. sorting `raw/` into sub-folders)
+  and ingest recognizes it — it is **not** re-ingested, and the wiki's `resource`/citation
+  references are repointed to the new path automatically (a move is **not** treated as a delete).
+
+A file with **no extractable text** (a binary blob) is skipped and noted in `wiki/log.md` as
 unreadable rather than fed to the agent.
 
 **Search** the synthesized wiki:

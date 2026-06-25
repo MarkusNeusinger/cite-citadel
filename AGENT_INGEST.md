@@ -91,6 +91,27 @@ Body in GitHub-flavored markdown...
 - **When you delete or rename a page, grep `wiki/` for relative links pointing at it and
   repoint them** to the survivor, so no link breaks.
 
+## Keeping the wiki in sync when a source changes or is removed
+
+A raw source is not write-once. The session you are running tells you which case applies:
+
+- **Re-ingest of a CHANGED source.** The wiki already holds facts you derived from this file.
+  Re-read its **current** contents and **reconcile**, do not merely append: where a number,
+  name, or claim changed, **update** the existing sentence; where the current file no longer
+  supports a fact, remove **this source's** `[^sN]` marker and its `## Sources` definition, and
+  delete the whole sentence **only if it has no other `[^sN]` source left** (a co-cited fact
+  `...fact.[^s1][^s2]` stays — drop just this marker); add any genuinely new facts. Leave facts
+  (and citations) from **other** sources exactly as they are.
+- **Cleanup of a DELETED source.** The file is gone from disk — do **not** try to open it. Grep
+  `wiki/` for everything that cited it (a `resource:` field, or a `[^sN]` whose definition links
+  to it). For each fact whose **only** source was that file, delete the sentence, its marker, and
+  its definition. For a fact that **also** carries another `[^sN]` source, keep the fact and
+  remove **only** the deleted file's marker and definition. If a page's `resource:` named the
+  deleted file, repoint it to another source the page still cites; if none remains, the page is
+  unsupported — delete it and repoint or remove inbound links. Never invent a replacement fact.
+  When you finish, **no page may reference the deleted file** (the system re-checks and rolls the
+  whole cleanup back otherwise).
+
 ## Contradictions — flag, resolve, don't overwrite
 
 If a source contradicts another source — a different raw file, OR a claim already on an

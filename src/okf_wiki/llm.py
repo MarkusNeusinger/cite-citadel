@@ -69,22 +69,74 @@ def _repo_rel(path: Path) -> str:
         return path.name
 
 
-def _build_instruction(rel_key: str) -> str:
-    """The short, paths-only ingest prompt. References the rules and the raw source BY PATH
+def _build_instruction(rel_key: str, kind: str = "ingest") -> str:
+    """The short, paths-only agent prompt. References the rules and the raw source BY PATH
     (the agent opens them with its own tools), so it never embeds file content and stays a
     few hundred chars regardless of raw-file size — the WinError 206 fix. ``rel_key`` is the
     repo-relative posix path of the raw source (e.g. ``raw/notes.md``); ``cwd`` is the repo
     root, so all paths here are repo-relative. The wiki/raw directory names are read from
     config (``OKF_WIKI_DIR`` / ``OKF_RAW_DIR``) at CALL time, so a custom layout (e.g.
     ``OKF_WIKI_DIR=wikiET``) is searched and written correctly instead of a hardcoded
-    ``wiki/``."""
+    ``wiki/``.
+
+    ``kind`` selects which propagation the agent performs:
+
+    - ``"ingest"`` (default) — fold a NEW raw source into the wiki.
+    - ``"reconcile"`` — the source CHANGED since it was last ingested; re-read it and UPDATE
+      or REMOVE the now-stale facts it had produced, not merely append new ones.
+    - ``"delete"`` — the source was REMOVED from disk; strip the facts/citations that came
+      only from it (this is the only prompt that must NOT try to open ``rel_key``).
+    """
     wiki_rel = _repo_rel(config.WIKI_DIR)
     raw_rel = _repo_rel(config.RAW_DIR)
-    return (
+    header = (
         "You are the ingest engine for a self-structuring wiki in Google's Open Knowledge "
         "Format. Read the rules in SCHEMA.md and AGENT_INGEST.md (current directory) and "
         "follow them exactly.\n\n"
-        "Fold ONE raw source into the wiki by EDITING FILES DIRECTLY:\n"
+    )
+
+    if kind == "delete":
+        # The source no longer exists, so the agent must NOT open it — it greps the wiki for
+        # the provenance that pointed at it and removes/repoints it. The post-run check in
+        # ingest re-runs find_raw_references and rolls back unless every reference is gone.
+        return (
+            header
+            + f"The raw source {rel_key} was DELETED and no longer exists on disk. Do NOT try "
+            "to open it. Remove the provenance that depended on it by EDITING FILES DIRECTLY:\n"
+            f"1. Search {wiki_rel}/ (Grep/Glob/Read) for every page that cites {rel_key}: a "
+            f"`resource: {rel_key}` frontmatter field, or a `[^sN]` footnote whose `## Sources` "
+            f"definition links to it (e.g. `](../../{rel_key})`).\n"
+            "2. For each fact whose ONLY source was that file, delete the sentence, its `[^sN]` "
+            "marker, and its `## Sources` definition. If the SAME fact also carries another "
+            "`[^sN]` source, keep the fact and remove ONLY this file's marker and definition.\n"
+            f"3. If a page's `resource:` named {rel_key}, repoint it to another raw file the "
+            "page still cites; if no cited source remains, the page is unsupported — delete it "
+            "and repoint or remove inbound relative links to it.\n"
+            "4. Never invent replacement facts. Never edit index.md, log.md, any */index.md, or "
+            f"any dotfile, and make no changes outside {wiki_rel}/.\n"
+            "5. Before finishing, run `okf-wiki check` (or `uv run python -m okf_wiki check`) "
+            f"and fix every error. When you are done, NO page may reference {rel_key}."
+        )
+
+    note = ""
+    if kind == "reconcile":
+        # Re-ingest of a CHANGED source: the wiki already holds facts it produced, so the agent
+        # must reconcile (update/remove), not blindly append — otherwise a corrected number
+        # leaves the stale one behind next to the new one.
+        note = (
+            f"NOTE: {rel_key} CHANGED since it was last ingested — this is a RE-INGEST, not a "
+            "first ingest, and the wiki already cites it. As you fold in its CURRENT contents, "
+            "UPDATE facts whose numbers/names/claims changed. For a fact the current file no "
+            "longer supports, remove THIS source's `[^sN]` marker and its `## Sources` "
+            "definition, and drop the whole sentence ONLY if no other `[^sN]` source remains on "
+            "it (a co-cited fact stays — just remove this marker). Do not merely append, and "
+            "leave facts from OTHER raw sources and their citations intact.\n\n"
+        )
+
+    return (
+        header
+        + note
+        + "Fold ONE raw source into the wiki by EDITING FILES DIRECTLY:\n"
         f"1. Open and read the raw source file: {rel_key}. It may be ANY text-bearing file type "
         "(markdown, plain text, code such as .py/.sql, JSON/CSV, PDF, ...) — extract whatever "
         "text it contains and ingest the facts. If it holds no usable text, make no edits.\n"
@@ -229,14 +281,18 @@ def _run_session(cli: str, argv: list[str], stdin_text: str | None) -> None:
     return
 
 
-def run_ingest_session(rel_key: str) -> None:
-    """Run the configured agentic CLI once to fold the raw source ``rel_key`` into the wiki.
+def run_ingest_session(rel_key: str, kind: str = "ingest") -> None:
+    """Run the configured agentic CLI once to propagate the raw source ``rel_key`` into the wiki.
+
+    ``kind`` picks the propagation (see :func:`_build_instruction`): ``"ingest"`` folds in a new
+    source, ``"reconcile"`` re-ingests a CHANGED source (updating/removing its stale facts), and
+    ``"delete"`` strips the provenance of a source that was REMOVED from disk.
 
     Side-effecting only: the agent edits files under ``config.WIKI_DIR``. Returns None;
     ``ingest`` discovers what changed via a filesystem diff. Raises ``RuntimeError`` (collected
     per-source by ingest) on a missing/failed CLI or a timeout."""
     cli = (config.LLM_CLI or "claude").strip().lower()
     cli_path = _resolve_cli(cli)
-    prompt = _build_instruction(rel_key)
+    prompt = _build_instruction(rel_key, kind)
     argv, stdin_text = _build_invocation(cli, cli_path, prompt)
     _run_session(cli, argv, stdin_text)
