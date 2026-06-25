@@ -48,6 +48,29 @@ def fake_session_transformer(rel_key, kind="ingest"):
     )
 
 
+def fake_session_bom(rel_key, kind="ingest"):
+    """A session that writes its page with a leading UTF-8 BOM, exactly as a tool in the
+    chain does on Windows. The frontmatter is well-formed; only the BOM precedes it. This
+    reproduces the run that failed with 'missing required field' on every field of every
+    page — the BOM hid the frontmatter from the parser so it looked empty."""
+    _CALLS["n"] += 1
+    target = config.WIKI_DIR / "concepts" / "transformer.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    canonical = okf.dump(
+        {
+            "type": "Concept",
+            "title": "Transformer",
+            "description": "self-attention model",
+            "tags": ["ml"],
+            "resource": "raw/notes.md",
+        },
+        "Transformers use self-attention.[^s1]\n\n"
+        "## Sources\n\n"
+        "[^s1]: [raw/notes.md](../../raw/notes.md) - notes (ingested 2026-06-21)\n",
+    )
+    target.write_text("\ufeff" + canonical, encoding="utf-8")
+
+
 def fake_session_contradiction(rel_key, kind="ingest"):
     """A session that writes a page containing a '> [!CONTRADICTION]' callout (type Note -> misc)."""
     _CALLS["n"] += 1
@@ -145,6 +168,37 @@ def test_ingest_creates_pages(tmp_path, monkeypatch):
 
     manifest_data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
     assert "raw/notes.md" in manifest_data
+
+
+def test_ingest_accepts_bom_prefixed_page(tmp_path, monkeypatch):
+    """A page the agent writes with a leading UTF-8 BOM (the Windows failure mode) is parsed,
+    validated, and re-stamped instead of failing the run with 'missing required field' on every
+    field. The re-stamp writes the file back WITHOUT the BOM."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake_session_bom)
+
+    (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
+
+    report = ingest.ingest()
+
+    assert report.errors == []
+    assert "raw/notes.md" in report.processed
+    assert "concepts/transformer.md" in report.pages_created
+
+    page = wiki / "concepts" / "transformer.md"
+    raw_text = page.read_text(encoding="utf-8")
+    # The re-stamp normalized the encoding artifact away and stamped the timestamp.
+    assert not raw_text.startswith("\ufeff")
+    assert raw_text.startswith("---\n")
+    assert "timestamp:" in raw_text
+    # The frontmatter survived: it loads with every required field present.
+    reread = store.read_page("concepts/transformer.md")
+    assert reread.frontmatter["type"] == "Concept"
+    assert reread.frontmatter["title"] == "Transformer"
+    assert reread.frontmatter["resource"] == "raw/notes.md"
+    assert not validate.has_errors(
+        validate.validate_page(reread.rel_path, reread.frontmatter, reread.body)
+    )
 
 
 def test_reingest_is_noop(tmp_path, monkeypatch):
