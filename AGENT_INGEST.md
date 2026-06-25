@@ -29,7 +29,9 @@
 ## Your job
 
 Capture every fact from the raw file into the wiki, routed to the page where it best
-**fits**, fully cited, densely linked, and without duplicating what already exists.
+**fits**, fully cited, densely linked, and without duplicating what already exists. (When the
+source is **code/config/data**, "every fact" means its **essence** — purpose, behavior, the
+external systems it touches — *not* its structure; see *Code & structured sources* below.)
 
 1. **Read the raw file** and the rules in `SCHEMA.md`.
 2. **Search the wiki** (`wiki/`) for pages this material belongs in or relates to — using the
@@ -58,6 +60,27 @@ Read them deliberately and use them **together with the content** to:
 The content stays primary: facts and their numbers/names/claims come from the file's **text**
 and cite the **file**. **Never cite the path itself as a fact, and never invent a fact from a
 folder name.** The path says *where things belong*; the content says *what they say.*
+
+## Code & structured sources — essence, not structure
+
+When the raw file is **code / config / data** (`.py`, `.sql`, `.tsx`, `.json`, a Dockerfile, …),
+ingest it for what it **means and does**, not how it is built — treat it as documentation *about*
+the code, not a copy of it. Do **not** create a note per function, component, or type.
+
+- **Capture:** the file's **purpose**; the **process/behavior** it implements (steps, inputs →
+  outputs); the **external systems it touches and how** — database/API/queue/service, the
+  table/endpoint names, the access method (driver/ORM/HTTP), auth, the env vars/config it needs;
+  and notable **decisions, algorithms, and domain rules** (the non-obvious *why*).
+- **Ignore:** imports/boilerplate, function/class/component signatures and prop/type definitions
+  as such, how a UI component is wired or laid out, styling, getters/setters, test scaffolding,
+  generated code. Never paste a block of code as a "fact" — quote at most a short identifier (a
+  table name, an env var) when it **is** the fact.
+- **Litmus test:** *would this still be true if the code were rewritten in another framework?* If
+  yes, capture it; if it only describes how this file is structured, skip it.
+
+Each kept fact is still cited to the file with `[^sN]`, and these facts route into a page about the
+**module / subsystem / project** (use the path as context) — not one page per file. (Full rules:
+*Code & structured sources* in [`SCHEMA.md`](SCHEMA.md).)
 
 ## Page file format
 

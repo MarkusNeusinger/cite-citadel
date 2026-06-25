@@ -144,7 +144,11 @@ grows; the report distinguishes pages **created**, **updated**, and **deleted** 
 and warns on any broken cross-link. When routing, the agent treats each source's **sub-folder
 path within `raw/` and its filename as context** — they often encode the project/topic the facts
 belong to (e.g. `raw/acme-migration/db/schema-notes.sql`) — and uses that, alongside the file's
-content, to pick the right page and tags (the path is never cited as a fact). Run several
+content, to pick the right page and tags (the path is never cited as a fact). For
+**code/config/data** sources, ingest captures the **essence** — a file's purpose, behavior, and
+the external systems it touches (e.g. which database and how it is accessed) — rather than
+transcribing structure, so a codebase folds into a few architecture notes instead of thousands of
+snippets (see *Code & structured sources* in [`SCHEMA.md`](SCHEMA.md)). Run several
 overlapping files (e.g. the bundled `raw/coffee*.md` set) and watch the wiki reorganize itself
 rather than accrete one page per file.
 

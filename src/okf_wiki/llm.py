@@ -90,9 +90,9 @@ def _external_dirs(rel_key: str) -> list[str]:
 
 def _build_instruction(rel_key: str, kind: str = "ingest") -> str:
     """The short, paths-only agent prompt. References the rules and the raw source BY PATH
-    (the agent opens them with its own tools), so it never embeds file content and stays a
-    few hundred chars regardless of raw-file size — the WinError 206 fix. ``rel_key`` is the
-    source key (a repo-relative posix path like ``raw/notes.md`` for an in-repo source, or an
+    (the agent opens them with its own tools), so it never embeds file content and stays paths-only
+    — at most a couple thousand chars regardless of raw-file size, the WinError 206 fix. ``rel_key``
+    is the source key (a repo-relative posix path like ``raw/notes.md`` for an in-repo source, or an
     ABSOLUTE posix path for an out-of-repo source on a mounted drive); ``cwd`` is the repo root, so
     an in-repo path is named relative to it and an out-of-repo path absolutely. The wiki/raw
     directory names are read from config (``OKF_WIKI_DIR`` / ``OKF_RAW_DIR``) at CALL time via
@@ -159,8 +159,10 @@ def _build_instruction(rel_key: str, kind: str = "ingest") -> str:
         + note
         + "Fold ONE raw source into the wiki by EDITING FILES DIRECTLY:\n"
         f"1. Open and read the raw source file: {rel_key}. It may be ANY text-bearing file type "
-        "(markdown, plain text, code such as .py/.sql, JSON/CSV, PDF, ...) — extract whatever "
-        "text it contains and ingest the facts. If it holds no usable text, make no edits.\n"
+        "(markdown, plain text, code such as .py/.sql, JSON/CSV, PDF, ...) — extract its text and "
+        "ingest the facts. For CODE/config/data, capture its PURPOSE, BEHAVIOR and the external "
+        "systems it touches (which database and HOW), NOT its structure — see 'Code & structured "
+        "sources' in SCHEMA.md. If it holds no usable text, make no edits.\n"
         f"2. The wiki is under {wiki_rel}/ (raw sources under {raw_rel}/). Search and read "
         "existing pages (Grep/Glob/Read) before writing — prefer extending or merging into an "
         "existing page over creating a new one.\n"

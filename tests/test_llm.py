@@ -32,7 +32,7 @@ def test_build_instruction_references_paths_not_content():
     assert "raw/notes.md" in prompt
     assert "wiki/" in prompt
     # Must never embed a large blob — paths only.
-    assert len(prompt) < 2000
+    assert len(prompt) < 3000
 
 
 def test_build_instruction_uses_configured_wiki_dir(tmp_path, monkeypatch):
@@ -49,7 +49,7 @@ def test_build_instruction_uses_configured_wiki_dir(tmp_path, monkeypatch):
     assert "wikiET/" in prompt        # the configured wiki dir is used throughout...
     assert "wiki/" not in prompt      # ...and no hardcoded bare 'wiki/' survives
     assert "raw/notes.md" in prompt   # the raw source path is still referenced verbatim
-    assert len(prompt) < 2000         # still tiny (paths-only) — WinError 206 guard
+    assert len(prompt) < 3000         # still tiny (paths-only) — WinError 206 guard
 
 
 def test_rule_files_teach_path_and_filename_as_routing_context():
@@ -84,7 +84,7 @@ def test_build_instruction_reconcile_says_update_and_remove():
     # A co-cited fact must NOT be dropped whole — only this source's marker is removed unless it
     # was the last citation (mirrors the delete prompt; guards the Copilot-review fix).
     assert "co-cited" in low and "only if" in low
-    assert len(prompt) < 2000  # still paths-only — WinError 206 guard
+    assert len(prompt) < 3000  # paths + rules + a code-handling pointer, never file content (WinError 206 guard)
 
 
 def test_build_instruction_delete_strips_provenance_without_opening():
@@ -96,7 +96,7 @@ def test_build_instruction_delete_strips_provenance_without_opening():
     assert "delete" in low and "no longer exists" in low
     assert "do not try" in low and "open it" in low  # must not re-read a missing file
     assert "resource" in low and "[^s" in prompt     # points at both provenance forms
-    assert len(prompt) < 2000
+    assert len(prompt) < 3000
 
 
 def test_build_instruction_delete_honors_configured_wiki_dir(tmp_path, monkeypatch):
