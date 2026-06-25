@@ -30,7 +30,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import config, llm, manifest, okf, store, validate
+from . import config, extract, llm, manifest, okf, store, validate
 from .okf import Page
 
 # How many leading bytes to sniff when deciding whether a raw file holds text the agent can
@@ -158,7 +158,14 @@ def _is_ingestible(path: Path) -> bool:
     magic) is handed to the agent because its reader can pull text out. Only a "weird binary" —
     a NUL byte, or a high proportion of non-text bytes in the sniffed prefix — is rejected; the
     caller logs those as unreadable instead of spending an LLM session on a blob. An empty file
-    is ingestible (the agent simply finds nothing to add), not a binary failure."""
+    is ingestible (the agent simply finds nothing to add), not a binary failure.
+
+    A PowerPoint/Word file (``.pptx``/``.docx``/…) is a ZIP — a NUL-byte binary — the agent cannot
+    open directly, so it would fail the sniff below; instead we extract its text ourselves
+    (:mod:`okf_wiki.extract`) and treat it as ingestible IFF that yields something. A text-free
+    deck (all images) extracts to nothing and is correctly classified unreadable."""
+    if extract.is_office_source(path):
+        return bool(extract.extract_text(path).strip())
     try:
         with open(path, "rb") as fh:
             chunk = fh.read(_SNIFF_BYTES)
@@ -460,6 +467,41 @@ def _run_one_agent_session(
             shutil.rmtree(backup, ignore_errors=True)
 
 
+def _office_extract_to_temp(src: Path) -> tuple[str | None, str | None]:
+    """If ``src`` is a PowerPoint/Word file, extract its text to a fresh temp ``.md`` and return
+    ``(read_key, tmpdir)``: ``read_key`` is the path the agent should READ instead of the binary
+    (it still cites the original ``src``), and ``tmpdir`` is the temp directory the caller MUST
+    remove after the session. For any other file return ``(None, None)`` so the agent reads the
+    source directly (the unchanged path). Raises ``OSError`` only if the temp file cannot be
+    written — handled per-source by the caller, never aborting the whole run.
+
+    ``_is_ingestible`` already gated a text-free deck to ``unreadable``, so a pending Office source
+    normally has text; we still write whatever extraction returns (even ``""``) so the agent simply
+    finds nothing rather than crashing."""
+    if not extract.is_office_source(src):
+        return None, None
+    text = extract.extract_text(src)
+    tmpdir = tempfile.mkdtemp(prefix="okf_extract_")
+    try:
+        out = Path(tmpdir) / (Path(src.name).stem + ".md")
+        out.write_text(text, encoding="utf-8")
+    except OSError:
+        # Don't leak the temp dir if the write fails — the caller never sees it to clean up.
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        raise
+    return config.rel_or_abs_posix(out), tmpdir
+
+
+def _pending_session(rel_key: str, kind: str, read_key: str | None) -> None:
+    """Drive ONE ingest/reconcile agent session. When ``read_key`` is set (an Office source whose
+    text was extracted), point the agent at it via ``read_path``; otherwise call exactly as before
+    so a non-Office source — and every existing test's faked session — is byte-for-byte unchanged."""
+    if read_key:
+        llm.run_ingest_session(rel_key, kind=kind, read_path=read_key)
+    else:
+        llm.run_ingest_session(rel_key, kind=kind)
+
+
 def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
     """Run one ingest. Exactly one ``llm.run_ingest_session`` call per pending or deleted source.
 
@@ -562,15 +604,38 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
         # facts) rather than only appending. A brand-new key is a plain ingest.
         kind = "reconcile" if rel_key in changed_keys else "ingest"
         emit("source_start", index=index, total=len(pending), source=rel_key)
+
+        # PowerPoint/Word are binary (ZIP) the agent can't open: extract their text to a temp file
+        # it reads instead, while the wiki still cites the original `src`. A non-Office source gets
+        # read_key=None (the agent reads it directly, unchanged). A temp-write failure is a
+        # per-source error, NOT a run-aborting interrupt, so it is collected and the loop continues.
+        try:
+            read_key, extract_tmp = _office_extract_to_temp(src)
+        except OSError as exc:
+            report.errors.append(f"{rel_key}: extract office text: {exc}")
+            emit(
+                "source_error",
+                index=index,
+                total=len(pending),
+                source=rel_key,
+                error=str(exc),
+                seconds=0.0,
+            )
+            continue
+
         try:
             outcome = _run_one_agent_session(
-                lambda rk=rel_key, k=kind: llm.run_ingest_session(rk, kind=k), rel_key
+                lambda rk=rel_key, k=kind, rp=read_key: _pending_session(rk, k, rp), rel_key
             )
         except BaseException as exc:  # noqa: BLE001 - Ctrl+C etc.: capture, finalize, re-raise
             # The in-flight source was already rolled back inside the helper's `finally`; capture
             # the interrupt, stop taking new sources, and re-raise it after finalization below.
             pending_interrupt = exc
             break
+        finally:
+            # Always remove the extracted-text temp dir (success, error, or interrupt-break).
+            if extract_tmp:
+                shutil.rmtree(extract_tmp, ignore_errors=True)
 
         if not outcome.ok:
             report.errors.extend(outcome.errors)

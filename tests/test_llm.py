@@ -87,6 +87,27 @@ def test_build_instruction_reconcile_says_update_and_remove():
     assert len(prompt) < 2000  # still paths-only — WinError 206 guard
 
 
+def test_build_instruction_office_read_path_points_to_extract_cites_original():
+    """For a binary Office source, the prompt sends the agent to READ the pre-extracted text file
+    while still citing the ORIGINAL source as `resource`/in `## Sources` — and stays tiny."""
+    prompt = llm._build_instruction("raw/deck.pptx", "ingest", "/tmp/okf_extract_x/deck.md")
+    low = prompt.lower()
+    assert "/tmp/okf_extract_x/deck.md" in prompt    # the extracted-text file to read
+    assert "raw/deck.pptx" in prompt                 # the original source of record
+    assert "resource: raw/deck.pptx" in prompt       # cite the original, not the extract
+    assert "office" in low and "extracted" in low
+    assert "read that" in low                        # explicit: read the extracted file
+    assert len(prompt) < 2000                        # still paths-only — WinError 206 guard
+
+
+def test_build_instruction_no_read_path_keeps_direct_read_step():
+    """Without a read_path (the normal case) step 1 still tells the agent to open the source
+    directly and mentions PDF — i.e. the Office branch does not leak into ordinary sources."""
+    prompt = llm._build_instruction("raw/notes.md")
+    assert "Open and read the raw source file: raw/notes.md" in prompt
+    assert "extracted to" not in prompt.lower()
+
+
 def test_build_instruction_delete_strips_provenance_without_opening():
     """The delete prompt (removed source) tells the agent NOT to open the file and to remove the
     facts/citations that depended on it; it names the path so the agent can grep for it."""

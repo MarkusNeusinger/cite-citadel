@@ -150,6 +150,23 @@ def test_external_dirs_empty_for_in_repo_layout(tmp_path, monkeypatch):
     assert llm._external_dirs("raw/notes.md") == []
 
 
+def test_external_dirs_grants_office_extract_tmp_even_in_repo(tmp_path, monkeypatch):
+    """For an Office source the extracted-text temp dir lives OUTSIDE the repo, so it must be
+    granted to the CLI even in the otherwise-unchanged default in-repo layout."""
+    repo = tmp_path / "repo"
+    for sub in ("wiki", "raw", "docs"):
+        (repo / sub).mkdir(parents=True)
+    monkeypatch.setattr(config, "REPO_ROOT", repo, raising=False)
+    monkeypatch.setattr(config, "WIKI_DIR", repo / "wiki", raising=False)
+    monkeypatch.setattr(config, "RAW_DIR", repo / "raw", raising=False)
+    monkeypatch.setattr(config, "DOCS_DIR", repo / "docs", raising=False)
+
+    extract_dir = tmp_path / "okf_extract_zzz"   # sibling of the repo -> outside it
+    dirs = llm._external_dirs("raw/deck.pptx", str(extract_dir / "deck.md"))
+    assert str(extract_dir.resolve()) in dirs
+    assert llm._external_dirs("raw/deck.pptx") == []   # no read_path -> still nothing extra
+
+
 def test_build_invocation_claude_adds_add_dir_for_external(monkeypatch):
     monkeypatch.setattr(config, "INGEST_MODEL", "sonnet", raising=False)
     dirs = ["/net/wiki", "/net/raw"]
