@@ -68,7 +68,7 @@ def fake_session_bom(rel_key, kind="ingest"):
         "## Sources\n\n"
         "[^s1]: [raw/notes.md](../../raw/notes.md) - notes (ingested 2026-06-21)\n",
     )
-    target.write_text("﻿" + canonical, encoding="utf-8")
+    target.write_text("\ufeff" + canonical, encoding="utf-8")
 
 
 def fake_session_contradiction(rel_key, kind="ingest"):
@@ -188,7 +188,7 @@ def test_ingest_accepts_bom_prefixed_page(tmp_path, monkeypatch):
     page = wiki / "concepts" / "transformer.md"
     raw_text = page.read_text(encoding="utf-8")
     # The re-stamp normalized the encoding artifact away and stamped the timestamp.
-    assert not raw_text.startswith("﻿")
+    assert not raw_text.startswith("\ufeff")
     assert raw_text.startswith("---\n")
     assert "timestamp:" in raw_text
     # The frontmatter survived: it loads with every required field present.
