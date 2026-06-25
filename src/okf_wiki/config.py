@@ -80,7 +80,7 @@ def _dir_setting(env_key: str, default: Path) -> Path:
     """Resolve a configurable directory (wiki/raw/docs) to an absolute Path.
 
     With no override, use ``default``. With ``OKF_*_DIR`` set: expand a leading ``~``, take an
-    ABSOLUTE override AS-IS — including a Windows mapped-drive path (``T:\\21_llmWiki\\wiki``) or a
+    ABSOLUTE override AS-IS — including a Windows mapped-drive path (``T:\\team-wiki\\wiki``) or a
     POSIX mount (``/mnt/share/wiki``) — so the wiki/raw can live OUTSIDE the repo, e.g. on a
     mounted network drive; and resolve a RELATIVE override against the REPO ROOT (not the process
     CWD), so ``OKF_WIKI_DIR=wiki`` means ``REPO_ROOT/wiki`` regardless of where ``okf-wiki`` is
@@ -103,7 +103,7 @@ def rel_or_abs_posix(path: Path | str) -> str:
     """The canonical identity key / agent-facing path for a raw source or a configured directory:
     its POSIX path **relative to** ``REPO_ROOT`` when it lives under the repo (short, and
     resolvable from the agent's repo-root CWD), or its **absolute** POSIX path when it does not —
-    e.g. a wiki/raw tree on a mounted network drive (``T:/21_llmWiki/raw/notes.md``).
+    e.g. a wiki/raw tree on a mounted network drive (``T:/team-wiki/raw/notes.md``).
 
     This is the single source of truth for turning a path into a key, used by the manifest, the
     agent prompt, and the citation/resource bookkeeping. It replaces the old basename fallback,
@@ -118,7 +118,7 @@ def rel_or_abs_posix(path: Path | str) -> str:
 
 def source_path_for_key(key: str) -> Path:
     """Inverse of :func:`rel_or_abs_posix`: the absolute filesystem Path a source key denotes. An
-    absolute key (an out-of-repo source, e.g. ``T:/21_llmWiki/raw/notes.md``) is used as-is; a
+    absolute key (an out-of-repo source, e.g. ``T:/team-wiki/raw/notes.md``) is used as-is; a
     repo-relative key (``raw/notes.md``) is joined under ``REPO_ROOT``. Replaces the scattered
     ``REPO_ROOT / key`` joins that silently mis-resolved out-of-repo keys."""
     p = Path(key)

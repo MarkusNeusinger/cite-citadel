@@ -101,7 +101,7 @@ def _build_instruction(rel_key: str, kind: str = "ingest", read_path: str | None
     an in-repo path is named relative to it and an out-of-repo path absolutely. The wiki/raw
     directory names are read from config (``OKF_WIKI_DIR`` / ``OKF_RAW_DIR``) at CALL time via
     :func:`_agent_path`, so a custom layout — a renamed in-repo dir (``OKF_WIKI_DIR=wikiET``) or a
-    network-drive path (``OKF_WIKI_DIR=T:\\21_llmWiki\\wiki``) — is searched and written correctly
+    network-drive path (``OKF_WIKI_DIR=T:\\team-wiki\\wiki``) — is searched and written correctly
     instead of a hardcoded ``wiki/``.
 
     ``kind`` selects which propagation the agent performs:
@@ -191,8 +191,8 @@ def _build_instruction(rel_key: str, kind: str = "ingest", read_path: str | None
         f"3. Create/update/merge/split page files under {wiki_rel}/ so every fact from {rel_key} "
         "is captured, cited ([^sN] for raw facts / [^llmN] for model facts, defined in a "
         "trailing ## Sources section), and densely cross-linked with relative markdown links. "
-        "Set frontmatter type, title, description, tags (>=1 lowercase), and resource; do NOT "
-        "set timestamp.\n"
+        "Set frontmatter type, title, description, tags (>=1 lowercase), and resource (verbatim); "
+        "do NOT set timestamp.\n"
         f"4. Never edit {wiki_rel}/index.md, {wiki_rel}/log.md, any */index.md, or any dotfile. "
         f"Make no changes outside {wiki_rel}/.\n"
         "5. When you delete or rename a page, repoint inbound relative links to it.\n"

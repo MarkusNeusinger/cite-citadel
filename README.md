@@ -114,8 +114,8 @@ while the code stays a normal checkout:
 
 ```ini
 # Windows mapped drive (T: -> \\server\share):
-OKF_WIKI_DIR=T:\21_llmWiki\wiki
-OKF_RAW_DIR=T:\21_llmWiki\raw
+OKF_WIKI_DIR=T:\team-wiki\wiki
+OKF_RAW_DIR=T:\team-wiki\raw
 # Linux/macOS mount:
 # OKF_WIKI_DIR=/mnt/llmwiki/wiki
 # OKF_RAW_DIR=/mnt/llmwiki/raw

@@ -1,6 +1,6 @@
 """Tests for an out-of-repo wiki/raw layout — e.g. a mounted network drive (no CLI, no network).
 
-The user case: ``OKF_WIKI_DIR=T:\\21_llmWiki\\wiki`` / ``OKF_RAW_DIR=T:\\21_llmWiki\\raw`` while the
+The user case: ``OKF_WIKI_DIR=T:\\team-wiki\\wiki`` / ``OKF_RAW_DIR=T:\\team-wiki\\raw`` while the
 code is a normal checkout on another volume. These cover the full chain that used to assume
 everything lives under ``REPO_ROOT``:
 
@@ -93,7 +93,7 @@ def _wire_external(tmp_path, monkeypatch):
     """REPO_ROOT on one subtree; wiki/raw on a SEPARATE 'net' subtree (a shared parent, as a
     mounted drive would have). Returns (repo, wiki, raw)."""
     repo = tmp_path / "repo"
-    net = tmp_path / "net"          # stands in for T:\21_llmWiki
+    net = tmp_path / "net"          # stands in for T:\team-wiki
     wiki, raw, docs = net / "wiki", net / "raw", repo / "docs"
     for d in (repo, wiki, raw, docs):
         d.mkdir(parents=True, exist_ok=True)
@@ -341,3 +341,99 @@ def test_ingest_deletes_out_of_repo_source(tmp_path, monkeypatch):
     assert not report.errors
     data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
     assert abs_key not in data                         # manifest key dropped
+
+
+# --- canonicalizing a shortened `resource` for an out-of-repo source --------------------
+
+
+def test_canonical_resource_key_repairs_only_shortened_current_source(tmp_path, monkeypatch):
+    """The unit guard behind the repair: a broken `resource` that names the source being ingested
+    is canonicalized to its real key; anything else is left untouched."""
+    repo = tmp_path / "repo"
+    (repo / "raw").mkdir(parents=True)
+    monkeypatch.setattr(config, "REPO_ROOT", repo, raising=False)
+
+    net = tmp_path / "net" / "raw"
+    net.mkdir(parents=True)
+    (net / "notes.pdf").write_text("x\n", encoding="utf-8")
+    abs_key = config.rel_or_abs_posix(net / "notes.pdf")   # absolute, out-of-repo key
+
+    # A shortened/broken reference to THIS source -> canonicalized to the real absolute key.
+    assert ingest._canonical_resource_key("raw/notes.pdf", abs_key) == abs_key
+    assert ingest._canonical_resource_key("notes.pdf", abs_key) == abs_key      # bare basename
+    assert ingest._canonical_resource_key("raw\\notes.pdf", abs_key) == abs_key  # backslashes
+
+    # Left untouched (return None):
+    assert ingest._canonical_resource_key(abs_key, abs_key) is None             # already canonical
+    assert ingest._canonical_resource_key("", abs_key) is None                  # empty -> missing field
+    assert ingest._canonical_resource_key("raw/other.md", abs_key) is None      # different basename
+    ghost = config.rel_or_abs_posix(net / "ghost.pdf")                          # source itself missing
+    assert ingest._canonical_resource_key("raw/ghost.pdf", ghost) is None
+    # A `resource` that already resolves to a real file is never second-guessed.
+    (repo / "raw" / "notes.pdf").write_text("z\n", encoding="utf-8")
+    assert ingest._canonical_resource_key("raw/notes.pdf", abs_key) is None
+
+
+def test_ingest_canonicalizes_shortened_resource_for_out_of_repo_source(tmp_path, monkeypatch):
+    """The reported case: wiki/raw live IN the repo, but the SOURCE being ingested is on a mounted
+    drive (an out-of-repo absolute key — e.g. a PDF under ``T:\\...\\raw``). The agent records the
+    conventional short ``raw/<file>`` as the page's ``resource`` instead of the long absolute key,
+    which used to fail every page with ``bad_resource`` and roll the whole (long) session back.
+    Ingest must now canonicalize it to the real key and succeed."""
+    repo = tmp_path / "repo"
+    (repo / "wiki").mkdir(parents=True)
+    (repo / "raw").mkdir(parents=True)
+    (repo / "SCHEMA.md").write_text("# SCHEMA\n", encoding="utf-8")
+    monkeypatch.setattr(config, "REPO_ROOT", repo, raising=False)
+    monkeypatch.setattr(config, "WIKI_DIR", repo / "wiki", raising=False)
+    monkeypatch.setattr(config, "RAW_DIR", repo / "raw", raising=False)
+    monkeypatch.setattr(config, "DOCS_DIR", repo / "docs", raising=False)
+    monkeypatch.setattr(config, "INDEX_PATH", repo / "wiki" / "index.md", raising=False)
+    monkeypatch.setattr(config, "LOG_PATH", repo / "wiki" / "log.md", raising=False)
+    monkeypatch.setattr(
+        config, "MANIFEST_PATH", repo / "wiki" / ".okf_ingested.json", raising=False
+    )
+
+    # The raw source (PDF stand-in) lives OUTSIDE the repo — a mounted-drive source.
+    net_raw = tmp_path / "net" / "raw"
+    net_raw.mkdir(parents=True)
+    source = net_raw / "datenanalyse.md"
+    source.write_text("Internal data analysis facts.\n", encoding="utf-8")
+    abs_key = config.rel_or_abs_posix(source)
+    assert abs_key == source.resolve().as_posix()      # really an absolute, out-of-repo key
+
+    def shortened_session(rel_key, kind="ingest"):
+        # The agent does the work but SHORTENS the long absolute key to the conventional form.
+        page = config.WIKI_DIR / "concepts" / "internal-data-analysis.md"
+        page.parent.mkdir(parents=True, exist_ok=True)
+        rel_link = os.path.relpath(
+            config.source_path_for_key(rel_key), page.parent
+        ).replace(os.sep, "/")
+        page.write_text(
+            okf.dump(
+                {
+                    "type": "Concept",
+                    "title": "Internal Data Analysis",
+                    "description": "internal data analysis",
+                    "tags": ["data"],
+                    "resource": "raw/" + rel_key.rsplit("/", 1)[-1],   # the shortened, broken form
+                },
+                "A fact.[^s1]\n\n## Sources\n\n"
+                f"[^s1]: [{rel_key}]({rel_link}) - n (ingested 2026-06-21)\n",
+            ),
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", shortened_session)
+
+    report = ingest.ingest([str(source)])
+
+    assert report.processed == [abs_key]               # keyed by the absolute out-of-repo path
+    assert not report.errors                           # NOT rolled back over the short resource
+    page = repo / "wiki" / "concepts" / "internal-data-analysis.md"
+    text = page.read_text(encoding="utf-8")
+    assert f"resource: {abs_key}" in text              # canonicalized to the real absolute key
+    assert "resource: raw/datenanalyse.md" not in text  # the broken short form is gone
+    # The canonical resource matches the manifest key, so later move/delete lookups find the page.
+    assert store.find_raw_references(abs_key) == ["concepts/internal-data-analysis.md"]
+    assert ingest.ingest([str(source)]).processed == []  # idempotent on the abs key
