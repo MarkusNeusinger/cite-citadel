@@ -57,27 +57,48 @@ def _resolve_cli(cli: str) -> str:
     )
 
 
-def _repo_rel(path: Path) -> str:
-    """Repo-relative POSIX path for a configured directory. The agentic CLI runs with
-    ``cwd`` = ``config.REPO_ROOT``, so the prompt must name the wiki/raw directories relative
-    to the repo root — and honor ``OKF_WIKI_DIR`` / ``OKF_RAW_DIR`` overrides rather than a
-    hardcoded ``wiki/``. Falls back to the directory's own name if it is not under the repo
-    root (mirrors ``manifest.rel_key``)."""
-    try:
-        return path.resolve().relative_to(config.REPO_ROOT.resolve()).as_posix()
-    except ValueError:
-        return path.name
+def _agent_path(path: Path) -> str:
+    """The path string to name a configured directory (wiki/raw) in the agent prompt. The agentic
+    CLI runs with ``cwd`` = ``config.REPO_ROOT``, so a directory UNDER the repo is named relative
+    to it (short, cwd-relative), while one OUTSIDE the repo — e.g. a wiki/raw tree on a mounted
+    network drive — is named by its ABSOLUTE path so the agent (granted access via ``--add-dir``)
+    can find it. Honors ``OKF_WIKI_DIR`` / ``OKF_RAW_DIR`` and never collapses an out-of-repo dir
+    to a bare name (the old bug that made the agent edit a non-existent ``./wiki``). Single source
+    of truth: ``config.rel_or_abs_posix``."""
+    return config.rel_or_abs_posix(path)
+
+
+def _external_dirs(rel_key: str) -> list[str]:
+    """OS-native paths of the directories the agent must read/write that live OUTSIDE the repo, so
+    the CLI can be granted access to them. The agent's ``cwd`` is the repo root (which already
+    covers SCHEMA.md / AGENT_INGEST.md / the ``okf-wiki`` command), so this returns — de-duplicated
+    and sorted — only the out-of-repo members of {wiki dir (written), raw dir, docs dir, the source
+    file's own parent}. Empty for the default in-repo layout, so the in-repo invocation is byte-for-
+    byte unchanged."""
+    candidates = [
+        config.WIKI_DIR,
+        config.RAW_DIR,
+        config.DOCS_DIR,
+        config.source_path_for_key(rel_key).parent,
+    ]
+    out: dict[str, None] = {}
+    for d in candidates:
+        if config.is_outside_repo(d):
+            out[str(Path(d).resolve())] = None
+    return sorted(out)
 
 
 def _build_instruction(rel_key: str, kind: str = "ingest") -> str:
     """The short, paths-only agent prompt. References the rules and the raw source BY PATH
     (the agent opens them with its own tools), so it never embeds file content and stays a
     few hundred chars regardless of raw-file size — the WinError 206 fix. ``rel_key`` is the
-    repo-relative posix path of the raw source (e.g. ``raw/notes.md``); ``cwd`` is the repo
-    root, so all paths here are repo-relative. The wiki/raw directory names are read from
-    config (``OKF_WIKI_DIR`` / ``OKF_RAW_DIR``) at CALL time, so a custom layout (e.g.
-    ``OKF_WIKI_DIR=wikiET``) is searched and written correctly instead of a hardcoded
-    ``wiki/``.
+    source key (a repo-relative posix path like ``raw/notes.md`` for an in-repo source, or an
+    ABSOLUTE posix path for an out-of-repo source on a mounted drive); ``cwd`` is the repo root, so
+    an in-repo path is named relative to it and an out-of-repo path absolutely. The wiki/raw
+    directory names are read from config (``OKF_WIKI_DIR`` / ``OKF_RAW_DIR``) at CALL time via
+    :func:`_agent_path`, so a custom layout — a renamed in-repo dir (``OKF_WIKI_DIR=wikiET``) or a
+    network-drive path (``OKF_WIKI_DIR=T:\\21_llmWiki\\wiki``) — is searched and written correctly
+    instead of a hardcoded ``wiki/``.
 
     ``kind`` selects which propagation the agent performs:
 
@@ -87,8 +108,8 @@ def _build_instruction(rel_key: str, kind: str = "ingest") -> str:
     - ``"delete"`` — the source was REMOVED from disk; strip the facts/citations that came
       only from it (this is the only prompt that must NOT try to open ``rel_key``).
     """
-    wiki_rel = _repo_rel(config.WIKI_DIR)
-    raw_rel = _repo_rel(config.RAW_DIR)
+    wiki_rel = _agent_path(config.WIKI_DIR)
+    raw_rel = _agent_path(config.RAW_DIR)
     header = (
         "You are the ingest engine for a self-structuring wiki in Google's Open Knowledge "
         "Format. Read the rules in SCHEMA.md and AGENT_INGEST.md (current directory) and "
@@ -158,17 +179,22 @@ def _build_instruction(rel_key: str, kind: str = "ingest") -> str:
 
 
 def _build_invocation(
-    cli: str, cli_path: str, prompt: str
+    cli: str, cli_path: str, prompt: str, extra_dirs: list[str] | None = None
 ) -> tuple[list[str], str | None]:
     """Return ``(argv, stdin_text)`` for the chosen CLI in agentic, non-interactive mode.
 
-    Each CLI runs with autonomous file tools scoped to ``cwd`` (the repo root, set by
-    ``_run_session``). For **claude** the prompt goes on STDIN (argv carries only flags); for
+    Each CLI runs with autonomous file tools and ``cwd`` = the repo root (set by ``_run_session``).
+    ``extra_dirs`` are directories the agent must reach that live OUTSIDE the repo (an out-of-repo
+    wiki/raw on a mounted network drive, computed by :func:`_external_dirs`) — empty for the default
+    in-repo layout. For **claude** the prompt goes on STDIN (argv carries only flags); for
     copilot/gemini it is a ``-p`` argument — now safe because the prompt is tiny."""
+    extra_dirs = extra_dirs or []
     if cli == "claude":
         # acceptEdits auto-applies file edits; the allowlist scopes tools (Read/Edit/Write to
-        # author pages, Grep/Glob to search the wiki, Bash so the agent can run `okf-wiki
-        # check`). cwd=repo root already contains raw/ and wiki/, so no --add-dir is needed.
+        # author pages, Grep/Glob to search the wiki, Bash so the agent can run `okf-wiki check`).
+        # cwd=repo root covers SCHEMA.md/AGENT_INGEST.md/okf-wiki; --add-dir grants access to an
+        # out-of-repo wiki/raw (network drive), since claude's file tools are otherwise scoped to
+        # cwd. No extra_dirs in the default in-repo layout, so the argv is then unchanged.
         argv = [
             cli_path,
             "-p",
@@ -179,12 +205,15 @@ def _build_invocation(
             "--allowedTools",
             "Read Edit Write Grep Glob Bash",
         ]
+        for d in extra_dirs:
+            argv += ["--add-dir", d]
         if config.INGEST_MODEL:
             argv += ["--model", config.INGEST_MODEL]
         return argv, prompt
     if cli == "copilot":
         # --allow-all-tools is required for non-interactive editing; --allow-all-paths lets it
-        # reach raw/ and wiki/ under cwd; --no-ask-user keeps it autonomous; -s trims stats.
+        # reach the wiki/raw whether they are under cwd or on a mounted drive (so an out-of-repo
+        # layout needs no extra flag); --no-ask-user keeps it autonomous; -s trims stats.
         return [
             cli_path,
             "-p",
@@ -196,8 +225,12 @@ def _build_invocation(
         ], None
     if cli == "gemini":
         # yolo auto-approves all tool calls (auto_edit still prompts for read/search tools,
-        # which would hang with no TTY).
-        return [cli_path, "-p", prompt, "--approval-mode", "yolo"], None
+        # which would hang with no TTY). --include-directories adds an out-of-repo wiki/raw to the
+        # workspace (best-effort; only when needed, so the default in-repo argv is unchanged).
+        argv = [cli_path, "-p", prompt, "--approval-mode", "yolo"]
+        if extra_dirs:
+            argv += ["--include-directories", ",".join(extra_dirs)]
+        return argv, None
     # Unknown CLI: a plain headless prompt as an argument (best effort).
     return [cli_path, "-p", prompt], None
 
@@ -294,5 +327,5 @@ def run_ingest_session(rel_key: str, kind: str = "ingest") -> None:
     cli = (config.LLM_CLI or "claude").strip().lower()
     cli_path = _resolve_cli(cli)
     prompt = _build_instruction(rel_key, kind)
-    argv, stdin_text = _build_invocation(cli, cli_path, prompt)
+    argv, stdin_text = _build_invocation(cli, cli_path, prompt, _external_dirs(rel_key))
     _run_session(cli, argv, stdin_text)

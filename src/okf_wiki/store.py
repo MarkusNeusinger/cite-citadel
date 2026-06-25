@@ -274,41 +274,60 @@ def _split_link_target(inner: str) -> tuple[str, str]:
     return (parts[0], " " + parts[1]) if len(parts) == 2 else (inner, "")
 
 
-def _link_resolves_to_repo(page_rel: str, target: str) -> str | None:
-    """Resolve a link ``target`` written in wiki page ``page_rel`` to a REPO_ROOT-relative posix
-    path (e.g. a ``../../raw/x.md`` citation -> ``raw/x.md``), or None for an external/anchor link
-    or one that escapes the repo. Unlike :func:`okf.resolve_link` (WIKI_DIR-relative, for wiki
-    cross-links) this reaches OUT of the wiki into the sibling ``raw/``/``docs/`` source trees."""
+def _link_abs(page_rel: str, target: str) -> str | None:
+    """The absolute, lexically-normalized filesystem path a relative citation ``target`` in wiki
+    page ``page_rel`` points at, or None for an external/anchor link. Lexical only (``normpath``,
+    no symlink resolution) so it stays consistent with how source keys are formed and works on
+    synthetic or not-yet-existing paths."""
     if "://" in target or target.startswith("#"):
         return None
     page_dir = os.path.dirname(str(config.WIKI_DIR / page_rel))
-    resolved = os.path.normpath(os.path.join(page_dir, target))
-    try:
-        rel = os.path.relpath(resolved, str(config.REPO_ROOT)).replace(os.sep, "/")
-    except ValueError:
-        return None
-    return None if rel.startswith("..") else rel
+    return os.path.normpath(os.path.join(page_dir, target))
 
 
-def _repo_rel_to_page_link(page_rel: str, repo_rel: str) -> str:
-    """The relative link FROM wiki page ``page_rel`` TO a REPO_ROOT-relative source ``repo_rel``
-    (e.g. page ``concepts/a.md`` + ``raw/sub/x.md`` -> ``../../raw/sub/x.md``)."""
+def _link_points_at_key(page_rel: str, target: str, key: str) -> bool:
+    """True if the relative citation ``target`` written in wiki page ``page_rel`` resolves to the
+    raw source identified by ``key`` — a repo-relative key (``raw/x.md``) OR an absolute
+    out-of-repo key (``T:/21_llmWiki/raw/x.md``). Compares absolute paths with OS-appropriate case
+    folding, so a ``../../raw/x.md`` citation matches its source whether the wiki and raw live in
+    the repo or together on a mounted network drive. Replaces the old REPO_ROOT-relative resolver,
+    which returned None for any citation that pointed outside the repo."""
+    link_abs = _link_abs(page_rel, target)
+    if link_abs is None:
+        return False
+    target_abs = str(config.source_path_for_key(key))
+    return os.path.normcase(os.path.normpath(link_abs)) == os.path.normcase(
+        os.path.normpath(target_abs)
+    )
+
+
+def _source_key_to_page_link(page_rel: str, key: str) -> str:
+    """The relative markdown link FROM wiki page ``page_rel`` TO the raw source ``key`` (e.g. page
+    ``concepts/a.md`` + key ``raw/sub/x.md`` -> ``../../raw/sub/x.md``). ``key`` may be absolute
+    (out-of-repo): when the source and the wiki sit on the SAME volume — the network-drive case,
+    e.g. both under ``T:/21_llmWiki`` — a normal relative link is produced; on the rare
+    cross-volume layout where no relative path exists, fall back to the absolute POSIX path so the
+    link still resolves rather than raising."""
     page_dir = os.path.dirname(str(config.WIKI_DIR / page_rel))
-    target_abs = os.path.join(str(config.REPO_ROOT), repo_rel)
-    return os.path.relpath(target_abs, page_dir).replace(os.sep, "/")
+    target_abs = str(config.source_path_for_key(key))
+    try:
+        return os.path.relpath(target_abs, page_dir).replace(os.sep, "/")
+    except ValueError:
+        return target_abs.replace(os.sep, "/")
 
 
 def _rewrite_raw_body_links(page_rel: str, body: str, old_rel: str, new_rel: str) -> str:
-    """Return ``body`` with every citation link that resolves to the REPO_ROOT-relative source
-    ``old_rel`` repointed at ``new_rel`` (recomputed relative to ``page_rel``). Span-based and
+    """Return ``body`` with every citation link that resolves to the source key ``old_rel`` (a
+    repo-relative or absolute out-of-repo key) repointed at ``new_rel`` (recomputed relative to
+    ``page_rel``). Span-based and
     fence-aware, mirroring :func:`_rewrite_body_links`, so only genuine link spans are touched —
     never a literal ``](x)`` inside a code fence or a partial substring."""
 
     def repl(match: re.Match) -> str:
         path, suffix = _split_link_target(match.group(1))
-        if _link_resolves_to_repo(page_rel, path) != old_rel:
+        if not _link_points_at_key(page_rel, path, old_rel):
             return match.group(0)
-        return f"]({_repo_rel_to_page_link(page_rel, new_rel)}{suffix})"
+        return f"]({_source_key_to_page_link(page_rel, new_rel)}{suffix})"
 
     out: list[str] = []
     in_fence = False
@@ -325,8 +344,9 @@ def rewrite_raw_references(
     old_rel: str, new_rel: str, pages: list[Page] | None = None
 ) -> list[str]:
     """Repoint every reference to a RAW SOURCE file after it was MOVED on disk, so the wiki keeps
-    pointing at it. ``old_rel``/``new_rel`` are REPO_ROOT-relative posix paths (e.g.
-    ``'raw/coffee.md'`` -> ``'raw/drinks/coffee.md'``). For each page this updates the ``resource``
+    pointing at it. ``old_rel``/``new_rel`` are source keys — repo-relative posix paths (e.g.
+    ``'raw/coffee.md'`` -> ``'raw/drinks/coffee.md'``) or, for an out-of-repo source on a mounted
+    drive, absolute posix paths. For each page this updates the ``resource``
     frontmatter (when it named ``old_rel``) AND every ``[..](../../raw/old)`` citation link in the
     body. Only changed pages are written, mechanically (via okf.dump — no re-stamp, no re-validate),
     mirroring :func:`rewrite_links`. Returns the changed page rel_paths. This is the deterministic
@@ -353,7 +373,8 @@ def rewrite_raw_references(
 
 
 def find_raw_references(rel_key: str, pages: list[Page] | None = None) -> list[str]:
-    """rel_paths of wiki pages that reference the REPO_ROOT-relative raw source ``rel_key`` —
+    """rel_paths of wiki pages that reference the raw source ``rel_key`` (a repo-relative key, or
+    an absolute key for an out-of-repo source on a mounted drive) —
     either via the ``resource`` frontmatter or a citation link (``](../../raw/x.md)``) that
     resolves to it. Read-only companion to :func:`rewrite_raw_references`: ingest uses it to
     decide whether a DELETED source still has provenance worth a cleanup session, and to verify
@@ -378,7 +399,7 @@ def find_raw_references(rel_key: str, pages: list[Page] | None = None) -> list[s
             if in_fence:
                 continue
             if any(
-                _link_resolves_to_repo(page.rel_path, _split_link_target(m.group(1))[0]) == target
+                _link_points_at_key(page.rel_path, _split_link_target(m.group(1))[0], target)
                 for m in _ANY_LINK_RE.finditer(line)
             ):
                 hits.append(page.rel_path)

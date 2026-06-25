@@ -238,7 +238,7 @@ def _partition_sources(
         if key not in manifest_dict:
             prior = sorted(k for k in by_sha.get(sha, []) if k != key)
             if prior:
-                gone = sorted(k for k in prior if not (config.REPO_ROOT / k).exists())
+                gone = sorted(k for k in prior if not config.source_path_for_key(k).exists())
                 old_key = gone[0] if gone else prior[0]
                 moved.append((old_key, key, sha, bool(gone)))
                 continue
@@ -256,7 +256,7 @@ def _partition_sources(
         for key in sorted(manifest_dict):
             if key in moved_old:
                 continue
-            if not (config.REPO_ROOT / key).exists():
+            if not config.source_path_for_key(key).exists():
                 deleted.append(key)
     return sorted(pending), skipped, moved, unreadable, deleted
 

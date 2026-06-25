@@ -177,9 +177,13 @@ def validate_page(rel_path: str, frontmatter: dict, body: str) -> list[Issue]:
     resource = str(frontmatter.get("resource") or "").strip()
     if not resource:
         err("missing_field", "missing required field: 'resource'")
-    elif resource.startswith(("/", "\\")) or ".." in resource.replace("\\", "/").split("/"):
-        err("bad_resource", f"resource must be a repo-relative path: {resource!r}")
-    elif not (config.REPO_ROOT / resource).is_file():
+    elif ".." in resource.replace("\\", "/").split("/"):
+        # A '..' traversal segment is never a valid source key (repo-relative or absolute).
+        err("bad_resource", f"resource must not contain '..': {resource!r}")
+    elif not config.source_path_for_key(resource).is_file():
+        # source_path_for_key accepts BOTH a repo-relative key ('raw/notes.md') and an absolute
+        # out-of-repo key ('T:/21_llmWiki/raw/notes.md' / '/mnt/share/raw/notes.md'), so a wiki
+        # whose raw/ lives on a mounted network drive validates instead of being rejected.
         err("bad_resource", f"resource points at a missing file: {resource}")
 
     # --- file format ---

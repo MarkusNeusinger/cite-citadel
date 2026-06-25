@@ -106,6 +106,28 @@ with autonomous file tools — `claude` with `acceptEdits` + a tool allowlist, `
 `OKF_LLM_TIMEOUT`. See `.env.example` for binary-path and timeout overrides. (Run ingest on a
 clean git tree so any stray edit is easy to spot.)
 
+### Keep the wiki/raw outside the repo (e.g. a network drive)
+
+By default `wiki/`, `raw/`, and `docs/` live in the repo, but you can point them anywhere with
+absolute paths — including a mounted network drive, so the corpus is shared/backed-up centrally
+while the code stays a normal checkout:
+
+```ini
+# Windows mapped drive (T: -> \\server\share):
+OKF_WIKI_DIR=T:\21_llmWiki\wiki
+OKF_RAW_DIR=T:\21_llmWiki\raw
+# Linux/macOS mount:
+# OKF_WIKI_DIR=/mnt/llmwiki/wiki
+# OKF_RAW_DIR=/mnt/llmwiki/raw
+```
+
+Two rules keep it sound: (1) a **relative** override resolves against the **repo root** (not your
+shell's CWD), while an **absolute** one is used as-is; (2) keep `wiki/` and `raw/` under a
+**common parent** (as above) so the `## Sources` citation links between them remain valid relative
+links. Ingest then grants the agentic CLI access to the out-of-repo locations automatically
+(`claude` via `--add-dir`, `copilot` via `--allow-all-paths`); the read-only tools (`search`,
+`lint`, `view`, MCP) work regardless.
+
 ## Use
 
 **Ingest** — drop one or more arbitrary text-bearing files into `raw/` (any type — markdown,
