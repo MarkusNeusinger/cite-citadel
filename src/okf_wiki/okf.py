@@ -51,10 +51,24 @@ def parse(text: str) -> tuple[dict, str]:
     return ``(frontmatter_dict, body)``. If there is no frontmatter block — or the
     block is malformed YAML — return ``({}, text)`` rather than raising, so one bad
     hand-edited page can't crash the whole wiki load. ``yaml.safe_load`` of an empty
-    block -> ``{}``."""
-    if text.startswith("---\n") or text == "---" or text.startswith("---\r\n"):
+    block -> ``{}``.
+
+    A leading UTF-8 BOM (``\\ufeff``) and any blank lines above the opening fence are
+    tolerated. A file written on Windows often acquires a BOM, and an agent occasionally
+    leaves a blank line before the frontmatter; either one used to sit in front of the
+    opening ``---`` and hide it, so the page parsed as having NO frontmatter and EVERY
+    required field then read as missing. The BOM is stripped (an encoding artifact, never
+    content) and leading whitespace is skipped only to locate the fence — the body, which
+    starts after the CLOSING fence, is unaffected."""
+    # Strip a leading UTF-8 BOM first: it is an encoding artifact, never content, and would
+    # otherwise precede the opening '---' and prevent the frontmatter from being recognized.
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    # Look for the opening fence past any leading blank lines / whitespace.
+    head = text.lstrip()
+    if head.startswith("---\n") or head == "---" or head.startswith("---\r\n"):
         # Normalise the opening fence and look for the closing fence.
-        rest = text[len("---"):]
+        rest = head[len("---"):]
         # Strip a single newline right after the opening fence.
         if rest.startswith("\r\n"):
             rest = rest[2:]

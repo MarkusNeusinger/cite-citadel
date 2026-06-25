@@ -97,6 +97,66 @@ def test_parse_malformed_frontmatter_is_tolerant():
     assert "Body text." in body
 
 
+def test_parse_tolerates_leading_bom_and_whitespace():
+    """A leading UTF-8 BOM (common when a file is written on Windows) or a blank line
+    above the opening fence must NOT hide the frontmatter. Either one used to make the page
+    parse as having no frontmatter so every required field read as missing — the symptom
+    behind a whole ingest run failing with 'missing required field' on every page."""
+    expected = {
+        "type": "Concept",
+        "title": "Test",
+        "description": "d",
+        "tags": ["x"],
+        "resource": "raw/notes.md",
+    }
+    base = (
+        "---\n"
+        "type: Concept\n"
+        "title: Test\n"
+        "description: d\n"
+        "tags:\n"
+        "- x\n"
+        "resource: raw/notes.md\n"
+        "---\n"
+        "Body text.\n"
+    )
+    # BOM, leading blank lines, leading spaces, CRLF newlines, and combinations all parse
+    # to the same frontmatter, and the BOM/whitespace never leaks into the body.
+    for label, text in {
+        "bom": "﻿" + base,
+        "blank_line": "\n" + base,
+        "spaces": "   " + base,
+        "crlf": base.replace("\n", "\r\n"),
+        "bom_crlf": "﻿" + base.replace("\n", "\r\n"),
+        "bom_then_blank": "﻿\n\n" + base,
+    }.items():
+        frontmatter, body = okf.parse(text)
+        assert frontmatter == expected, label
+        assert body.lstrip().startswith("Body text."), label
+        assert "﻿" not in body, label
+
+
+def test_parse_bom_page_roundtrips_clean():
+    """Parsing a BOM-prefixed page then dumping it yields canonical OKF with NO BOM, so the
+    re-stamp ingest performs after validation normalizes the file (a second parse is stable)."""
+    frontmatter, body = okf.parse("﻿---\ntype: Concept\ntitle: T\n---\nBody.\n")
+    rendered = okf.dump(frontmatter, body)
+    assert not rendered.startswith("﻿")
+    assert rendered.startswith("---\n")
+    frontmatter2, body2 = okf.parse(rendered)
+    assert frontmatter2 == frontmatter
+    assert body2 == body
+
+
+def test_parse_thematic_break_is_not_frontmatter():
+    """A body whose content is a markdown thematic break (or starts with one) must still parse
+    to an EMPTY dict — the embedded-frontmatter validator depends on this to avoid false
+    positives, and the BOM/whitespace tolerance must not change it."""
+    assert okf.parse("Some text.\n\n---\n\nMore text.\n")[0] == {}
+    assert okf.parse("---\n\nJust a horizontal rule then prose.\n")[0] == {}
+    assert okf.parse("﻿Some text.\n\n---\n\nMore.\n")[0] == {}
+
+
 def test_safe_join_rejects_traversal(tmp_path):
     """okf.safe_join rejects '..' traversal in any form."""
     with pytest.raises(okf.OKFError):
