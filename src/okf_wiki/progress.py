@@ -57,15 +57,20 @@ class ConsoleProgress:
             bits.append(f"{moved} reorganized")
         if unreadable:
             bits.append(f"{unreadable} unreadable")
-        if deleted:
-            bits.append(f"{deleted} source(s) deleted")
-        extra = f" ({', '.join(bits)})" if bits else ""
         if pending == 0 and deleted == 0:
+            extra = f" ({', '.join(bits)})" if bits else ""
             self._writeln(f"Nothing to ingest{extra}.")
             return
         if pending == 0:
+            # Deleted-only run: the headline already names the deleted count, so leave it out of
+            # `extra` (otherwise "Reconciling 2 deleted source(s) (2 source(s) deleted)...").
+            extra = f" ({', '.join(bits)})" if bits else ""
             self._writeln(f"Reconciling {deleted} deleted source(s){extra}...")
             return
+        # Ingesting run: surface the deleted count as secondary context alongside the file count.
+        if deleted:
+            bits.append(f"{deleted} source(s) deleted")
+        extra = f" ({', '.join(bits)})" if bits else ""
         self._writeln(f"Ingesting {pending} file(s){extra}...")
 
     def on_source_start(self, index: int, total: int, source: str) -> None:

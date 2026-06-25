@@ -98,9 +98,10 @@ A raw source is not write-once. The session you are running tells you which case
 - **Re-ingest of a CHANGED source.** The wiki already holds facts you derived from this file.
   Re-read its **current** contents and **reconcile**, do not merely append: where a number,
   name, or claim changed, **update** the existing sentence; where the current file no longer
-  supports a fact, **remove** that sentence together with its `[^sN]` marker and its `## Sources`
-  definition; add any genuinely new facts. Leave facts (and citations) from **other** sources
-  exactly as they are.
+  supports a fact, remove **this source's** `[^sN]` marker and its `## Sources` definition, and
+  delete the whole sentence **only if it has no other `[^sN]` source left** (a co-cited fact
+  `...fact.[^s1][^s2]` stays — drop just this marker); add any genuinely new facts. Leave facts
+  (and citations) from **other** sources exactly as they are.
 - **Cleanup of a DELETED source.** The file is gone from disk — do **not** try to open it. Grep
   `wiki/` for everything that cited it (a `resource:` field, or a `[^sN]` whose definition links
   to it). For each fact whose **only** source was that file, delete the sentence, its marker, and

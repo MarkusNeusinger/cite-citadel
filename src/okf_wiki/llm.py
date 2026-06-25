@@ -126,10 +126,11 @@ def _build_instruction(rel_key: str, kind: str = "ingest") -> str:
         note = (
             f"NOTE: {rel_key} CHANGED since it was last ingested — this is a RE-INGEST, not a "
             "first ingest, and the wiki already cites it. As you fold in its CURRENT contents, "
-            "UPDATE facts whose numbers/names/claims changed, and REMOVE facts the current file "
-            "no longer supports (drop the sentence, its `[^sN]` marker, and its `## Sources` "
-            "definition) — do not merely append. Leave facts from OTHER raw sources and their "
-            "citations intact.\n\n"
+            "UPDATE facts whose numbers/names/claims changed. For a fact the current file no "
+            "longer supports, remove THIS source's `[^sN]` marker and its `## Sources` "
+            "definition, and drop the whole sentence ONLY if no other `[^sN]` source remains on "
+            "it (a co-cited fact stays — just remove this marker). Do not merely append, and "
+            "leave facts from OTHER raw sources and their citations intact.\n\n"
         )
 
     return (

@@ -61,6 +61,9 @@ def test_build_instruction_reconcile_says_update_and_remove():
     assert "changed" in low
     assert "update" in low and "remove" in low
     assert "re-ingest" in low or "reingest" in low
+    # A co-cited fact must NOT be dropped whole — only this source's marker is removed unless it
+    # was the last citation (mirrors the delete prompt; guards the Copilot-review fix).
+    assert "co-cited" in low and "only if" in low
     assert len(prompt) < 2000  # still paths-only — WinError 206 guard
 
 
