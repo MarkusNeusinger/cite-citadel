@@ -117,6 +117,31 @@ def test_lint_flags_recurring_undefined_abbreviation():
     assert "KPI (on 2 pages)" in report.render()
 
 
+def test_lint_counts_abbreviations_in_headings():
+    """An abbreviation used only in a heading still counts as a use (headings are prose) —
+    so a term that recurs across page headings is flagged, not silently skipped."""
+    pages = [
+        _page("concepts/a.md", "## KPI Overview\n\nWe track our numbers carefully."),
+        _page("concepts/b.md", "## KPI Targets\n\nGoals are set quarterly."),
+    ]
+    flagged = {abbr for abbr, _n in lint.lint(pages).undefined_abbrevs}
+    assert "KPI" in flagged
+
+
+def test_lint_expansion_in_code_fence_does_not_suppress():
+    """An inline expansion that appears only inside a code fence (or the Sources section) must
+    not globally suppress the nudge for real prose uses of the same abbreviation."""
+    pages = [
+        _page(
+            "concepts/a.md",
+            "We rely on the ESB heavily.\n\n```\nEnterprise Service Bus (ESB) example\n```",
+        ),
+        _page("concepts/b.md", "The ESB routes every message."),
+    ]
+    flagged = {abbr for abbr, _n in lint.lint(pages).undefined_abbrevs}
+    assert "ESB" in flagged   # the only "(ESB)" is fenced, so it doesn't count as defined
+
+
 def test_lint_abbreviation_entry_suppresses_nudge():
     """Once an abbreviation has an Abbreviation page (by dashed title or by aliases), it is no
     longer reported as undefined."""

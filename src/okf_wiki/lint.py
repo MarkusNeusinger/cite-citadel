@@ -267,13 +267,14 @@ def _unlinked_mentions(
     return found
 
 
-def _abbrev_token_uses(body: str) -> set[str]:
-    """Abbreviation-shaped tokens (see ABBREV_RE) used in ``body``, skipping code fences, the
-    trailing ``## Sources`` section (raw filenames/dates), and chemistry formulae (a token
-    trailed by a subscript digit, e.g. CO₂)."""
+def _prose_lines(body: str):
+    """Yield the prose lines of ``body`` — every line except fenced code blocks and the trailing
+    ``## Sources`` section (whose raw filenames, dates, and footnote links are not prose). A
+    heading other than ``## Sources`` IS prose — an abbreviation in a heading (e.g. ``## SCA
+    Water``) is a real use — so it is yielded; the ``## Sources`` heading and its body are skipped.
+    Shared by the use-counting and inline-expansion passes so both see the same region."""
     in_fence = False
     in_sources = False
-    found: set[str] = set()
     for line in body.splitlines():
         stripped = line.strip()
         if stripped.startswith("```"):
@@ -283,9 +284,20 @@ def _abbrev_token_uses(body: str) -> set[str]:
             continue
         if stripped.startswith("#"):
             in_sources = bool(re.match(r"#+\s*sources\b", stripped, re.IGNORECASE))
+            if not in_sources:
+                yield line
             continue
         if in_sources:
             continue
+        yield line
+
+
+def _abbrev_token_uses(body: str) -> set[str]:
+    """Abbreviation-shaped tokens (see ABBREV_RE) used in the prose of ``body`` (see
+    :func:`_prose_lines` — headings count, code fences and ``## Sources`` do not), skipping
+    chemistry formulae (a token trailed by a subscript digit, e.g. CO₂)."""
+    found: set[str] = set()
+    for line in _prose_lines(body):
         for m in ABBREV_RE.finditer(line):
             if m.end() < len(line) and line[m.end()] in _SCRIPT_DIGITS:
                 continue
@@ -294,10 +306,14 @@ def _abbrev_token_uses(body: str) -> set[str]:
 
 
 def _abbrev_expansions(body: str) -> set[str]:
-    """Abbreviation tokens written next to a parenthetical expansion anywhere in ``body``
-    (``solids (TDS)`` or ``WDT (Weiss …)``) — i.e. defined inline, so not a glossary gap."""
-    out = set(_ABBR_IN_PARENS_RE.findall(body))
-    out.update(_ABBR_THEN_PARENS_RE.findall(body))
+    """Abbreviation tokens written next to a parenthetical expansion in the prose of ``body``
+    (``solids (TDS)`` or ``WDT (Weiss …)``) — i.e. defined inline, so not a glossary gap. Only
+    prose counts (see :func:`_prose_lines`): an expansion that appears solely inside a code fence
+    or the ``## Sources`` section must not suppress the nudge for real uses elsewhere."""
+    out: set[str] = set()
+    for line in _prose_lines(body):
+        out.update(_ABBR_IN_PARENS_RE.findall(line))
+        out.update(_ABBR_THEN_PARENS_RE.findall(line))
     return out
 
 
