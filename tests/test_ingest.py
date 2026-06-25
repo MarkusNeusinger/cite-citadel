@@ -29,7 +29,7 @@ def _agent_write(rel_path: str, frontmatter: dict, body: str) -> None:
     target.write_text(okf.dump(frontmatter, body), encoding="utf-8")
 
 
-def fake_session_transformer(rel_key):
+def fake_session_transformer(rel_key, kind="ingest"):
     """Deterministic stand-in for one agentic ingest session: writes a single Concept page
     with a per-fact GFM footnote linking relatively to the raw file + a ## Sources section."""
     _CALLS["n"] += 1
@@ -48,7 +48,7 @@ def fake_session_transformer(rel_key):
     )
 
 
-def fake_session_contradiction(rel_key):
+def fake_session_contradiction(rel_key, kind="ingest"):
     """A session that writes a page containing a '> [!CONTRADICTION]' callout (type Note -> misc)."""
     _CALLS["n"] += 1
     _agent_write(
@@ -200,7 +200,7 @@ def test_embedded_frontmatter_in_body_is_error(tmp_path, monkeypatch):
     """If the agent echoes a second '---' YAML block into the BODY, validation flags it."""
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
 
-    def fake(rel_key):
+    def fake(rel_key, kind="ingest"):
         _agent_write(
             "concepts/echoed.md",
             {
@@ -233,7 +233,7 @@ def test_ingest_missing_type_rolls_back(tmp_path, monkeypatch):
     )
     (raw / "old.md").write_text("x\n", encoding="utf-8")
 
-    def fake(rel_key):
+    def fake(rel_key, kind="ingest"):
         _agent_write(
             "concepts/bad.md",
             {"title": "Bad", "description": "d", "tags": ["x"], "resource": "raw/notes.md"},
@@ -255,7 +255,7 @@ def test_missing_required_field_rolls_back(tmp_path, monkeypatch):
     is rolled back (not marked done)."""
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
 
-    def fake(rel_key):
+    def fake(rel_key, kind="ingest"):
         _agent_write(
             "concepts/notags.md",
             {"type": "Concept", "title": "No Tags", "description": "d", "resource": "raw/notes.md"},
@@ -275,7 +275,7 @@ def test_ingest_no_changes_marks_done(tmp_path, monkeypatch):
     """An agent that changes nothing is still 'processed' (and re-runs skip it)."""
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
 
-    def fake(rel_key):
+    def fake(rel_key, kind="ingest"):
         _CALLS["n"] += 1  # writes nothing
 
     monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
@@ -298,7 +298,7 @@ def _make_fake(written: list[str]):
     """A session fake that writes one valid Concept page per source, citing the raw file (which
     may be any type/sub-folder), and records which rel_keys it was driven with."""
 
-    def fake(rel_key: str) -> None:
+    def fake(rel_key: str, kind: str = "ingest") -> None:
         _CALLS["n"] += 1
         written.append(rel_key)
         slug = okf.slugify(rel_key)
@@ -541,7 +541,7 @@ def test_reserved_files_excluded_from_diff(tmp_path, monkeypatch):
     regenerated; only real pages are reported."""
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
 
-    def fake(rel_key):
+    def fake(rel_key, kind="ingest"):
         _agent_write(
             "concepts/foo.md",
             {"type": "Concept", "title": "Foo", "description": "d", "tags": ["x"], "resource": "raw/notes.md"},
@@ -579,7 +579,7 @@ def test_agent_merge_repoints_inbound_link(tmp_path, monkeypatch):
         "[^s1]: [raw/old.md](../../raw/old.md) - old (ingested 2026-06-21)\n",
     )
 
-    def fake(rel_key):
+    def fake(rel_key, kind="ingest"):
         _agent_write(
             "concepts/self-attention.md",
             {"type": "Concept", "title": "Self-Attention", "description": "merged", "tags": ["ml"], "resource": "raw/notes.md"},
@@ -627,7 +627,7 @@ def test_repair_renames_repoints_after_rename(tmp_path, monkeypatch):
         "See [Alpha](./a.md).[^s1]\n\n## Sources\n\n[^s1]: [raw/old.md](../../raw/old.md) - o\n",
     )
 
-    def fake(rel_key):
+    def fake(rel_key, kind="ingest"):
         # Rename a.md -> aa.md (SAME title 'Alpha'); do NOT touch linker.
         (config.WIKI_DIR / "concepts" / "a.md").unlink()
         _agent_write(
@@ -664,7 +664,7 @@ def test_agent_delete_leaves_broken_link_surfaced(tmp_path, monkeypatch):
         "See [Alpha](./a.md).[^s1]\n\n## Sources\n\n[^s1]: [raw/old.md](../../raw/old.md) - o\n",
     )
 
-    def fake(rel_key):
+    def fake(rel_key, kind="ingest"):
         (config.WIKI_DIR / "concepts" / "a.md").unlink()  # nothing created in its place
 
     monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
@@ -687,7 +687,7 @@ def test_failed_session_rolls_back(tmp_path, monkeypatch):
     (raw / "old.md").write_text("x\n", encoding="utf-8")
     (raw / "notes.md").write_text("x\n", encoding="utf-8")
 
-    def fake(rel_key):
+    def fake(rel_key, kind="ingest"):
         _agent_write(
             "concepts/partial.md",
             {"type": "Concept", "title": "Partial", "description": "d", "tags": ["x"], "resource": "raw/notes.md"},
@@ -725,7 +725,7 @@ def test_keyboardinterrupt_rolls_back_current_source(tmp_path, monkeypatch):
     (raw / "old.md").write_text("x\n", encoding="utf-8")
     (raw / "notes.md").write_text("x\n", encoding="utf-8")
 
-    def fake(rel_key):
+    def fake(rel_key, kind="ingest"):
         _agent_write(
             "concepts/partial.md",
             {"type": "Concept", "title": "Partial", "description": "d", "tags": ["x"], "resource": "raw/notes.md"},
@@ -751,7 +751,7 @@ def test_completed_sources_persisted_before_interrupt(tmp_path, monkeypatch):
     (raw / "a.md").write_text("first\n", encoding="utf-8")
     (raw / "b.md").write_text("second\n", encoding="utf-8")
 
-    def fake(rel_key):
+    def fake(rel_key, kind="ingest"):
         if rel_key == "raw/a.md":
             _agent_write(
                 "concepts/from-a.md",
@@ -782,7 +782,7 @@ def test_finalization_runs_for_completed_sources_on_interrupt(tmp_path, monkeypa
     (raw / "a.md").write_text("first\n", encoding="utf-8")
     (raw / "b.md").write_text("second\n", encoding="utf-8")
 
-    def fake(rel_key):
+    def fake(rel_key, kind="ingest"):
         if rel_key == "raw/a.md":
             _agent_write(
                 "concepts/from-a.md",
@@ -825,6 +825,251 @@ def test_contradiction_marker_preserved(tmp_path, monkeypatch):
     assert written_rel in lint_report.contradictions
 
 
+# --- changed + deleted raw-source propagation -------------------------------------------
+
+
+def test_changed_source_runs_reconcile_not_plain_ingest(tmp_path, monkeypatch):
+    """A NEW source runs with kind='ingest'; re-ingesting it after its bytes change runs with
+    kind='reconcile' (so the agent updates/removes stale facts instead of only appending)."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    seen: list[tuple[str, str]] = []
+
+    def fake(rel_key, kind="ingest"):
+        seen.append((rel_key, kind))
+        _agent_write(
+            "concepts/transformer.md",
+            {"type": "Concept", "title": "Transformer", "description": "d", "tags": ["ml"], "resource": "raw/notes.md"},
+            "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/notes.md](../../raw/notes.md) - n\n",
+        )
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+
+    (raw / "notes.md").write_text("first\n", encoding="utf-8")
+    ingest.ingest()
+    assert seen == [("raw/notes.md", "ingest")]  # brand new -> plain ingest
+
+    (raw / "notes.md").write_text("second, corrected\n", encoding="utf-8")
+    ingest.ingest()
+    assert seen[-1] == ("raw/notes.md", "reconcile")  # changed bytes -> reconcile
+
+
+def test_deleted_source_citations_reconciled_out(tmp_path, monkeypatch):
+    """A tracked raw file that vanished from disk triggers a kind='delete' cleanup session: the
+    page it solely sourced is removed, its manifest key is dropped, and lint stays clean."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _seed_page(
+        wiki, "concepts/topic.md",
+        {"type": "Concept", "title": "Topic", "description": "d", "tags": ["x"], "resource": "raw/gone.md"},
+        "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/gone.md](../../raw/gone.md) - g\n",
+    )
+    manifest.save({"raw/gone.md": "deadbeef"})  # tracked, but the file is NOT on disk
+
+    calls: list[tuple[str, str]] = []
+
+    def fake(rel_key, kind="ingest"):
+        calls.append((rel_key, kind))
+        # The deleted source was this page's only provenance -> remove the page entirely.
+        (config.WIKI_DIR / "concepts" / "topic.md").unlink()
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+
+    report = ingest.ingest()
+
+    assert calls == [("raw/gone.md", "delete")]  # exactly one delete-cleanup session
+    assert report.sources_deleted == ["raw/gone.md"]
+    assert "concepts/topic.md" in report.pages_deleted
+    assert not (wiki / "concepts" / "topic.md").exists()
+    assert not report.errors
+
+    import json
+
+    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    assert "raw/gone.md" not in data  # manifest key dropped
+    assert lint.lint().ok() and lint.lint().bad_sources == []
+
+    log_text = (wiki / "log.md").read_text(encoding="utf-8")
+    assert "raw/gone.md" in log_text and "deleted" in log_text
+
+
+def test_deleted_source_drops_one_citation_keeps_corroborated_fact(tmp_path, monkeypatch):
+    """When a deleted source co-cited a fact that ANOTHER source also supports, the cleanup
+    drops only the deleted source's marker/definition and keeps the fact + the survivor cite."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "keep.md").write_text("keep\n", encoding="utf-8")
+    _seed_page(
+        wiki, "concepts/dual.md",
+        {"type": "Concept", "title": "Dual", "description": "d", "tags": ["x"], "resource": "raw/keep.md"},
+        "A corroborated fact.[^s1][^s2]\n\n## Sources\n\n"
+        "[^s1]: [raw/keep.md](../../raw/keep.md) - k\n"
+        "[^s2]: [raw/gone.md](../../raw/gone.md) - g\n",
+    )
+    manifest.save({"raw/keep.md": manifest.file_sha256(raw / "keep.md"), "raw/gone.md": "deadbeef"})
+
+    def fake(rel_key, kind="ingest"):
+        assert (rel_key, kind) == ("raw/gone.md", "delete")
+        # Keep the fact + [^s1]/keep.md; remove only [^s2] and its gone.md definition.
+        _agent_write(
+            "concepts/dual.md",
+            {"type": "Concept", "title": "Dual", "description": "d", "tags": ["x"], "resource": "raw/keep.md"},
+            "A corroborated fact.[^s1]\n\n## Sources\n\n"
+            "[^s1]: [raw/keep.md](../../raw/keep.md) - k\n",
+        )
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+
+    report = ingest.ingest()
+
+    assert report.sources_deleted == ["raw/gone.md"]
+    assert "concepts/dual.md" in report.pages_updated
+    text = (wiki / "concepts" / "dual.md").read_text(encoding="utf-8")
+    assert "corroborated fact" in text and "[^s1]" in text  # fact + survivor cite kept
+    assert "gone.md" not in text and "[^s2]" not in text    # deleted source's cite removed
+    assert lint.lint().ok()
+    assert store.find_raw_references("raw/gone.md") == []
+
+
+def test_deleted_source_with_no_references_just_dropped(tmp_path, monkeypatch):
+    """A deleted source nothing cites needs no agent session — its manifest key is simply
+    dropped, and an unrelated page citing a still-present source is left untouched."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "keep.md").write_text("keep\n", encoding="utf-8")
+    _seed_page(
+        wiki, "concepts/keep.md",
+        {"type": "Concept", "title": "Keep", "description": "d", "tags": ["x"], "resource": "raw/keep.md"},
+        "Kept.[^s1]\n\n## Sources\n\n[^s1]: [raw/keep.md](../../raw/keep.md) - k\n",
+    )
+    manifest.save({"raw/keep.md": manifest.file_sha256(raw / "keep.md"), "raw/gone.md": "deadbeef"})
+
+    def fake(rel_key, kind="ingest"):
+        raise AssertionError(f"no session should run (got {rel_key}, {kind})")
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+
+    report = ingest.ingest()
+
+    assert report.sources_deleted == ["raw/gone.md"]
+    assert report.processed == [] and not report.errors
+    assert (wiki / "concepts" / "keep.md").exists()  # unrelated page untouched
+
+    import json
+
+    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    assert "raw/gone.md" not in data and "raw/keep.md" in data
+
+
+def test_deleted_cleanup_incomplete_rolls_back_and_retries(tmp_path, monkeypatch):
+    """If the cleanup session fails to remove every reference to the deleted source, the
+    post-condition fails: the whole source is rolled back, an error is collected, and the
+    manifest key is KEPT so it is retried next run (no half-cleaned wiki)."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _seed_page(
+        wiki, "concepts/topic.md",
+        {"type": "Concept", "title": "Topic", "description": "d", "tags": ["x"], "resource": "raw/gone.md"},
+        "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/gone.md](../../raw/gone.md) - g\n",
+    )
+    manifest.save({"raw/gone.md": "deadbeef"})
+
+    def fake(rel_key, kind="ingest"):
+        pass  # agent does nothing -> the gone.md citation survives
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+
+    report = ingest.ingest()
+
+    assert report.sources_deleted == []  # not completed
+    assert any("still cited" in e for e in report.errors)
+    assert (wiki / "concepts" / "topic.md").exists()  # rolled back, page intact
+
+    import json
+
+    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    assert "raw/gone.md" in data  # key kept -> retried next run
+
+
+def test_deletion_swept_only_on_full_run_not_path_scoped(tmp_path, monkeypatch):
+    """A path-scoped ingest must NOT sweep the whole manifest for deletions — only a full run
+    (no paths) reconciles a vanished source, so `ingest <one-file>` can't surprise-prune."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _seed_page(
+        wiki, "concepts/topic.md",
+        {"type": "Concept", "title": "Topic", "description": "d", "tags": ["x"], "resource": "raw/gone.md"},
+        "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/gone.md](../../raw/gone.md) - g\n",
+    )
+    (raw / "new.md").write_text("new source\n", encoding="utf-8")
+    manifest.save({"raw/gone.md": "deadbeef"})
+
+    seen: list[tuple[str, str]] = []
+
+    def fake(rel_key, kind="ingest"):
+        seen.append((rel_key, kind))
+        _agent_write(
+            "concepts/new.md",
+            {"type": "Concept", "title": "New", "description": "d", "tags": ["x"], "resource": "raw/new.md"},
+            "New.[^s1]\n\n## Sources\n\n[^s1]: [raw/new.md](../../raw/new.md) - n\n",
+        )
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+
+    report = ingest.ingest([str(raw / "new.md")])  # scoped to one file
+
+    assert seen == [("raw/new.md", "ingest")]  # only the targeted file ran; no delete session
+    assert report.sources_deleted == []
+    assert (wiki / "concepts" / "topic.md").exists()  # the deleted source's page is untouched
+
+    import json
+
+    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    assert "raw/gone.md" in data  # still tracked; not pruned by a scoped run
+
+
+def test_moved_source_not_treated_as_deletion(tmp_path, monkeypatch):
+    """A reorganized file (old path gone, same bytes at a new path) is a MOVE, not a deletion:
+    its references are repointed, no delete-cleanup session runs, and the page survives."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake_session_transformer)
+
+    (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
+    ingest.ingest()
+    assert _CALLS["n"] == 1
+
+    (raw / "ml").mkdir()
+    (raw / "ml" / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
+    (raw / "notes.md").unlink()
+
+    report = ingest.ingest()
+    assert _CALLS["n"] == 1  # no session at all — neither re-ingest nor delete-cleanup
+    assert report.sources_deleted == []  # the gone old path is a move, not a deletion
+    assert ("raw/notes.md", "raw/ml/notes.md") in report.moved
+    assert (wiki / "concepts" / "transformer.md").exists()
+    assert lint.lint().ok()
+
+
+def test_find_raw_references_matches_resource_and_citation_skips_fence(tmp_path, monkeypatch):
+    """store.find_raw_references finds pages via `resource` frontmatter OR a real citation link,
+    and ignores a citation written as a literal inside a code fence (a format-doc example)."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _seed_page(
+        wiki, "concepts/by-resource.md",
+        {"type": "Concept", "title": "By Resource", "description": "d", "tags": ["x"], "resource": "raw/target.md"},
+        "Body.[^s1]\n\n## Sources\n\n[^s1]: [raw/target.md](../../raw/target.md) - t\n",
+    )
+    _seed_page(
+        wiki, "concepts/by-citation.md",
+        {"type": "Concept", "title": "By Citation", "description": "d", "tags": ["x"], "resource": "raw/other.md"},
+        "Body.[^s1]\n\n## Sources\n\n[^s1]: [raw/target.md](../../raw/target.md) - t\n",
+    )
+    _seed_page(
+        wiki, "concepts/fence-only.md",
+        {"type": "Concept", "title": "Fence Only", "description": "d", "tags": ["x"], "resource": "raw/other.md"},
+        "Example:\n\n```\n[^s1]: [raw/target.md](../../raw/target.md)\n```\n\n"
+        "Body.[^s1]\n\n## Sources\n\n[^s1]: [raw/other.md](../../raw/other.md) - o\n",
+    )
+
+    hits = store.find_raw_references("raw/target.md")
+    assert hits == ["concepts/by-citation.md", "concepts/by-resource.md"]
+    assert "concepts/fence-only.md" not in hits  # fenced literal not counted
+
+
 # --- progress reporting -----------------------------------------------------------------
 
 
@@ -842,7 +1087,7 @@ def test_ingest_emits_progress_events(tmp_path, monkeypatch):
     for expected in ("source_start", "source_done", "finalize", "done"):
         assert expected in names, f"missing event: {expected}"
     start = next(d for e, d in events if e == "start")
-    assert start == {"pending": 1, "skipped": 0, "moved": 0, "unreadable": 0}
+    assert start == {"pending": 1, "skipped": 0, "moved": 0, "unreadable": 0, "deleted": 0}
     done = next(d for e, d in events if e == "source_done")
     assert done["source"] == "raw/notes.md"
     assert done["index"] == 1 and done["total"] == 1

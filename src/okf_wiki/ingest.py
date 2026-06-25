@@ -62,6 +62,9 @@ class IngestReport:
     moved: list[tuple[str, str]] = field(default_factory=list)
     # rel-keys of sources with no extractable text (binary/unsupported) — NOT ingested, logged.
     unreadable: list[str] = field(default_factory=list)
+    # rel-keys of tracked sources that VANISHED from disk (a full run only): their provenance is
+    # reconciled out of the wiki by a cleanup agent session, then the manifest key is dropped.
+    sources_deleted: list[str] = field(default_factory=list)
 
     def render(self) -> str:
         """Human-readable multi-line summary for CLI/MCP."""
@@ -73,6 +76,7 @@ class IngestReport:
             f"{len(self.pages_updated)} updated, "
             f"{len(self.pages_deleted)} deleted, "
             f"{len(self.moved)} reorganized, "
+            f"{len(self.sources_deleted)} sources removed, "
             f"{len(self.unreadable)} unreadable, "
             f"{len(self.errors)} errors."
         )
@@ -91,6 +95,9 @@ class IngestReport:
         if self.moved:
             lines.append("Reorganized (recognized as moved; not re-ingested):")
             lines.extend(f"  - {old} -> {new}" for old, new in self.moved)
+        if self.sources_deleted:
+            lines.append("Sources removed (deleted from disk; citations reconciled out):")
+            lines.extend(f"  - {s}" for s in self.sources_deleted)
         if self.unreadable:
             lines.append("Unreadable (no extractable text; not ingested):")
             lines.extend(f"  - {p}" for p in self.unreadable)
@@ -169,8 +176,8 @@ def _is_ingestible(path: Path) -> bool:
 
 def _partition_sources(
     paths: list[str] | None, manifest_dict: dict[str, str]
-) -> tuple[list[Path], list[str], list[tuple[str, str, str, bool]], list[Path]]:
-    """Split candidates into ``(pending, skipped, moved, unreadable)`` in one filesystem walk.
+) -> tuple[list[Path], list[str], list[tuple[str, str, str, bool]], list[Path], list[str]]:
+    """Split candidates into ``(pending, skipped, moved, unreadable, deleted)`` in one walk.
 
     - ``pending``: new/changed files with novel, readable content — fed to the agent (sorted,
       de-duplicated by resolved path).
@@ -180,6 +187,10 @@ def _partition_sources(
       duplicate. Recognized, NOT re-ingested. ``old_gone`` is True when the prior path no longer
       exists on disk (a real move, so its wiki references get repointed).
     - ``unreadable``: files with no extractable text (binary/unsupported) — logged, not ingested.
+    - ``deleted``: rel-keys tracked in the manifest whose file VANISHED from disk and is NOT the
+      source side of a move — their provenance is reconciled out of the wiki by a cleanup agent
+      session. Computed ONLY for a full run (``paths is None``); a path-scoped run never sweeps
+      the whole manifest for deletions, so it can't surprise-prune sources it wasn't pointed at.
 
     Move/duplicate detection only fires for a genuinely NEW path (``key not in manifest_dict``):
     an in-place edit of an already-tracked file is always re-ingested, even if its new content
@@ -235,7 +246,19 @@ def _partition_sources(
             unreadable.append(src)
             continue
         pending.append(src)
-    return sorted(pending), skipped, moved, unreadable
+
+    # Deleted sources: tracked keys whose file is gone (full run only). Exclude the source side
+    # of a detected move — its old path is also gone, but that is a reorganize (references get
+    # repointed), not a deletion to reconcile away.
+    deleted: list[str] = []
+    if paths is None:
+        moved_old = {old_key for old_key, _new, _sha, old_gone in moved if old_gone}
+        for key in sorted(manifest_dict):
+            if key in moved_old:
+                continue
+            if not (config.REPO_ROOT / key).exists():
+                deleted.append(key)
+    return sorted(pending), skipped, moved, unreadable, deleted
 
 
 def _hash_pages(pages: list[Page]) -> dict[str, str]:
@@ -362,21 +385,105 @@ def _restore_wiki(backup_tmp: str | None) -> None:
     shutil.copytree(os.path.join(backup_tmp, "wiki"), dst)
 
 
+@dataclass
+class _SourceOutcome:
+    """Result of one agent-driven source (ingest / reconcile / delete). ``ok`` means the edit
+    was validated and committed to disk (the caller still updates the manifest + report);
+    ``ok is False`` means the wiki was already rolled back and ``errors`` says why."""
+
+    ok: bool
+    created: list[str] = field(default_factory=list)
+    updated: list[str] = field(default_factory=list)
+    deleted: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    seconds: float = 0.0
+
+
+def _run_one_agent_session(
+    session_fn, rel_key: str, extra_check=None
+) -> _SourceOutcome:
+    """Run ONE agent session against ``wiki/`` with full all-or-nothing safety, shared by the
+    pending (ingest/reconcile) and deletion-cleanup loops.
+
+    Backs up ``wiki/``, snapshots it, calls ``session_fn()`` (the agent edits files directly),
+    diffs to learn what changed, validates + re-stamps the changed pages, repoints renamed-page
+    links, and runs an optional ``extra_check()`` post-condition (used by deletion cleanup to
+    assert no reference to the removed source survived). On ANY failure — a validation error, a
+    failed post-condition, or an exception from the session — the wiki is rolled back to its
+    pre-session state and ``ok`` is False; the caller leaves the source un-committed so it is
+    retried next run. A propagating ``BaseException`` (Ctrl+C) is rolled back by the ``finally``
+    and then re-raised for the caller's loop to capture. The caller owns the manifest + report
+    bookkeeping (different for a completed source vs. a removed one)."""
+    started = time.monotonic()
+    backup: str | None = None
+    succeeded = False
+    created: list[str] = []
+    updated: list[str] = []
+    deleted: list[str] = []
+    try:
+        backup = _backup_wiki()
+        before_pages = store.load()
+        before = _hash_pages(before_pages)
+
+        session_fn()  # the agent edits wiki/ directly
+
+        after = _snapshot()
+        created, updated, deleted = _diff(before, after)
+
+        val_errors = _validate_and_restamp(created + updated, rel_key)
+        if val_errors:
+            return _SourceOutcome(False, errors=val_errors, seconds=time.monotonic() - started)
+
+        _repair_renames(before_pages, created, deleted)
+
+        if extra_check is not None:
+            post_errors = extra_check()
+            if post_errors:
+                return _SourceOutcome(
+                    False, created, updated, deleted, post_errors, time.monotonic() - started
+                )
+
+        succeeded = True
+        return _SourceOutcome(
+            True, created, updated, deleted, [], time.monotonic() - started
+        )
+    except Exception as exc:  # noqa: BLE001 - collect per-source, roll back (finally), keep going
+        return _SourceOutcome(
+            False, errors=[f"{rel_key}: {exc}"], seconds=time.monotonic() - started
+        )
+    finally:
+        # Single rollback point for every non-success exit — the validation-error/post-condition
+        # returns, an ordinary Exception, and a propagating BaseException (Ctrl+C) all pass here.
+        if not succeeded:
+            _restore_wiki(backup)
+        if backup:
+            shutil.rmtree(backup, ignore_errors=True)
+
+
 def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
-    """Run one ingest. Exactly one ``llm.run_ingest_session`` call per pending source.
+    """Run one ingest. Exactly one ``llm.run_ingest_session`` call per pending or deleted source.
 
     Before the per-source loop, candidates are partitioned (``_partition_sources``) into
     pending / already-ingested / **reorganized** (a file that only moved or is a byte-for-byte
     duplicate — recognized, not re-ingested; a real move repoints the wiki's resource/citation
     references and re-keys the manifest) / **unreadable** (no extractable text, e.g. a binary —
-    logged and marked done, never fed to the agent).
+    logged and marked done, never fed to the agent) / **deleted** (a tracked source that
+    vanished from disk — full runs only).
 
     Per pending source: back up the wiki, snapshot it, run the agent (which edits ``wiki/``
     directly), snapshot again, diff to learn what changed, validate + re-stamp the changed pages,
-    and repoint any renamed-page links. On a per-source exception (a missing/unusable CLI, a
-    timeout, etc.) the wiki is rolled back to its pre-source state and the error is collected,
-    so the source is retried next run. Finalization (rebuild_indexes + find_broken_links +
-    append_log) happens once, if any source was processed, reorganized, or found unreadable.
+    and repoint any renamed-page links. A source already tracked in the manifest but with new
+    bytes is a re-ingest, run with ``kind="reconcile"`` so the agent UPDATES/REMOVES the stale
+    facts it produced rather than only appending. On a per-source exception (a missing/unusable
+    CLI, a timeout, etc.) the wiki is rolled back to its pre-source state and the error is
+    collected, so the source is retried next run.
+
+    Per deleted source (full run only): if any wiki page still cites it, run a ``kind="delete"``
+    cleanup session that strips those facts/citations, gated by a post-condition that the wiki no
+    longer references it (else the whole cleanup is rolled back and retried); then drop its
+    manifest key. A deleted source nothing cites is simply dropped from the manifest. Finalization
+    (rebuild_indexes + find_broken_links + append_log) happens once, if any source was processed,
+    reorganized, found unreadable, or removed.
 
     ``progress`` is an optional ``progress(event, data)`` callback (run start, before/after
     each source, before finalization); None for non-interactive callers. A failing callback
@@ -393,8 +500,13 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
     manifest_dict = manifest.load()
     report = IngestReport([], [], [], [])
 
-    pending, skipped, moved, unreadable = _partition_sources(paths, manifest_dict)
+    pending, skipped, moved, unreadable, deleted_sources = _partition_sources(
+        paths, manifest_dict
+    )
     report.skipped = skipped
+    # A pending source whose key is ALREADY tracked is a re-ingest of changed bytes (reconcile);
+    # one not yet tracked is brand new. Captured before the manifest is mutated below.
+    changed_keys = {manifest.rel_key(p) for p in pending} & set(manifest_dict)
 
     # --- Reorganized sources: a file that only MOVED (or is a byte-for-byte duplicate) is
     # recognized and NOT re-ingested. For a real move (the old path is gone) repoint the wiki's
@@ -436,6 +548,7 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
         skipped=len(skipped),
         moved=len(report.moved),
         unreadable=len(report.unreadable),
+        deleted=len(deleted_sources),
     )
 
     # A Ctrl+C (or other BaseException) raised mid-loop is captured here, not allowed to
@@ -445,94 +558,123 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
     pending_interrupt: BaseException | None = None
     for index, src in enumerate(pending, 1):
         rel_key = manifest.rel_key(src)
+        # An already-tracked key with new bytes is a re-ingest: reconcile (update/remove stale
+        # facts) rather than only appending. A brand-new key is a plain ingest.
+        kind = "reconcile" if rel_key in changed_keys else "ingest"
         emit("source_start", index=index, total=len(pending), source=rel_key)
-        started = time.monotonic()
-        backup: str | None = None
-        succeeded = False
         try:
-            backup = _backup_wiki()
-            before_pages = store.load()
-            before = _hash_pages(before_pages)
-
-            llm.run_ingest_session(rel_key)  # the agent edits wiki/ directly
-
-            after = _snapshot()
-            created, updated, deleted = _diff(before, after)
-
-            # Re-impose invariants on (and re-stamp) every changed page. A validation error
-            # means the agent produced an invalid page (missing field, fabricated citation,
-            # leaked artifact, ...): roll the WHOLE source back (all-or-nothing) and leave it
-            # un-done so it is retried next run, rather than committing an invalid wiki state.
-            val_errors = _validate_and_restamp(created + updated, rel_key)
-            if val_errors:
-                # Invalid page(s): leave the source un-done and let `finally` roll the wiki
-                # back (succeeded is still False) — all-or-nothing, retried next run.
-                report.errors.extend(val_errors)
-                emit(
-                    "source_error",
-                    index=index,
-                    total=len(pending),
-                    source=rel_key,
-                    error=val_errors[0],
-                    seconds=time.monotonic() - started,
-                )
-                continue
-
-            # Repoint inbound links for any rename the agent did not fully fix.
-            _repair_renames(before_pages, created, deleted)
-
-            report.pages_created.extend(created)
-            report.pages_updated.extend(updated)
-            report.pages_written.extend(created + updated)
-            report.pages_deleted.extend(deleted)
-
-            manifest.mark_done(manifest_dict, src)
-            # Persist progress immediately after each completed source: a later Ctrl+C (or a
-            # crash) must not erase sources already finished this run. (The old code saved the
-            # manifest only once, in finalization, which a propagating interrupt skipped.)
-            manifest.save(manifest_dict)
-            report.processed.append(rel_key)
-            succeeded = True
-            emit(
-                "source_done",
-                index=index,
-                total=len(pending),
-                source=rel_key,
-                created=len(created),
-                updated=len(updated),
-                deleted=len(deleted),
-                seconds=time.monotonic() - started,
+            outcome = _run_one_agent_session(
+                lambda rk=rel_key, k=kind: llm.run_ingest_session(rk, kind=k), rel_key
             )
-        except Exception as exc:  # noqa: BLE001 - collect per-source, roll back, keep going
-            report.errors.append(f"{rel_key}: {exc}")
+        except BaseException as exc:  # noqa: BLE001 - Ctrl+C etc.: capture, finalize, re-raise
+            # The in-flight source was already rolled back inside the helper's `finally`; capture
+            # the interrupt, stop taking new sources, and re-raise it after finalization below.
+            pending_interrupt = exc
+            break
+
+        if not outcome.ok:
+            report.errors.extend(outcome.errors)
             emit(
                 "source_error",
                 index=index,
                 total=len(pending),
                 source=rel_key,
-                error=str(exc),
-                seconds=time.monotonic() - started,
+                error=outcome.errors[0] if outcome.errors else "",
+                seconds=outcome.seconds,
             )
-        except BaseException as exc:  # noqa: BLE001 - Ctrl+C etc.: capture, finalize, re-raise
-            # A KeyboardInterrupt/SystemExit is not a per-source error to collect — capture it,
-            # let `finally` roll this in-flight source back, then stop the loop and re-raise it
-            # AFTER finalization (below) so the completed sources don't keep stale indexes.
-            pending_interrupt = exc
-        finally:
-            # Roll back unless the source fully succeeded. This `finally` is the single rollback
-            # point for every non-success exit — the validation-error `continue`, an ordinary
-            # Exception, and a captured BaseException — so none of them can leave a half-edit.
-            if not succeeded:
-                _restore_wiki(backup)
-            if backup:
-                shutil.rmtree(backup, ignore_errors=True)
+            continue
 
-        # Stop taking new sources once an interrupt was captured, but fall through to
-        # finalization for the sources already completed this run.
-        if pending_interrupt is not None:
-            break
+        report.pages_created.extend(outcome.created)
+        report.pages_updated.extend(outcome.updated)
+        report.pages_written.extend(outcome.created + outcome.updated)
+        report.pages_deleted.extend(outcome.deleted)
 
-    if report.processed or report.moved or report.unreadable or repointed:
+        manifest.mark_done(manifest_dict, src)
+        # Persist progress immediately after each completed source: a later Ctrl+C (or a crash)
+        # must not erase sources already finished this run.
+        manifest.save(manifest_dict)
+        report.processed.append(rel_key)
+        emit(
+            "source_done",
+            index=index,
+            total=len(pending),
+            source=rel_key,
+            created=len(outcome.created),
+            updated=len(outcome.updated),
+            deleted=len(outcome.deleted),
+            seconds=outcome.seconds,
+        )
+
+    # --- Deleted sources: a tracked source vanished from disk (full run only). If any page still
+    # cites it, run a `kind="delete"` cleanup session that strips that provenance, gated by a
+    # post-condition that the wiki no longer references it (else the whole cleanup is rolled back
+    # and retried next run); then drop its manifest key. A deletion that nothing cites just loses
+    # its manifest key. Skipped entirely once an interrupt was captured — we are aborting. ---
+    if pending_interrupt is None:
+        total_del = len(deleted_sources)
+        for index, key in enumerate(deleted_sources, 1):
+            emit("source_start", index=index, total=total_del, source=key)
+            if not store.find_raw_references(key):
+                # Nothing cites it (e.g. a source that added no facts, or was unreadable): just
+                # forget it so a later run does not re-detect the same deletion.
+                manifest_dict.pop(key, None)
+                manifest.save(manifest_dict)
+                report.sources_deleted.append(key)
+                emit(
+                    "source_done", index=index, total=total_del, source=key,
+                    created=0, updated=0, deleted=0, seconds=0.0,
+                )
+                continue
+            try:
+                outcome = _run_one_agent_session(
+                    lambda k=key: llm.run_ingest_session(k, kind="delete"),
+                    key,
+                    extra_check=lambda k=key: [
+                        f"{k}: still cited by {p} after cleanup"
+                        for p in store.find_raw_references(k)
+                    ],
+                )
+            except BaseException as exc:  # noqa: BLE001 - Ctrl+C: helper rolled back; re-raise later
+                pending_interrupt = exc
+                break
+
+            if not outcome.ok:
+                report.errors.extend(outcome.errors)
+                emit(
+                    "source_error",
+                    index=index,
+                    total=total_del,
+                    source=key,
+                    error=outcome.errors[0] if outcome.errors else "",
+                    seconds=outcome.seconds,
+                )
+                continue
+
+            report.pages_created.extend(outcome.created)
+            report.pages_updated.extend(outcome.updated)
+            report.pages_written.extend(outcome.created + outcome.updated)
+            report.pages_deleted.extend(outcome.deleted)
+            manifest_dict.pop(key, None)
+            manifest.save(manifest_dict)
+            report.sources_deleted.append(key)
+            emit(
+                "source_done",
+                index=index,
+                total=total_del,
+                source=key,
+                created=len(outcome.created),
+                updated=len(outcome.updated),
+                deleted=len(outcome.deleted),
+                seconds=outcome.seconds,
+            )
+
+    if (
+        report.processed
+        or report.moved
+        or report.unreadable
+        or report.sources_deleted
+        or repointed
+    ):
         emit("finalize")
         # The manifest is already persisted incrementally (after each source, and right after the
         # move/unreadable bookkeeping) above, so a final save here would be redundant — just
@@ -554,6 +696,11 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
             store.append_log(
                 f"could not ingest {key}: no readable text found (binary or unsupported); skipped"
             )
+        for key in report.sources_deleted:
+            store.append_log(
+                f"raw source {key} was deleted from disk; reconciled its citations out of the "
+                "wiki and dropped it from the manifest"
+            )
         emit(
             "done",
             processed=len(report.processed),
@@ -563,6 +710,7 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
             broken=len(report.broken_links),
             moved=len(report.moved),
             unreadable=len(report.unreadable),
+            sources_deleted=len(report.sources_deleted),
         )
 
     # Now that the completed sources have been finalized, re-raise a captured Ctrl+C so the

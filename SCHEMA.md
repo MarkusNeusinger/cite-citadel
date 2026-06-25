@@ -8,13 +8,17 @@
 
 ## Layers
 
-1. **Raw sources** — immutable files the model reads but never edits: anything under `raw/`
+1. **Raw sources** — files the model reads but never edits: anything under `raw/`
    (any text-bearing file type — markdown, plain text, code such as `.py`/`.sql`, JSON/CSV,
    PDF, … — in any sub-folder) and the seed docs in `docs/`. Ingest tries to extract text from
    **every** file; one with no readable text (a binary blob) is skipped and logged as
-   unreadable. A raw file that was only **moved/reorganized** (same bytes, new path) is
-   recognized and **not** re-ingested — its wiki `resource`/citation references are repointed
-   automatically.
+   unreadable. The wiki tracks each source by content hash, so a change to `raw/` propagates:
+   a source that was **edited** is re-ingested in *reconcile* mode (the model updates or removes
+   the now-stale facts it derived from it, not just appends); a source that was **deleted** is
+   detected on a full run and its facts/citations are stripped from the wiki by a cleanup session
+   (kept only where another source still supports the fact); and a source that was only
+   **moved/reorganized** (same bytes, new path) is recognized and **not** re-ingested — its wiki
+   `resource`/citation references are repointed automatically (a move is not a deletion).
 2. **The wiki** — LLM-generated OKF pages under `wiki/`: a directory of markdown files
    with YAML frontmatter, cross-linked into a knowledge graph.
 3. **The schema** — this file.
@@ -153,7 +157,10 @@ mechanically as a safety net; any link left dangling is surfaced by ingest and f
 - **Ingest** — for each new/changed `raw/` file, an agentic CLI (one session per file) reads
   the raw file, searches the existing wiki, and **edits the wiki page files directly** —
   routing facts to the best page and **merging / splitting / restructuring** rather than
-  duplicating. Use only facts from the raw file. Cite every fact. Flag contradictions. See
+  duplicating. Use only facts from the raw file. Cite every fact. Flag contradictions. A
+  **changed** source is re-ingested in reconcile mode (update/remove its stale facts, not just
+  append); a **deleted** source triggers a cleanup session that removes the facts/citations that
+  depended on it (all-or-nothing: rolled back unless nothing references it afterwards). See
   [`AGENT_INGEST.md`](AGENT_INGEST.md) for the operational rules. After the session, the system
   diffs the wiki, re-validates and re-stamps every changed page, repoints renamed-page links,
   and rebuilds the indexes.

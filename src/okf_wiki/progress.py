@@ -47,7 +47,8 @@ class ConsoleProgress:
         pass
 
     def on_start(
-        self, pending: int, skipped: int, moved: int = 0, unreadable: int = 0
+        self, pending: int, skipped: int, moved: int = 0, unreadable: int = 0,
+        deleted: int = 0
     ) -> None:
         bits = []
         if skipped:
@@ -56,9 +57,14 @@ class ConsoleProgress:
             bits.append(f"{moved} reorganized")
         if unreadable:
             bits.append(f"{unreadable} unreadable")
+        if deleted:
+            bits.append(f"{deleted} source(s) deleted")
         extra = f" ({', '.join(bits)})" if bits else ""
-        if pending == 0:
+        if pending == 0 and deleted == 0:
             self._writeln(f"Nothing to ingest{extra}.")
+            return
+        if pending == 0:
+            self._writeln(f"Reconciling {deleted} deleted source(s){extra}...")
             return
         self._writeln(f"Ingesting {pending} file(s){extra}...")
 

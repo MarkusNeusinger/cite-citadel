@@ -352,6 +352,40 @@ def rewrite_raw_references(
     return changed
 
 
+def find_raw_references(rel_key: str, pages: list[Page] | None = None) -> list[str]:
+    """rel_paths of wiki pages that reference the REPO_ROOT-relative raw source ``rel_key`` —
+    either via the ``resource`` frontmatter or a citation link (``](../../raw/x.md)``) that
+    resolves to it. Read-only companion to :func:`rewrite_raw_references`: ingest uses it to
+    decide whether a DELETED source still has provenance worth a cleanup session, and to verify
+    afterwards that the cleanup removed every reference (else it rolls the source back).
+
+    Link detection is fence-aware (mirroring :func:`_rewrite_raw_body_links`), so a citation
+    written as a literal inside a ``` code fence — e.g. a page documenting the citation format —
+    is NOT counted, exactly as the rewriter would leave it untouched. Sorted for stable output."""
+    target = rel_key.replace("\\", "/")
+    if pages is None:
+        pages = load()
+    hits: list[str] = []
+    for page in pages:
+        if str(page.frontmatter.get("resource") or "").strip().replace("\\", "/") == target:
+            hits.append(page.rel_path)
+            continue
+        in_fence = False
+        for line in page.body.splitlines():
+            if line.lstrip().startswith("```"):
+                in_fence = not in_fence
+                continue
+            if in_fence:
+                continue
+            if any(
+                _link_resolves_to_repo(page.rel_path, _split_link_target(m.group(1))[0]) == target
+                for m in _ANY_LINK_RE.finditer(line)
+            ):
+                hits.append(page.rel_path)
+                break
+    return sorted(hits)
+
+
 def find_broken_links(pages: list[Page] | None = None) -> list[tuple[str, str]]:
     """Every relative .md cross-link whose target page does not exist, as
     ``(source_rel_path, resolved_target)``. The 'links keep working' gate: ingest surfaces
