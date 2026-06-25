@@ -77,8 +77,9 @@ Body in GitHub-flavored markdown...
 - **Do NOT write a `timestamp` field** — the system stamps it on every write.
 - **Never put a second `---` YAML block inside the body.** The body is markdown only.
 - **Folder routing**: `type: Concept` → `wiki/concepts/`, `type: Entity` → `wiki/entities/`,
-  anything else → `wiki/misc/`. **Filename** is the slug of the title: lowercase, runs of
-  non-alphanumeric → `-`, trimmed (e.g. title `Self-Attention` → `wiki/concepts/self-attention.md`).
+  `type: Abbreviation` → `wiki/abbreviations/`, anything else → `wiki/misc/`. **Filename** is the
+  slug of the title: lowercase, runs of non-alphanumeric → `-`, trimmed (e.g. title
+  `Self-Attention` → `wiki/concepts/self-attention.md`).
 
 ## Citations — every fact, every page (load-bearing)
 
@@ -104,6 +105,20 @@ Body in GitHub-flavored markdown...
 - Link the **first mention** of any concept that has (or should have) its own page.
 - End each page with a `## See also` section (after the body, **before** `## Sources`) of
   relative links to the most closely related pages.
+
+## Abbreviations — capture short + long, never guess
+
+Slides and notes are full of abbreviations a newcomer can't decode. When you meet one:
+
+- **Expand on first use** on the page: write `Full Form (ABBR)` (e.g. `total dissolved solids
+  (TDS)`), then `ABBR` after — both forms now sit in the text, findable either way.
+- If it **recurs**, give it its own page `type: Abbreviation` in `wiki/abbreviations/`, titled
+  `ABBR — Full Form`, with `aliases: [ABBR, Full Form]`. The index glossary table is generated
+  from these — don't hand-write a list.
+- Source the expansion like any fact: from a raw file → cite `[^sN]`; from your own knowledge,
+  **only** for a well-known standard term you're sure of → `[^llmN]`. If it is internal and
+  nothing defines it, **leave it un-expanded rather than guess** — `okf-wiki lint` lists the
+  gaps for a human. A wrong expansion is worse than a missing one.
 
 ## Restructuring — keep the wiki clean as it grows
 

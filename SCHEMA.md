@@ -32,6 +32,7 @@ routes by type:
 | -------------------- | ----------------- | --------------------------------------------- |
 | `Concept`            | `wiki/concepts/`  | An idea/topic synthesized across sources.     |
 | `Entity`             | `wiki/entities/`  | A named thing: person, org, project, tool.    |
+| `Abbreviation`       | `wiki/abbreviations/` | A short form + its expansion (a glossary entry). |
 | anything else        | `wiki/misc/`      | Note, Metric, Runbook, etc.                   |
 | `index.md` / `log.md`| (generated)       | OKF reserved navigation/history files — not authored by ingest. |
 
@@ -132,6 +133,38 @@ they fit). Tags are the OKF-native `tags` frontmatter field and a second navigat
 boost search ranking, power `okf-wiki tags` / `search --tag` / the MCP `wiki_tags` tool, and
 are surfaced as a `## Tags` section in the generated `index.md`.
 
+## Abbreviations — capture short + long so either form is found
+
+Domain sources (slides, notes, code) are full of abbreviations a non-expert can't decode.
+Make each one self-documenting so **both** the short and long form are captured and a search
+for **either** finds it:
+
+- **Expand on first use.** The first time a page uses an abbreviation, write it as
+  `Full Form (ABBR)` — e.g. `total dissolved solids (TDS)` — then use `ABBR` afterwards. Both
+  forms now sit in the page text, so a search for either matches even without a dedicated entry.
+- **Give a recurring abbreviation its own page**, `type: Abbreviation`, routed to
+  `wiki/abbreviations/`. Title it `ABBR — Full Form` so the title (the highest-weighted search
+  field) carries both forms, and list the variants under `aliases`:
+
+  ```yaml
+  type: Abbreviation
+  title: TDS — Total Dissolved Solids
+  description: Brew-strength measure — the dissolved coffee solids in the cup.
+  aliases: [TDS, Total Dissolved Solids]
+  tags: [water, measurement]
+  resource: raw/water-for-coffee.md
+  ```
+
+  Keep the body to a sentence or two defining the term, each cited like any other fact, and
+  cross-link the pages that use it. The generated `index.md` collects every such page into an
+  `## Abbreviations` table — the glossary forms itself, with no hand-maintained list to drift.
+- **Where the expansion comes from is the normal grounding rule.** If a raw source spells it
+  out, cite it `[^sN]`. If it is a well-known standard abbreviation you are highly confident
+  about, you may supply the expansion as a model fact `[^llmN]`. **If it is house-/project-
+  internal and nothing defines it, do not guess** — leave the bare abbreviation in place; a
+  wrong expansion is worse than a missing one. `okf-wiki lint` lists abbreviations used across
+  pages but never defined, so a human can fill those gaps.
+
 ## Contradictions — flag, resolve, don't overwrite
 
 If a source contradicts another (a different raw file, or a claim already on a wiki page),
@@ -190,5 +223,6 @@ mechanically as a safety net; any link left dangling is surfaced by ingest and f
   ingest re-runs it as a hard gate so a forgotten field fails the run.
 - **Lint** — a periodic health check (`okf-wiki lint`) surfaces contradictions, orphaned
   pages, facts missing citations, broken cross-links, pages missing `type`, stale pages,
-  **fabricated sources** (a fact citing a `raw/` file that does not exist), and
-  `[[wiki-style]]` links.
+  **fabricated sources** (a fact citing a `raw/` file that does not exist), **undefined
+  abbreviations** (a short form used across pages but never given an entry or an inline
+  expansion), and `[[wiki-style]]` links.
