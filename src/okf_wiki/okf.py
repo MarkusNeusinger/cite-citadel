@@ -100,13 +100,44 @@ def slugify(title: str) -> str:
 
 def folder_for_type(type_: str) -> str:
     """``'Concept'`` -> ``'concepts'``, ``'Entity'`` -> ``'entities'``,
-    everything else -> ``'misc'``. Case-insensitive on the known two."""
+    ``'Abbreviation'`` -> ``'abbreviations'``, everything else -> ``'misc'``.
+    Case-insensitive on the known types."""
     normalized = (type_ or "").strip().lower()
     if normalized == "concept":
         return "concepts"
     if normalized == "entity":
         return "entities"
+    if normalized == "abbreviation":
+        return "abbreviations"
     return "misc"
+
+
+# Title separators between an abbreviation's short form and its expansion, e.g.
+# "TDS — Total Dissolved Solids". Longest/spaced first so " - " wins over a bare "-"
+# that may sit inside the expansion itself.
+_ABBR_TITLE_SEPS = (" — ", " – ", " - ", "—", "–")
+
+
+def abbrev_short_long(page: "Page") -> tuple[str, str]:
+    """Split an ``Abbreviation`` page into ``(short_form, expansion)``.
+
+    The canonical title is ``"SHORT — Expansion"`` (em/en-dash or spaced hyphen), so both
+    forms live in the highest-weighted search field and either one finds the page. Falls back
+    to the first two ``aliases`` entries, then to ``(title, description)``. Used to render the
+    generated glossary table (store) and to know which abbreviations are already defined (lint)."""
+    title = page.title.strip()
+    for sep in _ABBR_TITLE_SEPS:
+        if sep in title:
+            short, _, expansion = title.partition(sep)
+            short, expansion = short.strip(), expansion.strip()
+            if short and expansion:
+                return short, expansion
+    aliases = page.frontmatter.get("aliases") or []
+    if isinstance(aliases, list):
+        cleaned = [str(a).strip() for a in aliases if str(a).strip()]
+        if len(cleaned) >= 2:
+            return cleaned[0], cleaned[1]
+    return title, page.description.strip()
 
 
 def default_rel_path(type_: str, title: str) -> str:

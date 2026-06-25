@@ -121,13 +121,46 @@ def test_safe_join_accepts_safe_relative(tmp_path):
 
 
 def test_default_rel_path_routing():
-    """Concept->concepts/, Entity->entities/, Metric->misc/. Case-insensitive
-    on the known two."""
+    """Concept->concepts/, Entity->entities/, Abbreviation->abbreviations/, Metric->misc/.
+    Case-insensitive on the known types."""
     assert okf.default_rel_path("Concept", "Transformer") == "concepts/transformer.md"
     assert okf.default_rel_path("Entity", "Andrej Karpathy") == "entities/andrej-karpathy.md"
     assert okf.default_rel_path("Metric", "Daily Active Users") == "misc/daily-active-users.md"
-    # Case-insensitive on the two known types.
+    # Abbreviation routes to its own folder; the "ABBR — Full Form" title slugifies cleanly.
+    assert (
+        okf.default_rel_path("Abbreviation", "TDS — Total Dissolved Solids")
+        == "abbreviations/tds-total-dissolved-solids.md"
+    )
+    # Case-insensitive on the known types.
     assert okf.default_rel_path("concept", "X") == "concepts/x.md"
     assert okf.default_rel_path("ENTITY", "Y") == "entities/y.md"
+    assert okf.default_rel_path("abbreviation", "API") == "abbreviations/api.md"
     # Empty title -> 'untitled'.
     assert okf.default_rel_path("Note", "") == "misc/untitled.md"
+
+
+def test_abbrev_short_long():
+    """abbrev_short_long splits 'SHORT — Expansion' titles (em/en-dash or spaced hyphen),
+    falls back to the first two aliases, then to (title, description)."""
+
+    def page(frontmatter):
+        return okf.Page(rel_path="abbreviations/x.md", frontmatter=frontmatter, body="")
+
+    # Em-dash, en-dash, spaced hyphen all split.
+    assert okf.abbrev_short_long(
+        page({"type": "Abbreviation", "title": "TDS — Total Dissolved Solids"})
+    ) == ("TDS", "Total Dissolved Solids")
+    assert okf.abbrev_short_long(
+        page({"type": "Abbreviation", "title": "API – Application Programming Interface"})
+    ) == ("API", "Application Programming Interface")
+    assert okf.abbrev_short_long(
+        page({"type": "Abbreviation", "title": "RO - Reverse Osmosis"})
+    ) == ("RO", "Reverse Osmosis")
+    # No separator in title -> fall back to the first two aliases.
+    assert okf.abbrev_short_long(
+        page({"type": "Abbreviation", "title": "Reverse Osmosis", "aliases": ["RO", "Reverse Osmosis"]})
+    ) == ("RO", "Reverse Osmosis")
+    # No separator, no aliases -> (title, description).
+    assert okf.abbrev_short_long(
+        page({"type": "Abbreviation", "title": "Foo", "description": "Bar baz"})
+    ) == ("Foo", "Bar baz")

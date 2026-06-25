@@ -7,12 +7,14 @@ Pure static analysis over the loaded wiki:
   (4) broken_links   = relative .md cross-links whose target page does not exist
   (5) missing_type   = frontmatter without a 'type'
   (6) stale          = timestamp older than stale_days
+  (7) undefined_abbrevs = abbreviations used across pages but never defined (no entry, no
+                          inline expansion) — the glossary's to-do list
 
 REFINEMENT: ok() returns True unless there are STRUCTURAL problems — missing_type,
 broken_links, bad_sources (a fact citing a missing raw/ file), or wikilinks (a
 ``[[wiki-style]]`` link). contradictions/orphans/missing_cites/stale/llm_facts/
-suggested_links are ADVISORY — render() lists every category with counts, but they do
-NOT flip ok(). The per-page citation (source) and wikilink checks are shared with the
+suggested_links/undefined_abbrevs are ADVISORY — render() lists every category with counts,
+but they do NOT flip ok(). The per-page citation (source) and wikilink checks are shared with the
 ingest gate via :mod:`okf_wiki.validate`. This keeps `okf-wiki lint` green on an empty
 seeded wiki and avoids failing on the advisory missing-cites heuristic.
 """
@@ -37,6 +39,25 @@ FOOTNOTE_RE = re.compile(r"\[\^[\w.-]+\]")
 # file, and are deliberately NOT required to cite a raw/ file.
 LLM_MARKER_RE = re.compile(r"\[\^llm[\w.-]*\]", re.IGNORECASE)
 
+# An abbreviation/acronym candidate: 2–6 chars, all caps, starting with a letter (TCO, API,
+# SLA, KPI, V60, B2B). Used to surface domain abbreviations that recur across the wiki but are
+# never defined — neither given an `Abbreviation` page nor spelled out in parentheses anywhere.
+# A high-precision, capped *nudge* (like suggested_links), never a structural failure.
+ABBREV_RE = re.compile(r"\b[A-Z][A-Z0-9]{1,5}\b")
+# A parenthetical pairing that counts as an inline definition: `... solids (TDS)` or
+# `WDT (Weiss Distribution Technique)`. Either side of the parens names the short form.
+_ABBR_IN_PARENS_RE = re.compile(r"\(\s*([A-Z][A-Z0-9]{1,5})\b")
+_ABBR_THEN_PARENS_RE = re.compile(r"\b([A-Z][A-Z0-9]{1,5})\s*\(")
+# Unicode sub/superscript digits: a token trailed by one is a chemistry formula (CO₂, H₂O),
+# not an abbreviation — skip it so the glossary nudge doesn't flag molecules.
+_SCRIPT_DIGITS = "₀₁₂₃₄₅₆₇₈₉⁰¹²³⁴⁵⁶⁷⁸⁹"
+# An abbreviation must recur on at least this many distinct pages before the nudge fires —
+# cross-page recurrence is the low-noise signal of shared jargon worth a glossary entry (a
+# one-off is more likely a typo or a throwaway mention).
+_ABBREV_MIN_PAGES = 2
+# Cap on the undefined-abbreviation list so a jargon-dense wiki can't drown the report.
+_ABBREV_REPORT_CAP = 25
+
 
 @dataclass
 class LintReport:
@@ -51,6 +72,9 @@ class LintReport:
     # (rel_path, "links to add"): page mentions another page's title but doesn't link it.
     suggested_links: list[tuple[str, str]] = field(default_factory=list)  # advisory
     wikilinks: list[tuple[str, str]] = field(default_factory=list)  # (rel_path, [[target]])
+    # (abbr, #pages): an abbreviation used on >=2 pages with no Abbreviation entry and no
+    # inline parenthetical expansion anywhere — a candidate for the glossary. Advisory.
+    undefined_abbrevs: list[tuple[str, int]] = field(default_factory=list)
 
     def ok(self) -> bool:
         """True unless there are structural-integrity problems: missing_type, broken_links,
@@ -104,6 +128,12 @@ class LintReport:
         lines.append(f"Suggested links (un-linked mentions): {len(self.suggested_links)}")
         for rel, target in self.suggested_links:
             lines.append(f"  - {rel} -> {target}")
+
+        lines.append(
+            f"Undefined abbreviations (used, never defined): {len(self.undefined_abbrevs)}"
+        )
+        for abbr, n_pages in self.undefined_abbrevs:
+            lines.append(f"  - {abbr} (on {n_pages} pages)")
 
         lines.append(f"Wiki-style [[links]] (not allowed): {len(self.wikilinks)}")
         for rel, target in self.wikilinks:
@@ -237,6 +267,97 @@ def _unlinked_mentions(
     return found
 
 
+def _prose_lines(body: str):
+    """Yield the prose lines of ``body`` — every line except fenced code blocks and the trailing
+    ``## Sources`` section (whose raw filenames, dates, and footnote links are not prose). A
+    heading other than ``## Sources`` IS prose — an abbreviation in a heading (e.g. ``## SCA
+    Water``) is a real use — so it is yielded; the ``## Sources`` heading and its body are skipped.
+    Shared by the use-counting and inline-expansion passes so both see the same region."""
+    in_fence = False
+    in_sources = False
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if stripped.startswith("#"):
+            in_sources = bool(re.match(r"#+\s*sources\b", stripped, re.IGNORECASE))
+            if not in_sources:
+                yield line
+            continue
+        if in_sources:
+            continue
+        yield line
+
+
+def _abbrev_token_uses(body: str) -> set[str]:
+    """Abbreviation-shaped tokens (see ABBREV_RE) used in the prose of ``body`` (see
+    :func:`_prose_lines` — headings count, code fences and ``## Sources`` do not), skipping
+    chemistry formulae (a token trailed by a subscript digit, e.g. CO₂)."""
+    found: set[str] = set()
+    for line in _prose_lines(body):
+        for m in ABBREV_RE.finditer(line):
+            if m.end() < len(line) and line[m.end()] in _SCRIPT_DIGITS:
+                continue
+            found.add(m.group(0))
+    return found
+
+
+def _abbrev_expansions(body: str) -> set[str]:
+    """Abbreviation tokens written next to a parenthetical expansion in the prose of ``body``
+    (``solids (TDS)`` or ``WDT (Weiss …)``) — i.e. defined inline, so not a glossary gap. Only
+    prose counts (see :func:`_prose_lines`): an expansion that appears solely inside a code fence
+    or the ``## Sources`` section must not suppress the nudge for real uses elsewhere."""
+    out: set[str] = set()
+    for line in _prose_lines(body):
+        out.update(_ABBR_IN_PARENS_RE.findall(line))
+        out.update(_ABBR_THEN_PARENS_RE.findall(line))
+    return out
+
+
+def _defined_abbrevs(pages: list[Page]) -> set[str]:
+    """Short forms already covered by an ``Abbreviation`` page — its title's short side plus
+    any abbreviation-shaped ``aliases`` — upper-cased for case-insensitive matching."""
+    defined: set[str] = set()
+    for page in pages:
+        if (page.type or "").strip().lower() != "abbreviation":
+            continue
+        short, _expansion = okf.abbrev_short_long(page)
+        if short:
+            defined.add(short.upper())
+        aliases = page.frontmatter.get("aliases") or []
+        if isinstance(aliases, list):
+            for alias in aliases:
+                text = str(alias).strip()
+                if ABBREV_RE.fullmatch(text):
+                    defined.add(text.upper())
+    return defined
+
+
+def _undefined_abbrevs(pages: list[Page]) -> list[tuple[str, int]]:
+    """Abbreviations used on >= 2 distinct pages that have neither an ``Abbreviation`` entry nor
+    an inline parenthetical expansion anywhere — the glossary's to-do list. Sorted by page count
+    (desc) then token, capped. Advisory: a heuristic nudge, not a structural failure."""
+    defined = _defined_abbrevs(pages)
+    expanded: set[str] = set()
+    pages_by_token: dict[str, set[str]] = {}
+    for page in pages:
+        expanded |= _abbrev_expansions(page.body)
+        for token in _abbrev_token_uses(page.body):
+            pages_by_token.setdefault(token, set()).add(page.rel_path)
+    candidates = [
+        (token, len(where))
+        for token, where in pages_by_token.items()
+        if len(where) >= _ABBREV_MIN_PAGES
+        and token.upper() not in defined
+        and token not in expanded
+    ]
+    candidates.sort(key=lambda t: (-t[1], t[0]))
+    return candidates[:_ABBREV_REPORT_CAP]
+
+
 def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
     """If pages is None, store.load(). Build the link graph; flag orphans (no inbound
     and no outbound non-raw links), contradictions (marker present), missing_type
@@ -312,6 +433,10 @@ def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
         # suggested_links (advisory): un-linked mentions of other pages' titles.
         for sug in _unlinked_mentions(page, title_index, set(outbound[page.rel_path])):
             report.suggested_links.append((page.rel_path, sug))
+
+    # undefined_abbrevs (advisory): a whole-corpus pass — an abbreviation is "defined" if any
+    # page gives it an entry or an inline expansion, so this can't be decided per-page.
+    report.undefined_abbrevs = _undefined_abbrevs(pages)
 
     # Deterministic ordering.
     report.contradictions.sort()

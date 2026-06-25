@@ -40,7 +40,7 @@ authoritative rules — that file is also injected verbatim into the ingest mode
 1. **`raw/`** — immutable sources. You drop arbitrary `.md` here; ingest reads them but never
    edits them. The seed articles in `docs/` are also ingestable on demand.
 2. **`wiki/`** — the LLM-owned OKF bundle: markdown pages with YAML frontmatter, routed into
-   `concepts/`, `entities/`, and `misc/`, cross-linked with relative links, each fact carrying
+   `concepts/`, `entities/`, `abbreviations/`, and `misc/`, cross-linked with relative links, each fact carrying
    a footnote citation to its `raw/` source. The two OKF-reserved files are generated, not
    authored, and per OKF carry **no frontmatter**: `index.md` (catalog + backlinks + a `## Tags`
    section) and an append-only `log.md` with `## YYYY-MM-DD` headings.
@@ -210,8 +210,9 @@ uv run python -m okf_wiki check concepts/x.md   # just one page
 
 **Lint** — a pure, offline health check (contradictions, orphaned pages, facts missing
 citations, broken cross-links, pages missing `type`, stale pages, **fabricated sources** — a
-fact citing a `raw/` file that does not exist — and `[[wiki-style]]` links). Exit code is
-non-zero when the wiki is unhealthy, so it drops cleanly into CI:
+fact citing a `raw/` file that does not exist — **undefined abbreviations** — a short form used
+across pages but never given an entry or spelled out inline — and `[[wiki-style]]` links). Exit
+code is non-zero when the wiki is unhealthy, so it drops cleanly into CI:
 
 ```bash
 uv run python -m okf_wiki lint

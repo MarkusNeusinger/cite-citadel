@@ -508,6 +508,25 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
                 lines.append(f"- [{page.title}]({page.rel_path})")
             lines.append("")
 
+    # ----- ## Abbreviations: the glossary, generated from every type: Abbreviation page -----
+    abbrev_pages = [p for p in pages if (p.type or "").strip().lower() == "abbreviation"]
+    if abbrev_pages:
+        def _cell(text: str) -> str:
+            return text.replace("|", "\\|").strip()
+
+        rows = [(okf.abbrev_short_long(p), p) for p in abbrev_pages]
+        rows.sort(key=lambda r: (r[0][0].lower(), r[0][1].lower(), r[1].rel_path))
+        lines.append("## Abbreviations")
+        lines.append("")
+        lines.append("| Abbreviation | Expansion | Page |")
+        lines.append("| --- | --- | --- |")
+        for (short, expansion), page in rows:
+            lines.append(
+                f"| {_cell(short)} | {_cell(expansion)} | "
+                f"[{_cell(page.title)}]({page.rel_path}) |"
+            )
+        lines.append("")
+
     body = "\n".join(lines).rstrip("\n") + "\n"
     config.WIKI_DIR.mkdir(parents=True, exist_ok=True)
     (config.WIKI_DIR / "index.md").write_text(body, encoding="utf-8")
