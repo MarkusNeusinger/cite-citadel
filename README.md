@@ -141,8 +141,12 @@ uv run python -m okf_wiki ingest docs/karpathy-llm-wiki.md   # or bootstrap from
 
 Ingest folds each source into the **best-fitting** existing pages and restructures as the corpus
 grows; the report distinguishes pages **created**, **updated**, and **deleted** (restructured),
-and warns on any broken cross-link. Run several overlapping files (e.g. the bundled
-`raw/coffee*.md` set) and watch the wiki reorganize itself rather than accrete one page per file.
+and warns on any broken cross-link. When routing, the agent treats each source's **sub-folder
+path within `raw/` and its filename as context** — they often encode the project/topic the facts
+belong to (e.g. `raw/acme-migration/db/schema-notes.sql`) — and uses that, alongside the file's
+content, to pick the right page and tags (the path is never cited as a fact). Run several
+overlapping files (e.g. the bundled `raw/coffee*.md` set) and watch the wiki reorganize itself
+rather than accrete one page per file.
 
 There is **one agent session per file**, so ingest shows live per-file progress on stderr
 (`[2/6] … 2 created, 1 updated` with a spinner + elapsed time) so a multi-file run never looks

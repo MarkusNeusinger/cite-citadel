@@ -52,6 +52,24 @@ def test_build_instruction_uses_configured_wiki_dir(tmp_path, monkeypatch):
     assert len(prompt) < 2000         # still tiny (paths-only) — WinError 206 guard
 
 
+def test_rule_files_teach_path_and_filename_as_routing_context():
+    """A source's path within raw/ and its filename often encode the project/topic the facts
+    belong to. The tiny argv prompt only POINTS the agent at the rule files (and must stay under
+    the WinError-206 size guard), so — exactly like provenance and restructuring — this guidance
+    lives in the rule layer the agent is told to read and follow: SCHEMA.md and AGENT_INGEST.md.
+    Guard that it is not silently dropped, since the agent's awareness of path/filename as a
+    routing key depends on it. Keyed on stable anchors so prose tweaks don't break the test."""
+    schema = config.SCHEMA_PATH.read_text(encoding="utf-8").lower()
+    rules = config.AGENT_RULES_PATH.read_text(encoding="utf-8").lower()
+    for doc in (schema, rules):
+        assert "routing context" in doc or "routing signal" in doc
+        assert "path" in doc and "filename" in doc
+        assert "project" in doc and "topic" in doc
+        assert "tag" in doc  # the path/topic feeds tag selection
+        # load-bearing guardrail: the path ROUTES facts, it is never itself a cited fact
+        assert "never cite the path" in doc
+
+
 def test_build_instruction_reconcile_says_update_and_remove():
     """The reconcile prompt (changed source) tells the agent to UPDATE/REMOVE stale facts, not
     just append — and still references the source by path and stays tiny."""

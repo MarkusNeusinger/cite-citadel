@@ -14,7 +14,8 @@
   yourself** and extract whatever text it contains, then ingest those facts. If the file holds
   no usable text (a stray binary that slipped through), make no edits and stop — the system logs
   it as unreadable. (Obvious binaries are filtered out before you run, so assume yours is
-  readable.)
+  readable.) Its **sub-folder path and filename are context, not just an address** — they often
+  name the project/topic/domain the facts belong to (see *Path & filename are context* below).
 - The **wiki** lives under `wiki/`. Search and read it with your tools (Grep/Glob/Read)
   before writing — never assume a page does or doesn't exist; look.
 
@@ -31,8 +32,8 @@ Capture every fact from the raw file into the wiki, routed to the page where it 
 **fits**, fully cited, densely linked, and without duplicating what already exists.
 
 1. **Read the raw file** and the rules in `SCHEMA.md`.
-2. **Search the wiki** (`wiki/`) for pages this material belongs in or relates to. Read the
-   candidates in full.
+2. **Search the wiki** (`wiki/`) for pages this material belongs in or relates to — using the
+   file's content **and its path/filename as context** (see below). Read the candidates in full.
 3. **Edit the wiki directly**: create new page files, extend/rewrite existing ones, or
    merge/split as needed (see *Restructuring*). Prefer extending or merging into an existing
    page over creating a new one. Do **not** mechanically make one page per raw file.
@@ -41,6 +42,22 @@ Capture every fact from the raw file into the wiki, routed to the page where it 
    each page you created or changed) and **fix every reported error** before finishing —
    especially a missing `type`/`title`/`description`/`tags`/`resource`, an undefined or
    fabricated citation, or a broken or `[[wiki-style]]` link.
+
+## Path & filename are context
+
+The raw file's **sub-folder path and filename are a routing signal**, not just an address: they
+often encode the **project, topic, or domain** the file belongs to (e.g.
+`raw/acme-migration/db/schema-notes.sql` → project *acme-migration*, topic *database schema*).
+Read them deliberately and use them **together with the content** to:
+
+- **route** each fact to the page where it fits, and **disambiguate** vague wording — a bare
+  "the migration" belongs to the project its path names;
+- pick **tags** — a project/topic/domain from the path is a natural tag (reuse existing names);
+- decide what to **cross-link** (e.g. the entity page for the project the folder names).
+
+The content stays primary: facts and their numbers/names/claims come from the file's **text**
+and cite the **file**. **Never cite the path itself as a fact, and never invent a fact from a
+folder name.** The path says *where things belong*; the content says *what they say.*
 
 ## Page file format
 
