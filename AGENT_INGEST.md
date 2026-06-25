@@ -14,7 +14,10 @@
   yourself** and extract whatever text it contains, then ingest those facts. If the file holds
   no usable text (a stray binary that slipped through), make no edits and stop — the system logs
   it as unreadable. (Obvious binaries are filtered out before you run, so assume yours is
-  readable.) Its **sub-folder path and filename are context, not just an address** — they often
+  readable.) **PowerPoint/Word** (`.pptx`/`.docx`) are binary, so the system extracts their text
+  to a temporary file first; when your source is one of these, the instruction points you at that
+  **extracted** file to READ — but you still cite the **original** `.pptx`/`.docx` as the source
+  (`resource:` and `## Sources`). Its **sub-folder path and filename are context, not just an address** — they often
   name the project/topic/domain the facts belong to (see *Path & filename are context* below).
 - The **wiki** lives under `wiki/`. Search and read it with your tools (Grep/Glob/Read)
   before writing — never assume a page does or doesn't exist; look.
