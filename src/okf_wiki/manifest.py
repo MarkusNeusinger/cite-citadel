@@ -26,13 +26,12 @@ def file_sha256(path: Path) -> str:
 
 
 def rel_key(src: Path) -> str:
-    """posix path of src relative to config.REPO_ROOT (e.g. 'raw/notes.md' or
-    'docs/karpathy-llm-wiki.md'). Falls back to src.name if not under REPO_ROOT."""
-    src = Path(src)
-    try:
-        return src.resolve().relative_to(config.REPO_ROOT.resolve()).as_posix()
-    except ValueError:
-        return src.name
+    """Stable identity key for a raw source: its posix path relative to config.REPO_ROOT when it
+    lives under the repo (e.g. 'raw/notes.md', 'docs/karpathy-llm-wiki.md'), else its ABSOLUTE
+    posix path (e.g. 'T:/21_llmWiki/raw/notes.md') so a source on a mounted network drive gets a
+    unique, resolvable key instead of colliding on basename. Thin wrapper over the single
+    source of truth, config.rel_or_abs_posix."""
+    return config.rel_or_abs_posix(src)
 
 
 def load() -> dict[str, str]:

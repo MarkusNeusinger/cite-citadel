@@ -18,6 +18,13 @@
 - The **wiki** lives under `wiki/`. Search and read it with your tools (Grep/Glob/Read)
   before writing — never assume a page does or doesn't exist; look.
 
+> **Use the paths your run instruction gives you, verbatim.** The wiki and raw directories are
+> named in that instruction and are usually `wiki/` and `raw/`, but a custom setup may point them
+> elsewhere — including an **absolute path** on a mounted network drive (e.g.
+> `T:/21_llmWiki/wiki`). Read, search, and write under exactly those paths, and set each page's
+> `resource:` to the raw source path exactly as the instruction names it. Examples below use
+> `raw/…` and `wiki/…`; substitute the paths you were given.
+
 ## Your job
 
 Capture every fact from the raw file into the wiki, routed to the page where it best
