@@ -89,6 +89,23 @@ GitHub-Flavored-Markdown footnote:
 - A later ingest that adds a fact from a new raw file appends a new `[^sN]` definition and
   tags the new fact — it leaves existing facts and citations intact.
 
+## Source path & filename — routing context
+
+A raw source's **location and name are signal, not just an address.** The sub-folders under
+`raw/` and the filename often encode which **project, topic, or domain** a file belongs to —
+e.g. `raw/acme-migration/db/schema-notes.sql` is about the *acme-migration* project and its
+*database schema*. Read the path deliberately and use it, **together with the file's content**,
+to:
+
+- **Route** each fact to the page (or section) it best fits, and **disambiguate** vague wording
+  — a note that just says "the migration" belongs to the project its path names.
+- Choose **tags**: a project/topic/domain from the path is a natural tag (reuse existing names).
+- Decide what to **cross-link** (e.g. link the project's entity page named by the folder).
+
+The content stays primary. Facts, numbers, names, and claims come from the file's **text** and
+cite the **file** — never cite the path itself as a fact, and never invent a fact from a folder
+name alone. The path tells you **where things belong**; the content is **what they say.**
+
 ## Cross-linking — the knowledge graph
 
 Link pages to each other with **standard relative markdown links** whose target is the
