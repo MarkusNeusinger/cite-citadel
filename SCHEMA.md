@@ -106,6 +106,43 @@ The content stays primary. Facts, numbers, names, and claims come from the file'
 cite the **file** — never cite the path itself as a fact, and never invent a fact from a folder
 name alone. The path tells you **where things belong**; the content is **what they say.**
 
+## Code & structured sources — capture the essence, not the structure
+
+A code, config, or data file (`.py`, `.sql`, `.tsx`, `.json`, a Dockerfile, …) is ingested for
+what it **means and does**, not for how it is built. Treat it like documentation you would write
+*about* the code — never a transcription of it. The wiki must **not** fill up with one note per
+function, component, or type; that is exactly the noise this rule exists to prevent.
+
+**Capture** (each as a normal cited fact):
+
+- **Purpose** — what problem this file/module/script solves and why it exists.
+- **Behavior / process** — the workflow it implements: the meaningful steps, inputs → outputs,
+  the pipeline or state changes a reader needs to follow it.
+- **External systems and how they are reached** — which database, API, queue, bucket, or service
+  it touches, and *how*: the table/endpoint/topic names, the access method (driver/ORM/HTTP call),
+  the auth mechanism, the env vars / config keys it depends on. These are the reference-worthy
+  operational facts worth keeping.
+- **Notable decisions and domain rules** — non-obvious algorithms, the *why* behind a choice,
+  invariants, limits/units, and business rules encoded in the code.
+
+**Ignore** (this is structure, not knowledge):
+
+- Import lists and boilerplate; function/class/component signatures and prop/type/interface
+  definitions *as such*; how a UI component is wired or laid out; styling/markup; getters/setters.
+- Test scaffolding, generated code, lockfiles.
+- Pasting code verbatim. Quote at most a short identifier (a table name, an env var, a flag) when
+  it **is** the fact; never reproduce a block of code as a "fact".
+
+**Litmus test:** *"Would this still be true and useful if the code were rewritten in another
+language or framework?"* If yes, capture it. If it only describes how this particular file is
+structured, skip it.
+
+For code, a "fact" is therefore a faithful description of intent or behavior **derived from and
+cited to the file** — a slightly more interpretive mode than restating a prose sentence, but the
+grounding rule still holds: it must follow from the file's contents (never from assumption) and it
+carries a `[^sN]` citation like any other fact. Route these facts into a page about the
+**module / subsystem / project** (use the path as context, above) — not one page per source file.
+
 ## Cross-linking — the knowledge graph
 
 Link pages to each other with **standard relative markdown links** whose target is the
