@@ -65,7 +65,9 @@ def test_rule_files_teach_path_and_filename_as_routing_context():
         assert "routing context" in doc or "routing signal" in doc
         assert "path" in doc and "filename" in doc
         assert "project" in doc and "topic" in doc
-        assert "tag" in doc  # the path/topic feeds tag selection
+        # specific to the new guidance: a path-derived project/topic makes a "natural tag".
+        # (Plain "tag" would pass on the unrelated frontmatter-`tags` prose and guard nothing.)
+        assert "natural tag" in doc
         # load-bearing guardrail: the path ROUTES facts, it is never itself a cited fact
         assert "never cite the path" in doc
 
