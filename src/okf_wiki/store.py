@@ -255,6 +255,103 @@ def rewrite_links(rename_map: dict[str, str], pages: list[Page] | None = None) -
     return changed
 
 
+# A markdown link span ``](target)`` for ANY target (not only '.md'): citation links into the
+# raw/ source tree now point at arbitrary file types (.py/.txt/.pdf/...), so repointing a moved
+# source cannot assume the '.md' suffix that wiki cross-link rewriting relies on.
+_ANY_LINK_RE = re.compile(r"\]\(([^)]+)\)")
+
+
+def _split_link_target(inner: str) -> tuple[str, str]:
+    """Split a markdown link's parenthesized content into ``(path, suffix)``, where ``suffix`` is
+    any trailing ``"title"`` (or empty for a ``<path>`` form) preserved verbatim on rewrite. e.g.
+    ``'../../raw/x.md "note"'`` -> ``('../../raw/x.md', ' "note"')``; ``'<../../raw/x.md>'`` ->
+    ``('../../raw/x.md', '')``."""
+    inner = inner.strip()
+    if inner.startswith("<"):
+        end = inner.find(">")
+        return (inner[1:end], "") if end != -1 else (inner, "")
+    parts = inner.split(None, 1)
+    return (parts[0], " " + parts[1]) if len(parts) == 2 else (inner, "")
+
+
+def _link_resolves_to_repo(page_rel: str, target: str) -> str | None:
+    """Resolve a link ``target`` written in wiki page ``page_rel`` to a REPO_ROOT-relative posix
+    path (e.g. a ``../../raw/x.md`` citation -> ``raw/x.md``), or None for an external/anchor link
+    or one that escapes the repo. Unlike :func:`okf.resolve_link` (WIKI_DIR-relative, for wiki
+    cross-links) this reaches OUT of the wiki into the sibling ``raw/``/``docs/`` source trees."""
+    if "://" in target or target.startswith("#"):
+        return None
+    page_dir = os.path.dirname(str(config.WIKI_DIR / page_rel))
+    resolved = os.path.normpath(os.path.join(page_dir, target))
+    try:
+        rel = os.path.relpath(resolved, str(config.REPO_ROOT)).replace(os.sep, "/")
+    except ValueError:
+        return None
+    return None if rel.startswith("..") else rel
+
+
+def _repo_rel_to_page_link(page_rel: str, repo_rel: str) -> str:
+    """The relative link FROM wiki page ``page_rel`` TO a REPO_ROOT-relative source ``repo_rel``
+    (e.g. page ``concepts/a.md`` + ``raw/sub/x.md`` -> ``../../raw/sub/x.md``)."""
+    page_dir = os.path.dirname(str(config.WIKI_DIR / page_rel))
+    target_abs = os.path.join(str(config.REPO_ROOT), repo_rel)
+    return os.path.relpath(target_abs, page_dir).replace(os.sep, "/")
+
+
+def _rewrite_raw_body_links(page_rel: str, body: str, old_rel: str, new_rel: str) -> str:
+    """Return ``body`` with every citation link that resolves to the REPO_ROOT-relative source
+    ``old_rel`` repointed at ``new_rel`` (recomputed relative to ``page_rel``). Span-based and
+    fence-aware, mirroring :func:`_rewrite_body_links`, so only genuine link spans are touched —
+    never a literal ``](x)`` inside a code fence or a partial substring."""
+
+    def repl(match: re.Match) -> str:
+        path, suffix = _split_link_target(match.group(1))
+        if _link_resolves_to_repo(page_rel, path) != old_rel:
+            return match.group(0)
+        return f"]({_repo_rel_to_page_link(page_rel, new_rel)}{suffix})"
+
+    out: list[str] = []
+    in_fence = False
+    for line in body.splitlines(keepends=True):
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            out.append(line)
+            continue
+        out.append(line if in_fence else _ANY_LINK_RE.sub(repl, line))
+    return "".join(out)
+
+
+def rewrite_raw_references(
+    old_rel: str, new_rel: str, pages: list[Page] | None = None
+) -> list[str]:
+    """Repoint every reference to a RAW SOURCE file after it was MOVED on disk, so the wiki keeps
+    pointing at it. ``old_rel``/``new_rel`` are REPO_ROOT-relative posix paths (e.g.
+    ``'raw/coffee.md'`` -> ``'raw/drinks/coffee.md'``). For each page this updates the ``resource``
+    frontmatter (when it named ``old_rel``) AND every ``[..](../../raw/old)`` citation link in the
+    body. Only changed pages are written, mechanically (via okf.dump — no re-stamp, no re-validate),
+    mirroring :func:`rewrite_links`. Returns the changed page rel_paths. This is the deterministic
+    safety net that keeps `resource`/`[^sN]` provenance valid when raw sources are reorganized."""
+    if old_rel == new_rel:
+        return []
+    if pages is None:
+        pages = load()
+    changed: list[str] = []
+    for page in pages:
+        frontmatter = page.frontmatter
+        fm_changed = (
+            str(frontmatter.get("resource") or "").strip().replace("\\", "/") == old_rel
+        )
+        if fm_changed:
+            frontmatter = dict(frontmatter)
+            frontmatter["resource"] = new_rel
+        new_body = _rewrite_raw_body_links(page.rel_path, page.body, old_rel, new_rel)
+        if fm_changed or new_body != page.body:
+            target = okf.safe_join(config.WIKI_DIR, page.rel_path)
+            target.write_text(okf.dump(frontmatter, new_body), encoding="utf-8")
+            changed.append(page.rel_path)
+    return changed
+
+
 def find_broken_links(pages: list[Page] | None = None) -> list[tuple[str, str]]:
     """Every relative .md cross-link whose target page does not exist, as
     ``(source_rel_path, resolved_target)``. The 'links keep working' gate: ingest surfaces
