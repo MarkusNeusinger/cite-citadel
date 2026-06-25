@@ -160,12 +160,9 @@ def _is_ingestible(path: Path) -> bool:
     caller logs those as unreadable instead of spending an LLM session on a blob. An empty file
     is ingestible (the agent simply finds nothing to add), not a binary failure.
 
-    A PowerPoint/Word file (``.pptx``/``.docx``/…) is a ZIP — a NUL-byte binary — the agent cannot
-    open directly, so it would fail the sniff below; instead we extract its text ourselves
-    (:mod:`okf_wiki.extract`) and treat it as ingestible IFF that yields something. A text-free
-    deck (all images) extracts to nothing and is correctly classified unreadable."""
-    if extract.is_office_source(path):
-        return bool(extract.extract_text(path).strip())
+    PowerPoint/Word files are NOT classified here: they are ZIP binaries that would fail this sniff,
+    so :func:`_partition_sources` routes them through :mod:`okf_wiki.extract` instead (a deck with
+    extractable text is pending; a text-free one is unreadable) — done once there, not re-sniffed."""
     try:
         with open(path, "rb") as fh:
             chunk = fh.read(_SNIFF_BYTES)
@@ -183,8 +180,11 @@ def _is_ingestible(path: Path) -> bool:
 
 def _partition_sources(
     paths: list[str] | None, manifest_dict: dict[str, str]
-) -> tuple[list[Path], list[str], list[tuple[str, str, str, bool]], list[Path], list[str]]:
-    """Split candidates into ``(pending, skipped, moved, unreadable, deleted)`` in one walk.
+) -> tuple[
+    list[Path], list[str], list[tuple[str, str, str, bool]], list[Path], list[str], dict[Path, str]
+]:
+    """Split candidates into ``(pending, skipped, moved, unreadable, deleted, office_text)`` in one
+    walk.
 
     - ``pending``: new/changed files with novel, readable content — fed to the agent (sorted,
       de-duplicated by resolved path).
@@ -198,6 +198,9 @@ def _partition_sources(
       source side of a move — their provenance is reconciled out of the wiki by a cleanup agent
       session. Computed ONLY for a full run (``paths is None``); a path-scoped run never sweeps
       the whole manifest for deletions, so it can't surprise-prune sources it wasn't pointed at.
+    - ``office_text``: ``{src_path: extracted_text}`` for the pending PowerPoint/Word sources whose
+      text was extracted here to classify them — reused by the agent step so a ``.pptx``/``.docx``
+      is parsed exactly once per run, not twice.
 
     Move/duplicate detection only fires for a genuinely NEW path (``key not in manifest_dict``):
     an in-place edit of an already-tracked file is always re-ingested, even if its new content
@@ -211,6 +214,9 @@ def _partition_sources(
     skipped: list[str] = []
     moved: list[tuple[str, str, str, bool]] = []
     unreadable: list[Path] = []
+    # Office sources extracted here -> their text, so the agent step writes the temp .md without a
+    # second ZIP/XML parse. Keyed by the same Path objects carried in `pending`.
+    office_text: dict[Path, str] = {}
     seen: set[Path] = set()
     for src in _candidates(paths):
         try:
@@ -249,6 +255,17 @@ def _partition_sources(
                 old_key = gone[0] if gone else prior[0]
                 moved.append((old_key, key, sha, bool(gone)))
                 continue
+        if extract.is_office_source(src):
+            # PowerPoint/Word: extract the text ONCE here (a ZIP the byte-sniff would reject). Cache
+            # it so the agent step reuses it instead of re-parsing the same ZIP/XML. Text -> pending;
+            # a text-free deck (all images) is unreadable, exactly like any other binary.
+            text = extract.extract_text(src)
+            if text.strip():
+                office_text[src] = text
+                pending.append(src)
+            else:
+                unreadable.append(src)
+            continue
         if not _is_ingestible(src):
             unreadable.append(src)
             continue
@@ -265,7 +282,7 @@ def _partition_sources(
                 continue
             if not config.source_path_for_key(key).exists():
                 deleted.append(key)
-    return sorted(pending), skipped, moved, unreadable, deleted
+    return sorted(pending), skipped, moved, unreadable, deleted, office_text
 
 
 def _hash_pages(pages: list[Page]) -> dict[str, str]:
@@ -467,23 +484,19 @@ def _run_one_agent_session(
             shutil.rmtree(backup, ignore_errors=True)
 
 
-def _office_extract_to_temp(src: Path) -> tuple[str | None, str | None]:
-    """If ``src`` is a PowerPoint/Word file, extract its text to a fresh temp ``.md`` and return
-    ``(read_key, tmpdir)``: ``read_key`` is the path the agent should READ instead of the binary
-    (it still cites the original ``src``), and ``tmpdir`` is the temp directory the caller MUST
-    remove after the session. For any other file return ``(None, None)`` so the agent reads the
-    source directly (the unchanged path). Raises ``OSError`` only if the temp file cannot be
+def _office_write_temp(text: str, name: str) -> tuple[str, str]:
+    """Materialize already-extracted Office ``text`` as a fresh temp ``.md`` (named after the
+    source's ``name``) for the agent to READ, and return ``(read_key, tmpdir)``: ``read_key`` is the
+    path the agent reads (it still cites the ORIGINAL source), and ``tmpdir`` is the temp directory
+    the caller MUST remove after the session. Raises ``OSError`` only if the temp file cannot be
     written — handled per-source by the caller, never aborting the whole run.
 
-    ``_is_ingestible`` already gated a text-free deck to ``unreadable``, so a pending Office source
-    normally has text; we still write whatever extraction returns (even ``""``) so the agent simply
-    finds nothing rather than crashing."""
-    if not extract.is_office_source(src):
-        return None, None
-    text = extract.extract_text(src)
+    The extraction already happened once in :func:`_partition_sources` (which is how the source was
+    classified pending); this only writes that text out, so the ``.pptx``/``.docx`` is never parsed
+    a second time."""
     tmpdir = tempfile.mkdtemp(prefix="okf_extract_")
     try:
-        out = Path(tmpdir) / (Path(src.name).stem + ".md")
+        out = Path(tmpdir) / (Path(name).stem + ".md")
         out.write_text(text, encoding="utf-8")
     except OSError:
         # Don't leak the temp dir if the write fails — the caller never sees it to clean up.
@@ -542,7 +555,7 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
     manifest_dict = manifest.load()
     report = IngestReport([], [], [], [])
 
-    pending, skipped, moved, unreadable, deleted_sources = _partition_sources(
+    pending, skipped, moved, unreadable, deleted_sources, office_text = _partition_sources(
         paths, manifest_dict
     )
     report.skipped = skipped
@@ -605,23 +618,28 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
         kind = "reconcile" if rel_key in changed_keys else "ingest"
         emit("source_start", index=index, total=len(pending), source=rel_key)
 
-        # PowerPoint/Word are binary (ZIP) the agent can't open: extract their text to a temp file
-        # it reads instead, while the wiki still cites the original `src`. A non-Office source gets
-        # read_key=None (the agent reads it directly, unchanged). A temp-write failure is a
-        # per-source error, NOT a run-aborting interrupt, so it is collected and the loop continues.
-        try:
-            read_key, extract_tmp = _office_extract_to_temp(src)
-        except OSError as exc:
-            report.errors.append(f"{rel_key}: extract office text: {exc}")
-            emit(
-                "source_error",
-                index=index,
-                total=len(pending),
-                source=rel_key,
-                error=str(exc),
-                seconds=0.0,
-            )
-            continue
+        # PowerPoint/Word were extracted once during partitioning; materialize that text to a temp
+        # file the agent reads instead of the binary, while the wiki still cites the original `src`.
+        # A non-Office source isn't in `office_text`, so read_key stays None (the agent reads it
+        # directly, unchanged). A temp-write failure is a per-source error, NOT a run-aborting
+        # interrupt, so it is collected and the loop continues.
+        read_key: str | None = None
+        extract_tmp: str | None = None
+        office = office_text.get(src)
+        if office is not None:
+            try:
+                read_key, extract_tmp = _office_write_temp(office, src.name)
+            except OSError as exc:
+                report.errors.append(f"{rel_key}: write extracted office text: {exc}")
+                emit(
+                    "source_error",
+                    index=index,
+                    total=len(pending),
+                    source=rel_key,
+                    error=str(exc),
+                    seconds=0.0,
+                )
+                continue
 
         try:
             outcome = _run_one_agent_session(

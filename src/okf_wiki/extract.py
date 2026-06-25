@@ -59,7 +59,11 @@ def extract_text(path: Path | str) -> str:
             return _normalize(_extract_docx(p))
         if ext in _PPT_EXTS:
             return _normalize(_extract_pptx(p))
-    except (OSError, zipfile.BadZipFile, ET.ParseError):
+    except Exception:  # noqa: BLE001 - contract is "never raises": a malformed/encrypted/odd file
+        # must degrade to "" so candidate partitioning (`_is_ingestible`) and ingest never crash on
+        # ONE bad file. zipfile/ET surface failures well beyond BadZipFile/ParseError — an encrypted
+        # member raises RuntimeError, an unsupported compression method NotImplementedError, etc. —
+        # so we catch broadly here (BaseException like Ctrl+C still propagates).
         return ""
     return ""
 

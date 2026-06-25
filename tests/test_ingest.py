@@ -421,14 +421,23 @@ def test_binary_raw_file_is_logged_unreadable_not_ingested(tmp_path, monkeypatch
     assert _CALLS["n"] == 1  # not re-run
 
 
-def test_is_ingestible_office_text_vs_textless(tmp_path, monkeypatch):
-    """A PowerPoint/Word file is ingestible IFF text can be extracted: a deck with text passes,
-    an all-images (text-free) deck is classified unreadable like any other binary."""
+def test_partition_classifies_office_text_vs_textless_once(tmp_path, monkeypatch):
+    """Office routing lives in _partition_sources: a deck with extractable text is pending (and its
+    text is cached for the agent step), a text-free deck is unreadable like any other binary — and
+    the file is parsed exactly once (the cache is what avoids a second parse)."""
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
     _make_pptx(raw / "withtext.pptx", [["A real fact."]])
     _make_pptx(raw / "notext.pptx", [[]])
-    assert ingest._is_ingestible(raw / "withtext.pptx")
-    assert not ingest._is_ingestible(raw / "notext.pptx")
+
+    pending, skipped, moved, unreadable, deleted, office_text = ingest._partition_sources(None, {})
+
+    pending_keys = {manifest.rel_key(p) for p in pending}
+    unreadable_keys = {manifest.rel_key(p) for p in unreadable}
+    assert "raw/withtext.pptx" in pending_keys
+    assert "raw/notext.pptx" in unreadable_keys
+    # The extracted text is cached so the agent step reuses it (no second ZIP/XML parse).
+    assert any("A real fact." in t for t in office_text.values())
+    assert all(isinstance(p, Path) for p in office_text)   # keyed by the pending Path objects
 
 
 def test_office_pptx_extracted_to_temp_and_ingested(tmp_path, monkeypatch):

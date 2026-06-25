@@ -143,3 +143,16 @@ def test_extract_text_empty_on_corrupt_or_unsupported(tmp_path):
     legacy = tmp_path / "old.ppt"
     legacy.write_bytes(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1binary")
     assert extract.extract_text(legacy) == ""
+
+
+def test_extract_text_swallows_unexpected_exceptions(tmp_path, monkeypatch):
+    """The "never raises" contract holds beyond BadZipFile/ParseError: an encrypted/unsupported ZIP
+    member raises RuntimeError/NotImplementedError from zipfile, which must still degrade to "" so
+    candidate partitioning never crashes on one odd file."""
+    doc = _zip(tmp_path / "weird.docx", {"word/document.xml": "<x/>"})
+
+    def boom(_path):
+        raise RuntimeError("File is encrypted, password required for extraction")
+
+    monkeypatch.setattr(extract, "_extract_docx", boom)
+    assert extract.extract_text(doc) == ""
