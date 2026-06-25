@@ -22,9 +22,12 @@
 > **Use the paths your run instruction gives you, verbatim.** The wiki and raw directories are
 > named in that instruction and are usually `wiki/` and `raw/`, but a custom setup may point them
 > elsewhere — including an **absolute path** on a mounted network drive (e.g.
-> `T:/21_llmWiki/wiki`). Read, search, and write under exactly those paths, and set each page's
-> `resource:` to the raw source path exactly as the instruction names it. Examples below use
-> `raw/…` and `wiki/…`; substitute the paths you were given.
+> `//server/share/wiki` or `T:/team-wiki/wiki`). Read, search, and write under exactly those paths,
+> and set each page's `resource:` to the raw source path **exactly as the instruction names it —
+> copy it verbatim**. If your source is named by an absolute path (e.g.
+> `//server/share/raw/notes.pdf`), the `resource:` field is that **whole absolute path**; do **not**
+> shorten it to `raw/notes.pdf` — a shortened `resource` points at a file that does not exist and
+> fails the run. Examples below use `raw/…` and `wiki/…`; substitute the paths you were given.
 
 ## Your job
 

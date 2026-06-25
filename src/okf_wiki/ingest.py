@@ -293,13 +293,48 @@ def _diff(
     return created, updated, deleted
 
 
+def _canonical_resource_key(resource: str, rel_key: str) -> str | None:
+    """Return the canonical source key to replace a changed page's ``resource`` with, or None to
+    leave it untouched.
+
+    The ingest agent occasionally records a SHORTENED ``resource`` for an out-of-repo source: for a
+    file whose real key is an absolute path (``//host/share/raw/notes.pdf`` — what a source on a
+    mounted network drive resolves to), it writes the conventional repo-relative ``raw/notes.pdf``
+    that every schema example uses. That short form does not resolve to a real file (the file is on
+    the drive, not under the repo), so it (a) fails ``bad_resource`` validation and rolls the whole
+    source back — discarding a long, expensive session over a cosmetic path mismatch — and (b) would
+    not equal the manifest key, so a later move/delete of the source could not find the page
+    (``store.find_raw_references`` matches the ``resource`` frontmatter against the EXACT key).
+
+    Repair ONLY the unambiguous case: the written value does not resolve to a file, it shares the
+    source key's basename, and the source key itself resolves. Then the page plainly names THIS
+    source — canonicalize it to ``rel_key``. A ``resource`` that already resolves (a valid source,
+    possibly a DIFFERENT one on a page this session merged into) or whose basename differs is left
+    alone, so a legitimately different ``resource`` is never clobbered. For an in-repo source the
+    agent's ``raw/x.md`` already equals ``rel_key``, so this is a no-op — the in-repo path is
+    unchanged."""
+    written = (resource or "").strip().replace("\\", "/")
+    canon = rel_key.replace("\\", "/")
+    if not written or written == canon:
+        return None
+    if config.source_path_for_key(written).is_file():
+        return None  # already points at a real file — don't second-guess it
+    same_basename = written.rsplit("/", 1)[-1] == canon.rsplit("/", 1)[-1]
+    if same_basename and config.source_path_for_key(canon).is_file():
+        return canon
+    return None
+
+
 def _validate_and_restamp(rel_paths: list[str], rel_key: str) -> list[str]:
     """Re-impose invariants on each changed page (``validate.validate_page``) and, if clean,
     canonicalize + re-stamp it through ``store.write_page`` (so the YAML is canonical, the
     ``type`` is enforced, and a fresh UTC ``timestamp`` is set even though the agent wrote the
-    file). Returns one error string per error-severity validation issue; when any are returned
-    the caller rolls the whole source back (all-or-nothing), so an invalid page never persists
-    in the wiki — the issues are surfaced in the report instead."""
+    file). Before validating, a changed page whose ``resource`` is a shortened-but-broken reference
+    to the source being ingested is canonicalized to its real key (:func:`_canonical_resource_key`),
+    so an out-of-repo source the agent recorded as ``raw/<file>`` is repaired rather than failing the
+    run. Returns one error string per error-severity validation issue; when any are returned the
+    caller rolls the whole source back (all-or-nothing), so an invalid page never persists in the
+    wiki — the issues are surfaced in the report instead."""
     errors: list[str] = []
     for rel_path in sorted(set(rel_paths)):
         try:
@@ -307,6 +342,11 @@ def _validate_and_restamp(rel_paths: list[str], rel_key: str) -> list[str]:
         except (FileNotFoundError, okf.OKFError) as exc:
             errors.append(f"{rel_key}: re-read {rel_path}: {exc}")
             continue
+        canonical = _canonical_resource_key(
+            str(page.frontmatter.get("resource") or ""), rel_key
+        )
+        if canonical is not None:
+            page.frontmatter["resource"] = canonical
         bad = [
             issue
             for issue in validate.validate_page(rel_path, page.frontmatter, page.body)
