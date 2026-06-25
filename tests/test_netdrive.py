@@ -1,6 +1,6 @@
 """Tests for an out-of-repo wiki/raw layout — e.g. a mounted network drive (no CLI, no network).
 
-The user case: ``OKF_WIKI_DIR=T:\\21_llmWiki\\wiki`` / ``OKF_RAW_DIR=T:\\21_llmWiki\\raw`` while the
+The user case: ``OKF_WIKI_DIR=T:\\team-wiki\\wiki`` / ``OKF_RAW_DIR=T:\\team-wiki\\raw`` while the
 code is a normal checkout on another volume. These cover the full chain that used to assume
 everything lives under ``REPO_ROOT``:
 
@@ -93,7 +93,7 @@ def _wire_external(tmp_path, monkeypatch):
     """REPO_ROOT on one subtree; wiki/raw on a SEPARATE 'net' subtree (a shared parent, as a
     mounted drive would have). Returns (repo, wiki, raw)."""
     repo = tmp_path / "repo"
-    net = tmp_path / "net"          # stands in for T:\21_llmWiki
+    net = tmp_path / "net"          # stands in for T:\team-wiki
     wiki, raw, docs = net / "wiki", net / "raw", repo / "docs"
     for d in (repo, wiki, raw, docs):
         d.mkdir(parents=True, exist_ok=True)

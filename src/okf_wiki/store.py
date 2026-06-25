@@ -288,7 +288,7 @@ def _link_abs(page_rel: str, target: str) -> str | None:
 def _link_points_at_key(page_rel: str, target: str, key: str) -> bool:
     """True if the relative citation ``target`` written in wiki page ``page_rel`` resolves to the
     raw source identified by ``key`` — a repo-relative key (``raw/x.md``) OR an absolute
-    out-of-repo key (``T:/21_llmWiki/raw/x.md``). Compares absolute paths with OS-appropriate case
+    out-of-repo key (``T:/team-wiki/raw/x.md``). Compares absolute paths with OS-appropriate case
     folding, so a ``../../raw/x.md`` citation matches its source whether the wiki and raw live in
     the repo or together on a mounted network drive. Replaces the old REPO_ROOT-relative resolver,
     which returned None for any citation that pointed outside the repo."""
@@ -305,7 +305,7 @@ def _source_key_to_page_link(page_rel: str, key: str) -> str:
     """The relative markdown link FROM wiki page ``page_rel`` TO the raw source ``key`` (e.g. page
     ``concepts/a.md`` + key ``raw/sub/x.md`` -> ``../../raw/sub/x.md``). ``key`` may be absolute
     (out-of-repo): when the source and the wiki sit on the SAME volume — the network-drive case,
-    e.g. both under ``T:/21_llmWiki`` — a normal relative link is produced; on the rare
+    e.g. both under ``T:/team-wiki`` — a normal relative link is produced; on the rare
     cross-volume layout where no relative path exists, fall back to the absolute POSIX path so the
     link still resolves rather than raising."""
     page_dir = os.path.dirname(str(config.WIKI_DIR / page_rel))

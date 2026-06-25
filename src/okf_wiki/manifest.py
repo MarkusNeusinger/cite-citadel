@@ -28,7 +28,7 @@ def file_sha256(path: Path) -> str:
 def rel_key(src: Path) -> str:
     """Stable identity key for a raw source: its posix path relative to config.REPO_ROOT when it
     lives under the repo (e.g. 'raw/notes.md', 'docs/karpathy-llm-wiki.md'), else its ABSOLUTE
-    posix path (e.g. 'T:/21_llmWiki/raw/notes.md') so a source on a mounted network drive gets a
+    posix path (e.g. 'T:/team-wiki/raw/notes.md') so a source on a mounted network drive gets a
     unique, resolvable key instead of colliding on basename. Thin wrapper over the single
     source of truth, config.rel_or_abs_posix."""
     return config.rel_or_abs_posix(src)

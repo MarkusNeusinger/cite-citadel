@@ -97,7 +97,7 @@ def _build_instruction(rel_key: str, kind: str = "ingest") -> str:
     an in-repo path is named relative to it and an out-of-repo path absolutely. The wiki/raw
     directory names are read from config (``OKF_WIKI_DIR`` / ``OKF_RAW_DIR``) at CALL time via
     :func:`_agent_path`, so a custom layout — a renamed in-repo dir (``OKF_WIKI_DIR=wikiET``) or a
-    network-drive path (``OKF_WIKI_DIR=T:\\21_llmWiki\\wiki``) — is searched and written correctly
+    network-drive path (``OKF_WIKI_DIR=T:\\team-wiki\\wiki``) — is searched and written correctly
     instead of a hardcoded ``wiki/``.
 
     ``kind`` selects which propagation the agent performs:
