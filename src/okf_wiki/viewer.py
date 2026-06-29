@@ -29,7 +29,7 @@ import re
 import webbrowser
 from pathlib import Path
 
-from . import config, manifest as manifest_mod, store
+from . import config, extract, manifest as manifest_mod, store
 
 # Default output: dot-prefixed so store.load() skips it (like .okf_ingested.json) and it is
 # gitignored; it is a regenerable artifact, never a source of truth.
@@ -113,14 +113,35 @@ def _load_manifest() -> dict:
 
 
 def _is_within(path_abs: str | os.PathLike, base) -> bool:
-    """True if ``path_abs`` lies inside directory ``base`` (case-folded, lexical). Used to tell a
-    citation into the raw/ or docs/ source tree apart from a wiki cross-link or external URL."""
-    try:
-        base_s = os.path.normcase(os.path.normpath(str(Path(base).resolve())))
-    except OSError:
-        base_s = os.path.normcase(os.path.normpath(str(base)))
+    """True if ``path_abs`` lies inside directory ``base`` (case-folded, purely LEXICAL — no
+    symlink resolution). Used to tell a citation into the raw/ or docs/ source tree apart from a
+    wiki cross-link or external URL. Stays lexical on purpose so it matches ``store._link_abs`` /
+    ``store._link_points_at_key`` (which never call ``resolve()``); resolving only one side would
+    diverge under a symlinked wiki/raw path and silently drop every cited source."""
+    base_s = os.path.normcase(os.path.normpath(str(base)))
     p = os.path.normcase(os.path.normpath(str(path_abs)))
     return p == base_s or p.startswith(base_s + os.sep)
+
+
+def _viewer_resolve(from_rel: str, target: str) -> str:
+    """Python port of the viewer's in-browser ``resolveLink``: resolve a citation ``target`` written
+    in page ``from_rel`` to a wiki-root-relative posix id, CLAMPING any ``..`` that would climb above
+    the wiki root (a no-op pop on an empty stack, exactly like ``Array.pop`` in JS). This is the
+    single identity under which an embedded source is keyed AND under which the browser looks it up,
+    so a citation resolves to its source no matter how the wiki and raw trees are laid out (in-repo,
+    a nested ``sub/wiki``, or a mounted network drive)."""
+    target = target.split("#", 1)[0]
+    base = from_rel.rsplit("/", 1)[0] if "/" in from_rel else ""
+    parts = base.split("/") if base else []
+    for seg in target.split("/"):
+        if seg in ("", "."):
+            continue
+        if seg == "..":
+            if parts:
+                parts.pop()
+        else:
+            parts.append(seg)
+    return "/".join(parts)
 
 
 def _source_view_id(abs_path: str | os.PathLike) -> str:
@@ -135,11 +156,14 @@ def _source_view_id(abs_path: str | os.PathLike) -> str:
         return os.path.basename(str(abs_path))
 
 
-def _collect_source_keys(pages) -> set[str]:
-    """Every raw/docs source key cited by a wiki page body, derived from the citation links (so a
-    source is clickable even if it isn't in the manifest). Fence-aware, mirroring the store's link
-    scanners, so a citation written as a literal inside a ``` code fence is not counted."""
-    keys: set[str] = set()
+def _collect_sources(pages) -> dict[str, str]:
+    """Map each cited raw/docs source's VIEWER IDENTITY -> its source key, by scanning citation
+    links (so a source is clickable even if it isn't in the manifest). The identity is computed with
+    :func:`_viewer_resolve` — the exact port of the browser's link resolver — so the source is keyed
+    under the same id the inline citation looks it up by, in any layout. Fence-aware, mirroring the
+    store's link scanners, so a citation written as a literal inside a ``` code fence is not counted.
+    First writer wins per identity, for determinism."""
+    found: dict[str, str] = {}
     for page in pages:
         in_fence = False
         for line in page.body.splitlines():
@@ -154,8 +178,9 @@ def _collect_source_keys(pages) -> set[str]:
                 if link_abs is None:
                     continue
                 if _is_within(link_abs, config.RAW_DIR) or _is_within(link_abs, config.DOCS_DIR):
-                    keys.add(config.rel_or_abs_posix(Path(link_abs)))
-    return keys
+                    view_id = _viewer_resolve(page.rel_path, path)
+                    found.setdefault(view_id, config.rel_or_abs_posix(Path(link_abs)))
+    return found
 
 
 def _source_title(body: str, view_id: str) -> str:
@@ -175,42 +200,83 @@ def _source_snippet(body: str, limit: int = 240) -> str:
     return " ".join(prose.split())[:limit]
 
 
+def _source_href(abs_path: str | os.PathLike) -> str | None:
+    """A relative link from the DEFAULT viewer location (``WIKI_DIR``) to the raw source on disk, so
+    the reader can offer an "open the original file" affordance — the browser opens a PDF or other
+    binary natively. None when no relative path exists (a different drive). The link assumes the
+    viewer was written to its default ``wiki/`` location; the embedded text always works regardless."""
+    try:
+        return os.path.relpath(str(abs_path), str(config.WIKI_DIR)).replace(os.sep, "/")
+    except ValueError:  # different drive — no relative path exists
+        return None
+
+
+def _read_source(path: Path) -> tuple[str, str]:
+    """Read a raw source for embedding, returning ``(text, kind)``:
+
+    - ``("...", "text")``  — a UTF-8 text file (markdown/code/notes), embedded verbatim;
+    - ``("...", "office")`` — a ``.pptx``/``.docx`` whose text we extract with the stdlib (reusing
+      the ingest extractor), so Office sources are readable inline too;
+    - ``("", "binary")``   — anything we can't turn into text without a heavyweight dependency,
+      e.g. a PDF. The viewer then offers an "open the original file" link instead of inline text.
+    """
+    try:
+        return path.read_text(encoding="utf-8"), "text"
+    except (OSError, ValueError, UnicodeError):
+        pass
+    if extract.is_office_source(path):
+        extracted = extract.extract_text(path)  # "" on a malformed/odd document
+        if extracted:
+            return extracted, "office"
+    return "", "binary"
+
+
 def _build_sources(pages) -> dict:
-    """Map each cited raw/docs source -> its embedded record. Keyed by ``_source_view_id`` so the
-    browser can resolve an inline citation straight to it. Each record carries the file content
-    (capped/truncated), title, the model that imported it (from the manifest), the wiki pages that
-    cite it (the live link graph), and a missing flag when the file couldn't be read. Includes
-    file sources tracked in the manifest even if currently uncited, so the Sources axis is complete;
+    """Map each cited raw/docs source -> its embedded record. Cited sources are keyed by the exact
+    browser identity (:func:`_collect_sources` via :func:`_viewer_resolve`) so an inline citation
+    resolves straight to its record; tracked-but-uncited files fall back to :func:`_source_view_id`.
+    Each record carries the file content (capped/truncated), title, the model that imported it (from
+    the manifest), the wiki pages that cite it (the live link graph), a kind (text/office/binary),
+    an "open the original" href, and a missing flag when the file isn't on disk. Includes file
+    sources tracked in the manifest even if currently uncited, so the Sources axis is complete;
     skips git-repository manifest entries (a folder, not a readable file)."""
     manifest = _load_manifest()
     manifest_files = {
         key for key, entry in manifest.items() if not manifest_mod.is_repo_entry(entry)
     }
-    keys = manifest_files | _collect_source_keys(pages)
-    sources: dict[str, dict] = {}
-    for key in sorted(keys):
-        abs_path = str(config.source_path_for_key(key))
-        view_id = _source_view_id(abs_path)
-        if view_id in sources:  # two keys resolving to one file — keep the first deterministically
+    # Cited sources keyed by the browser identity, then tracked-but-uncited files under a fallback
+    # id so the Sources axis is complete (a git-repository entry is a folder, not a file — skipped).
+    id_to_key = _collect_sources(pages)
+    seen_keys = set(id_to_key.values())
+    for key in sorted(manifest_files):
+        if key in seen_keys:
             continue
-        try:
-            raw = Path(abs_path).read_text(encoding="utf-8")
-            missing = False
-        except (OSError, ValueError, UnicodeError):
-            raw, missing = "", True
-        truncated = len(raw) > _SOURCE_MAX_CHARS
+        id_to_key.setdefault(_source_view_id(config.source_path_for_key(key)), key)
+        seen_keys.add(key)
+    sources: dict[str, dict] = {}
+    for view_id, key in sorted(id_to_key.items()):
+        abs_path = str(config.source_path_for_key(key))
+        path = Path(abs_path)
+        present = path.is_file()
+        if present:
+            body, kind = _read_source(path)
+        else:
+            body, kind = "", "binary"  # not on disk: render an "unavailable" notice, no body
+        truncated = len(body) > _SOURCE_MAX_CHARS
         if truncated:
-            raw = raw[:_SOURCE_MAX_CHARS]
+            body = body[:_SOURCE_MAX_CHARS]
         sources[view_id] = {
             "id": view_id,
             "key": key,
-            "title": _source_title(raw, view_id),
+            "title": _source_title(body, view_id),
             "model": manifest_mod.entry_model(manifest[key]) if key in manifest else None,
             "cited_by": store.find_raw_references(key, pages),
-            "missing": missing,
+            "missing": not present,
+            "kind": kind,  # "text" | "office" | "binary"
+            "href": _source_href(abs_path) if present else None,
             "truncated": truncated,
-            "snippet": _source_snippet(raw),
-            "body": raw,
+            "snippet": _source_snippet(body),
+            "body": body,
         }
     return sources
 
@@ -385,6 +451,9 @@ body { margin:0; font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-ser
            border-bottom:1px solid var(--line); cursor:pointer; }
 #reader a.srclink:hover { border-bottom-color:var(--source); }
 a.srclink::after { content:" \\2197"; font-size:.8em; opacity:.7; }
+#reader a.rawfile { color:var(--accent); text-decoration:none; border:1px solid var(--line);
+                    border-radius:6px; padding:1px 8px; font-size:12px; white-space:nowrap; }
+#reader a.rawfile:hover { border-color:var(--accent); background:var(--card); }
 #srcpop { position:fixed; z-index:50; max-width:360px; background:var(--bg);
           border:1px solid var(--line); border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,.18);
           padding:10px 12px; font-size:13px; display:none; pointer-events:none; }
@@ -907,26 +976,44 @@ _VIEWER_JS = r'''
     Graph.setActive(rel);
   }
 
+  function rawFileLink(s, label) {
+    if (!s.href || s.missing) return "";
+    return "<a class='rawfile' href='" + esc(encodeURI(s.href)) +
+      "' target='_blank' rel='noopener'>" + label + " ↗</a>";
+  }
+
   function openSource(sid) {
     var s = SOURCES[sid];
     if (!s) return;
     var want = "src:" + encodeURIComponent(sid);
     if ((location.hash || "").slice(1) !== want) { location.hash = want; }
+    var open = rawFileLink(s, "Open original file");
     var meta = "<div class='meta'><span class='ptype src'>Source</span> <span class='src-id'>" +
       esc(s.id) + "</span>" + (s.model ? " <span class='src-model'>via " + esc(s.model) +
-      "</span>" : "") + "</div>";
+      "</span>" : "") + (open ? " " + open : "") + "</div>";
     var body;
     if (s.missing) {
       body = "<div class='callout'><div class='callout-title'>SOURCE UNAVAILABLE</div>" +
         "<div class='callout-body'>The raw file <code>" + esc(s.id) +
         "</code> was not found when this viewer was generated. Re-run <code>okf-wiki view</code> " +
         "with the source present to embed its content.</div></div>";
+    } else if (s.kind === "binary") {
+      // A PDF or other binary: we can't render it inline without a heavy dependency, so open the
+      // original file (the browser shows a PDF natively).
+      body = "<div class='callout'><div class='callout-title'>BINARY SOURCE</div>" +
+        "<div class='callout-body'>This source is a binary file (e.g. a PDF) and can't be " +
+        "rendered inline. " + (s.href
+          ? "Use <strong>Open original file</strong> above — a PDF opens directly in your browser."
+          : "Open the raw file <code>" + esc(s.id) + "</code> directly to read it.") +
+        "</div></div>";
     } else {
-      body = mdToHtml(s.body, sid, {});
+      body = (s.kind === "office"
+        ? "<p class='desc'>Text extracted from the original document.</p>" : "") +
+        mdToHtml(s.body, sid, {});
       if (s.truncated) {
         body += "<div class='callout'><div class='callout-title'>TRUNCATED</div>" +
           "<div class='callout-body'>This source was longer than the embed limit and was " +
-          "truncated. Open the raw file directly to read it in full.</div></div>";
+          "truncated. Open the original file to read it in full.</div></div>";
       }
     }
     renderReader("<h1>" + esc(s.title) + "</h1>" + meta +
@@ -940,9 +1027,10 @@ _VIEWER_JS = r'''
   function showPop(sid, anchor) {
     var s = SOURCES[sid]; if (!s) return;
     if (!pop) pop = document.getElementById("srcpop");
+    var note = s.missing ? " · (file unavailable)"
+      : (s.kind === "binary" ? " · (binary — opens original)" : "");
     pop.innerHTML = "<div class='sp-title'>" + esc(s.title) + "</div><div class='sp-meta'>" +
-      esc(s.id) + (s.model ? " · " + esc(s.model) : "") +
-      (s.missing ? " · (file unavailable)" : "") + "</div>" +
+      esc(s.id) + (s.model ? " · " + esc(s.model) : "") + note + "</div>" +
       (s.snippet ? "<div class='sp-snip'>" + esc(s.snippet) + "…</div>" : "") +
       "<div class='sp-hint'>Click to open source</div>";
     pop.classList.add("show");
