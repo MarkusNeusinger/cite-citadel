@@ -51,6 +51,169 @@ def _two_page_wiki(wiki: Path) -> None:
     )
 
 
+def test_bundle_embeds_cited_sources(tmp_path, monkeypatch):
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "a.md").write_text(
+        "# Coffee Overview\n\nCoffee is a brewed drink made from roasted beans.\n",
+        encoding="utf-8",
+    )
+    _two_page_wiki(wiki)
+    sources = viewer.build_bundle()["sources"]
+
+    assert "raw/a.md" in sources
+    s = sources["raw/a.md"]
+    assert s["missing"] is False
+    assert s["title"] == "Coffee Overview"
+    assert "brewed drink" in s["body"]
+    assert "brewed drink" in s["snippet"]
+    # Both pages cite raw/a.md (resource frontmatter + a ## Sources footnote link).
+    assert set(s["cited_by"]) == {"concepts/espresso.md", "concepts/caffeine.md"}
+
+
+def test_binary_pdf_source_is_openable_not_unavailable(tmp_path, monkeypatch):
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    # A real PDF is binary (not UTF-8). It must not be reported as missing — instead it carries an
+    # "open the original file" href so the browser can show it natively.
+    (raw / "a.pdf").write_bytes(b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<<>>\nendobj\n")
+    _seed(
+        wiki, "concepts/x.md", {"type": "Concept", "title": "X"},
+        "Body cites a pdf.[^s1]\n\n## Sources\n\n"
+        "[^s1]: [raw/a.pdf](../../raw/a.pdf) - n\n",
+    )
+    s = viewer.build_bundle()["sources"]["raw/a.pdf"]
+    assert s["missing"] is False
+    assert s["kind"] == "binary"
+    assert s["body"] == ""
+    assert s["href"] == "../raw/a.pdf"
+    assert s["cited_by"] == ["concepts/x.md"]
+
+
+def test_missing_source_is_flagged_not_fatal(tmp_path, monkeypatch):
+    wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _two_page_wiki(wiki)  # cites raw/a.md, but the raw file is absent
+    s = viewer.build_bundle()["sources"]["raw/a.md"]
+    assert s["missing"] is True
+    assert s["body"] == ""
+    assert set(s["cited_by"]) == {"concepts/espresso.md", "concepts/caffeine.md"}
+
+
+def test_build_html_makes_sources_clickable(tmp_path, monkeypatch):
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "a.md").write_text("# A\n\nbody text\n", encoding="utf-8")
+    _two_page_wiki(wiki)
+    html = viewer.build_html()
+    # The inlined viewer renders raw citations as clickable source links and can open them.
+    assert "data-source" in html
+    assert "srclink" in html
+    assert "openSource" in html
+    # Still fully offline with an embedded source present.
+    for bad in ("http://", "https://", "cdn", " src=", "fetch("):
+        assert bad not in html, f"network reference present: {bad!r}"
+
+
+def test_sources_keyed_by_browser_identity_in_nested_layout(tmp_path, monkeypatch):
+    # When wiki/ is NOT a direct child of the repo root (e.g. OKF_WIKI_DIR=sub/wiki), the citation
+    # climbs further but the in-browser resolver clamps '..' at the wiki root. The embedded source
+    # must be keyed under that SAME clamped id, else the citation can't find it.
+    repo = tmp_path
+    wiki, raw, docs = repo / "sub" / "wiki", repo / "raw", repo / "docs"
+    for d in (wiki, raw, docs):
+        d.mkdir(parents=True, exist_ok=True)
+    (repo / "SCHEMA.md").write_text("# SCHEMA\n", encoding="utf-8")
+    monkeypatch.setattr(config, "REPO_ROOT", repo, raising=False)
+    monkeypatch.setattr(config, "WIKI_DIR", wiki, raising=False)
+    monkeypatch.setattr(config, "RAW_DIR", raw, raising=False)
+    monkeypatch.setattr(config, "DOCS_DIR", docs, raising=False)
+    (raw / "x.md").write_text("# X source\n\ndetail\n", encoding="utf-8")
+    # From repo/sub/wiki/concepts/p.md to repo/raw/x.md is '../../../raw/x.md'.
+    _seed(
+        wiki, "concepts/p.md", {"type": "Concept", "title": "P"},
+        "Cites x.[^s1]\n\n## Sources\n\n[^s1]: [raw/x.md](../../../raw/x.md) - n\n",
+    )
+    sources = viewer.build_bundle()["sources"]
+    # Keyed by the clamped identity the browser produces, not the WIKI_DIR.parent-relative '../raw/x.md'.
+    assert "raw/x.md" in sources
+    assert "../raw/x.md" not in sources
+    assert sources["raw/x.md"]["cited_by"] == ["concepts/p.md"]
+
+
+def test_sources_truncated_when_oversized(tmp_path, monkeypatch):
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    big = "x" * (viewer._SOURCE_MAX_CHARS + 50)
+    (raw / "a.md").write_text(big, encoding="utf-8")
+    _two_page_wiki(wiki)
+    s = viewer.build_bundle()["sources"]["raw/a.md"]
+    assert s["truncated"] is True
+    assert len(s["body"]) == viewer._SOURCE_MAX_CHARS
+
+
+def test_manifest_model_and_repo_and_uncited(tmp_path, monkeypatch):
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "a.md").write_text("# A\n\ncited\n", encoding="utf-8")
+    (raw / "lonely.md").write_text("# Lonely\n\nuncited\n", encoding="utf-8")
+    (wiki / ".okf_ingested.json").write_text(
+        json.dumps(
+            {
+                "raw/a.md": {"sha256": "h1", "model": "claude:sonnet"},
+                "raw/lonely.md": {"sha256": "h2", "model": "copilot:gpt"},
+                "raw/somerepo": {"kind": "git", "commit": "abc", "model": "claude:sonnet"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    _two_page_wiki(wiki)
+    sources = viewer.build_bundle()["sources"]
+    # Model attribution flows from the manifest onto the cited source.
+    assert sources["raw/a.md"]["model"] == "claude:sonnet"
+    # A tracked-but-uncited file still appears, with an empty cited_by.
+    assert "raw/lonely.md" in sources
+    assert sources["raw/lonely.md"]["cited_by"] == []
+    assert sources["raw/lonely.md"]["model"] == "copilot:gpt"
+    # A git-repository entry is a folder, not a file — it is never embedded as a source.
+    assert "raw/somerepo" not in sources
+    assert all(s["key"] != "raw/somerepo" for s in sources.values())
+
+
+def test_citation_inside_code_fence_is_not_a_source(tmp_path, monkeypatch):
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "real.md").write_text("# Real\n\nx\n", encoding="utf-8")
+    (raw / "fenced.md").write_text("# Fenced\n\ny\n", encoding="utf-8")
+    _seed(
+        wiki, "concepts/p.md", {"type": "Concept", "title": "P"},
+        "Real cite.[^s1]\n\n```\n[raw/fenced.md](../../raw/fenced.md)\n```\n\n"
+        "## Sources\n\n[^s1]: [raw/real.md](../../raw/real.md) - n\n",
+    )
+    sources = viewer.build_bundle()["sources"]
+    assert "raw/real.md" in sources
+    assert "raw/fenced.md" not in sources  # the fenced citation is a literal, not provenance
+
+
+def test_angle_bracket_citation_is_discovered(tmp_path, monkeypatch):
+    # A citation written in markdown's <...> target form must still be discovered and embedded
+    # (store._split_link_target strips the brackets); the in-browser resolveLink strips them too.
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "x.md").write_text("# X\n\nbody\n", encoding="utf-8")
+    _seed(
+        wiki, "concepts/p.md", {"type": "Concept", "title": "P"},
+        "Cites x.[^s1]\n\n## Sources\n\n[^s1]: [raw/x.md](<../../raw/x.md>) - n\n",
+    )
+    sources = viewer.build_bundle()["sources"]
+    assert "raw/x.md" in sources
+    assert sources["raw/x.md"]["cited_by"] == ["concepts/p.md"]
+
+
+def test_docs_citation_is_a_source(tmp_path, monkeypatch):
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (config.DOCS_DIR / "ref.md").write_text("# Reference\n\nspec\n", encoding="utf-8")
+    _seed(
+        wiki, "concepts/p.md", {"type": "Concept", "title": "P"},
+        "Cites a doc.[^s1]\n\n## Sources\n\n[^s1]: [docs/ref.md](../../docs/ref.md) - n\n",
+    )
+    sources = viewer.build_bundle()["sources"]
+    assert "docs/ref.md" in sources
+    assert sources["docs/ref.md"]["title"] == "Reference"
+
+
 def test_bundle_contains_pages_links_tags(tmp_path, monkeypatch):
     wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
     _two_page_wiki(wiki)
