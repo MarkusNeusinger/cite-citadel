@@ -221,6 +221,27 @@ def test_build_digest_respects_budget_and_prioritizes_signal(tmp_path):
     assert "## Omitted" in digest and "notes.txt" in digest
 
 
+def test_build_digest_never_exceeds_budget(tmp_path):
+    # Several large, high-signal files plus a big change summary against a tight budget: the digest
+    # must still honor max_chars exactly (header, listing, and every file block are all bounded).
+    files = {f"transform_{i}.py": ("X" * 4000) for i in range(6)}
+    files["README.md"] = "Y" * 4000
+    root = _make_repo(tmp_path, "big", files)
+    summary = "Changed files:\n" + "\n".join(f"transform_{i}.py" for i in range(6)) * 50
+    digest = repo.build_digest(
+        root, "raw/big", max_chars=3000, per_file_chars=2000, change_summary=summary
+    )
+    assert len(digest) <= 3000
+    assert "# Repository digest: raw/big" in digest
+
+
+def test_build_digest_first_file_block_is_bounded(tmp_path):
+    # A single file far larger than the budget must not slip through whole — the cap holds.
+    root = _make_repo(tmp_path, "one", {"transform.py": "Z" * 50000})
+    digest = repo.build_digest(root, "raw/one", max_chars=1500, per_file_chars=40000)
+    assert len(digest) <= 1500
+
+
 def test_build_digest_only_restricts_to_changed(tmp_path):
     root = _make_repo(tmp_path, "c", {"a.py": "A\n", "b.py": "B\n"})
     digest = repo.build_digest(root, "raw/c", only=["a.py"], change_summary="Changed files:\na.py")
@@ -268,6 +289,24 @@ def test_list_files_honors_gitignore(tmp_path):
     _run_git(root, "commit", "-qm", "init")
     files = repo.list_files(root)
     assert "kept.py" in files
+    assert "ignored.txt" not in files
+
+
+@needs_git
+def test_list_files_includes_untracked_non_ignored(tmp_path):
+    root = tmp_path / "g"
+    root.mkdir()
+    _git_init(root)
+    (root / ".gitignore").write_text("ignored.txt\n", encoding="utf-8")
+    (root / "committed.py").write_text("x\n", encoding="utf-8")
+    _run_git(root, "add", "-A")
+    _run_git(root, "commit", "-qm", "init")
+    # New, uncommitted, NOT ignored -> a dirty tree that re-ingest would trigger; must be in the list.
+    (root / "new_pipeline.py").write_text("y\n", encoding="utf-8")
+    (root / "ignored.txt").write_text("secret\n", encoding="utf-8")
+    files = repo.list_files(root)
+    assert "committed.py" in files
+    assert "new_pipeline.py" in files
     assert "ignored.txt" not in files
 
 

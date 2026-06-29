@@ -399,7 +399,7 @@ class _RepoJob:
 
 
 def _partition_repos(
-    repo_paths: list[Path], manifest_dict: dict[str, str], full_run: bool
+    repo_paths: list[Path], manifest_dict: dict[str, manifest.Entry], full_run: bool
 ) -> tuple[list[_RepoJob], list[tuple[str, str, str]], list[str], list[str]]:
     """Split discovered repos into ``(pending, moved, deleted, skipped)``.
 

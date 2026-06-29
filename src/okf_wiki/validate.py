@@ -188,7 +188,10 @@ def validate_page(rel_path: str, frontmatter: dict, body: str) -> list[Issue]:
         # `resource` may also be a DIRECTORY — a whole git repository ingested as one source
         # (e.g. 'raw/acme-service') — so a directory is accepted alongside a file.
         if not (src_path.is_file() or src_path.is_dir()):
-            err("bad_resource", f"resource points at a missing file: {resource}")
+            err(
+                "bad_resource",
+                f"resource points at a missing file or directory: {resource}",
+            )
 
     # --- file format ---
     # An embedded YAML frontmatter block in the body (the agent echoed it twice). After the

@@ -138,12 +138,16 @@ def _walk_repo(path: Path) -> list[str]:
 
 def list_files(path: Path) -> list[str]:
     """Repo-relative posix paths of the files to consider. Prefer ``git ls-files`` (which honors
-    ``.gitignore`` and lists only tracked files — no ``node_modules``/build output); fall back to a
-    filtered walk when git is unavailable or the dir is a non-git snapshot."""
+    ``.gitignore`` and excludes ``node_modules``/build output); fall back to a filtered walk when
+    git is unavailable or the dir is a non-git snapshot.
+
+    ``--cached --others --exclude-standard`` lists BOTH tracked files and untracked-but-not-ignored
+    ones, so a new pipeline script added to a dirty tree (which already triggers a re-ingest via
+    :func:`identity`) is actually present in the digest — not silently dropped for being uncommitted."""
     if is_git_repo(path):
-        out = _git(Path(path), "ls-files")
+        out = _git(Path(path), "ls-files", "--cached", "--others", "--exclude-standard")
         if out is not None:
-            return sorted(line for line in out.splitlines() if line.strip())
+            return sorted({line for line in out.splitlines() if line.strip()})
     return sorted(_walk_repo(path))
 
 
@@ -263,17 +267,45 @@ def _lang_for(rel: str) -> str:
 
 def _read_text(abs_path: Path, limit: int) -> str | None:
     """Read ``abs_path`` as UTF-8 text (errors replaced), truncated to ``limit`` chars with a
-    marker. None if it cannot be read or looks binary (a NUL byte in the first 64 KiB)."""
+    marker. None if it cannot be read or looks binary (a NUL byte in the first 64 KiB).
+
+    Only a bounded PREFIX is read from disk — ``max(64 KiB, limit*4 + 64)`` bytes, enough for the
+    binary sniff and for ``limit`` characters even in worst-case 4-byte UTF-8 — so a large file that
+    slipped past the exclude filters never loads wholesale into memory."""
+    read_cap = max(65536, limit * 4 + 64)
     try:
-        data = abs_path.read_bytes()
+        with open(abs_path, "rb") as fh:
+            data = fh.read(read_cap)
     except OSError:
         return None
     if b"\x00" in data[:65536]:
         return None
     text = data.decode("utf-8", "replace")
-    if len(text) > limit:
+    # Either more characters than the cap, or the on-disk file was longer than the bytes we read.
+    if len(text) > limit or len(data) >= read_cap:
         text = text[:limit].rstrip() + "\n... [truncated]"
     return text
+
+
+# Headroom reserved below ``max_chars`` while inlining file contents, so the trailing "## Omitted"
+# note still fits inside the budget after the loop fills it.
+_FOOTER_RESERVE = 200
+
+
+def _fit_block(rel: str, text: str, budget: int) -> str | None:
+    """A fenced ``### rel`` code block whose TOTAL length is ``<= budget`` — the file's ``text`` is
+    truncated with a marker to fit — or None when even a near-empty block would not fit. This is
+    what makes the digest honor ``max_chars`` strictly: no single block (not even the first) can
+    push the digest past the budget."""
+    lang = _lang_for(rel)
+    marker = "\n... [truncated]"
+    scaffold = f"\n### {rel}\n```{lang}\n\n```\n"  # the block with an empty body
+    if budget <= len(scaffold) + len(marker):
+        return None
+    room = budget - len(scaffold)
+    if len(text) > room:
+        text = text[: max(0, room - len(marker))].rstrip() + marker
+    return f"\n### {rel}\n```{lang}\n{text}\n```\n"
 
 
 def build_digest(
@@ -309,7 +341,6 @@ def build_digest(
     commit = identity(path)
     remote = remote_url(path)
 
-    parts: list[str] = []
     head = f"# Repository digest: {key}\n\n- commit/version: {commit}\n"
     if remote:
         head += f"- remote: {remote}\n"
@@ -319,37 +350,72 @@ def build_digest(
         "it does, how it does it (the data flow), and what it outputs.\n"
     )
     if change_summary:
-        head += "\n## What changed since the last ingest\n" + change_summary.rstrip() + "\n"
-    parts.append(head)
+        # The change list never dominates the budget (a huge diff would otherwise crowd out content).
+        summary = change_summary.rstrip()
+        cap = max(0, max_chars // 4)
+        if len(summary) > cap:
+            summary = summary[:cap].rstrip() + "\n... [change list truncated]"
+        head += "\n## What changed since the last ingest\n" + summary + "\n"
 
-    listing = "\n## Files\n" + "\n".join(all_files) + "\n"
+    parts: list[str] = [head]
+    used = len(head)
+
+    # File listing — capped to a bounded share of the remaining budget so a huge repo's path list
+    # alone can't blow the cap (the contents below are where the value is).
+    listing_header, listing_footer = "\n## Files\n", "\n"
+    listing_budget = max(
+        0, int((max_chars - used) * 0.4) - len(listing_header) - len(listing_footer)
+    )
+    listing_body = "\n".join(all_files)
+    listing_truncated = False
+    if len(listing_body) > listing_budget:
+        clipped = listing_body[:listing_budget]
+        listing_body = clipped.rsplit("\n", 1)[0] if "\n" in clipped else ""
+        listing_truncated = True
+    listing = (
+        listing_header
+        + listing_body
+        + ("\n... [listing truncated]" if listing_truncated else "")
+        + listing_footer
+    )
     parts.append(listing)
+    used += len(listing)
 
-    used = sum(len(p) for p in parts)
-    parts.append("\n## File contents\n")
-    used += len(parts[-1])
-
+    # Inline file contents up to the budget (less a small footer reserve), highest-signal first.
+    # Every block is trimmed to the remaining budget by _fit_block, so the digest never exceeds it.
     included: list[str] = []
     omitted: list[str] = []
-    for rel in candidates:
-        if used >= max_chars:
-            omitted.append(rel)
-            continue
-        text = _read_text(root / rel, per_file_chars)
-        if text is None:
-            continue  # binary/unreadable — silently skip (not knowledge)
-        block = f"\n### {rel}\n```{_lang_for(rel)}\n{text}\n```\n"
-        if used + len(block) > max_chars and included:
-            omitted.append(rel)
-            continue
-        parts.append(block)
-        used += len(block)
-        included.append(rel)
+    content_cap = max(0, max_chars - _FOOTER_RESERVE)
+    contents_header = "\n## File contents\n"
+    if used + len(contents_header) <= content_cap:
+        parts.append(contents_header)
+        used += len(contents_header)
+        for rel in candidates:
+            text = _read_text(root / rel, per_file_chars)
+            if text is None:
+                continue  # binary/unreadable — not knowledge
+            block = _fit_block(rel, text, content_cap - used)
+            if block is None:
+                omitted.append(rel)
+                continue
+            parts.append(block)
+            used += len(block)
+            included.append(rel)
+    else:
+        omitted = list(candidates)
 
     if omitted:
-        parts.append(
+        full = (
             f"\n## Omitted ({len(omitted)} files — budget/low-signal, read from {key} if needed)\n"
             + "\n".join(omitted)
             + "\n"
         )
-    return "".join(parts)
+        short = f"\n## Omitted: {len(omitted)} files (budget/low-signal)\n"
+        if used + len(full) <= max_chars:
+            parts.append(full)
+        elif used + len(short) <= max_chars:
+            parts.append(short)
+
+    digest = "".join(parts)
+    # Belt-and-suspenders: guarantee the hard cap even on a degenerate tiny budget.
+    return digest[:max_chars]
