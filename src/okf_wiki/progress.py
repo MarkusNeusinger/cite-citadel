@@ -147,9 +147,13 @@ class ConsoleProgress:
         ``\\r``; if it is wider than the terminal it wraps onto extra rows, and the ``\\r`` only
         returns to the start of the LAST row — so every repaint leaves the earlier rows on screen and
         the line appears printed over and over. Keeping it to ``width - 1`` columns (ASCII-only ``...``
-        ellipsis, per this module's no-Unicode rule) guarantees a single, cleanly overwritten row."""
-        keep = self._term_width() - 1
-        if keep <= 0 or len(text) <= keep:
+        ellipsis, per this module's no-Unicode rule) guarantees a single, cleanly overwritten row.
+
+        ``keep`` is clamped to ``>= 0`` so a degenerate / misreported width (0 or 1 columns) clips to
+        an empty string rather than falling through and emitting the full, wrap-prone line — the
+        one-row invariant must hold even then."""
+        keep = max(0, self._term_width() - 1)
+        if len(text) <= keep:
             return text
         if keep <= 3:
             return text[:keep]

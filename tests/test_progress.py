@@ -38,6 +38,21 @@ def test_paint_clips_to_terminal_width(monkeypatch):
     assert "\n" not in frame  # single row, no wrap
 
 
+def test_paint_holds_one_row_invariant_for_degenerate_widths(monkeypatch):
+    """A misreported / pathological terminal width (0 or 1 columns) must still clip to a single row
+    — it clips to empty rather than falling through and emitting the full, wrap-prone line."""
+    for width in (0, 1):
+        stream = io.StringIO()
+        prog = progress.ConsoleProgress(stream=stream)
+        monkeypatch.setattr(prog, "_term_width", lambda w=width: w)
+
+        prog._paint("x" * 200)
+
+        frame = stream.getvalue().split("\r")[-1].rstrip(" ")
+        assert frame == ""  # nothing that could wrap
+        assert "\n" not in stream.getvalue()
+
+
 def test_short_line_is_not_clipped(monkeypatch):
     """A line that already fits is left exactly as-is (no spurious ellipsis)."""
     stream = io.StringIO()
