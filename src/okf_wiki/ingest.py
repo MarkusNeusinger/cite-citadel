@@ -4,8 +4,14 @@ For each pending source the agent (``llm.run_ingest_session``) reads the raw fil
 the wiki, and **edits the wiki page files directly** — there is no ops JSON to apply. This
 module does the deterministic work around that autonomy:
 
-- **back up** ``wiki/`` first, so a failed/half-finished session is rolled back (each source
-  is all-or-nothing);
+- run the agent against a **per-source staging copy** of the wiki (a sibling directory), so the
+  **live wiki is never the agent's scratch space**: a clean session is promoted onto the live
+  wiki, and a failed or aborted (Ctrl+C) one is discarded with the live wiki untouched. The
+  promote is a non-destructive sync (copy-over then prune), so the live wiki can never be left
+  empty or half-written — not even on a flaky network share, and not even if the promote is
+  interrupted. A source is all-or-nothing in every case EXCEPT a Ctrl+C landing in the brief
+  promote itself, which can leave that one source partially applied — a superset of valid pages,
+  never an emptied or corrupt wiki — that a later full run reconciles;
 - snapshot the wiki BEFORE and AFTER the session and **diff by content hash** to learn what
   the agent created/updated/deleted (no return value needed);
 - **validate + re-stamp** every changed page (``validate.validate_page`` re-imposes required
@@ -22,6 +28,7 @@ marked done only on a clean session. ``llm.run_ingest_session`` is the single ou
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import shutil
@@ -605,17 +612,6 @@ def _repair_renames(
         store.rewrite_links(rename_map)
 
 
-def _backup_wiki() -> str | None:
-    """Copy ``wiki/`` to a fresh temp dir and return that dir (the rollback point), or None
-    if the wiki does not exist yet (first run)."""
-    src = config.WIKI_DIR
-    if not src.is_dir():
-        return None
-    tmp = tempfile.mkdtemp(prefix="okf_wiki_bak_")
-    shutil.copytree(src, os.path.join(tmp, "wiki"))
-    return tmp
-
-
 # Deleting a directory tree can transiently fail or lag when the wiki lives on a network share
 # (``OKF_WIKI_DIR`` pointing at an SMB/UNC path): a file may be momentarily locked (antivirus,
 # indexing, an open handle) or the share may still report the directory present right after its
@@ -651,27 +647,217 @@ def _robust_rmtree(path: str | os.PathLike) -> None:
         time.sleep(0.2 * (attempt + 1))
 
 
-def _restore_wiki(backup_tmp: str | None) -> None:
-    """Restore ``wiki/`` from a backup made by :func:`_backup_wiki`. If there was no backup
-    (the wiki did not exist before this source), remove whatever the agent created.
+def _sha256(path: Path) -> str:
+    """sha256 hexdigest of a file's bytes, streamed so a large page stays memory-bounded."""
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
-    The clear-then-copy is hardened for a wiki on a network share (``OKF_WIKI_DIR`` pointing at an
-    SMB/UNC path), where a directory delete can fail or lag: the removal is best-effort with retries
-    (:func:`_robust_rmtree`) and the copy uses ``dirs_exist_ok=True`` so the backup is laid back
-    down even when the old tree could not be fully cleared first — restoring the pre-session state
-    instead of aborting the run with ``FileExistsError``."""
-    dst = config.WIKI_DIR
-    _robust_rmtree(dst)
-    if backup_tmp is None:
-        return
-    shutil.copytree(os.path.join(backup_tmp, "wiki"), dst, dirs_exist_ok=True)
+
+def _files_equal(a: Path, b: Path) -> bool:
+    """True if ``b`` exists and is byte-identical to ``a`` (size short-circuit, then content hash).
+    A transient read error counts as 'not equal' so the safer path (re-copy) is taken."""
+    try:
+        if not b.exists():
+            return False
+        if a.stat().st_size != b.stat().st_size:
+            return False
+        return _sha256(a) == _sha256(b)
+    except OSError:
+        return False
+
+
+def _robust_copy_file(src: Path, dst: Path, attempts: int = _RMTREE_ATTEMPTS) -> None:
+    """Copy ``src`` -> ``dst`` ATOMICALLY: write a temp sibling, then ``os.replace`` it into place
+    (atomic on one volume), retrying the network-share hiccups that flake a single copy. If every
+    attempt fails the temp is cleaned up and the error is raised with ``dst`` LEFT UNTOUCHED — so a
+    live page is never observed truncated/half-written (the caller fails the source and retries next
+    run, keeping the page's previous content)."""
+    tmp = dst.with_name(dst.name + ".okftmp")
+    for attempt in range(attempts):
+        try:
+            shutil.copyfile(src, tmp)
+            os.replace(tmp, dst)
+            return
+        except OSError:
+            with contextlib.suppress(OSError):
+                if tmp.exists():
+                    tmp.unlink()
+            if attempt == attempts - 1:
+                raise  # leave dst as it was — never a half-written live page
+            time.sleep(0.2 * (attempt + 1))
+
+
+# Monotonic per-process counter so each staging dir gets a UNIQUE name — see _make_staging.
+_STAGING_SEQ = 0
+
+
+def _staging_prefix(live: Path) -> str:
+    """The shared filename prefix of this wiki's staging siblings (``.<name>.staging.``)."""
+    return f".{live.name}.staging."
+
+
+def _make_staging(live: Path) -> Path:
+    """Create a fresh STAGING copy of the live wiki and return its path.
+
+    Staging is a SIBLING of the live wiki (same parent, same depth) — never a system temp dir —
+    so every relative citation/cross-link the agent writes (``../../raw/x.md`` and page-to-page
+    links) resolves identically before and after the promote. The agent edits this copy, so the
+    live wiki is never the scratch space.
+
+    The staging name is UNIQUE per call (pid + a monotonic counter), so a copy can NEVER merge into
+    leftover content from a crashed run and resurrect pages that were deleted — the live wiki is
+    always copied into a brand-new directory. Stale staging siblings from earlier crashes are swept
+    best-effort first (they are inert dotfiles, but we don't let them pile up). On a copy failure the
+    partial staging is cleaned up before the error propagates (the caller reports it and the live
+    wiki is untouched). When the live wiki does not exist yet (first run) staging starts empty."""
+    global _STAGING_SEQ
+    parent = live.parent
+    prefix = _staging_prefix(live)
+    # Best-effort sweep of leftovers from prior crashed runs (this tool ingests one run at a time).
+    with contextlib.suppress(OSError):
+        for sibling in parent.iterdir():
+            if sibling.name.startswith(prefix):
+                _robust_rmtree(sibling)
+    _STAGING_SEQ += 1
+    staging = parent / f"{prefix}{os.getpid()}.{_STAGING_SEQ}"
+    _robust_rmtree(staging)  # paranoia: clear an identical-named leftover before a clean copy
+    try:
+        if live.is_dir():
+            # Skip any half-written *.okftmp left in live by an interrupted promote, so a stray
+            # temp never rides along into staging (and back out again).
+            shutil.copytree(
+                live, staging, dirs_exist_ok=True, ignore=shutil.ignore_patterns("*.okftmp")
+            )
+        else:
+            config.robust_mkdir(staging)
+    except OSError:
+        _robust_rmtree(staging)
+        raise
+    return staging
+
+
+@contextlib.contextmanager
+def _redirect_wiki(staging: Path):
+    """Point every wiki-derived config path — and ``OKF_WIKI_DIR`` for child processes (the agentic
+    CLI and the ``okf-wiki check`` it shells out to) — at ``staging`` for the duration of one
+    session, so the agent reads/writes/validates the STAGING copy rather than the live wiki. The
+    raw/docs dirs are left untouched. Everything is restored on exit (including an originally-unset
+    ``OKF_WIKI_DIR``), so the redirect is invisible to the surrounding run."""
+    staging = Path(staging)
+    saved = (config.WIKI_DIR, config.INDEX_PATH, config.LOG_PATH, config.MANIFEST_PATH)
+    env_had = "OKF_WIKI_DIR" in os.environ
+    env_prev = os.environ.get("OKF_WIKI_DIR")
+    config.WIKI_DIR = staging
+    config.INDEX_PATH = staging / "index.md"
+    config.LOG_PATH = staging / "log.md"
+    config.MANIFEST_PATH = staging / ".okf_ingested.json"
+    os.environ["OKF_WIKI_DIR"] = str(staging)
+    try:
+        yield
+    finally:
+        config.WIKI_DIR, config.INDEX_PATH, config.LOG_PATH, config.MANIFEST_PATH = saved
+        if env_had:
+            os.environ["OKF_WIKI_DIR"] = env_prev  # type: ignore[assignment]
+        else:
+            os.environ.pop("OKF_WIKI_DIR", None)
+
+
+def _is_reserved_name(name: str) -> bool:
+    """True for files the promote must NOT sync: the generated nav files (``index.md``/``log.md`` at
+    any level), any dotfile (the ``.okf_ingested.json`` manifest, etc.), and a half-written
+    ``*.okftmp`` temp. Finalize regenerates the indexes and the ingest loop owns the manifest, so a
+    per-source promote never lays a stale one down."""
+    return name.startswith(".") or name in ("index.md", "log.md") or name.endswith(".okftmp")
+
+
+def _content_files(root: Path) -> dict[str, Path]:
+    """Map ``relposix -> abs path`` for every non-reserved file under ``root`` (skipping hidden
+    dirs and :func:`_is_reserved_name` files) — the agent-authored content a promote syncs."""
+    out: dict[str, Path] = {}
+    if not Path(root).is_dir():
+        return out
+    for dirpath, dirnames, files in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        for name in files:
+            if _is_reserved_name(name):
+                continue
+            p = Path(dirpath) / name
+            out[p.relative_to(root).as_posix()] = p
+    return out
+
+
+def _promote(staging: Path, live: Path, allow_emptying: bool = False) -> None:
+    """Copy a validated STAGING wiki's CONTENT onto the LIVE wiki WITHOUT ever emptying or
+    half-writing it.
+
+    Only the agent-authored content pages are synced — the generated ``index.md``/``log.md`` and the
+    manifest are excluded (finalize regenerates the indexes; the loop owns the manifest), so a
+    promote never lays a stale index down. Non-destructive order: every changed/new page is written
+    into live FIRST (each atomically, via :func:`_robust_copy_file`), so at every instant the live
+    wiki holds at least its previous content; only THEN are the pages the agent deleted pruned. A
+    promote interrupted partway therefore leaves live a SUPERSET of valid pages — never an empty or
+    corrupt tree — which a later full run reconciles. Directory creation tolerates the network
+    share's WinError 183 race.
+
+    Safety valve: an ingest/reconcile session must never reduce the live wiki to ZERO content pages.
+    If staging carries no content page (a buggy/looping/adversarial session that deleted everything)
+    while the live wiki has some, the promote is REFUSED — raising so the caller fails the source and
+    retries it next run, with the live wiki left exactly as it was rather than emptied.
+    ``allow_emptying`` lifts that guard for a ``delete`` cleanup, where removing the last source's
+    only page legitimately leaves the wiki empty."""
+    staging, live = Path(staging), Path(live)
+    config.robust_mkdir(live)
+
+    staging_content = _content_files(staging)
+    live_content = _content_files(live)
+
+    staging_pages = [r for r in staging_content if r.endswith(".md")]
+    live_pages = [r for r in live_content if r.endswith(".md")]
+    if not allow_emptying and not staging_pages and live_pages:
+        raise okf.OKFError(
+            "refusing to promote: the session left the wiki with no content pages "
+            "(treated as a failed source so the live wiki is not emptied)"
+        )
+
+    # 1. Copy-over FIRST (atomic per page, only when the bytes differ).
+    for rel, src in staging_content.items():
+        dst = live / rel
+        if not _files_equal(src, dst):
+            config.robust_mkdir(dst.parent)
+            _robust_copy_file(src, dst)
+
+    # 2. Prune the content pages the agent deleted (reserved/generated files are left untouched).
+    for rel in set(live_content) - set(staging_content):
+        with contextlib.suppress(OSError):
+            (live / rel).unlink()
+
+    # 3. Best-effort sweep of any leftover *.okftmp from an earlier promote that was hard-killed
+    #    between copyfile and os.replace. They are excluded from sync AND prune (reserved), so
+    #    without this they could linger on the live wiki indefinitely.
+    with contextlib.suppress(OSError):
+        for tmp in live.rglob("*.okftmp"):
+            with contextlib.suppress(OSError):
+                tmp.unlink()
+
+    # 4. Drop directories left empty by the prune (bottom-up), but keep the live root itself.
+    for dirpath, _dirs, _files in os.walk(live, topdown=False):
+        d = Path(dirpath)
+        if d == live:
+            continue
+        with contextlib.suppress(OSError):
+            if not any(d.iterdir()):
+                d.rmdir()
 
 
 @dataclass
 class _SourceOutcome:
     """Result of one agent-driven source (ingest / reconcile / delete). ``ok`` means the edit
-    was validated and committed to disk (the caller still updates the manifest + report);
-    ``ok is False`` means the wiki was already rolled back and ``errors`` says why."""
+    was validated and promoted onto the live wiki (the caller still updates the manifest + report);
+    ``ok is False`` means nothing was promoted — the live wiki is unchanged — and ``errors`` says
+    why."""
 
     ok: bool
     created: list[str] = field(default_factory=list)
@@ -682,64 +868,74 @@ class _SourceOutcome:
 
 
 def _run_one_agent_session(
-    session_fn, rel_key: str, extra_check=None
+    session_fn, rel_key: str, extra_check=None, allow_emptying: bool = False
 ) -> _SourceOutcome:
-    """Run ONE agent session against ``wiki/`` with full all-or-nothing safety, shared by the
-    pending (ingest/reconcile) and deletion-cleanup loops.
+    """Run ONE agent session with full all-or-nothing safety, shared by the pending
+    (ingest/reconcile) and deletion-cleanup loops.
 
-    Backs up ``wiki/``, snapshots it, calls ``session_fn()`` (the agent edits files directly),
-    diffs to learn what changed, validates + re-stamps the changed pages, repoints renamed-page
-    links, and runs an optional ``extra_check()`` post-condition (used by deletion cleanup to
-    assert no reference to the removed source survived). On ANY failure — a validation error, a
-    failed post-condition, or an exception from the session — the wiki is rolled back to its
-    pre-session state and ``ok`` is False; the caller leaves the source un-committed so it is
-    retried next run. A propagating ``BaseException`` (Ctrl+C) is rolled back by the ``finally``
-    and then re-raised for the caller's loop to capture. The caller owns the manifest + report
-    bookkeeping (different for a completed source vs. a removed one)."""
+    Makes a STAGING copy of the live wiki (a sibling dir), redirects the agent + its ``okf-wiki
+    check`` there, snapshots staging, calls ``session_fn()`` (the agent edits the STAGING copy —
+    never the live wiki), diffs to learn what changed, validates + re-stamps the changed pages,
+    repoints renamed-page links, and runs an optional ``extra_check()`` post-condition (used by
+    deletion cleanup to assert no reference to the removed source survived). Only on a CLEAN session
+    is staging promoted onto the live wiki (a non-destructive copy-over-then-prune that can never
+    empty or half-write it). On ANY failure — a validation error, a failed post-condition, or an
+    exception from the session — the live wiki is left exactly as it was and ``ok`` is False; the
+    caller leaves the source un-committed so it is retried next run. A propagating ``BaseException``
+    (Ctrl+C) during the session likewise leaves the live wiki untouched (nothing is promoted); during
+    the brief promote it can leave that ONE source partially applied — a SUPERSET of valid pages,
+    never an emptied wiki — which a later full run reconciles. Either way it re-raises for the
+    caller's loop to capture. Staging is always discarded in ``finally``. The caller owns the
+    manifest + report bookkeeping (different for a completed source vs. a removed one)."""
     started = time.monotonic()
-    backup: str | None = None
-    succeeded = False
+    live = config.WIKI_DIR
+    staging: Path | None = None
     created: list[str] = []
     updated: list[str] = []
     deleted: list[str] = []
     try:
-        backup = _backup_wiki()
-        before_pages = store.load()
-        before = _hash_pages(before_pages)
+        staging = _make_staging(live)
+        with _redirect_wiki(staging):
+            before_pages = store.load()
+            before = _hash_pages(before_pages)
 
-        session_fn()  # the agent edits wiki/ directly
+            session_fn()  # the agent edits the STAGING copy, never the live wiki
 
-        after = _snapshot()
-        created, updated, deleted = _diff(before, after)
+            after = _snapshot()
+            created, updated, deleted = _diff(before, after)
 
-        val_errors = _validate_and_restamp(created + updated, rel_key)
-        if val_errors:
-            return _SourceOutcome(False, errors=val_errors, seconds=time.monotonic() - started)
-
-        _repair_renames(before_pages, created, deleted)
-
-        if extra_check is not None:
-            post_errors = extra_check()
-            if post_errors:
+            val_errors = _validate_and_restamp(created + updated, rel_key)
+            if val_errors:
                 return _SourceOutcome(
-                    False, created, updated, deleted, post_errors, time.monotonic() - started
+                    False, errors=val_errors, seconds=time.monotonic() - started
                 )
 
-        succeeded = True
+            _repair_renames(before_pages, created, deleted)
+
+            if extra_check is not None:
+                post_errors = extra_check()
+                if post_errors:
+                    return _SourceOutcome(
+                        False, created, updated, deleted, post_errors, time.monotonic() - started
+                    )
+
+        # Clean session: commit it onto the live wiki (config now points back at live). This is the
+        # ONLY step that touches the live wiki, and it is non-destructive — so an interrupt here
+        # still cannot empty it.
+        _promote(staging, live, allow_emptying=allow_emptying)
         return _SourceOutcome(
             True, created, updated, deleted, [], time.monotonic() - started
         )
-    except Exception as exc:  # noqa: BLE001 - collect per-source, roll back (finally), keep going
+    except Exception as exc:  # noqa: BLE001 - collect per-source, keep going; live wiki untouched
         return _SourceOutcome(
             False, errors=[f"{rel_key}: {exc}"], seconds=time.monotonic() - started
         )
     finally:
-        # Single rollback point for every non-success exit — the validation-error/post-condition
-        # returns, an ordinary Exception, and a propagating BaseException (Ctrl+C) all pass here.
-        if not succeeded:
-            _restore_wiki(backup)
-        if backup:
-            shutil.rmtree(backup, ignore_errors=True)
+        # Discard staging on every exit (a clean session already promoted it; a failed or
+        # interrupted one never touched the live wiki). A flaky share that refuses the delete only
+        # leaves an inert sibling for the next run to clear — the live wiki is never at risk.
+        if staging is not None:
+            _robust_rmtree(staging)
 
 
 def _office_write_temp(text: str, name: str) -> tuple[str, str]:
@@ -783,13 +979,14 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
     logged and marked done, never fed to the agent) / **deleted** (a tracked source that
     vanished from disk — full runs only).
 
-    Per pending source: back up the wiki, snapshot it, run the agent (which edits ``wiki/``
-    directly), snapshot again, diff to learn what changed, validate + re-stamp the changed pages,
-    and repoint any renamed-page links. A source already tracked in the manifest but with new
+    Per pending source: run the agent against a per-source STAGING copy of the wiki (a sibling
+    dir), snapshot it before/after, diff to learn what changed, validate + re-stamp the changed
+    pages, repoint any renamed-page links, and — only on a clean session — promote staging onto the
+    live wiki with a non-destructive sync. A source already tracked in the manifest but with new
     bytes is a re-ingest, run with ``kind="reconcile"`` so the agent UPDATES/REMOVES the stale
     facts it produced rather than only appending. On a per-source exception (a missing/unusable
-    CLI, a timeout, etc.) the wiki is rolled back to its pre-source state and the error is
-    collected, so the source is retried next run.
+    CLI, a timeout, etc.) — or a Ctrl+C — nothing is promoted, so the live wiki is left exactly as
+    it was and the error is collected, so the source is retried next run.
 
     Per deleted source (full run only): if any wiki page still cites it, run a ``kind="delete"``
     cleanup session that strips those facts/citations, gated by a post-condition that the wiki no
@@ -1081,6 +1278,9 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                         f"{k}: still cited by {p} after cleanup"
                         for p in store.find_raw_references(k)
                     ],
+                    # A delete cleanup MAY legitimately remove the last source's only page, leaving
+                    # the wiki empty — so the anti-emptying valve does not apply here.
+                    allow_emptying=True,
                 )
             except BaseException as exc:  # noqa: BLE001 - Ctrl+C: helper rolled back; re-raise later
                 pending_interrupt = exc

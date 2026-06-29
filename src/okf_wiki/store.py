@@ -135,7 +135,7 @@ def write_page(rel_path: str, frontmatter: dict, body: str) -> Page:
     write okf.dump(frontmatter, body). Return the Page. Overwrites if exists."""
     okf.validate(frontmatter)
     target = okf.safe_join(config.WIKI_DIR, rel_path)
-    target.parent.mkdir(parents=True, exist_ok=True)
+    config.robust_mkdir(target.parent)
     frontmatter = dict(frontmatter)
     frontmatter["timestamp"] = utc_now_iso()
     target.write_text(okf.dump(frontmatter, body), encoding="utf-8")
@@ -528,7 +528,7 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
     sources_body = _render_sources_catalog(manifest_dict, pages)
     sources_path = config.WIKI_DIR / SOURCES_INDEX_REL
     if sources_body is not None:
-        sources_path.parent.mkdir(parents=True, exist_ok=True)
+        config.robust_mkdir(sources_path.parent)
         sources_path.write_text(sources_body, encoding="utf-8")
     elif sources_path.exists():
         sources_path.unlink()
@@ -612,7 +612,7 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
         lines.append("")
 
     body = "\n".join(lines).rstrip("\n") + "\n"
-    config.WIKI_DIR.mkdir(parents=True, exist_ok=True)
+    config.robust_mkdir(config.WIKI_DIR)
     (config.WIKI_DIR / "index.md").write_text(body, encoding="utf-8")
 
     # ----- per-directory index.md (also frontmatter-free) -----
@@ -625,7 +625,7 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
         flines.append("")
         fbody = "\n".join(flines).rstrip("\n") + "\n"
         folder_dir = config.WIKI_DIR / folder
-        folder_dir.mkdir(parents=True, exist_ok=True)
+        config.robust_mkdir(folder_dir)
         (folder_dir / "index.md").write_text(fbody, encoding="utf-8")
 
 
@@ -635,7 +635,7 @@ def append_log(line: str) -> None:
     convention). A new date heading is opened the first time a given UTC day is logged;
     prior lines are never rewritten (append-only audit trail)."""
     log_path = config.LOG_PATH
-    log_path.parent.mkdir(parents=True, exist_ok=True)
+    config.robust_mkdir(log_path.parent)
     now = datetime.now(timezone.utc)
     day, stamp = now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%SZ")
     existing = log_path.read_text(encoding="utf-8") if log_path.exists() else ""
