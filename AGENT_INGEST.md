@@ -114,12 +114,27 @@ Body in GitHub-flavored markdown...
 
 - **Do NOT write a `timestamp` field** — the system stamps it on every write.
 - **Never put a second `---` YAML block inside the body.** The body is markdown only.
-- **Folder routing**: `type: Concept` → `wiki/concepts/`, `type: Entity` → `wiki/entities/`,
-  `type: Abbreviation` → `wiki/abbreviations/`, `type: System` → `wiki/systems/`, anything else →
-  `wiki/misc/`. Use `type: System` for an external system/service/tool a source touches — a
-  database, API, queue, or product (SAP, PLM, Postgres); these pages accumulate across sources and
-  are kept separate from `entities/`. **Filename** is the slug of the title: lowercase, runs of
-  non-alphanumeric → `-`, trimmed (e.g. title `Self-Attention` → `wiki/concepts/self-attention.md`).
+- **Folder routing** — pick the `type` by **kind**, so every page has exactly one home. Decide by
+  asking in order; the **first rule that matches wins**:
+  1. Short form / acronym with an expansion? → `type: Abbreviation` → `wiki/abbreviations/`
+  2. A specific named human? → `type: Person` → `wiki/persons/`
+  3. A specific named company/institution/team? → `type: Organization` → `wiki/organizations/`
+  4. A specific named initiative/effort with a goal? → `type: Project` → `wiki/projects/`
+  5. An external **software/IT** system/service the source connects to or uses (DB, API, queue,
+     SaaS, library — SAP, PLM, Postgres)? → `type: System` → `wiki/systems/` (these accumulate
+     across sources — one growing page per system)
+  6. A physical/engineered thing you could **touch** (product, assembly, component, part, material,
+     device — car, engine, steering, an apple)? → `type: Object` → `wiki/objects/`
+  7. A principle/method/phenomenon/topic (not one specific named thing)? → `type: Concept` →
+     `wiki/concepts/`
+  8. A genuine leftover only (Note, Metric, Event, Place)? → any other `type` → `wiki/misc/` —
+     last resort, never a shortcut.
+
+  Do **not** use `type: Entity` — it is the deprecated old catch-all; split it into
+  Object/Person/Organization/Project/System above. Hierarchy ("steering is part of the car") is
+  expressed with **cross-links**, not nested folders — each thing is its own page. **Filename** is
+  the slug of the title: lowercase, runs of non-alphanumeric → `-`, trimmed (e.g. title
+  `Self-Attention` → `wiki/concepts/self-attention.md`).
 
 ## Citations — every fact, every page (load-bearing)
 

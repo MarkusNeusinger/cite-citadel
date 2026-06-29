@@ -39,12 +39,15 @@ authoritative rules — that file is also injected verbatim into the ingest mode
 
 1. **`raw/`** — immutable sources. You drop arbitrary `.md` here; ingest reads them but never
    edits them. The seed articles in `docs/` are also ingestable on demand.
-2. **`wiki/`** — the LLM-owned OKF bundle: markdown pages with YAML frontmatter, routed into
-   `concepts/`, `entities/`, `abbreviations/`, `systems/` (external systems/tools a source touches —
-   databases, APIs, services like SAP/PLM), and `misc/`, cross-linked with relative links, each fact carrying
-   a footnote citation to its `raw/` source. The two OKF-reserved files are generated, not
-   authored, and per OKF carry **no frontmatter**: `index.md` (catalog + backlinks + a `## Tags`
-   section) and an append-only `log.md` with `## YYYY-MM-DD` headings.
+2. **`wiki/`** — the LLM-owned OKF bundle: markdown pages with YAML frontmatter, routed **by kind**
+   into `concepts/` (principles/topics), `objects/` (physical/engineered things — a car, engine,
+   steering, an apple), `systems/` (external software systems/services a source connects to —
+   databases, APIs, SAP/PLM), `persons/`, `organizations/`, `projects/`, `abbreviations/`, and
+   `misc/`, cross-linked with relative links, each fact carrying a footnote citation to its `raw/`
+   source. Every page has exactly one home via a first-match-wins decision procedure (see
+   [`SCHEMA.md`](SCHEMA.md)). The OKF-reserved files are generated, not authored, and per OKF carry
+   **no frontmatter**: `index.md` (catalog + backlinks + a `## Tags` section), an append-only
+   `log.md` with `## YYYY-MM-DD` headings, and `sources/index.md` (the by-source provenance axis).
 3. **[`SCHEMA.md`](SCHEMA.md)** — the schema/config layer: allowed types, folder routing,
    the per-fact provenance grammar, cross-linking and contradiction conventions. Editing it
    changes how the wiki is built with **no code change**.
@@ -171,8 +174,9 @@ use it, what it does, how it does it (the data flow), and what it outputs** — 
 code is irrelevant, capturing short usage snippets (a connection call, the key transform command,
 an env var) where the code itself is the fact, not a transcription. Every **external system** the
 repo touches — a database, API, service, or tool like SAP/PLM — gets a `type: System` page under
-`wiki/systems/` (a category separate from `entities/`) that **accumulates across sources**, so a DB
-used by several repos becomes one growing page. The repo is tracked by its **HEAD commit** in the
+`wiki/systems/` (the software/IT axis, separate from the physical `objects/` and the
+`organizations/` that vend them) that **accumulates across sources**, so a DB used by several repos
+becomes one growing page. The repo is tracked by its **HEAD commit** in the
 manifest, so a later commit **re-ingests only the diff** (`git diff` between the stored commit and
 HEAD); deleting the folder reconciles its citations out like any removed source. Set
 `OKF_REPO_SUPPORT=0` to fall back to the per-file walk.

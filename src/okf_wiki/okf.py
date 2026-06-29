@@ -115,24 +115,41 @@ def slugify(title: str) -> str:
 
 
 def folder_for_type(type_: str) -> str:
-    """``'Concept'`` -> ``'concepts'``, ``'Entity'`` -> ``'entities'``,
-    ``'Abbreviation'`` -> ``'abbreviations'``, ``'System'`` -> ``'systems'``,
-    everything else -> ``'misc'``. Case-insensitive on the known types.
+    """Route an OKF ``type`` to its wiki sub-folder. Case-insensitive on the known types;
+    every unknown type falls through to ``misc``.
 
-    ``System`` is the category for an external system, service, or tool a source touches —
-    a database, API, queue, or product like SAP/PLM. These pages accumulate across sources
-    (a DB used by several repos gets ONE growing page) and are kept SEPARATE from ``entities``
-    (people/orgs/projects), so the operational systems are browsable on their own axis."""
+    | ``type``         | folder            |
+    | ---------------- | ----------------- |
+    | ``Concept``      | ``concepts``      |
+    | ``Object``       | ``objects``       |
+    | ``System``       | ``systems``       |
+    | ``Person``       | ``persons``       |
+    | ``Organization`` | ``organizations`` |
+    | ``Project``      | ``projects``      |
+    | ``Abbreviation`` | ``abbreviations`` |
+    | ``Entity`` (legacy) | ``entities``   |
+    | anything else    | ``misc``          |
+
+    The set is split **by kind** so every page has exactly one home and even a small model can
+    route without guessing (the "can you touch it?" test: a physical/engineered thing — a part,
+    product, material, or device — is an ``Object``; a principle/method/topic is a ``Concept``; an
+    external software system/service a source connects to — DB, API, queue, library — is a
+    ``System``). ``Person``/``Organization``/``Project`` replace the old overloaded ``Entity``
+    ("person, org, project, tool"). ``Entity`` is still routed to ``entities`` as a tolerated
+    **legacy alias** so old pages keep working, but it should no longer be produced. The British
+    spelling ``Organisation`` is accepted as an alias of ``Organization``."""
     normalized = (type_ or "").strip().lower()
-    if normalized == "concept":
-        return "concepts"
-    if normalized == "entity":
-        return "entities"
-    if normalized == "abbreviation":
-        return "abbreviations"
-    if normalized == "system":
-        return "systems"
-    return "misc"
+    return {
+        "concept": "concepts",
+        "object": "objects",
+        "system": "systems",
+        "person": "persons",
+        "organization": "organizations",
+        "organisation": "organizations",  # British spelling — same folder
+        "project": "projects",
+        "abbreviation": "abbreviations",
+        "entity": "entities",  # legacy alias — superseded by object/person/organization/project
+    }.get(normalized, "misc")
 
 
 # Title separators between an abbreviation's short form and its expansion, e.g.
