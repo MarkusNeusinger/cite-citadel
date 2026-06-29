@@ -20,6 +20,7 @@ NOTE: other modules reference ``config.WIKI_DIR`` / ``config.INGEST_MODEL`` /
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
 
@@ -134,6 +135,29 @@ def is_outside_repo(path: Path | str) -> bool:
         return False
     except ValueError:
         return True
+
+
+def robust_mkdir(path: Path | str, attempts: int = 5) -> None:
+    """``Path(path).mkdir(parents=True, exist_ok=True)`` hardened for a wiki on a network share.
+
+    A UNC/SMB path can momentarily report an existing directory as *not* a directory (e.g. right
+    after a sibling tree was deleted), so ``os.mkdir`` raises ``FileExistsError`` (Windows error
+    183) and pathlib re-raises it even though ``exist_ok=True`` — because its ``self.is_dir()``
+    re-check transiently returns False. The directory IS present in that case, which is exactly the
+    post-condition we want, so the error is treated as success rather than crashing the run (this is
+    the ``rebuild_indexes`` mkdir that aborted a long ingest mid-finalize). Other transient
+    ``OSError``s are retried a few times before being re-raised."""
+    p = Path(path)
+    for attempt in range(attempts):
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+            return
+        except FileExistsError:
+            return  # the directory exists — goal achieved (transient is_dir() race on the share)
+        except OSError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(0.2 * (attempt + 1))
 
 SCHEMA_PATH: Path = REPO_ROOT / "SCHEMA.md"
 # The direct-edit ingest rules the agentic CLI reads (by path) each run. Referenced in

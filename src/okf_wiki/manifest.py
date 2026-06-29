@@ -138,7 +138,7 @@ def save(manifest: dict[str, Entry]) -> None:
     """json.dump(manifest, sort_keys=True, indent=2) to MANIFEST_PATH (+ trailing
     newline)."""
     path = config.MANIFEST_PATH
-    path.parent.mkdir(parents=True, exist_ok=True)
+    config.robust_mkdir(path.parent)
     text = json.dumps(manifest, sort_keys=True, indent=2) + "\n"
     path.write_text(text, encoding="utf-8")
 

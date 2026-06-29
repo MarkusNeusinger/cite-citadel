@@ -902,12 +902,10 @@ def test_robust_rmtree_retries_then_succeeds(tmp_path, monkeypatch):
 
 
 def test_rollback_survives_undeletable_wiki_on_network_share(tmp_path, monkeypatch):
-    """Regression for the WinError 183 crash: when wiki/ lives on a network share, the rollback's
-    directory delete can fail while the share keeps reporting the dir present. The old code used
-    ``rmtree(ignore_errors=True)``, which swallowed that failure, so the follow-up ``copytree``
-    crashed with ``FileExistsError`` inside the ``finally`` — masking the real session error and
-    aborting the whole run. The rollback must instead lay the backup back down over the surviving
-    directory without raising."""
+    """Regression for the WinError 183 crash that emptied a wiki on a network share. The agent now
+    edits a STAGING sibling, so a failed session never touches the live wiki — and even when the
+    share refuses to delete a directory (here: the live wiki dir), the run reports the real session
+    error rather than crashing, and the pre-existing page is left intact."""
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
     _seed_page(
         wiki, "concepts/keep.md",
@@ -1678,3 +1676,179 @@ def test_moved_source_carries_original_importing_model(tmp_path, monkeypatch):
     catalog = (wiki / "sources" / "index.md").read_text(encoding="utf-8")
     assert "[raw/ml/notes.md](../../raw/ml/notes.md)" in catalog
     assert "claude:opus" in catalog
+
+
+# --- staging / promote: the live wiki is never the agent's scratch space -----------------
+
+
+def test_robust_mkdir_swallows_fileexists_race(tmp_path, monkeypatch):
+    """``config.robust_mkdir`` treats a ``FileExistsError`` as success: a network share can report
+    an existing directory as not-a-dir for a moment, so ``mkdir(exist_ok=True)`` still raises
+    WinError 183 even though the directory is present. That race aborted a long ingest in
+    ``rebuild_indexes``; it must now be a no-op."""
+    target = tmp_path / "wiki"
+    target.mkdir()
+
+    real_mkdir = Path.mkdir
+
+    def flaky_mkdir(self, *args, **kwargs):
+        if self == target:
+            raise FileExistsError(183, "Cannot create a file when that file already exists")
+        return real_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", flaky_mkdir)
+    config.robust_mkdir(target)            # must NOT raise
+    assert target.is_dir()
+
+
+def test_rebuild_indexes_survives_fileexists_on_share(tmp_path, monkeypatch):
+    """The exact reported crash: ``rebuild_indexes`` did ``WIKI_DIR.mkdir(...)`` which threw
+    WinError 183 on the share and aborted the whole run. With the robust mkdir it finishes and the
+    index is written; the wiki content is never lost."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _seed_page(
+        wiki, "concepts/keep.md",
+        {"type": "Concept", "title": "Keep", "description": "d", "tags": ["x"], "resource": "raw/o.md"},
+        "Keep me.[^s1]\n\n## Sources\n\n[^s1]: [raw/o.md](../../raw/o.md) - o\n",
+    )
+
+    real_mkdir = Path.mkdir
+
+    def flaky_mkdir(self, *args, **kwargs):
+        if self.resolve() == wiki.resolve():
+            raise FileExistsError(183, "Cannot create a file when that file already exists")
+        return real_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", flaky_mkdir)
+
+    store.rebuild_indexes()                # used to raise FileExistsError out of finalize
+    assert "keep.md" in (wiki / "index.md").read_text(encoding="utf-8")
+    assert (wiki / "concepts" / "keep.md").exists()
+
+
+def test_agent_edits_staging_sibling_not_live(tmp_path, monkeypatch):
+    """During a session the agent writes to a STAGING copy that is a SIBLING of the live wiki (same
+    parent, same depth — so its relative citation links stay valid), and the live wiki is untouched
+    until the clean session is promoted."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+    seen = {}
+
+    def fake(rel_key, kind="ingest"):
+        staging = config.WIKI_DIR
+        seen["staging"] = staging
+        seen["is_sibling"] = staging != wiki and staging.parent == wiki.parent
+        # The live wiki must not yet hold this page while the agent is mid-session.
+        seen["live_clean_midsession"] = not (wiki / "concepts" / "transformer.md").exists()
+        _agent_write(
+            "concepts/transformer.md",
+            {"type": "Concept", "title": "T", "description": "d", "tags": ["ml"], "resource": "raw/notes.md"},
+            "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/notes.md](../../raw/notes.md) - n\n",
+        )
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    report = ingest.ingest([str(raw / "notes.md")])
+
+    assert not report.errors
+    assert seen["is_sibling"]                       # staging is a sibling of live, not a temp dir
+    assert seen["live_clean_midsession"]            # live untouched while the agent worked
+    assert (wiki / "concepts" / "transformer.md").exists()   # promoted after a clean session
+    assert config.WIKI_DIR == wiki                  # redirect restored
+    import os as _os
+    assert "OKF_WIKI_DIR" not in _os.environ        # env restored (was unset)
+    # No staging sibling left behind.
+    assert not any(p.name.startswith(".wiki.staging") for p in wiki.parent.iterdir())
+
+
+def test_failed_session_leaves_live_wiki_byte_identical(tmp_path, monkeypatch):
+    """A session that fails mid-way must leave the live wiki EXACTLY as it was — even when the share
+    refuses to delete a directory (the case that used to empty the wiki). The agent's partial page
+    lands only in staging and is discarded; nothing the agent did reaches the live wiki."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _seed_page(
+        wiki, "concepts/keep.md",
+        {"type": "Concept", "title": "Keep", "description": "d", "tags": ["x"], "resource": "raw/o.md"},
+        "Keep me.[^s1]\n\n## Sources\n\n[^s1]: [raw/o.md](../../raw/o.md) - o\n",
+    )
+    (raw / "o.md").write_text("x\n", encoding="utf-8")
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+    keep = wiki / "concepts" / "keep.md"
+    before_bytes = keep.read_bytes()
+    before_mtime = keep.stat().st_mtime_ns
+
+    # The share "fails" to delete any directory under the live wiki's parent (staging cleanup),
+    # exactly the flakiness that broke the old rollback. Local temp dirs still delete normally.
+    real_rmtree = ingest.shutil.rmtree
+
+    def flaky_rmtree(path, *args, **kwargs):
+        if str(Path(path).resolve()).startswith(str(wiki.parent.resolve())):
+            return  # share refuses the delete and reports nothing
+        return real_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(ingest.shutil, "rmtree", flaky_rmtree)
+    monkeypatch.setattr(ingest.time, "sleep", lambda *_: None)
+
+    def fake(rel_key, kind="ingest"):
+        _agent_write(
+            "concepts/partial.md",
+            {"type": "Concept", "title": "Partial", "description": "d", "tags": ["x"], "resource": "raw/notes.md"},
+            "Half.[^s1]\n\n## Sources\n\n[^s1]: [raw/notes.md](../../raw/notes.md) - n\n",
+        )
+        raise RuntimeError("boom mid-session")
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    report = ingest.ingest([str(raw / "notes.md")])
+
+    assert any("boom mid-session" in e for e in report.errors)
+    assert "raw/notes.md" not in report.processed
+    assert keep.read_bytes() == before_bytes        # untouched, byte for byte
+    assert keep.stat().st_mtime_ns == before_mtime  # not even rewritten
+    assert not (wiki / "concepts" / "partial.md").exists()   # agent's partial never reached live
+
+
+def test_promote_syncs_changed_and_pruned(tmp_path):
+    """``_promote`` brings live to match staging: new + changed files are copied, removed files are
+    pruned, and empty directories are dropped — while files already identical are left alone."""
+    live = tmp_path / "wiki"
+    staging = tmp_path / ".wiki.staging"
+    for d in (live / "concepts", staging / "concepts"):
+        d.mkdir(parents=True)
+    (live / "concepts" / "a.md").write_text("A1", encoding="utf-8")    # will change
+    (live / "concepts" / "same.md").write_text("S", encoding="utf-8")  # identical -> untouched
+    (live / "gone" ).mkdir()
+    (live / "gone" / "x.md").write_text("X", encoding="utf-8")         # pruned
+    (staging / "concepts" / "a.md").write_text("A2", encoding="utf-8")
+    (staging / "concepts" / "same.md").write_text("S", encoding="utf-8")
+    (staging / "concepts" / "new.md").write_text("N", encoding="utf-8")  # created
+
+    ingest._promote(staging, live)
+
+    assert (live / "concepts" / "a.md").read_text(encoding="utf-8") == "A2"
+    assert (live / "concepts" / "new.md").read_text(encoding="utf-8") == "N"
+    assert (live / "concepts" / "same.md").read_text(encoding="utf-8") == "S"
+    assert not (live / "gone" / "x.md").exists()    # pruned
+    assert not (live / "gone").exists()             # emptied dir dropped
+
+
+def test_promote_is_non_destructive_on_copy_failure(tmp_path, monkeypatch):
+    """If a copy fails partway through a promote, the live wiki keeps its previous pages — the
+    copy-over runs before any prune, so live is never emptied even on a mid-promote error."""
+    live = tmp_path / "wiki"
+    staging = tmp_path / ".wiki.staging"
+    for d in (live, staging):
+        d.mkdir(parents=True)
+    (live / "keep.md").write_text("KEEP", encoding="utf-8")
+    (staging / "keep.md").write_text("KEEP2", encoding="utf-8")  # a change the agent made
+    (staging / "more.md").write_text("MORE", encoding="utf-8")
+
+    def boom(src, dst, *a, **k):
+        raise OSError("share dropped mid-copy")
+
+    monkeypatch.setattr(ingest, "_robust_copy_file", boom)
+
+    with pytest.raises(OSError):
+        ingest._promote(staging, live)
+
+    # The original page is still there: the prune phase never ran, so nothing was lost.
+    assert (live / "keep.md").read_text(encoding="utf-8") == "KEEP"
+    assert any(live.iterdir())                      # live is NOT empty
