@@ -4,8 +4,11 @@ A spinner + per-file status line so a slow multi-file ingest (one LLM CLI call p
 shows how far along it is instead of looking hung. Deliberately **ASCII-only and ANSI-free**
 so it is safe on any Windows console code page — the same cp1252 boxes that hit
 ``UnicodeDecodeError`` before would choke on braille spinners / box-drawing. On a TTY it
-animates a spinner with elapsed time on one rewritten line; on a non-TTY (piped / CI) it
-degrades to one plain line per file. The spinner runs on a daemon thread while the blocking
+animates a spinner with elapsed time on one rewritten line — **clipped to the terminal width**
+so a long source path can never wrap onto extra rows (a wrapped line defeats the ``\r`` rewrite
+and stacks a fresh copy of itself on every repaint); on a non-TTY (piped / CI) it degrades to
+one plain line per file. The full, untruncated source path is still printed on the per-file
+completion line and in the final report. The spinner runs on a daemon thread while the blocking
 LLM subprocess call runs on the main thread.
 
 Wired in only by the CLI (``cmd_ingest``); the MCP server passes no progress, so its stdio
@@ -15,6 +18,7 @@ stays clean. Drive it by calling the instance: ``progress(event, data_dict)``.
 from __future__ import annotations
 
 import itertools
+import os
 import sys
 import threading
 import time
@@ -130,8 +134,34 @@ class ConsoleProgress:
         self._thread = None
 
     # ---- output helpers (carriage-return rewrite; no ANSI) ----
+    def _term_width(self) -> int:
+        """Best-effort terminal column count for the output stream (fallback 80). Used to keep the
+        rewritten spinner line on ONE physical row."""
+        try:
+            return os.get_terminal_size(self.stream.fileno()).columns
+        except Exception:  # noqa: BLE001 - not a real terminal / no fileno
+            return 80
+
+    def _fit(self, text: str) -> str:
+        """Clip ``text`` to one terminal row. The spinner line is rewritten in place with a leading
+        ``\\r``; if it is wider than the terminal it wraps onto extra rows, and the ``\\r`` only
+        returns to the start of the LAST row — so every repaint leaves the earlier rows on screen and
+        the line appears printed over and over. Keeping it to ``width - 1`` columns (ASCII-only ``...``
+        ellipsis, per this module's no-Unicode rule) guarantees a single, cleanly overwritten row.
+
+        ``keep`` is clamped to ``>= 0`` so a degenerate / misreported width (0 or 1 columns) clips to
+        an empty string rather than falling through and emitting the full, wrap-prone line — the
+        one-row invariant must hold even then."""
+        keep = max(0, self._term_width() - 1)
+        if len(text) <= keep:
+            return text
+        if keep <= 3:
+            return text[:keep]
+        return text[: keep - 3] + "..."
+
     def _paint(self, text: str) -> None:
         with self._lock:
+            text = self._fit(text)
             pad = max(0, self._last_len - len(text))
             self._raw("\r" + text + " " * pad)
             self._last_len = len(text)
