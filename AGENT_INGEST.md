@@ -119,6 +119,7 @@ Body in GitHub-flavored markdown...
   1. Short form / acronym with an expansion? → `type: Abbreviation` → `wiki/abbreviations/`
   2. A specific named human? → `type: Person` → `wiki/persons/`
   3. A specific named company/institution/team? → `type: Organization` → `wiki/organizations/`
+     (British spelling `Organisation` is accepted as an alias)
   4. A specific named initiative/effort with a goal? → `type: Project` → `wiki/projects/`
   5. An external **software/IT** system/service the source connects to or uses (DB, API, queue,
      SaaS, library — SAP, PLM, Postgres)? → `type: System` → `wiki/systems/` (these accumulate

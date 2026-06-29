@@ -291,9 +291,9 @@ Expose the wiki to an AI client over stdio:
 uv run python -m okf_wiki serve        # or: uv run okf-wiki serve
 ```
 
-It serves six tools: `wiki_search` (with an optional `tag` filter), `wiki_read`, `wiki_index`,
-`wiki_tags`, and `wiki_validate` (read-only), and `wiki_ingest` (the only mutating tool, routed
-through the same path-safe ingest pipeline).
+It serves seven tools: `wiki_search` (with an optional `tag` filter), `wiki_read`, `wiki_index`,
+`wiki_sources` (the by-source provenance catalog), `wiki_tags`, and `wiki_validate` (read-only),
+and `wiki_ingest` (the only mutating tool, routed through the same path-safe ingest pipeline).
 
 Wire it into an MCP client (e.g. Claude Desktop's `claude_desktop_config.json`). The `python -m`
 form needs no `.exe`, so it is the safe choice on Windows. No API key in the env — ingest uses

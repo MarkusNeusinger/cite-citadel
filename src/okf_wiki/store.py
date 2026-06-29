@@ -522,8 +522,10 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
     # ----- sources/index.md: the provenance catalog (source -> model + citing pages) -----
     # Generated from the ingest manifest (the model lives there) + the live link graph. Written
     # before the top index so its "See also" can link the catalog when it exists; removed when no
-    # source is tracked so a stale catalog never lingers.
-    sources_body = _render_sources_catalog(manifest_mod.load(), pages)
+    # source is tracked so a stale catalog never lingers. The manifest is loaded once and reused
+    # below for the index.md ## Sources section.
+    manifest_dict = manifest_mod.load()
+    sources_body = _render_sources_catalog(manifest_dict, pages)
     sources_path = config.WIKI_DIR / SOURCES_INDEX_REL
     if sources_body is not None:
         sources_path.parent.mkdir(parents=True, exist_ok=True)
@@ -570,6 +572,25 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
             for page in tagged:
                 lines.append(f"- [{page.title}]({page.rel_path})")
             lines.append("")
+
+    # ----- ## Sources: the by-source provenance axis, surfaced IN index.md (not just a See-also
+    # link). An agent reading index.md (e.g. via the wiki_index MCP tool, which never reached the
+    # skipped sources/index.md) can now discover what was ingested and from where. -----
+    if manifest_dict:
+        lines.append("## Sources")
+        lines.append("")
+        lines.append(
+            f"{len(manifest_dict)} ingested raw source(s) — full catalog with the importing "
+            f"model in [sources/index.md]({SOURCES_INDEX_REL})."
+        )
+        lines.append("")
+        for key in sorted(manifest_dict):
+            refs = find_raw_references(key, pages)
+            n = len(refs)
+            cited = f"cited by {n} page{'s' if n != 1 else ''}" if n else "uncited"
+            src_link = _source_key_to_page_link("index.md", key)
+            lines.append(f"- [{_md_cell(key)}]({src_link}) — {cited}")
+        lines.append("")
 
     # ----- ## Abbreviations: the glossary, generated from every type: Abbreviation page -----
     abbrev_pages = [p for p in pages if (p.type or "").strip().lower() == "abbreviation"]
