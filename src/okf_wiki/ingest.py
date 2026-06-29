@@ -25,6 +25,7 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+import stat
 import tempfile
 import time
 from dataclasses import dataclass, field
@@ -615,17 +616,53 @@ def _backup_wiki() -> str | None:
     return tmp
 
 
+# Deleting a directory tree can transiently fail or lag when the wiki lives on a network share
+# (``OKF_WIKI_DIR`` pointing at an SMB/UNC path): a file may be momentarily locked (antivirus,
+# indexing, an open handle) or the share may still report the directory present right after its
+# contents were removed. Retry a handful of times before giving up.
+_RMTREE_ATTEMPTS = 5
+
+
+def _robust_rmtree(path: str | os.PathLike) -> None:
+    """Best-effort recursive delete that tolerates the Windows read-only bit and the transient
+    locks/latency common on network shares. Retries a few times and never raises — a tree that
+    still will not delete is left for the caller (which overwrites it via ``dirs_exist_ok=True``),
+    which beats aborting the whole run.
+
+    Replaces a bare ``shutil.rmtree(..., ignore_errors=True)``: that swallowed the failure and left
+    the directory in place, which then made a follow-up ``copytree`` crash with ``FileExistsError``."""
+
+    def _clear_readonly(func, p, _exc):
+        # Windows marks some files read-only; clear the bit and retry the one failed operation.
+        try:
+            os.chmod(p, stat.S_IWRITE)
+            func(p)
+        except OSError:
+            pass
+
+    for attempt in range(_RMTREE_ATTEMPTS):
+        if not os.path.exists(path):
+            return
+        shutil.rmtree(path, onexc=_clear_readonly)
+        if not os.path.exists(path):
+            return
+        time.sleep(0.2 * (attempt + 1))
+
+
 def _restore_wiki(backup_tmp: str | None) -> None:
     """Restore ``wiki/`` from a backup made by :func:`_backup_wiki`. If there was no backup
-    (the wiki did not exist before this source), remove whatever the agent created."""
+    (the wiki did not exist before this source), remove whatever the agent created.
+
+    The clear-then-copy is hardened for a wiki on a network share (``OKF_WIKI_DIR`` pointing at an
+    SMB/UNC path), where a directory delete can fail or lag: the removal is best-effort with retries
+    (:func:`_robust_rmtree`) and the copy uses ``dirs_exist_ok=True`` so the backup is laid back
+    down even when the old tree could not be fully cleared first — restoring the pre-session state
+    instead of aborting the run with ``FileExistsError``."""
     dst = config.WIKI_DIR
+    _robust_rmtree(dst)
     if backup_tmp is None:
-        if dst.exists():
-            shutil.rmtree(dst, ignore_errors=True)
         return
-    if dst.exists():
-        shutil.rmtree(dst, ignore_errors=True)
-    shutil.copytree(os.path.join(backup_tmp, "wiki"), dst)
+    shutil.copytree(os.path.join(backup_tmp, "wiki"), dst, dirs_exist_ok=True)
 
 
 @dataclass
