@@ -875,6 +875,79 @@ def test_failed_session_rolls_back(tmp_path, monkeypatch):
         assert "raw/notes.md" not in json.loads(manifest_path.read_text(encoding="utf-8"))
 
 
+def test_robust_rmtree_retries_then_succeeds(tmp_path, monkeypatch):
+    """``_robust_rmtree`` retries a transiently-undeletable tree (a lock that clears, as on a
+    network share) and removes it once the delete goes through, rather than giving up after the
+    first failure the way ``rmtree(ignore_errors=True)`` silently did."""
+    victim = tmp_path / "victim"
+    (victim / "sub").mkdir(parents=True)
+    (victim / "sub" / "f.txt").write_text("x", encoding="utf-8")
+
+    real_rmtree = ingest.shutil.rmtree
+    state = {"n": 0}
+
+    def flaky_rmtree(path, *args, **kwargs):
+        state["n"] += 1
+        if state["n"] < 3:
+            return  # first two attempts "fail" silently, leaving the tree in place
+        return real_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(ingest.shutil, "rmtree", flaky_rmtree)
+    monkeypatch.setattr(ingest.time, "sleep", lambda *_: None)  # keep the retry loop instant
+
+    ingest._robust_rmtree(victim)
+
+    assert state["n"] == 3       # retried until the delete went through
+    assert not victim.exists()   # tree is gone
+
+
+def test_rollback_survives_undeletable_wiki_on_network_share(tmp_path, monkeypatch):
+    """Regression for the WinError 183 crash: when wiki/ lives on a network share, the rollback's
+    directory delete can fail while the share keeps reporting the dir present. The old code used
+    ``rmtree(ignore_errors=True)``, which swallowed that failure, so the follow-up ``copytree``
+    crashed with ``FileExistsError`` inside the ``finally`` — masking the real session error and
+    aborting the whole run. The rollback must instead lay the backup back down over the surviving
+    directory without raising."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _seed_page(
+        wiki, "concepts/keep.md",
+        {"type": "Concept", "title": "Keep", "description": "d", "tags": ["x"], "resource": "raw/old.md"},
+        "Keep me.[^s1]\n\n## Sources\n\n[^s1]: [raw/old.md](../../raw/old.md) - o\n",
+    )
+    (raw / "old.md").write_text("x\n", encoding="utf-8")
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+
+    # Simulate the worst case the old ignore_errors=True hid: the share never actually deletes
+    # wiki/. Local temp dirs (the backup) still delete normally, so they pass through.
+    real_rmtree = ingest.shutil.rmtree
+    wiki_resolved = wiki.resolve()
+
+    def undeletable_share(path, *args, **kwargs):
+        if Path(path).resolve() == wiki_resolved:
+            return  # the share "fails" to delete and reports nothing
+        return real_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(ingest.shutil, "rmtree", undeletable_share)
+    monkeypatch.setattr(ingest.time, "sleep", lambda *_: None)
+
+    def fake(rel_key, kind="ingest"):
+        _agent_write(
+            "concepts/partial.md",
+            {"type": "Concept", "title": "Partial", "description": "d", "tags": ["x"], "resource": "raw/notes.md"},
+            "Half-written.[^s1]\n\n## Sources\n\n[^s1]: [raw/notes.md](../../raw/notes.md) - n\n",
+        )
+        raise RuntimeError("boom mid-session")
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+
+    # Used to die with FileExistsError out of the rollback; now the real error is reported instead.
+    report = ingest.ingest([str(raw / "notes.md")])
+
+    assert any("boom mid-session" in e for e in report.errors)
+    assert "raw/notes.md" not in report.processed
+    assert (wiki / "concepts" / "keep.md").exists()  # backup laid back down over the surviving dir
+
+
 def test_keyboardinterrupt_rolls_back_current_source(tmp_path, monkeypatch):
     """A Ctrl+C (KeyboardInterrupt) raised mid-session must roll the wiki back to its
     pre-source state, then propagate. KeyboardInterrupt is a BaseException, so the per-source
