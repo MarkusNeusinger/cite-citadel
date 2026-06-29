@@ -7,7 +7,7 @@ agent touched. This module is that checker, used in three places against ONE imp
 
   1. the ingest gate — ``ingest`` runs ``validate_page`` on every changed page and collects
      ``error``-severity issues into its report (so a forgotten field fails the run);
-  2. the agent self-check — ``okf-wiki check`` / the MCP ``wiki_validate`` tool, which the
+  2. the agent self-check — ``citadel check`` / the MCP ``wiki_validate`` tool, which the
      ingest agent is told to run on its edits *before finishing* and fix what it forgot;
   3. ``lint`` — reuses :func:`source_issues` and :func:`wikilink_targets` for whole-wiki health.
 
@@ -241,7 +241,7 @@ def validate_page(rel_path: str, frontmatter: dict, body: str) -> list[Issue]:
 
 def validate_all(pages: list[Page] | None = None) -> list[Issue]:
     """Validate every page, then add broken-cross-link issues (which need the whole page set,
-    so they can't be found per-page). Used by ``okf-wiki check`` and the ``wiki_validate``
+    so they can't be found per-page). Used by ``citadel check`` and the ``wiki_validate``
     MCP tool."""
     if pages is None:
         pages = store.load()

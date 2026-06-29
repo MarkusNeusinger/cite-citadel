@@ -7,7 +7,7 @@ only a short instruction that references files BY PATH — never file content �
 stays tiny (this is what kills the old Windows ``WinError 206`` argv-length limit) and the
 agent can handle an arbitrarily large raw file.
 
-- Pick the backend with ``OKF_LLM_CLI`` (``claude`` | ``copilot`` | ``gemini``; default
+- Pick the backend with ``CITADEL_LLM_CLI`` (``claude`` | ``copilot`` | ``gemini``; default
   ``claude``), read via ``config.LLM_CLI``.
 - Override the binary path with ``CLAUDE_CODE_PATH`` / ``COPILOT_CLI_PATH`` /
   ``GEMINI_CLI_PATH``.
@@ -51,7 +51,7 @@ def _resolve_cli(cli: str) -> str:
         return binary
     raise RuntimeError(
         f"the {cli!r} CLI was not found on PATH. Install it and log in "
-        f"(for claude: run `claude` once and `/login`), or set OKF_LLM_CLI to a "
+        f"(for claude: run `claude` once and `/login`), or set CITADEL_LLM_CLI to a "
         f"CLI you have, or point {_CLI_PATH_ENV.get(cli, 'the path env var')} at "
         f"the binary."
     )
@@ -62,7 +62,7 @@ def _agent_path(path: Path) -> str:
     CLI runs with ``cwd`` = ``config.REPO_ROOT``, so a directory UNDER the repo is named relative
     to it (short, cwd-relative), while one OUTSIDE the repo — e.g. a wiki/raw tree on a mounted
     network drive — is named by its ABSOLUTE path so the agent (granted access via ``--add-dir``)
-    can find it. Honors ``OKF_WIKI_DIR`` / ``OKF_RAW_DIR`` and never collapses an out-of-repo dir
+    can find it. Honors ``CITADEL_WIKI_DIR`` / ``CITADEL_RAW_DIR`` and never collapses an out-of-repo dir
     to a bare name (the old bug that made the agent edit a non-existent ``./wiki``). Single source
     of truth: ``config.rel_or_abs_posix``."""
     return config.rel_or_abs_posix(path)
@@ -71,7 +71,7 @@ def _agent_path(path: Path) -> str:
 def _external_dirs(rel_key: str, read_path: str | None = None) -> list[str]:
     """OS-native paths of the directories the agent must read/write that live OUTSIDE the repo, so
     the CLI can be granted access to them. The agent's ``cwd`` is the repo root (which already
-    covers SCHEMA.md / AGENT_INGEST.md / the ``okf-wiki`` command), so this returns — de-duplicated
+    covers SCHEMA.md / AGENT_INGEST.md / the ``citadel`` command), so this returns — de-duplicated
     and sorted — only the out-of-repo members of {wiki dir (written), raw dir, docs dir, the source
     file's own parent, and — for an Office source — the temp dir holding its extracted text}. Empty
     for the default in-repo layout, so the in-repo invocation is byte-for-byte unchanged."""
@@ -99,9 +99,9 @@ def _build_instruction(rel_key: str, kind: str = "ingest", read_path: str | None
     is the source key (a repo-relative posix path like ``raw/notes.md`` for an in-repo source, or an
     ABSOLUTE posix path for an out-of-repo source on a mounted drive); ``cwd`` is the repo root, so
     an in-repo path is named relative to it and an out-of-repo path absolutely. The wiki/raw
-    directory names are read from config (``OKF_WIKI_DIR`` / ``OKF_RAW_DIR``) at CALL time via
-    :func:`_agent_path`, so a custom layout — a renamed in-repo dir (``OKF_WIKI_DIR=wikiET``) or a
-    network-drive path (``OKF_WIKI_DIR=T:\\team-wiki\\wiki``) — is searched and written correctly
+    directory names are read from config (``CITADEL_WIKI_DIR`` / ``CITADEL_RAW_DIR``) at CALL time via
+    :func:`_agent_path`, so a custom layout — a renamed in-repo dir (``CITADEL_WIKI_DIR=wikiET``) or a
+    network-drive path (``CITADEL_WIKI_DIR=T:\\team-wiki\\wiki``) — is searched and written correctly
     instead of a hardcoded ``wiki/``.
 
     ``kind`` selects which propagation the agent performs:
@@ -143,7 +143,7 @@ def _build_instruction(rel_key: str, kind: str = "ingest", read_path: str | None
             "and repoint or remove inbound relative links to it.\n"
             "4. Never invent replacement facts. Never edit index.md, log.md, any */index.md, or "
             f"any dotfile, and make no changes outside {wiki_rel}/.\n"
-            "5. Before finishing, run `okf-wiki check` (or `uv run python -m okf_wiki check`) "
+            "5. Before finishing, run `citadel check` (or `uv run python -m citadel check`) "
             f"and fix every error. When you are done, NO page may reference {rel_key}."
         )
 
@@ -192,7 +192,7 @@ def _build_instruction(rel_key: str, kind: str = "ingest", read_path: str | None
             f"4. Never edit {wiki_rel}/index.md, {wiki_rel}/log.md, any */index.md, or any dotfile. "
             f"Make no changes outside {wiki_rel}/. When you delete/rename a page, repoint inbound "
             "links.\n"
-            "5. Before finishing, run `okf-wiki check` (or `uv run python -m okf_wiki check`) and "
+            "5. Before finishing, run `citadel check` (or `uv run python -m citadel check`) and "
             f"fix every reported error.\nIf {rel_key} adds nothing new, make no edits and stop."
         )
 
@@ -245,7 +245,7 @@ def _build_instruction(rel_key: str, kind: str = "ingest", read_path: str | None
         f"4. Never edit {wiki_rel}/index.md, {wiki_rel}/log.md, any */index.md, or any dotfile. "
         f"Make no changes outside {wiki_rel}/.\n"
         "5. When you delete or rename a page, repoint inbound relative links to it.\n"
-        "6. Before finishing, run `okf-wiki check` (or `uv run python -m okf_wiki check`) and "
+        "6. Before finishing, run `citadel check` (or `uv run python -m citadel check`) and "
         "fix every reported error.\n"
         f"If {rel_key} adds nothing new, make no edits and stop."
     )
@@ -264,8 +264,8 @@ def _build_invocation(
     extra_dirs = extra_dirs or []
     if cli == "claude":
         # acceptEdits auto-applies file edits; the allowlist scopes tools (Read/Edit/Write to
-        # author pages, Grep/Glob to search the wiki, Bash so the agent can run `okf-wiki check`).
-        # cwd=repo root covers SCHEMA.md/AGENT_INGEST.md/okf-wiki; --add-dir grants access to an
+        # author pages, Grep/Glob to search the wiki, Bash so the agent can run `citadel check`).
+        # cwd=repo root covers SCHEMA.md/AGENT_INGEST.md/citadel; --add-dir grants access to an
         # out-of-repo wiki/raw (network drive), since claude's file tools are otherwise scoped to
         # cwd. No extra_dirs in the default in-repo layout, so the argv is then unchanged.
         argv = [

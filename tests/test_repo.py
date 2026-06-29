@@ -1,7 +1,7 @@
 """Tests for git-repository sources: detection, the digest builder, commit identity, and the
 end-to-end ingest of a repo as ONE source (offline — ``llm.run_ingest_session`` is faked).
 
-The hermetic tests use the opt-in ``.okfsource`` marker so they need no ``git`` binary; the
+The hermetic tests use the opt-in ``.citadelsource`` marker so they need no ``git`` binary; the
 git-specific behavior (commit identity, ``.gitignore`` filtering, diff-based reconcile) is in a
 small set of tests guarded by ``shutil.which("git")``.
 """
@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from okf_wiki import config, ingest, lint, manifest, okf, repo, store
+from citadel import config, ingest, lint, manifest, okf, repo, store
 
 
 # --------------------------------------------------------------------------------------------
@@ -43,7 +43,7 @@ def _wire(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
     monkeypatch.setattr(config, "AGENT_RULES_PATH", repo_root / "AGENT_INGEST.md", raising=False)
     monkeypatch.setattr(config, "INDEX_PATH", wiki / "index.md", raising=False)
     monkeypatch.setattr(config, "LOG_PATH", wiki / "log.md", raising=False)
-    monkeypatch.setattr(config, "MANIFEST_PATH", wiki / ".okf_ingested.json", raising=False)
+    monkeypatch.setattr(config, "MANIFEST_PATH", wiki / ".citadel_ingested.json", raising=False)
     monkeypatch.setattr(config, "REPO_SUPPORT", True, raising=False)
     return wiki, raw
 
@@ -97,7 +97,7 @@ def fake_session(rel_key, kind="ingest", read_path=None):
 
 
 def _make_repo(raw: Path, name: str, files: dict[str, str], marker: bool = True) -> Path:
-    """Create a folder under raw/ with the given files; add the ``.okfsource`` marker so it is
+    """Create a folder under raw/ with the given files; add the ``.citadelsource`` marker so it is
     treated as one repo source without needing git."""
     root = raw / name
     for rel, content in files.items():
@@ -327,7 +327,7 @@ def test_changed_files_diffs_commits(tmp_path):
 
 
 # --------------------------------------------------------------------------------------------
-# ingest integration — a repo is ONE source (hermetic via .okfsource)
+# ingest integration — a repo is ONE source (hermetic via .citadelsource)
 # --------------------------------------------------------------------------------------------
 
 

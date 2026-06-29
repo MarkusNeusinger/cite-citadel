@@ -1,6 +1,6 @@
 """Tracks which raw files were already ingested so re-running is idempotent and cheap.
 
-A tiny committed JSON file wiki/.okf_ingested.json maps the source's repo-relative posix path
+A tiny committed JSON file wiki/.citadel_ingested.json maps the source's repo-relative posix path
 (e.g. 'raw/notes.md') to a small record of how it was last ingested:
 
     {"sha256": "<hex>", "model": "claude:sonnet"}

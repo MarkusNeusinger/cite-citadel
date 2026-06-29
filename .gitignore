@@ -217,9 +217,9 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# okf-wiki generated viewer (regenerable artifact: `okf-wiki view`)
-.okf_viewer.html
-wiki/.okf_viewer.html
+# citadel generated viewer (regenerable artifact: `citadel view`)
+.citadel_viewer.html
+wiki/.citadel_viewer.html
 
 # JetBrains IDE
 .idea/

@@ -6,9 +6,9 @@ the way it opens a ``.md``/``.txt``/PDF. Rather than add a heavy dependency (``p
 ``python-docx`` / ``markitdown``), this module pulls the text out with the standard library only
 (``zipfile`` + ``xml.etree.ElementTree``), matching the project's KISS, no-extra-deps ethos.
 
-``ingest`` uses it in two places (see :mod:`okf_wiki.ingest`):
+``ingest`` uses it in two places (see :mod:`citadel.ingest`):
 
-- :func:`is_office_source` (cheap: extension + ZIP magic) lets :func:`okf_wiki.ingest._is_ingestible`
+- :func:`is_office_source` (cheap: extension + ZIP magic) lets :func:`citadel.ingest._is_ingestible`
   treat an Office file as ingestible instead of rejecting it as a NUL-byte binary;
 - :func:`extract_text` produces the plain text that ingest writes to a temp ``.md`` for the agent to
   read — while the wiki still cites the ORIGINAL Office file as its source.

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from okf_wiki import config, ingest, lint, manifest, okf, store, validate
+from citadel import config, ingest, lint, manifest, okf, store, validate
 
 
 # A counter so tests can assert the fake session runs exactly once per source.
@@ -116,7 +116,7 @@ def _wire_tmp_wiki(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
     monkeypatch.setattr(config, "INDEX_PATH", wiki / "index.md", raising=False)
     monkeypatch.setattr(config, "LOG_PATH", wiki / "log.md", raising=False)
     monkeypatch.setattr(
-        config, "MANIFEST_PATH", wiki / ".okf_ingested.json", raising=False
+        config, "MANIFEST_PATH", wiki / ".citadel_ingested.json", raising=False
     )
     return wiki, raw
 
@@ -166,7 +166,7 @@ def test_ingest_creates_pages(tmp_path, monkeypatch):
 
     import json
 
-    manifest_data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    manifest_data = json.loads((wiki / ".citadel_ingested.json").read_text(encoding="utf-8"))
     assert "raw/notes.md" in manifest_data
 
 
@@ -466,7 +466,7 @@ def test_binary_raw_file_is_logged_unreadable_not_ingested(tmp_path, monkeypatch
 
     import json
 
-    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    data = json.loads((wiki / ".citadel_ingested.json").read_text(encoding="utf-8"))
     assert "raw/blob.bin" in data  # marked done
 
     second = ingest.ingest()
@@ -533,7 +533,7 @@ def test_office_pptx_extracted_to_temp_and_ingested(tmp_path, monkeypatch):
 
     import json
 
-    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    data = json.loads((wiki / ".citadel_ingested.json").read_text(encoding="utf-8"))
     assert "raw/deck.pptx" in data
 
     # The extracted-text temp dir/file is removed once the session is done (no litter).
@@ -564,7 +564,7 @@ def test_office_deck_without_text_is_unreadable(tmp_path, monkeypatch):
 
     import json
 
-    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    data = json.loads((wiki / ".citadel_ingested.json").read_text(encoding="utf-8"))
     assert "raw/images.pptx" in data  # marked done
 
 
@@ -593,7 +593,7 @@ def test_moved_raw_file_is_recognized_not_reingested(tmp_path, monkeypatch):
 
     import json
 
-    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    data = json.loads((wiki / ".citadel_ingested.json").read_text(encoding="utf-8"))
     assert "raw/ml/notes.md" in data and "raw/notes.md" not in data  # re-keyed
 
     text = page.read_text(encoding="utf-8")
@@ -623,7 +623,7 @@ def test_duplicate_raw_file_not_reingested(tmp_path, monkeypatch):
 
     import json
 
-    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    data = json.loads((wiki / ".citadel_ingested.json").read_text(encoding="utf-8"))
     assert "raw/notes.md" in data and "raw/copy.md" in data  # both tracked
 
     text = (wiki / "concepts" / "transformer.md").read_text(encoding="utf-8")
@@ -870,7 +870,7 @@ def test_failed_session_rolls_back(tmp_path, monkeypatch):
     # Source is retried next run (not in the manifest).
     import json
 
-    manifest_path = wiki / ".okf_ingested.json"
+    manifest_path = wiki / ".citadel_ingested.json"
     if manifest_path.exists():
         assert "raw/notes.md" not in json.loads(manifest_path.read_text(encoding="utf-8"))
 
@@ -1000,7 +1000,7 @@ def test_completed_sources_persisted_before_interrupt(tmp_path, monkeypatch):
     with pytest.raises(KeyboardInterrupt):
         ingest.ingest()  # processes raw/a.md then raw/b.md (sorted order)
 
-    manifest_path = wiki / ".okf_ingested.json"
+    manifest_path = wiki / ".citadel_ingested.json"
     assert manifest_path.exists()  # saved incrementally, not only at finalization
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert "raw/a.md" in data       # a finished -> persisted before the interrupt
@@ -1118,7 +1118,7 @@ def test_deleted_source_citations_reconciled_out(tmp_path, monkeypatch):
 
     import json
 
-    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    data = json.loads((wiki / ".citadel_ingested.json").read_text(encoding="utf-8"))
     assert "raw/gone.md" not in data  # manifest key dropped
     assert lint.lint().ok() and lint.lint().bad_sources == []
 
@@ -1188,7 +1188,7 @@ def test_deleted_source_with_no_references_just_dropped(tmp_path, monkeypatch):
 
     import json
 
-    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    data = json.loads((wiki / ".citadel_ingested.json").read_text(encoding="utf-8"))
     assert "raw/gone.md" not in data and "raw/keep.md" in data
 
 
@@ -1217,7 +1217,7 @@ def test_deleted_cleanup_incomplete_rolls_back_and_retries(tmp_path, monkeypatch
 
     import json
 
-    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    data = json.loads((wiki / ".citadel_ingested.json").read_text(encoding="utf-8"))
     assert "raw/gone.md" in data  # key kept -> retried next run
 
 
@@ -1253,7 +1253,7 @@ def test_deletion_swept_only_on_full_run_not_path_scoped(tmp_path, monkeypatch):
 
     import json
 
-    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    data = json.loads((wiki / ".citadel_ingested.json").read_text(encoding="utf-8"))
     assert "raw/gone.md" in data  # still tracked; not pruned by a scoped run
 
 
@@ -1344,7 +1344,7 @@ def test_ingest_progress_default_is_silent(tmp_path, monkeypatch):
 def test_console_progress_renders_ascii_without_tty():
     """ConsoleProgress on a non-TTY stream prints one plain line per file, ASCII-only."""
     import io
-    from okf_wiki.progress import ConsoleProgress
+    from citadel.progress import ConsoleProgress
 
     buf = io.StringIO()  # isatty() -> False, so no spinner thread
     p = ConsoleProgress(stream=buf)
@@ -1593,7 +1593,7 @@ def test_ingest_records_importing_model_in_manifest(tmp_path, monkeypatch):
     assert report.model == "claude:opus"
     assert "Model: claude:opus" in report.render()
 
-    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    data = json.loads((wiki / ".citadel_ingested.json").read_text(encoding="utf-8"))
     assert data["raw/notes.md"]["model"] == "claude:opus"
     assert "model" not in data["raw/blob.bin"]  # nothing imported it
 
@@ -1668,7 +1668,7 @@ def test_moved_source_carries_original_importing_model(tmp_path, monkeypatch):
     report = ingest.ingest()
     assert ("raw/notes.md", "raw/ml/notes.md") in report.moved
 
-    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    data = json.loads((wiki / ".citadel_ingested.json").read_text(encoding="utf-8"))
     assert "raw/notes.md" not in data
     assert data["raw/ml/notes.md"]["model"] == "claude:opus"  # original model carried, not haiku
 
@@ -1768,7 +1768,7 @@ def test_agent_edits_staging_sibling_not_live(tmp_path, monkeypatch):
     assert (wiki / "concepts" / "transformer.md").exists()   # promoted after a clean session
     assert config.WIKI_DIR == wiki                  # redirect restored
     import os as _os
-    assert "OKF_WIKI_DIR" not in _os.environ        # env restored (was unset)
+    assert "CITADEL_WIKI_DIR" not in _os.environ        # env restored (was unset)
     # No staging sibling left behind.
     assert not any(p.name.startswith(".wiki.staging") for p in wiki.parent.iterdir())
 
@@ -1903,16 +1903,16 @@ def test_promote_excludes_generated_and_manifest_files(tmp_path):
     for d in (live, staging):
         d.mkdir(parents=True)
     (live / "index.md").write_text("LIVE INDEX", encoding="utf-8")          # must be left alone
-    (live / ".okf_ingested.json").write_text("{}", encoding="utf-8")        # must be left alone
+    (live / ".citadel_ingested.json").write_text("{}", encoding="utf-8")        # must be left alone
     (live / "a.md").write_text("A", encoding="utf-8")
     (staging / "index.md").write_text("STALE INDEX", encoding="utf-8")      # must NOT overwrite live
     (staging / "log.md").write_text("STALE LOG", encoding="utf-8")          # must NOT be copied
-    (staging / ".okf_ingested.json").write_text('{"stale":1}', encoding="utf-8")
+    (staging / ".citadel_ingested.json").write_text('{"stale":1}', encoding="utf-8")
     (staging / "a.md").write_text("A2", encoding="utf-8")                   # a real content change
 
     ingest._promote(staging, live)
 
     assert (live / "a.md").read_text(encoding="utf-8") == "A2"              # content synced
     assert (live / "index.md").read_text(encoding="utf-8") == "LIVE INDEX"  # generated file untouched
-    assert (live / ".okf_ingested.json").read_text(encoding="utf-8") == "{}"  # manifest untouched
+    assert (live / ".citadel_ingested.json").read_text(encoding="utf-8") == "{}"  # manifest untouched
     assert not (live / "log.md").exists()                                  # stale log not copied in

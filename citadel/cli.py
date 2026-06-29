@@ -1,14 +1,14 @@
 """Human command-line entry point mirroring the MCP tools.
 
-``okf-wiki`` with six subcommands::
+``citadel`` with six subcommands::
 
-    okf-wiki ingest [paths ...]   # fold raw/ (or explicit paths) into the wiki
-    okf-wiki serve                # run the MCP stdio server
-    okf-wiki search <query> [--limit N] [--tag T]
-    okf-wiki tags [tag]           # browse pages by tag
-    okf-wiki lint [--stale-days N]
-    okf-wiki check [paths ...]    # validate links/format/required-fields (the ingest gate)
-    okf-wiki view [--out PATH] [--no-open] [--obsidian]   # offline single-file HTML viewer
+    citadel ingest [paths ...]   # fold raw/ (or explicit paths) into the wiki
+    citadel serve                # run the MCP stdio server
+    citadel search <query> [--limit N] [--tag T]
+    citadel tags [tag]           # browse pages by tag
+    citadel lint [--stale-days N]
+    citadel check [paths ...]    # validate links/format/required-fields (the ingest gate)
+    citadel view [--out PATH] [--no-open] [--obsidian]   # offline single-file HTML viewer
 
 Exit codes are CI-friendly: ingest returns 1 if any source errored OR a structural
 problem remains (a broken cross-link or a page that failed validation — a missing or
@@ -27,9 +27,9 @@ import sys
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the ``okf-wiki`` argument parser with its seven subcommands."""
+    """Build the ``citadel`` argument parser with its seven subcommands."""
     parser = argparse.ArgumentParser(
-        prog="okf-wiki",
+        prog="citadel",
         description="An LLM-maintained personal wiki in Google OKF, with an MCP search server.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
@@ -117,7 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_view.add_argument(
         "--out",
         default=None,
-        help="Where to write the .html (default: wiki/.okf_viewer.html).",
+        help="Where to write the .html (default: wiki/.citadel_viewer.html).",
     )
     p_view.add_argument(
         "--no-open",

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from okf_wiki import config, lint, okf, store
+from citadel import config, lint, okf, store
 
 
 def _wire_tmp_wiki(tmp_path: Path, monkeypatch) -> Path:

@@ -1,4 +1,4 @@
-"""Unit tests for okf_wiki.validate — the per-page link/format/required-field checker."""
+"""Unit tests for citadel.validate — the per-page link/format/required-field checker."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from okf_wiki import config, okf, validate
+from citadel import config, okf, validate
 
 
 @pytest.fixture

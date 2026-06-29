@@ -13,7 +13,7 @@ import subprocess
 
 import pytest
 
-from okf_wiki import config, llm
+from citadel import config, llm
 
 
 class _FakeProc:
@@ -37,7 +37,7 @@ def test_build_instruction_references_paths_not_content():
 
 def test_build_instruction_uses_configured_wiki_dir(tmp_path, monkeypatch):
     """Regression for the hardcoded-'wiki/' bug: the prompt must name the CONFIGURED wiki
-    directory (OKF_WIKI_DIR), so with OKF_WIKI_DIR=wikiET the agent searches and writes
+    directory (CITADEL_WIKI_DIR), so with CITADEL_WIKI_DIR=wikiET the agent searches and writes
     wikiET/ — otherwise it edits 'wiki/' while ingest's snapshot/diff watches wikiET/ and sees
     nothing."""
     monkeypatch.setattr(config, "REPO_ROOT", tmp_path, raising=False)
@@ -121,7 +121,7 @@ def test_build_instruction_delete_strips_provenance_without_opening():
 
 
 def test_build_instruction_delete_honors_configured_wiki_dir(tmp_path, monkeypatch):
-    """The delete prompt names the CONFIGURED wiki dir (OKF_WIKI_DIR), never a hardcoded
+    """The delete prompt names the CONFIGURED wiki dir (CITADEL_WIKI_DIR), never a hardcoded
     'wiki/', so a custom layout is searched/edited correctly."""
     monkeypatch.setattr(config, "REPO_ROOT", tmp_path, raising=False)
     monkeypatch.setattr(config, "WIKI_DIR", tmp_path / "wikiET", raising=False)

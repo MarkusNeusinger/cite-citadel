@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from okf_wiki import config, manifest
+from citadel import config, manifest
 
 
 # --- manifest entry helpers + backward compatibility ------------------------------------
@@ -94,7 +94,7 @@ def test_label_claude_uses_ingest_model(monkeypatch):
 
 def test_label_copilot_prefers_native_env(monkeypatch):
     """A local/Ollama copilot sets COPILOT_MODEL — that is the model that really ran, so it wins
-    over OKF_INGEST_MODEL and the CLI default."""
+    over CITADEL_INGEST_MODEL and the CLI default."""
     monkeypatch.setattr(config, "LLM_CLI", "copilot", raising=False)
     monkeypatch.setattr(config, "INGEST_MODEL", "sonnet", raising=False)  # claude default, ignored
     monkeypatch.setenv("COPILOT_MODEL", "qwen3.6:27b")
@@ -104,7 +104,7 @@ def test_label_copilot_prefers_native_env(monkeypatch):
 def test_label_copilot_explicit_okf_override(monkeypatch):
     monkeypatch.setattr(config, "LLM_CLI", "copilot", raising=False)
     monkeypatch.delenv("COPILOT_MODEL", raising=False)
-    monkeypatch.setenv("OKF_INGEST_MODEL", "gpt-5.4-mini")
+    monkeypatch.setenv("CITADEL_INGEST_MODEL", "gpt-5.4-mini")
     monkeypatch.setattr(config, "INGEST_MODEL", "gpt-5.4-mini", raising=False)
     assert config.ingest_model_label() == "copilot:gpt-5.4-mini"
 
@@ -114,14 +114,14 @@ def test_label_copilot_default_is_just_cli_name(monkeypatch):
     mislabeled 'copilot:sonnet' — it records just 'copilot'."""
     monkeypatch.setattr(config, "LLM_CLI", "copilot", raising=False)
     monkeypatch.delenv("COPILOT_MODEL", raising=False)
-    monkeypatch.delenv("OKF_INGEST_MODEL", raising=False)
+    monkeypatch.delenv("CITADEL_INGEST_MODEL", raising=False)
     monkeypatch.setattr(config, "INGEST_MODEL", "sonnet", raising=False)
     assert config.ingest_model_label() == "copilot"
 
 
 def test_label_gemini_native_env(monkeypatch):
     monkeypatch.setattr(config, "LLM_CLI", "gemini", raising=False)
-    monkeypatch.delenv("OKF_INGEST_MODEL", raising=False)
+    monkeypatch.delenv("CITADEL_INGEST_MODEL", raising=False)
     monkeypatch.setattr(config, "INGEST_MODEL", "sonnet", raising=False)
     monkeypatch.setenv("GEMINI_MODEL", "gemini-2.5-pro")
     assert config.ingest_model_label() == "gemini:gemini-2.5-pro"

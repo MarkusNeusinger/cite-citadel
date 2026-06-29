@@ -15,7 +15,7 @@ broken_links, bad_sources (a fact citing a missing raw/ file), or wikilinks (a
 ``[[wiki-style]]`` link). contradictions/orphans/missing_cites/stale/llm_facts/
 suggested_links/undefined_abbrevs are ADVISORY — render() lists every category with counts,
 but they do NOT flip ok(). The per-page citation (source) and wikilink checks are shared with the
-ingest gate via :mod:`okf_wiki.validate`. This keeps `okf-wiki lint` green on an empty
+ingest gate via :mod:`citadel.validate`. This keeps `citadel lint` green on an empty
 seeded wiki and avoids failing on the advisory missing-cites heuristic.
 """
 

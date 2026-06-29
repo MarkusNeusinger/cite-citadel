@@ -11,7 +11,7 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
-from okf_wiki import extract
+from citadel import extract
 
 _W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"

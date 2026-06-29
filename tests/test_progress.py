@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import io
 
-from okf_wiki import progress
+from citadel import progress
 
 # A long, fictional out-of-repo source key, of the shape that wrapped the terminal.
 _LONG_KEY = "//fileserver/share/projects/data/wiki/raw/sub/EXAMPLE_LONG_DOCUMENT.md"

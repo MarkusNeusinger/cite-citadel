@@ -118,7 +118,7 @@ class IngestReport:
             lines.append("Skipped (already ingested):")
             lines.extend(f"  - {p}" for p in self.skipped)
         if self.broken_links:
-            lines.append("WARNING — broken cross-links (run `okf-wiki lint`):")
+            lines.append("WARNING — broken cross-links (run `citadel lint`):")
             lines.extend(f"  - {src} -> {tgt}" for src, tgt in self.broken_links)
         if self.errors:
             lines.append("Errors:")
@@ -136,7 +136,7 @@ def _same_path(a: Path, b: Path) -> bool:
 
 def _is_repo_source(path: Path) -> bool:
     """True if ``path`` should be ingested as ONE repo source: repo support is on, it is a repo
-    dir (``.git``/``.okfsource``), and it is NOT the corpus root ``RAW_DIR`` itself. The latter
+    dir (``.git``/``.citadelsource``), and it is NOT the corpus root ``RAW_DIR`` itself. The latter
     guard matters because a user may keep the whole ``raw/`` tree under git for backup — that must
     still be scanned file-by-file (its repo SUB-folders are the sources), not collapsed into one."""
     return (
@@ -147,9 +147,9 @@ def _is_repo_source(path: Path) -> bool:
 
 
 def _prune_repo_dirs(parent: Path, dirnames: list[str]) -> list[str]:
-    """Drop the sub-directories of ``parent`` that are repo roots (a ``.git`` or ``.okfsource``
+    """Drop the sub-directories of ``parent`` that are repo roots (a ``.git`` or ``.citadelsource``
     marker) when repo support is on, so the per-file walk does NOT descend into a repository — it
-    is ingested as one source instead (see :mod:`okf_wiki.repo`). With repo support off, nothing is
+    is ingested as one source instead (see :mod:`citadel.repo`). With repo support off, nothing is
     pruned and a repo's files are walked individually (the legacy behavior). Hidden dirs are always
     dropped, as before."""
     kept: list[str] = []
@@ -204,7 +204,7 @@ def _candidates(paths: list[str] | None) -> list[Path]:
 
 
 def _repos_under(root: Path) -> list[Path]:
-    """Every git repository (or ``.okfsource``-marked folder) under ``root``, not descending into a
+    """Every git repository (or ``.citadelsource``-marked folder) under ``root``, not descending into a
     repo once found (a nested repo is part of its parent's tree). Deterministic order."""
     found: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(root):
@@ -224,7 +224,7 @@ def _repos_under(root: Path) -> list[Path]:
 
 def _discover_repos(paths: list[str] | None) -> list[Path]:
     """The repo sources to ingest: directories under ``RAW_DIR`` (or under an explicitly requested
-    directory) that are git repositories / ``.okfsource``-marked folders. An explicitly requested
+    directory) that are git repositories / ``.citadelsource``-marked folders. An explicitly requested
     path that is itself a repo is taken directly. De-duplicated by resolved path, sorted. Empty when
     repo support is off."""
     if not config.REPO_SUPPORT:
@@ -266,7 +266,7 @@ def _is_ingestible(path: Path) -> bool:
     is ingestible (the agent simply finds nothing to add), not a binary failure.
 
     PowerPoint/Word files are NOT classified here: they are ZIP binaries that would fail this sniff,
-    so :func:`_partition_sources` routes them through :mod:`okf_wiki.extract` instead (a deck with
+    so :func:`_partition_sources` routes them through :mod:`citadel.extract` instead (a deck with
     extractable text is pending; a text-free one is unreadable) — done once there, not re-sniffed."""
     try:
         with open(path, "rb") as fh:
@@ -613,7 +613,7 @@ def _repair_renames(
 
 
 # Deleting a directory tree can transiently fail or lag when the wiki lives on a network share
-# (``OKF_WIKI_DIR`` pointing at an SMB/UNC path): a file may be momentarily locked (antivirus,
+# (``CITADEL_WIKI_DIR`` pointing at an SMB/UNC path): a file may be momentarily locked (antivirus,
 # indexing, an open handle) or the share may still report the directory present right after its
 # contents were removed. Retry a handful of times before giving up.
 _RMTREE_ATTEMPTS = 5
@@ -675,7 +675,7 @@ def _robust_copy_file(src: Path, dst: Path, attempts: int = _RMTREE_ATTEMPTS) ->
     attempt fails the temp is cleaned up and the error is raised with ``dst`` LEFT UNTOUCHED — so a
     live page is never observed truncated/half-written (the caller fails the source and retries next
     run, keeping the page's previous content)."""
-    tmp = dst.with_name(dst.name + ".okftmp")
+    tmp = dst.with_name(dst.name + ".citadeltmp")
     for attempt in range(attempts):
         try:
             shutil.copyfile(src, tmp)
@@ -726,10 +726,10 @@ def _make_staging(live: Path) -> Path:
     _robust_rmtree(staging)  # paranoia: clear an identical-named leftover before a clean copy
     try:
         if live.is_dir():
-            # Skip any half-written *.okftmp left in live by an interrupted promote, so a stray
+            # Skip any half-written *.citadeltmp left in live by an interrupted promote, so a stray
             # temp never rides along into staging (and back out again).
             shutil.copytree(
-                live, staging, dirs_exist_ok=True, ignore=shutil.ignore_patterns("*.okftmp")
+                live, staging, dirs_exist_ok=True, ignore=shutil.ignore_patterns("*.citadeltmp")
             )
         else:
             config.robust_mkdir(staging)
@@ -741,36 +741,36 @@ def _make_staging(live: Path) -> Path:
 
 @contextlib.contextmanager
 def _redirect_wiki(staging: Path):
-    """Point every wiki-derived config path — and ``OKF_WIKI_DIR`` for child processes (the agentic
-    CLI and the ``okf-wiki check`` it shells out to) — at ``staging`` for the duration of one
+    """Point every wiki-derived config path — and ``CITADEL_WIKI_DIR`` for child processes (the agentic
+    CLI and the ``citadel check`` it shells out to) — at ``staging`` for the duration of one
     session, so the agent reads/writes/validates the STAGING copy rather than the live wiki. The
     raw/docs dirs are left untouched. Everything is restored on exit (including an originally-unset
-    ``OKF_WIKI_DIR``), so the redirect is invisible to the surrounding run."""
+    ``CITADEL_WIKI_DIR``), so the redirect is invisible to the surrounding run."""
     staging = Path(staging)
     saved = (config.WIKI_DIR, config.INDEX_PATH, config.LOG_PATH, config.MANIFEST_PATH)
-    env_had = "OKF_WIKI_DIR" in os.environ
-    env_prev = os.environ.get("OKF_WIKI_DIR")
+    env_had = "CITADEL_WIKI_DIR" in os.environ
+    env_prev = os.environ.get("CITADEL_WIKI_DIR")
     config.WIKI_DIR = staging
     config.INDEX_PATH = staging / "index.md"
     config.LOG_PATH = staging / "log.md"
-    config.MANIFEST_PATH = staging / ".okf_ingested.json"
-    os.environ["OKF_WIKI_DIR"] = str(staging)
+    config.MANIFEST_PATH = staging / ".citadel_ingested.json"
+    os.environ["CITADEL_WIKI_DIR"] = str(staging)
     try:
         yield
     finally:
         config.WIKI_DIR, config.INDEX_PATH, config.LOG_PATH, config.MANIFEST_PATH = saved
         if env_had:
-            os.environ["OKF_WIKI_DIR"] = env_prev  # type: ignore[assignment]
+            os.environ["CITADEL_WIKI_DIR"] = env_prev  # type: ignore[assignment]
         else:
-            os.environ.pop("OKF_WIKI_DIR", None)
+            os.environ.pop("CITADEL_WIKI_DIR", None)
 
 
 def _is_reserved_name(name: str) -> bool:
     """True for files the promote must NOT sync: the generated nav files (``index.md``/``log.md`` at
-    any level), any dotfile (the ``.okf_ingested.json`` manifest, etc.), and a half-written
-    ``*.okftmp`` temp. Finalize regenerates the indexes and the ingest loop owns the manifest, so a
+    any level), any dotfile (the ``.citadel_ingested.json`` manifest, etc.), and a half-written
+    ``*.citadeltmp`` temp. Finalize regenerates the indexes and the ingest loop owns the manifest, so a
     per-source promote never lays a stale one down."""
-    return name.startswith(".") or name in ("index.md", "log.md") or name.endswith(".okftmp")
+    return name.startswith(".") or name in ("index.md", "log.md") or name.endswith(".citadeltmp")
 
 
 def _content_files(root: Path) -> dict[str, Path]:
@@ -834,11 +834,11 @@ def _promote(staging: Path, live: Path, allow_emptying: bool = False) -> None:
         with contextlib.suppress(OSError):
             (live / rel).unlink()
 
-    # 3. Best-effort sweep of any leftover *.okftmp from an earlier promote that was hard-killed
+    # 3. Best-effort sweep of any leftover *.citadeltmp from an earlier promote that was hard-killed
     #    between copyfile and os.replace. They are excluded from sync AND prune (reserved), so
     #    without this they could linger on the live wiki indefinitely.
     with contextlib.suppress(OSError):
-        for tmp in live.rglob("*.okftmp"):
+        for tmp in live.rglob("*.citadeltmp"):
             with contextlib.suppress(OSError):
                 tmp.unlink()
 
@@ -873,7 +873,7 @@ def _run_one_agent_session(
     """Run ONE agent session with full all-or-nothing safety, shared by the pending
     (ingest/reconcile) and deletion-cleanup loops.
 
-    Makes a STAGING copy of the live wiki (a sibling dir), redirects the agent + its ``okf-wiki
+    Makes a STAGING copy of the live wiki (a sibling dir), redirects the agent + its ``citadel
     check`` there, snapshots staging, calls ``session_fn()`` (the agent edits the STAGING copy —
     never the live wiki), diffs to learn what changed, validates + re-stamps the changed pages,
     repoints renamed-page links, and runs an optional ``extra_check()`` post-condition (used by
