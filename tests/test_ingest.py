@@ -1852,3 +1852,54 @@ def test_promote_is_non_destructive_on_copy_failure(tmp_path, monkeypatch):
     # The original page is still there: the prune phase never ran, so nothing was lost.
     assert (live / "keep.md").read_text(encoding="utf-8") == "KEEP"
     assert any(live.iterdir())                      # live is NOT empty
+
+
+def test_session_that_deletes_all_pages_is_refused_not_promoted(tmp_path, monkeypatch):
+    """A clean-validating session that nonetheless leaves the wiki with ZERO content pages (a
+    buggy/looping/adversarial agent that deleted everything) must NOT be promoted — the live wiki
+    keeps its pages and the source is reported as a failure, never emptied."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _seed_page(
+        wiki, "concepts/keep.md",
+        {"type": "Concept", "title": "Keep", "description": "d", "tags": ["x"], "resource": "raw/o.md"},
+        "Keep me.[^s1]\n\n## Sources\n\n[^s1]: [raw/o.md](../../raw/o.md) - o\n",
+    )
+    (raw / "o.md").write_text("x\n", encoding="utf-8")
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+
+    def fake(rel_key, kind="ingest"):
+        # The agent wipes every content page from its staging copy (adds nothing back).
+        for p in config.WIKI_DIR.rglob("*.md"):
+            if p.name not in ("index.md", "log.md"):
+                p.unlink()
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    report = ingest.ingest([str(raw / "notes.md")])
+
+    assert "raw/notes.md" not in report.processed         # not committed
+    assert any("no content pages" in e for e in report.errors)
+    assert (wiki / "concepts" / "keep.md").exists()       # the live wiki kept its page
+
+
+def test_promote_excludes_generated_and_manifest_files(tmp_path):
+    """``_promote`` syncs only content pages: it never copies a staging ``index.md``/``log.md`` or
+    the manifest onto live (finalize regenerates indexes, the loop owns the manifest), and it does
+    not prune live's own generated files."""
+    live = tmp_path / "wiki"
+    staging = tmp_path / ".wiki.staging.x"
+    for d in (live, staging):
+        d.mkdir(parents=True)
+    (live / "index.md").write_text("LIVE INDEX", encoding="utf-8")          # must be left alone
+    (live / ".okf_ingested.json").write_text("{}", encoding="utf-8")        # must be left alone
+    (live / "a.md").write_text("A", encoding="utf-8")
+    (staging / "index.md").write_text("STALE INDEX", encoding="utf-8")      # must NOT overwrite live
+    (staging / "log.md").write_text("STALE LOG", encoding="utf-8")          # must NOT be copied
+    (staging / ".okf_ingested.json").write_text('{"stale":1}', encoding="utf-8")
+    (staging / "a.md").write_text("A2", encoding="utf-8")                   # a real content change
+
+    ingest._promote(staging, live)
+
+    assert (live / "a.md").read_text(encoding="utf-8") == "A2"              # content synced
+    assert (live / "index.md").read_text(encoding="utf-8") == "LIVE INDEX"  # generated file untouched
+    assert (live / ".okf_ingested.json").read_text(encoding="utf-8") == "{}"  # manifest untouched
+    assert not (live / "log.md").exists()                                  # stale log not copied in
