@@ -43,10 +43,11 @@ append-only history with `## YYYY-MM-DD` date headings. The loader skips both. (
 also writes a `.okf_viewer.html` — a regenerable, gitignored offline viewer derived purely from
 the bundle, not a source of truth; the loader skips it too.)
 
-`wiki/sources/index.md` is also **generated** (a frontmatter-free `## sources` catalog, linked
-from `index.md`): one row per ingested raw source with the **model that imported it** (from the
-manifest) and links to the pages that cite it. Like every `*/index.md` it is skipped by the
-loader and **must not be authored or edited by ingest** — the system rebuilds it each run.
+`wiki/sources/index.md` is also **generated** (a frontmatter-free catalog under a `# Sources`
+heading, linked from `index.md`): one row per ingested raw source with the **model that imported
+it** (from the manifest) and links to the pages that cite it. Like every `*/index.md` it is
+skipped by the loader; the system rebuilds it deterministically each run, so the **ingest
+agent/model must never author or edit it** (only the system writes it).
 
 ## Frontmatter fields
 
