@@ -30,8 +30,12 @@ class ConsoleProgress:
     """Render ``ingest`` progress events to a stream (default ``sys.stderr``, so stdout
     keeps the final report)."""
 
-    def __init__(self, stream=None):
+    def __init__(self, stream=None, spinner=True):
         self.stream = stream if stream is not None else sys.stderr
+        # The spinner rewrites one line in place with ``\r``; with --verbose the LLM session streams
+        # its own output to the same stderr, so the spinner is disabled there to avoid the two
+        # clobbering each other (per-file lines still print, just without the animated line).
+        self.spinner = spinner
         try:
             self.tty = bool(self.stream.isatty())
         except Exception:  # noqa: BLE001
@@ -85,7 +89,7 @@ class ConsoleProgress:
     def on_source_start(self, index: int, total: int, source: str) -> None:
         self._label = f"[{index}/{total}] {source}"
         self._t0 = time.monotonic()
-        if self.tty:
+        if self.tty and self.spinner:
             self._start_spinner()
 
     def on_source_done(

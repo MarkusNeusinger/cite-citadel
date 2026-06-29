@@ -221,6 +221,10 @@ __marimo__/
 .okf_viewer.html
 wiki/.okf_viewer.html
 
+# okf-wiki ingest LLM transcripts (OKF_LLM_LOG_DIR / `okf-wiki ingest --log-dir`).
+# Individual *.log files are already ignored above; this covers the suggested default dir.
+.okf_llm_logs/
+
 # JetBrains IDE
 .idea/
 
