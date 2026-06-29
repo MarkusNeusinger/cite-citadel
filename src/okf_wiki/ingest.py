@@ -633,9 +633,11 @@ def _robust_rmtree(path: str | os.PathLike) -> None:
     the directory in place, which then made a follow-up ``copytree`` crash with ``FileExistsError``."""
 
     def _clear_readonly(func, p, _exc):
-        # Windows marks some files read-only; clear the bit and retry the one failed operation.
+        # Windows marks some files read-only; add the write bit (OR onto the existing mode so we
+        # don't wipe read/execute — clearing a directory's execute bit on POSIX would block the
+        # traversal the retried delete needs) and retry the one failed operation.
         try:
-            os.chmod(p, stat.S_IWRITE)
+            os.chmod(p, os.stat(p).st_mode | stat.S_IWRITE)
             func(p)
         except OSError:
             pass
