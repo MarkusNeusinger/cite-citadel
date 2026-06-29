@@ -188,6 +188,20 @@ def test_citation_inside_code_fence_is_not_a_source(tmp_path, monkeypatch):
     assert "raw/fenced.md" not in sources  # the fenced citation is a literal, not provenance
 
 
+def test_angle_bracket_citation_is_discovered(tmp_path, monkeypatch):
+    # A citation written in markdown's <...> target form must still be discovered and embedded
+    # (store._split_link_target strips the brackets); the in-browser resolveLink strips them too.
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "x.md").write_text("# X\n\nbody\n", encoding="utf-8")
+    _seed(
+        wiki, "concepts/p.md", {"type": "Concept", "title": "P"},
+        "Cites x.[^s1]\n\n## Sources\n\n[^s1]: [raw/x.md](<../../raw/x.md>) - n\n",
+    )
+    sources = viewer.build_bundle()["sources"]
+    assert "raw/x.md" in sources
+    assert sources["raw/x.md"]["cited_by"] == ["concepts/p.md"]
+
+
 def test_docs_citation_is_a_source(tmp_path, monkeypatch):
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
     (config.DOCS_DIR / "ref.md").write_text("# Reference\n\nspec\n", encoding="utf-8")

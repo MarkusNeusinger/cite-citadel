@@ -490,6 +490,15 @@ _VIEWER_JS = r'''
   // root is clamped), so a citation like '../../raw/x.md' resolves to 'raw/x.md' — exactly the
   // id under which build_sources keys an embedded source.
   function resolveLink(fromRel, target) {
+    // Strip a markdown <...> link target so it resolves like store._split_link_target does. inlineFmt
+    // runs on HTML-escaped text, so the brackets may already be &lt;...&gt;; the fnSrc parser passes
+    // the raw <...>. Handle both forms.
+    target = target.trim();
+    if (target.charAt(0) === "<" && target.charAt(target.length - 1) === ">") {
+      target = target.slice(1, -1);
+    } else if (target.slice(0, 4) === "&lt;" && target.slice(-4) === "&gt;") {
+      target = target.slice(4, -4);
+    }
     target = target.split("#")[0];
     var base = fromRel.indexOf("/") >= 0 ? fromRel.replace(/\/[^\/]*$/, "") : "";
     var parts = base ? base.split("/") : [];
