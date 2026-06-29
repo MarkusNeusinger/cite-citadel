@@ -52,6 +52,9 @@ class IngestReport:
     skipped: list[str]
     pages_written: list[str]  # = pages_created + pages_updated (union, in write order)
     errors: list[str]
+    # The model/backend that imported this run's sources (config.ingest_model_label), recorded
+    # per-source in the manifest and surfaced here so the report says WHICH model ran.
+    model: str = ""
     pages_deleted: list[str] = field(default_factory=list)
     # (source_rel_path, target) cross-links left dangling after this run — should be empty.
     broken_links: list[tuple[str, str]] = field(default_factory=list)
@@ -69,6 +72,8 @@ class IngestReport:
     def render(self) -> str:
         """Human-readable multi-line summary for CLI/MCP."""
         lines: list[str] = []
+        if self.model:
+            lines.append(f"Model: {self.model}")
         lines.append(
             f"Ingest complete: {len(self.processed)} processed, "
             f"{len(self.skipped)} skipped, "
@@ -208,7 +213,7 @@ def _partition_sources(
     """
     by_sha: dict[str, list[str]] = {}
     for k, v in manifest_dict.items():
-        by_sha.setdefault(v, []).append(k)
+        by_sha.setdefault(manifest.entry_sha(v), []).append(k)
 
     pending: list[Path] = []
     skipped: list[str] = []
@@ -593,7 +598,11 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 pass
 
     manifest_dict = manifest.load()
-    report = IngestReport([], [], [], [])
+    # The model/backend that will import this run's sources — recorded per-source in the manifest
+    # so you can see which raw file was imported by which model. Resolved once (it does not change
+    # mid-run) and read at call time so tests can monkeypatch the backend/model.
+    model = config.ingest_model_label()
+    report = IngestReport([], [], [], [], model=model)
 
     pending, skipped, moved, unreadable, deleted_sources, office_text = _partition_sources(
         paths, manifest_dict
@@ -609,6 +618,9 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
     # stale manifest key. Either way, record the new key so future runs skip it immediately. ---
     repointed = False
     for old_key, new_key, sha, old_gone in moved:
+        # A move/duplicate is NOT a re-ingest: carry over the model that originally imported this
+        # content (recorded under the old key) rather than stamping it with this run's model.
+        carried_model = manifest.model_of(manifest_dict, old_key)
         if old_gone and old_key != new_key:
             try:
                 if store.rewrite_raw_references(old_key, new_key):
@@ -619,7 +631,7 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 report.errors.append(f"{new_key}: repoint refs from {old_key}: {exc}")
                 continue
             manifest_dict.pop(old_key, None)
-        manifest_dict[new_key] = sha
+        manifest_dict[new_key] = manifest.make_entry(sha, carried_model)
         report.moved.append((old_key, new_key))
     if report.moved:
         manifest.save(manifest_dict)
@@ -630,7 +642,8 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
     for src in unreadable:
         key = manifest.rel_key(src)
         try:
-            manifest_dict[key] = manifest.file_sha256(src)
+            # No model imported it (it was only sniffed and skipped), so record the sha alone.
+            manifest_dict[key] = manifest.make_entry(manifest.file_sha256(src), None)
         except OSError:
             continue
         report.unreadable.append(key)
@@ -712,7 +725,7 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
         report.pages_written.extend(outcome.created + outcome.updated)
         report.pages_deleted.extend(outcome.deleted)
 
-        manifest.mark_done(manifest_dict, src)
+        manifest.mark_done(manifest_dict, src, model)
         # Persist progress immediately after each completed source: a later Ctrl+C (or a crash)
         # must not erase sources already finished this run.
         manifest.save(manifest_dict)
@@ -808,7 +821,8 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
         if report.processed:
             store.append_log(
                 f"ingest {report.processed} -> {len(report.pages_created)} created, "
-                f"{len(report.pages_updated)} updated, {len(report.pages_deleted)} deleted"
+                f"{len(report.pages_updated)} updated, {len(report.pages_deleted)} deleted "
+                f"(model: {model})"
             )
         for old_key, new_key in report.moved:
             store.append_log(

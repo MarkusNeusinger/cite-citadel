@@ -1,8 +1,17 @@
 """Tracks which raw files were already ingested so re-running is idempotent and cheap.
 
-A tiny committed JSON file wiki/.okf_ingested.json maps the source's repo-relative
-posix path -> sha256 of its content. A file is (re)ingested only if absent or its
-hash changed. No DB.
+A tiny committed JSON file wiki/.okf_ingested.json maps the source's repo-relative posix path
+(e.g. 'raw/notes.md') to a small record of how it was last ingested:
+
+    {"sha256": "<hex>", "model": "claude:sonnet"}
+
+``sha256`` is the hash of the source's content (a file is (re)ingested only if absent or its
+hash changed); ``model`` is the model/backend that imported it (``config.ingest_model_label``),
+so you can see WHICH raw file was imported by WHICH model. ``model`` is omitted for a source
+that no model imported (a binary/unreadable file that was only seen and skipped).
+
+Backward compatible: an older manifest whose value is a bare sha STRING is still read — that
+form simply carries no model. No DB.
 """
 
 from __future__ import annotations
@@ -12,6 +21,11 @@ import json
 from pathlib import Path
 
 from . import config
+
+# A manifest value is either the current record ({"sha256": ..., "model": ...}) or, for an older
+# manifest, a bare sha256 string. The helpers below accept both so a pre-existing manifest keeps
+# working without a migration step.
+Entry = dict | str
 
 
 def file_sha256(path: Path) -> str:
@@ -34,7 +48,40 @@ def rel_key(src: Path) -> str:
     return config.rel_or_abs_posix(src)
 
 
-def load() -> dict[str, str]:
+def make_entry(sha: str, model: str | None = None) -> Entry:
+    """Build a manifest value from a content hash and the importing model. ``model`` is included
+    only when set, so a source no model imported (binary/unreadable) records just its sha."""
+    entry: dict = {"sha256": sha}
+    if model:
+        entry["model"] = model
+    return entry
+
+
+def entry_sha(entry: Entry) -> str:
+    """The sha256 stored for a manifest value, accepting both the current record form
+    ({"sha256": ...}) and the legacy bare-string form (the sha itself)."""
+    if isinstance(entry, dict):
+        return str(entry.get("sha256") or "")
+    return str(entry or "")
+
+
+def entry_model(entry: Entry) -> str | None:
+    """The model recorded for a manifest value, or None when unknown (a legacy bare-string entry,
+    or a source that no model imported)."""
+    if isinstance(entry, dict):
+        model = entry.get("model")
+        return str(model) if model else None
+    return None
+
+
+def model_of(manifest: dict[str, Entry], key: str) -> str | None:
+    """The model that imported the source ``key``, or None if it is untracked / has no model."""
+    if key not in manifest:
+        return None
+    return entry_model(manifest[key])
+
+
+def load() -> dict[str, Entry]:
     """json.loads(MANIFEST_PATH) or {} if missing/empty/corrupt."""
     path = config.MANIFEST_PATH
     try:
@@ -52,7 +99,7 @@ def load() -> dict[str, str]:
     return data
 
 
-def save(manifest: dict[str, str]) -> None:
+def save(manifest: dict[str, Entry]) -> None:
     """json.dump(manifest, sort_keys=True, indent=2) to MANIFEST_PATH (+ trailing
     newline)."""
     path = config.MANIFEST_PATH
@@ -61,14 +108,16 @@ def save(manifest: dict[str, str]) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def is_pending(manifest: dict[str, str], src: Path) -> bool:
+def is_pending(manifest: dict[str, Entry], src: Path) -> bool:
     """True if rel_key(src) absent OR its stored sha != file_sha256(src)."""
     key = rel_key(src)
     if key not in manifest:
         return True
-    return manifest[key] != file_sha256(src)
+    return entry_sha(manifest[key]) != file_sha256(src)
 
 
-def mark_done(manifest: dict[str, str], src: Path) -> None:
-    """manifest[rel_key(src)] = file_sha256(src) (mutates in place; caller saves)."""
-    manifest[rel_key(src)] = file_sha256(src)
+def mark_done(manifest: dict[str, Entry], src: Path, model: str | None = None) -> None:
+    """Record ``src`` as ingested: manifest[rel_key(src)] = {sha256, model} (mutates in place;
+    caller saves). ``model`` is the model/backend that imported it (config.ingest_model_label);
+    pass None for a source no model imported."""
+    manifest[rel_key(src)] = make_entry(file_sha256(src), model)

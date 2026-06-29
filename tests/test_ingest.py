@@ -1498,3 +1498,108 @@ def test_suggested_links_skips_already_linked(tmp_path, monkeypatch):
     report = lint.lint()
     caffeine_suggestions = [t for r, t in report.suggested_links if r == "concepts/caffeine.md"]
     assert not any("espresso.md" in s for s in caffeine_suggestions)
+
+
+# --- per-source model provenance (manifest + sources catalog) ---------------------------
+
+
+def test_ingest_records_importing_model_in_manifest(tmp_path, monkeypatch):
+    """Each ingested source records WHICH model imported it; the report/log carry it too. A source
+    no model imported (an unreadable binary) records its sha alone, with no model."""
+    import json
+
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(config, "LLM_CLI", "claude", raising=False)
+    monkeypatch.setattr(config, "INGEST_MODEL", "opus", raising=False)
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake_session_transformer)
+
+    (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
+    (raw / "blob.bin").write_bytes(b"\x00\x01BINARY\xff")
+
+    report = ingest.ingest()
+    assert report.model == "claude:opus"
+    assert "Model: claude:opus" in report.render()
+
+    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    assert data["raw/notes.md"]["model"] == "claude:opus"
+    assert "model" not in data["raw/blob.bin"]  # nothing imported it
+
+    log_text = (wiki / "log.md").read_text(encoding="utf-8")
+    assert "(model: claude:opus)" in log_text
+
+
+def test_sources_catalog_lists_source_model_and_referencing_pages(tmp_path, monkeypatch):
+    """Ingest generates wiki/sources/index.md: a row per source with its model and links to the
+    pages that cite it, and the top index links the catalog under 'See also'."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(config, "LLM_CLI", "claude", raising=False)
+    monkeypatch.setattr(config, "INGEST_MODEL", "sonnet", raising=False)
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake_session_transformer)
+
+    (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
+    ingest.ingest()
+
+    catalog = (wiki / "sources" / "index.md").read_text(encoding="utf-8")
+    assert catalog.startswith("# Sources") and not catalog.startswith("---")
+    assert "| Source | Model | Referenced by |" in catalog
+    # The source links to the raw file, shows the model, and links the page that cites it.
+    assert "[raw/notes.md](../../raw/notes.md)" in catalog
+    assert "claude:sonnet" in catalog
+    assert "[Transformer](../concepts/transformer.md)" in catalog
+
+    top = (wiki / "index.md").read_text(encoding="utf-8")
+    assert "[sources](sources/index.md)" in top
+
+    # The catalog is a reserved nav file: load() ignores it, so it is not a page / graph node.
+    assert all(p.rel_path != "sources/index.md" for p in store.load())
+
+
+def test_sources_catalog_removed_when_no_tracked_sources(tmp_path, monkeypatch):
+    """With an empty manifest the catalog is not written, and a stale one is removed so it never
+    lingers after the last source is gone."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    stale = wiki / "sources" / "index.md"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_text("# Sources\n\nstale\n", encoding="utf-8")
+    _seed_page(
+        wiki, "concepts/a.md",
+        {"type": "Concept", "title": "Alpha", "description": "d", "tags": ["x"], "resource": "raw/a.md"},
+        "Alpha.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - n\n",
+    )
+
+    store.rebuild_indexes()  # manifest is empty in this fixture
+
+    assert not stale.exists()
+    assert "[sources](sources/index.md)" not in (wiki / "index.md").read_text(encoding="utf-8")
+
+
+def test_moved_source_carries_original_importing_model(tmp_path, monkeypatch):
+    """Reorganizing a raw file is not a re-ingest, so the moved entry keeps the model that
+    ORIGINALLY imported it — not the model configured for the run that detected the move."""
+    import json
+
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(config, "LLM_CLI", "claude", raising=False)
+    monkeypatch.setattr(config, "INGEST_MODEL", "opus", raising=False)
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake_session_transformer)
+
+    (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
+    ingest.ingest()  # imported by claude:opus
+
+    # A later run on a DIFFERENT model detects the move; the carried model must stay claude:opus.
+    monkeypatch.setattr(config, "INGEST_MODEL", "haiku", raising=False)
+    (raw / "ml").mkdir()
+    (raw / "ml" / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
+    (raw / "notes.md").unlink()
+
+    report = ingest.ingest()
+    assert ("raw/notes.md", "raw/ml/notes.md") in report.moved
+
+    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    assert "raw/notes.md" not in data
+    assert data["raw/ml/notes.md"]["model"] == "claude:opus"  # original model carried, not haiku
+
+    # The catalog reflects the moved key + the carried model.
+    catalog = (wiki / "sources" / "index.md").read_text(encoding="utf-8")
+    assert "[raw/ml/notes.md](../../raw/ml/notes.md)" in catalog
+    assert "claude:opus" in catalog

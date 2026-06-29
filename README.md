@@ -157,9 +157,23 @@ There is **one agent session per file**, so ingest shows live per-file progress 
 hung — pass `--quiet` to suppress it and print only the final report.
 
 Ingest is **idempotent**: a committed manifest at `wiki/.okf_ingested.json` maps each source's
-repo-relative path to a sha256, so re-running with no new or changed files runs **zero** agent
-sessions. Exactly one agent session per source; if a session fails or times out, that source's
-wiki changes are rolled back and it is retried next run.
+repo-relative path to a small record — its `sha256` and the **model that imported it** — so
+re-running with no new or changed files runs **zero** agent sessions. Exactly one agent session
+per source; if a session fails or times out, that source's wiki changes are rolled back and it is
+retried next run.
+
+```json
+"raw/aeropress.md": { "sha256": "dbea00…", "model": "claude:sonnet" }
+```
+
+**Provenance — which model imported which source.** The recorded model label reflects the backend
+and model that actually ran: `claude:<OKF_INGEST_MODEL>` for the claude CLI, and for copilot/gemini
+the model from the CLI's own env (`COPILOT_MODEL`/`GEMINI_MODEL`, so a local/Ollama model like
+`copilot:qwen3.6:27b` is captured), falling back to an explicit `OKF_INGEST_MODEL` or just the CLI
+name. Each ingest also regenerates a browsable catalog at **`wiki/sources/index.md`** (linked from
+the top `index.md`) — a table of every tracked source with its model and links to the wiki pages
+that cite it. The model also appears in the ingest report and the `wiki/log.md` line. (An older
+manifest that stored a bare sha string still works — it simply carries no model.)
 
 Crucially, ingest keeps the wiki in sync when a raw file **changes** or **disappears** — not
 just when one is added:

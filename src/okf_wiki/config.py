@@ -149,6 +149,40 @@ LLM_CLI: str = os.environ.get("OKF_LLM_CLI", "claude")
 INGEST_MODEL: str = os.environ.get("OKF_INGEST_MODEL", "sonnet")
 LLM_TIMEOUT: int = int(os.environ.get("OKF_LLM_TIMEOUT", "1200"))
 
+
+# Where each non-claude backend keeps its OWN model id in the environment. A copilot user on a
+# local/Ollama model sets COPILOT_MODEL (e.g. "qwen3.6:27b"); gemini uses GEMINI_MODEL. We read
+# these so the recorded label reflects the model that ACTUALLY ran, not a guess. claude is absent
+# because we pass it --model INGEST_MODEL ourselves (so INGEST_MODEL is authoritative there).
+_CLI_MODEL_ENV = {"copilot": "COPILOT_MODEL", "gemini": "GEMINI_MODEL"}
+
+
+def ingest_model_label() -> str:
+    """A short, human-readable id of the model/backend that ingests a source — recorded per
+    source in the manifest (``wiki/.okf_ingested.json``) so you can see WHICH raw file was
+    imported by WHICH model. Resolved at call time so tests can monkeypatch the inputs.
+
+    - ``claude`` — the only backend we pass ``--model`` to, so :data:`INGEST_MODEL` is exactly the
+      model that ran: ``"claude:sonnet"`` (or just ``"claude"`` if no model is configured).
+    - ``copilot`` / ``gemini`` — run their own model, which we never pass. The label is resolved in
+      priority order so it reflects what really ran:
+        1. the CLI's OWN model env var (``COPILOT_MODEL`` / ``GEMINI_MODEL``) — this is what a
+           local/Ollama copilot setup sets, e.g. ``"copilot:qwen3.6:27b"``;
+        2. an explicitly-set ``OKF_INGEST_MODEL`` (the default ``"sonnet"`` is claude-only, so it
+           counts only when the user actually exported the var) — e.g. ``"copilot:gpt-5.4-mini"``;
+        3. otherwise just the CLI name (``"copilot"``).
+    """
+    cli = (LLM_CLI or "claude").strip().lower()
+    if cli == "claude":
+        model = (INGEST_MODEL or "").strip()
+        return f"claude:{model}" if model else "claude"
+    native = os.environ.get(_CLI_MODEL_ENV.get(cli, ""), "").strip()
+    if native:
+        return f"{cli}:{native}"
+    if "OKF_INGEST_MODEL" in os.environ and (INGEST_MODEL or "").strip():
+        return f"{cli}:{INGEST_MODEL.strip()}"
+    return cli
+
 MAX_DIGEST_CHARS: int = 12000
 DIGEST_TOP_N: int = 6
 # How many keyword-matched pages to consider for the digest's full-body section. Their

@@ -14,6 +14,7 @@ import re
 from datetime import datetime, timezone
 
 from . import config
+from . import manifest as manifest_mod
 from . import okf
 from .okf import Page
 
@@ -451,6 +452,56 @@ def tag_catalog(pages: list[Page] | None = None) -> dict[str, list[Page]]:
     return by_tag
 
 
+def _md_cell(text: str) -> str:
+    """Escape a markdown-table cell: pipes would otherwise be read as column separators."""
+    return str(text).replace("|", "\\|").strip()
+
+
+SOURCES_INDEX_REL = "sources/index.md"
+
+
+def _render_sources_catalog(
+    manifest_dict: dict, pages: list[Page]
+) -> str | None:
+    """Render the body of ``wiki/sources/index.md`` — the provenance catalog.
+
+    One row per tracked raw source (from the ingest manifest), showing the MODEL that imported it
+    and the wiki pages that cite it (from the live link graph via :func:`find_raw_references`). The
+    source path links to the raw file and each citing page links to its page, both relative to
+    ``sources/index.md`` (so the links work from that file's location, in-repo or on a network
+    drive). Like ``index.md``/``log.md`` this is a generated, frontmatter-free OKF nav file —
+    load() skips it and delete_page refuses it.
+
+    Returns the markdown body, or None when no source is tracked (the caller then removes any stale
+    catalog) — so the catalog appears exactly when there is provenance to show."""
+    if not manifest_dict:
+        return None
+    title_by_path = {p.rel_path: p.title for p in pages}
+    lines: list[str] = [
+        "# Sources",
+        "",
+        "Provenance for every ingested raw source: the model that imported it and the wiki "
+        "pages that cite it. Generated — do not edit.",
+        "",
+        "| Source | Model | Referenced by |",
+        "| --- | --- | --- |",
+    ]
+    for key in sorted(manifest_dict):
+        model = manifest_mod.entry_model(manifest_dict[key]) or "—"
+        source_cell = f"[{_md_cell(key)}]({_source_key_to_page_link(SOURCES_INDEX_REL, key)})"
+        refs = find_raw_references(key, pages)
+        if refs:
+            ref_cell = ", ".join(
+                f"[{_md_cell(title_by_path.get(r, r))}]"
+                f"({okf.rel_path_between(SOURCES_INDEX_REL, r)})"
+                for r in refs
+            )
+        else:
+            ref_cell = "—"
+        lines.append(f"| {source_cell} | {_md_cell(model)} | {ref_cell} |")
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
 def rebuild_indexes(pages: list[Page] | None = None) -> None:
     """Regenerate the OKF navigation files from the loaded pages (no LLM).
 
@@ -468,6 +519,18 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
     title_by_path = {p.rel_path: p.title for p in pages}
     inbound = _inbound_map(pages)
 
+    # ----- sources/index.md: the provenance catalog (source -> model + citing pages) -----
+    # Generated from the ingest manifest (the model lives there) + the live link graph. Written
+    # before the top index so its "See also" can link the catalog when it exists; removed when no
+    # source is tracked so a stale catalog never lingers.
+    sources_body = _render_sources_catalog(manifest_mod.load(), pages)
+    sources_path = config.WIKI_DIR / SOURCES_INDEX_REL
+    if sources_body is not None:
+        sources_path.parent.mkdir(parents=True, exist_ok=True)
+        sources_path.write_text(sources_body, encoding="utf-8")
+    elif sources_path.exists():
+        sources_path.unlink()
+
     # ----- top-level wiki/index.md (NO frontmatter — OKF reserved nav file) -----
     by_type: dict[str, list[Page]] = {}
     for page in pages:
@@ -479,11 +542,11 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
             folders.setdefault(page.rel_path.split("/", 1)[0], []).append(page)
 
     lines: list[str] = ["# Wiki Index", ""]
-    if folders:
-        seealso = " · ".join(
-            f"[{folder}]({folder}/index.md)" for folder in sorted(folders)
-        )
-        lines.append(f"See also: {seealso}")
+    seealso_parts = [f"[{folder}]({folder}/index.md)" for folder in sorted(folders)]
+    if sources_body is not None:
+        seealso_parts.append(f"[sources]({SOURCES_INDEX_REL})")
+    if seealso_parts:
+        lines.append(f"See also: {' · '.join(seealso_parts)}")
         lines.append("")
     for type_ in sorted(by_type):
         lines.append(f"## {type_}")
