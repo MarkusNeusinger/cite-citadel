@@ -116,8 +116,13 @@ def slugify(title: str) -> str:
 
 def folder_for_type(type_: str) -> str:
     """``'Concept'`` -> ``'concepts'``, ``'Entity'`` -> ``'entities'``,
-    ``'Abbreviation'`` -> ``'abbreviations'``, everything else -> ``'misc'``.
-    Case-insensitive on the known types."""
+    ``'Abbreviation'`` -> ``'abbreviations'``, ``'System'`` -> ``'systems'``,
+    everything else -> ``'misc'``. Case-insensitive on the known types.
+
+    ``System`` is the category for an external system, service, or tool a source touches —
+    a database, API, queue, or product like SAP/PLM. These pages accumulate across sources
+    (a DB used by several repos gets ONE growing page) and are kept SEPARATE from ``entities``
+    (people/orgs/projects), so the operational systems are browsable on their own axis."""
     normalized = (type_ or "").strip().lower()
     if normalized == "concept":
         return "concepts"
@@ -125,6 +130,8 @@ def folder_for_type(type_: str) -> str:
         return "entities"
     if normalized == "abbreviation":
         return "abbreviations"
+    if normalized == "system":
+        return "systems"
     return "misc"
 
 

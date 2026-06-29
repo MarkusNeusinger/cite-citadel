@@ -149,6 +149,21 @@ LLM_CLI: str = os.environ.get("OKF_LLM_CLI", "claude")
 INGEST_MODEL: str = os.environ.get("OKF_INGEST_MODEL", "sonnet")
 LLM_TIMEOUT: int = int(os.environ.get("OKF_LLM_TIMEOUT", "1200"))
 
+# Git-repository sources. A sub-folder under raw/ that is a git checkout (holds a ``.git``) — or
+# carries an opt-in ``.okfsource`` marker for a git-less snapshot — is ingested as ONE source: a
+# size-capped DIGEST of its high-signal files (README, dependency manifests, the connection/config
+# layer, the data-transform/pipeline core, entry points) is folded in by a SINGLE agent session,
+# and the source is tracked by its HEAD commit so a later commit re-ingests only the diff. Set
+# OKF_REPO_SUPPORT=0 to fall back to the old per-file walk (every file its own source).
+REPO_SUPPORT: bool = os.environ.get("OKF_REPO_SUPPORT", "1").strip().lower() not in (
+    "0", "false", "no", "off", "",
+)
+# Total character budget for one repo digest, and the per-file cap inside it (a long file is
+# truncated with a marker). Generous defaults so the transform/pipeline core fits; raise for big
+# repos, lower to keep sessions cheap.
+REPO_DIGEST_MAX_CHARS: int = int(os.environ.get("OKF_REPO_DIGEST_MAX_CHARS", "120000"))
+REPO_PER_FILE_MAX_CHARS: int = int(os.environ.get("OKF_REPO_PER_FILE_MAX_CHARS", "8000"))
+
 
 # Where each non-claude backend keeps its OWN model id in the environment. A copilot user on a
 # local/Ollama model sets COPILOT_MODEL (e.g. "qwen3.6:27b"); gemini uses GEMINI_MODEL. We read

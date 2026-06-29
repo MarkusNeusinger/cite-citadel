@@ -88,6 +88,15 @@ Each kept fact is still cited to the file with `[^sN]`, and these facts route in
 **module / subsystem / project** (use the path as context) — not one page per file. (Full rules:
 *Code & structured sources* in [`SCHEMA.md`](SCHEMA.md).)
 
+**A whole git repository as one source.** When your run instruction says the source is a git
+repository, you are given a **digest** of its high-signal files to READ, and you cite the **repo
+folder** (e.g. `raw/acme-etl`) as the source. Assume ~99% of the code is irrelevant: capture only
+**how to use it** (run/connect commands, env vars), **what it does**, **how it does it** (the data
+flow), and **what it outputs** — a short verbatim snippet is fine where the code itself is the fact
+(a connection call, the key transform command, a SQL query). Create or extend a `type: System` page
+for every external system it touches, and link the repo's pages to it. (Full rules: *Git
+repositories* in [`SCHEMA.md`](SCHEMA.md).)
+
 ## Page file format
 
 Each wiki page is a `.md` file that begins with a YAML frontmatter block, then a GFM body:
@@ -106,9 +115,11 @@ Body in GitHub-flavored markdown...
 - **Do NOT write a `timestamp` field** — the system stamps it on every write.
 - **Never put a second `---` YAML block inside the body.** The body is markdown only.
 - **Folder routing**: `type: Concept` → `wiki/concepts/`, `type: Entity` → `wiki/entities/`,
-  `type: Abbreviation` → `wiki/abbreviations/`, anything else → `wiki/misc/`. **Filename** is the
-  slug of the title: lowercase, runs of non-alphanumeric → `-`, trimmed (e.g. title
-  `Self-Attention` → `wiki/concepts/self-attention.md`).
+  `type: Abbreviation` → `wiki/abbreviations/`, `type: System` → `wiki/systems/`, anything else →
+  `wiki/misc/`. Use `type: System` for an external system/service/tool a source touches — a
+  database, API, queue, or product (SAP, PLM, Postgres); these pages accumulate across sources and
+  are kept separate from `entities/`. **Filename** is the slug of the title: lowercase, runs of
+  non-alphanumeric → `-`, trimmed (e.g. title `Self-Attention` → `wiki/concepts/self-attention.md`).
 
 ## Citations — every fact, every page (load-bearing)
 

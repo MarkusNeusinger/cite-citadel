@@ -1251,7 +1251,9 @@ def test_ingest_emits_progress_events(tmp_path, monkeypatch):
     for expected in ("source_start", "source_done", "finalize", "done"):
         assert expected in names, f"missing event: {expected}"
     start = next(d for e, d in events if e == "start")
-    assert start == {"pending": 1, "skipped": 0, "moved": 0, "unreadable": 0, "deleted": 0}
+    assert start == {
+        "pending": 1, "skipped": 0, "moved": 0, "unreadable": 0, "deleted": 0, "repos": 0
+    }
     done = next(d for e, d in events if e == "source_done")
     assert done["source"] == "raw/notes.md"
     assert done["index"] == 1 and done["total"] == 1

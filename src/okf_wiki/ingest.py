@@ -30,7 +30,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import config, extract, llm, manifest, okf, store, validate
+from . import config, extract, llm, manifest, okf, repo, store, validate
 from .okf import Page
 
 # How many leading bytes to sniff when deciding whether a raw file holds text the agent can
@@ -118,9 +118,46 @@ class IngestReport:
         return "\n".join(lines)
 
 
+def _same_path(a: Path, b: Path) -> bool:
+    """True if ``a`` and ``b`` resolve to the same location (never raises)."""
+    try:
+        return a.resolve() == b.resolve()
+    except OSError:
+        return a == b
+
+
+def _is_repo_source(path: Path) -> bool:
+    """True if ``path`` should be ingested as ONE repo source: repo support is on, it is a repo
+    dir (``.git``/``.okfsource``), and it is NOT the corpus root ``RAW_DIR`` itself. The latter
+    guard matters because a user may keep the whole ``raw/`` tree under git for backup — that must
+    still be scanned file-by-file (its repo SUB-folders are the sources), not collapsed into one."""
+    return (
+        config.REPO_SUPPORT
+        and repo.is_repo_dir(path)
+        and not _same_path(path, config.RAW_DIR)
+    )
+
+
+def _prune_repo_dirs(parent: Path, dirnames: list[str]) -> list[str]:
+    """Drop the sub-directories of ``parent`` that are repo roots (a ``.git`` or ``.okfsource``
+    marker) when repo support is on, so the per-file walk does NOT descend into a repository — it
+    is ingested as one source instead (see :mod:`okf_wiki.repo`). With repo support off, nothing is
+    pruned and a repo's files are walked individually (the legacy behavior). Hidden dirs are always
+    dropped, as before."""
+    kept: list[str] = []
+    for name in sorted(dirnames):
+        if name.startswith("."):
+            continue
+        if _is_repo_source(parent / name):
+            continue
+        kept.append(name)
+    return kept
+
+
 def _walk_files(root: Path) -> list[Path]:
     """Every file under ``root``, recursively, in deterministic order — skipping hidden files
-    and hidden directories (a leading ``.``: ``.gitkeep``, ``.git``, etc.).
+    and hidden directories (a leading ``.``: ``.gitkeep``, ``.git``, etc.) and NOT descending into
+    git repositories (handled as one source each; see :func:`_prune_repo_dirs`).
 
     Unlike the old top-level ``*.md`` glob, this picks up ANY file type (``.txt``/``.py``/
     ``.sql``/``.pdf``/…) and descends into sub-folders, so a user can organize ``raw/`` however
@@ -128,7 +165,7 @@ def _walk_files(root: Path) -> list[Path]:
     binary with no readable text is filtered out later by :func:`_is_ingestible`."""
     out: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+        dirnames[:] = _prune_repo_dirs(Path(dirpath), dirnames)
         for name in sorted(filenames):
             if name.startswith("."):
                 continue
@@ -137,22 +174,77 @@ def _walk_files(root: Path) -> list[Path]:
 
 
 def _candidates(paths: list[str] | None) -> list[Path]:
-    """Resolve requested paths (or default to all of ``RAW_DIR``) to a candidate list.
+    """Resolve requested paths (or default to all of ``RAW_DIR``) to a candidate FILE list.
 
     A file path is taken as-is; a directory contributes ALL of its files, recursively (any
     extension, sub-folders included, hidden files/dirs skipped); with no paths, default to
-    every file under ``config.RAW_DIR``."""
+    every file under ``config.RAW_DIR``. A directory that is itself a git repository is NOT
+    expanded here — it is a repo source, returned by :func:`_discover_repos` instead."""
     candidates: list[Path] = []
     if paths:
         for raw in paths:
             p = Path(raw)
             if p.is_dir():
+                if _is_repo_source(p):
+                    continue
                 candidates.extend(_walk_files(p))
             else:
                 candidates.append(p)
     elif config.RAW_DIR.exists():
         candidates.extend(_walk_files(config.RAW_DIR))
     return candidates
+
+
+def _repos_under(root: Path) -> list[Path]:
+    """Every git repository (or ``.okfsource``-marked folder) under ``root``, not descending into a
+    repo once found (a nested repo is part of its parent's tree). Deterministic order."""
+    found: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        parent = Path(dirpath)
+        kept: list[str] = []
+        for name in sorted(dirnames):
+            if name.startswith("."):
+                continue
+            child = parent / name
+            if repo.is_repo_dir(child):
+                found.append(child)
+            else:
+                kept.append(name)
+        dirnames[:] = kept
+    return found
+
+
+def _discover_repos(paths: list[str] | None) -> list[Path]:
+    """The repo sources to ingest: directories under ``RAW_DIR`` (or under an explicitly requested
+    directory) that are git repositories / ``.okfsource``-marked folders. An explicitly requested
+    path that is itself a repo is taken directly. De-duplicated by resolved path, sorted. Empty when
+    repo support is off."""
+    if not config.REPO_SUPPORT:
+        return []
+    found: list[Path] = []
+    if paths:
+        for raw in paths:
+            p = Path(raw)
+            if not p.is_dir():
+                continue
+            if _is_repo_source(p):
+                found.append(p)
+            else:
+                found.extend(_repos_under(p))
+    elif config.RAW_DIR.exists():
+        found.extend(_repos_under(config.RAW_DIR))
+    seen: set[Path] = set()
+    unique: list[Path] = []
+    for p in found:
+        try:
+            resolved = p.resolve()
+        except OSError:
+            resolved = p
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique.append(p)
+    return sorted(unique, key=lambda p: manifest.rel_key(p))
 
 
 def _is_ingestible(path: Path) -> bool:
@@ -213,6 +305,8 @@ def _partition_sources(
     """
     by_sha: dict[str, list[str]] = {}
     for k, v in manifest_dict.items():
+        if manifest.is_repo_entry(v):
+            continue  # repo sources are versioned by commit, not sha — handled separately
         by_sha.setdefault(manifest.entry_sha(v), []).append(k)
 
     pending: list[Path] = []
@@ -285,9 +379,89 @@ def _partition_sources(
         for key in sorted(manifest_dict):
             if key in moved_old:
                 continue
+            if manifest.is_repo_entry(manifest_dict[key]):
+                continue  # repo deletions are detected by _partition_repos, not the file sweep
             if not config.source_path_for_key(key).exists():
                 deleted.append(key)
     return sorted(pending), skipped, moved, unreadable, deleted, office_text
+
+
+@dataclass
+class _RepoJob:
+    """One pending repo source: its on-disk ``path``, its source key (``raw/acme-service``), the
+    session ``kind`` (``"repo"`` first time / ``"repo-reconcile"`` on a later commit), and the
+    ``old_commit`` to diff against on a reconcile (None for a first ingest)."""
+
+    path: Path
+    key: str
+    kind: str
+    old_commit: str | None
+
+
+def _partition_repos(
+    repo_paths: list[Path], manifest_dict: dict[str, manifest.Entry], full_run: bool
+) -> tuple[list[_RepoJob], list[tuple[str, str, str]], list[str], list[str]]:
+    """Split discovered repos into ``(pending, moved, deleted, skipped)``.
+
+    - ``pending``: repos that are new (``kind="repo"``) or whose commit changed since last ingest
+      (``kind="repo-reconcile"``, carrying the old commit for the diff).
+    - ``moved``: ``(old_key, new_key, identity)`` for a repo that appeared under a NEW path whose
+      base commit matches a tracked repo whose old folder is gone — a rename; references get
+      repointed, not re-ingested.
+    - ``deleted``: tracked repo keys whose folder vanished (full run only) — their citations are
+      reconciled out by the shared deletion-cleanup path.
+    - ``skipped``: repo keys already at the current commit (nothing to do).
+    """
+    repo_keys = {k: v for k, v in manifest_dict.items() if manifest.is_repo_entry(v)}
+    by_commit: dict[str, list[str]] = {}
+    for k, v in repo_keys.items():
+        base = manifest.entry_commit(v).split("+", 1)[0]
+        if base and not base.startswith("snap."):
+            by_commit.setdefault(base, []).append(k)
+
+    pending: list[_RepoJob] = []
+    moved: list[tuple[str, str, str]] = []
+    skipped: list[str] = []
+    seen: set[Path] = set()
+    for path in repo_paths:
+        try:
+            resolved = path.resolve()
+        except OSError:
+            resolved = path
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        key = manifest.rel_key(path)
+        ident = repo.identity(path)
+        stored = manifest_dict.get(key)
+        if manifest.is_repo_entry(stored) and manifest.entry_commit(stored) == ident:
+            skipped.append(key)
+            continue
+        if key not in manifest_dict:
+            base = ident.split("+", 1)[0]
+            if base and not base.startswith("snap."):
+                gone = sorted(
+                    k for k in by_commit.get(base, [])
+                    if k != key and not config.source_path_for_key(k).exists()
+                )
+                if gone:
+                    moved.append((gone[0], key, ident))
+                    continue
+        old_commit = (
+            manifest.entry_commit(stored) if manifest.is_repo_entry(stored) else None
+        )
+        kind = "repo-reconcile" if old_commit else "repo"
+        pending.append(_RepoJob(path=path, key=key, kind=kind, old_commit=old_commit))
+
+    deleted: list[str] = []
+    if full_run:
+        moved_old = {old for old, _new, _ident in moved}
+        for key in sorted(repo_keys):
+            if key in moved_old:
+                continue
+            if not config.source_path_for_key(key).exists():
+                deleted.append(key)
+    return pending, moved, deleted, skipped
 
 
 def _hash_pages(pages: list[Page]) -> dict[str, str]:
@@ -607,7 +781,15 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
     pending, skipped, moved, unreadable, deleted_sources, office_text = _partition_sources(
         paths, manifest_dict
     )
-    report.skipped = skipped
+    # Git repositories under raw/ are ingested as ONE source each (a digest), versioned by commit.
+    # Discover + partition them alongside the file sources; a vanished repo folder is reconciled out
+    # by the SAME deletion-cleanup path as a file (its citations point at the repo folder key).
+    repo_paths = _discover_repos(paths)
+    repo_pending, repo_moved, repo_deleted, repo_skipped = _partition_repos(
+        repo_paths, manifest_dict, paths is None
+    )
+    report.skipped = skipped + repo_skipped
+    deleted_sources = deleted_sources + repo_deleted
     # A pending source whose key is ALREADY tracked is a re-ingest of changed bytes (reconcile);
     # one not yet tracked is brand new. Captured before the manifest is mutated below.
     changed_keys = {manifest.rel_key(p) for p in pending} & set(manifest_dict)
@@ -633,6 +815,22 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
             manifest_dict.pop(old_key, None)
         manifest_dict[new_key] = manifest.make_entry(sha, carried_model)
         report.moved.append((old_key, new_key))
+    # Repo moves: a repo whose folder was renamed (same base commit, old path gone). Repoint its
+    # citations/`resource` to the new folder key and carry over its provenance — not a re-ingest.
+    for old_key, new_key, ident in repo_moved:
+        carried_model = manifest.model_of(manifest_dict, old_key)
+        old_entry = manifest_dict.get(old_key)
+        carried_remote = manifest.entry_remote(old_entry) if old_entry is not None else None
+        if old_key != new_key:
+            try:
+                if store.rewrite_raw_references(old_key, new_key):
+                    repointed = True
+            except Exception as exc:  # noqa: BLE001 - collect, don't re-key, retry next run
+                report.errors.append(f"{new_key}: repoint refs from {old_key}: {exc}")
+                continue
+            manifest_dict.pop(old_key, None)
+        manifest_dict[new_key] = manifest.make_repo_entry(ident, carried_model, carried_remote)
+        report.moved.append((old_key, new_key))
     if report.moved:
         manifest.save(manifest_dict)
 
@@ -653,10 +851,11 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
     emit(
         "start",
         pending=len(pending),
-        skipped=len(skipped),
+        skipped=len(report.skipped),
         moved=len(report.moved),
         unreadable=len(report.unreadable),
         deleted=len(deleted_sources),
+        repos=len(repo_pending),
     )
 
     # A Ctrl+C (or other BaseException) raised mid-loop is captured here, not allowed to
@@ -740,6 +939,80 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
             deleted=len(outcome.deleted),
             seconds=outcome.seconds,
         )
+
+    # --- Repo sources: each git repository under raw/ is folded in by ONE session reading a
+    # deterministic digest of its high-signal files. A re-ingest (a later commit) diffs against the
+    # stored commit so only the changed files are inlined. The wiki edit goes through the same
+    # all-or-nothing helper; on success the manifest records the new commit. Skipped after an
+    # interrupt was captured. ---
+    if pending_interrupt is None:
+        total_repos = len(repo_pending)
+        for index, job in enumerate(repo_pending, 1):
+            repo_key = job.key
+            emit("source_start", index=index, total=total_repos, source=repo_key)
+
+            # On a reconcile, restrict the inlined contents to the files changed since the stored
+            # commit (and tell the agent what changed); a snapshot/unknown base re-digests in full.
+            only: list[str] | None = None
+            change_summary: str | None = None
+            if job.kind == "repo-reconcile" and job.old_commit:
+                changed = repo.changed_files(job.path, job.old_commit)
+                if changed is not None:
+                    only = changed
+                    listing = "\n".join(changed) if changed else "(metadata only — no files)"
+                    base = job.old_commit.split("+", 1)[0][:12]
+                    change_summary = f"Changed files since {base}:\n{listing}"
+
+            # Build the digest and materialize it to a temp file the agent reads (citing the repo
+            # folder as the source of record). A build/temp failure is a per-source error.
+            try:
+                digest = repo.build_digest(
+                    job.path, repo_key, only=only, change_summary=change_summary
+                )
+                read_key, repo_tmp = _office_write_temp(digest, job.path.name)
+            except Exception as exc:  # noqa: BLE001 - per-source, keep going
+                report.errors.append(f"{repo_key}: build digest: {exc}")
+                emit(
+                    "source_error", index=index, total=total_repos, source=repo_key,
+                    error=str(exc), seconds=0.0,
+                )
+                continue
+
+            try:
+                outcome = _run_one_agent_session(
+                    lambda rk=repo_key, k=job.kind, rp=read_key: llm.run_ingest_session(
+                        rk, kind=k, read_path=rp
+                    ),
+                    repo_key,
+                )
+            except BaseException as exc:  # noqa: BLE001 - Ctrl+C: helper rolled back; re-raise later
+                pending_interrupt = exc
+                break
+            finally:
+                shutil.rmtree(repo_tmp, ignore_errors=True)
+
+            if not outcome.ok:
+                report.errors.extend(outcome.errors)
+                emit(
+                    "source_error", index=index, total=total_repos, source=repo_key,
+                    error=outcome.errors[0] if outcome.errors else "", seconds=outcome.seconds,
+                )
+                continue
+
+            report.pages_created.extend(outcome.created)
+            report.pages_updated.extend(outcome.updated)
+            report.pages_written.extend(outcome.created + outcome.updated)
+            report.pages_deleted.extend(outcome.deleted)
+            manifest_dict[repo_key] = manifest.make_repo_entry(
+                repo.identity(job.path), model, repo.remote_url(job.path)
+            )
+            manifest.save(manifest_dict)
+            report.processed.append(repo_key)
+            emit(
+                "source_done", index=index, total=total_repos, source=repo_key,
+                created=len(outcome.created), updated=len(outcome.updated),
+                deleted=len(outcome.deleted), seconds=outcome.seconds,
+            )
 
     # --- Deleted sources: a tracked source vanished from disk (full run only). If any page still
     # cites it, run a `kind="delete"` cleanup session that strips that provenance, gated by a
