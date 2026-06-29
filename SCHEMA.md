@@ -33,6 +33,7 @@ routes by type:
 | `Concept`            | `wiki/concepts/`  | An idea/topic synthesized across sources.     |
 | `Entity`             | `wiki/entities/`  | A named thing: person, org, project, tool.    |
 | `Abbreviation`       | `wiki/abbreviations/` | A short form + its expansion (a glossary entry). |
+| `System`             | `wiki/systems/`   | An external system/service/tool a source touches: a database, API, queue, or product (SAP, PLM, Postgres). Accumulates across sources; kept separate from `entities/`. |
 | anything else        | `wiki/misc/`      | Note, Metric, Runbook, etc.                   |
 | `index.md` / `log.md`| (generated)       | OKF reserved navigation/history files — not authored by ingest. |
 
@@ -149,6 +150,39 @@ cited to the file** — a slightly more interpretive mode than restating a prose
 grounding rule still holds: it must follow from the file's contents (never from assumption) and it
 carries a `[^sN]` citation like any other fact. Route these facts into a page about the
 **module / subsystem / project** (use the path as context, above) — not one page per source file.
+
+## Git repositories — one source, captured by use
+
+A sub-folder under `raw/` that is a **git repository** (it holds a `.git/`) — or carries an opt-in
+empty `.okfsource` marker for a git-less snapshot — is ingested as **one source**, not file by
+file. The system builds a deterministic **digest** of the repo's high-signal files (README,
+dependency manifests, the connection/config layer, the data-transform/pipeline core, entry points;
+`.gitignore` honored, lockfiles / `node_modules` / build output dropped, capped to a budget) and
+the agent reads that digest. The repo folder is the **source of record**: `resource:` is the
+folder path (e.g. `raw/acme-etl`) and `[^sN]` citations link to it.
+
+Assume **~99% of the code is irrelevant** to a knowledge wiki. For a repo, capture only:
+
+- **How to use it** — how to run/call it, how to connect to the API/service/DB, the key command(s)
+  to transform the data, the env vars / config it needs.
+- **What it does** — its purpose.
+- **How it does it** — the data flow / pipeline steps at a readable level (not line by line, not
+  one note per function).
+- **What comes out** — the output / result form.
+
+A **short verbatim code excerpt** (a few lines) is allowed *here* when the code itself **is** the
+fact — a connection/auth call, the key transform command, an env var, a SQL query — cited like any
+fact. This is the one place the "never paste a code block" rule above is relaxed; keep it short and
+usage-oriented, never a transcription.
+
+For every **external system** the repo touches — a database, API, queue, service, or tool (SAP,
+PLM, Postgres) — create or extend a `type: System` page (see the routing table) describing the
+system and how the repo uses it (tables/endpoints, access method, auth), and link the repo's pages
+to it. These pages **accumulate** across sources.
+
+A repo is versioned by its **HEAD commit**: a later commit re-ingests only the changed files
+(a `git diff` reconcile), a renamed folder repoints its citations, and a deleted folder reconciles
+its citations out — exactly like a single raw file changing, moving, or being removed.
 
 ## Cross-linking — the knowledge graph
 

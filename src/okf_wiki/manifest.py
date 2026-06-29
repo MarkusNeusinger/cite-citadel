@@ -59,10 +59,45 @@ def make_entry(sha: str, model: str | None = None) -> Entry:
 
 def entry_sha(entry: Entry) -> str:
     """The sha256 stored for a manifest value, accepting both the current record form
-    ({"sha256": ...}) and the legacy bare-string form (the sha itself)."""
+    ({"sha256": ...}) and the legacy bare-string form (the sha itself). Empty for a repo
+    entry (which is versioned by commit, not a content sha)."""
     if isinstance(entry, dict):
         return str(entry.get("sha256") or "")
     return str(entry or "")
+
+
+def make_repo_entry(commit: str, model: str | None = None, remote: str | None = None) -> dict:
+    """Build a manifest value for a GIT-REPOSITORY source: ``{"kind": "git", "commit": ...}``
+    plus the importing ``model`` and the repo's ``remote`` URL when known. ``commit`` is the repo's
+    version identity (a HEAD commit, possibly with a ``+dirty.<hash>`` suffix, or a ``snap.<hash>``
+    aggregate for a git-less snapshot) — the source is re-ingested when it changes."""
+    entry: dict = {"kind": "git", "commit": commit}
+    if model:
+        entry["model"] = model
+    if remote:
+        entry["remote"] = remote
+    return entry
+
+
+def is_repo_entry(entry: Entry) -> bool:
+    """True if ``entry`` records a git-repository source (``kind == "git"``) rather than a single
+    file. Repo sources are versioned by ``commit``, not ``sha256``."""
+    return isinstance(entry, dict) and entry.get("kind") == "git"
+
+
+def entry_commit(entry: Entry) -> str:
+    """The commit/version identity stored for a repo entry, or "" for a non-repo/legacy value."""
+    if isinstance(entry, dict):
+        return str(entry.get("commit") or "")
+    return ""
+
+
+def entry_remote(entry: Entry) -> str | None:
+    """The repo's remote URL recorded for a repo entry, or None when unknown."""
+    if isinstance(entry, dict):
+        remote = entry.get("remote")
+        return str(remote) if remote else None
+    return None
 
 
 def entry_model(entry: Entry) -> str | None:

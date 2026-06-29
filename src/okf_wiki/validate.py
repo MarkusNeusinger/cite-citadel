@@ -180,11 +180,15 @@ def validate_page(rel_path: str, frontmatter: dict, body: str) -> list[Issue]:
     elif ".." in resource.replace("\\", "/").split("/"):
         # A '..' traversal segment is never a valid source key (repo-relative or absolute).
         err("bad_resource", f"resource must not contain '..': {resource!r}")
-    elif not config.source_path_for_key(resource).is_file():
+    else:
+        src_path = config.source_path_for_key(resource)
         # source_path_for_key accepts BOTH a repo-relative key ('raw/notes.md') and an absolute
         # out-of-repo key ('T:/team-wiki/raw/notes.md' / '/mnt/share/raw/notes.md'), so a wiki
-        # whose raw/ lives on a mounted network drive validates instead of being rejected.
-        err("bad_resource", f"resource points at a missing file: {resource}")
+        # whose raw/ lives on a mounted network drive validates instead of being rejected. A
+        # `resource` may also be a DIRECTORY — a whole git repository ingested as one source
+        # (e.g. 'raw/acme-service') — so a directory is accepted alongside a file.
+        if not (src_path.is_file() or src_path.is_dir()):
+            err("bad_resource", f"resource points at a missing file: {resource}")
 
     # --- file format ---
     # An embedded YAML frontmatter block in the body (the agent echoed it twice). After the

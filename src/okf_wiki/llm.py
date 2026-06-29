@@ -147,6 +147,55 @@ def _build_instruction(rel_key: str, kind: str = "ingest", read_path: str | None
             f"and fix every error. When you are done, NO page may reference {rel_key}."
         )
 
+    if kind in ("repo", "repo-reconcile"):
+        # rel_key is a whole GIT REPOSITORY (a folder under raw/), not a single file. Its
+        # high-signal files were pre-digested to read_path; the agent reads THAT and folds the repo
+        # into a few pages + a `type: System` page per external system. ~99% of code is irrelevant,
+        # so the brief is deliberately about USE/WHAT/HOW/OUTPUT, not a transcription.
+        reconcile_note = ""
+        if kind == "repo-reconcile":
+            reconcile_note = (
+                f"NOTE: {rel_key} is a repo that CHANGED since it was last ingested (new commits) "
+                "— this is a RE-INGEST. The digest's 'What changed' section lists the changed "
+                "files. UPDATE the facts those changes affect (a changed command, mapping, table, "
+                "or output), remove facts the repo no longer supports, and leave unaffected facts "
+                "and facts from OTHER sources intact. Do not merely append.\n\n"
+            )
+        return (
+            header
+            + reconcile_note
+            + f"The raw source {rel_key} is a GIT REPOSITORY (a whole code repo), not a single "
+            f"file. A DIGEST of its high-signal files has been prepared at {read_path} — read THAT "
+            f"for the content. Treat {rel_key} (the repo folder) as the source of record: set "
+            f"`resource: {rel_key}` and cite {rel_key} in `## Sources` (the relative link points at "
+            "the repo folder). Fold it into the wiki by EDITING FILES DIRECTLY:\n"
+            "1. Assume ~99% of the code is irrelevant to a knowledge wiki. For the repo, capture as "
+            "cited facts only:\n"
+            "   a. HOW TO USE IT — how to run/call it, how to connect to the API/service/DB, the "
+            "key command(s) to transform the data, and the env vars / config it needs.\n"
+            "   b. WHAT IT DOES — its purpose.\n"
+            "   c. HOW IT DOES IT — the data flow / pipeline steps at a readable level (NOT line by "
+            "line, NOT one note per function).\n"
+            "   d. WHAT COMES OUT — the output / result form.\n"
+            "   You MAY include a SHORT verbatim code excerpt (a few lines) when the code itself IS "
+            "the fact — a connection/auth call, the key transform command, an env var, a SQL query; "
+            "cite it like any fact. Do NOT paste large code blocks.\n"
+            "2. For every EXTERNAL SYSTEM the repo touches — a database, API, service, queue, or "
+            "tool (e.g. SAP, PLM, Postgres) — create or UPDATE a page with `type: System` (it routes "
+            f"to {wiki_rel}/systems/), tags marking its kind (database/api/service/tool), describing "
+            "the system and how this repo uses it (tables/endpoints, access method, auth). These "
+            "pages ACCUMULATE across sources — search for an existing one and extend it before "
+            "creating a new one. Link the repo's pages to the System pages.\n"
+            f"3. Search {wiki_rel}/ (Grep/Glob/Read) before writing — prefer extending/merging over "
+            "new pages. Set frontmatter type, title, description, tags (>=1 lowercase), and resource "
+            "(verbatim); do NOT set timestamp. Cross-link densely with relative markdown links.\n"
+            f"4. Never edit {wiki_rel}/index.md, {wiki_rel}/log.md, any */index.md, or any dotfile. "
+            f"Make no changes outside {wiki_rel}/. When you delete/rename a page, repoint inbound "
+            "links.\n"
+            "5. Before finishing, run `okf-wiki check` (or `uv run python -m okf_wiki check`) and "
+            f"fix every reported error.\nIf {rel_key} adds nothing new, make no edits and stop."
+        )
+
     note = ""
     if kind == "reconcile":
         # Re-ingest of a CHANGED source: the wiki already holds facts it produced, so the agent

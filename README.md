@@ -40,7 +40,8 @@ authoritative rules — that file is also injected verbatim into the ingest mode
 1. **`raw/`** — immutable sources. You drop arbitrary `.md` here; ingest reads them but never
    edits them. The seed articles in `docs/` are also ingestable on demand.
 2. **`wiki/`** — the LLM-owned OKF bundle: markdown pages with YAML frontmatter, routed into
-   `concepts/`, `entities/`, `abbreviations/`, and `misc/`, cross-linked with relative links, each fact carrying
+   `concepts/`, `entities/`, `abbreviations/`, `systems/` (external systems/tools a source touches —
+   databases, APIs, services like SAP/PLM), and `misc/`, cross-linked with relative links, each fact carrying
    a footnote citation to its `raw/` source. The two OKF-reserved files are generated, not
    authored, and per OKF carry **no frontmatter**: `index.md` (catalog + backlinks + a `## Tags`
    section) and an append-only `log.md` with `## YYYY-MM-DD` headings.
@@ -152,7 +153,31 @@ snippets (see *Code & structured sources* in [`SCHEMA.md`](SCHEMA.md)). Run seve
 overlapping files (e.g. the bundled `raw/coffee*.md` set) and watch the wiki reorganize itself
 rather than accrete one page per file.
 
-There is **one agent session per file**, so ingest shows live per-file progress on stderr
+**Ingest a whole git repository as one source.** Drop a code repo into `raw/` (or point ingest
+at it) and ingest treats the **whole repository as a single source**, not one session per file:
+
+```bash
+cp -r ~/work/acme-etl raw/            # the folder has a .git/
+uv run python -m okf_wiki ingest      # 'raw/acme-etl' is ONE source, folded in by one session
+```
+
+A sub-folder under `raw/` that holds a `.git/` is detected automatically (a git-less snapshot you
+want treated as a unit can opt in with an empty `.okfsource` marker file). Ingest builds a
+deterministic **digest** of the repo's high-signal files — README, dependency manifests, the
+connection/config layer, the data-transform/pipeline core, entry points — honoring `.gitignore`
+and dropping lockfiles, `node_modules`, and build output, capped to a budget
+(`OKF_REPO_DIGEST_MAX_CHARS`). One agent session folds that into a few pages answering **how to
+use it, what it does, how it does it (the data flow), and what it outputs** — assuming ~99% of the
+code is irrelevant, capturing short usage snippets (a connection call, the key transform command,
+an env var) where the code itself is the fact, not a transcription. Every **external system** the
+repo touches — a database, API, service, or tool like SAP/PLM — gets a `type: System` page under
+`wiki/systems/` (a category separate from `entities/`) that **accumulates across sources**, so a DB
+used by several repos becomes one growing page. The repo is tracked by its **HEAD commit** in the
+manifest, so a later commit **re-ingests only the diff** (`git diff` between the stored commit and
+HEAD); deleting the folder reconciles its citations out like any removed source. Set
+`OKF_REPO_SUPPORT=0` to fall back to the per-file walk.
+
+There is **one agent session per file** (and one per repo), so ingest shows live per-file progress on stderr
 (`[2/6] … 2 created, 1 updated` with a spinner + elapsed time) so a multi-file run never looks
 hung — pass `--quiet` to suppress it and print only the final report.
 
