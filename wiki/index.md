@@ -1,6 +1,6 @@
 # Wiki Index
 
-See also: [concepts](concepts/index.md)
+See also: [concepts](concepts/index.md) · [sources](sources/index.md)
 
 ## Concept
 - [AeroPress](concepts/aeropress.md) — A manual hybrid brewer combining immersion steeping with gentle pressure through a paper micro-filter

@@ -205,6 +205,6 @@ Every marker used — both `[^sN]` sources and the `[^llmN]` resolution — must
 
 ## Off-limits
 
-Never edit `wiki/index.md`, `wiki/log.md`, any `*/index.md`, or any dotfile (including
-`.okf_ingested.json` and `.okf_viewer.html`) — the system regenerates them. Make no changes
-outside `wiki/`.
+Never edit `wiki/index.md`, `wiki/log.md`, any `*/index.md` (including the generated
+`wiki/sources/index.md` provenance catalog), or any dotfile (including `.okf_ingested.json` and
+`.okf_viewer.html`) — the system regenerates them. Make no changes outside `wiki/`.
