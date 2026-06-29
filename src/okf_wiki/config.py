@@ -143,18 +143,25 @@ def robust_mkdir(path: Path | str, attempts: int = 5) -> None:
     A UNC/SMB path can momentarily report an existing directory as *not* a directory (e.g. right
     after a sibling tree was deleted), so ``os.mkdir`` raises ``FileExistsError`` (Windows error
     183) and pathlib re-raises it even though ``exist_ok=True`` — because its ``self.is_dir()``
-    re-check transiently returns False. The directory IS present in that case, which is exactly the
-    post-condition we want, so the error is treated as success rather than crashing the run (this is
-    the ``rebuild_indexes`` mkdir that aborted a long ingest mid-finalize). Other transient
-    ``OSError``s are retried a few times before being re-raised."""
+    re-check transiently returns False. That is the race that aborted a long ingest in
+    ``rebuild_indexes`` mid-finalize.
+
+    A ``FileExistsError`` is treated as success ONLY once the target is confirmed to BE a directory
+    (retrying briefly to ride out the transient share state). If the path exists but never resolves
+    to a directory — a genuine file collision — the error is re-raised rather than swallowed, so it
+    surfaces here instead of as a confusing ``NotADirectoryError`` on the next write. Other
+    transient ``OSError``s are likewise retried a few times before being re-raised."""
     p = Path(path)
     for attempt in range(attempts):
         try:
             p.mkdir(parents=True, exist_ok=True)
             return
-        except FileExistsError:
-            return  # the directory exists — goal achieved (transient is_dir() race on the share)
-        except OSError:
+        except OSError as exc:
+            # FileExistsError on an existing DIRECTORY is the share's transient is_dir() race —
+            # success once we can confirm it really is a directory. A real file collision (or any
+            # other still-failing OSError) re-raises once the retries are exhausted.
+            if isinstance(exc, FileExistsError) and p.is_dir():
+                return
             if attempt == attempts - 1:
                 raise
             time.sleep(0.2 * (attempt + 1))

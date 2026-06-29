@@ -9,7 +9,9 @@ module does the deterministic work around that autonomy:
   wiki, and a failed or aborted (Ctrl+C) one is discarded with the live wiki untouched. The
   promote is a non-destructive sync (copy-over then prune), so the live wiki can never be left
   empty or half-written — not even on a flaky network share, and not even if the promote is
-  interrupted. Each source is all-or-nothing;
+  interrupted. A source is all-or-nothing in every case EXCEPT a Ctrl+C landing in the brief
+  promote itself, which can leave that one source partially applied — a superset of valid pages,
+  never an emptied or corrupt wiki — that a later full run reconciles;
 - snapshot the wiki BEFORE and AFTER the session and **diff by content hash** to learn what
   the agent created/updated/deleted (no return value needed);
 - **validate + re-stamp** every changed page (``validate.validate_page`` re-imposes required
@@ -832,7 +834,15 @@ def _promote(staging: Path, live: Path, allow_emptying: bool = False) -> None:
         with contextlib.suppress(OSError):
             (live / rel).unlink()
 
-    # 3. Drop directories left empty by the prune (bottom-up), but keep the live root itself.
+    # 3. Best-effort sweep of any leftover *.okftmp from an earlier promote that was hard-killed
+    #    between copyfile and os.replace. They are excluded from sync AND prune (reserved), so
+    #    without this they could linger on the live wiki indefinitely.
+    with contextlib.suppress(OSError):
+        for tmp in live.rglob("*.okftmp"):
+            with contextlib.suppress(OSError):
+                tmp.unlink()
+
+    # 4. Drop directories left empty by the prune (bottom-up), but keep the live root itself.
     for dirpath, _dirs, _files in os.walk(live, topdown=False):
         d = Path(dirpath)
         if d == live:

@@ -1701,6 +1701,19 @@ def test_robust_mkdir_swallows_fileexists_race(tmp_path, monkeypatch):
     assert target.is_dir()
 
 
+def test_robust_mkdir_reraises_on_real_file_collision(tmp_path, monkeypatch):
+    """``robust_mkdir`` must NOT swallow a FileExistsError when the path is a real FILE (not a
+    transient share race): it surfaces the error here instead of masking it into a confusing
+    NotADirectoryError on the next write."""
+    clash = tmp_path / "notadir"
+    clash.write_text("i am a file", encoding="utf-8")     # the path exists, but as a file
+    monkeypatch.setattr(config.time, "sleep", lambda *_: None)
+
+    with pytest.raises(OSError):
+        config.robust_mkdir(clash, attempts=2)
+    assert clash.is_file()                                # left as it was
+
+
 def test_rebuild_indexes_survives_fileexists_on_share(tmp_path, monkeypatch):
     """The exact reported crash: ``rebuild_indexes`` did ``WIKI_DIR.mkdir(...)`` which threw
     WinError 183 on the share and aborted the whole run. With the robust mkdir it finishes and the
