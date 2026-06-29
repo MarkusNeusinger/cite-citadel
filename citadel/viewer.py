@@ -17,7 +17,7 @@ The only LLM-free, read-only consumer of the wiki besides search/lint. Reuses
 system.
 
 Public surface: ``build_bundle`` (pure data, the test seam), ``build_html`` (the document),
-``write_viewer`` (writes ``wiki/.okf_viewer.html``), and ``view`` (CLI entry — write, open,
+``write_viewer`` (writes ``wiki/.citadel_viewer.html``), and ``view`` (CLI entry — write, open,
 print the path; degrades gracefully when no browser is available, e.g. under WSL).
 """
 
@@ -31,9 +31,9 @@ from pathlib import Path
 
 from . import config, extract, manifest as manifest_mod, store
 
-# Default output: dot-prefixed so store.load() skips it (like .okf_ingested.json) and it is
+# Default output: dot-prefixed so store.load() skips it (like .citadel_ingested.json) and it is
 # gitignored; it is a regenerable artifact, never a source of truth.
-VIEWER_FILENAME = ".okf_viewer.html"
+VIEWER_FILENAME = ".citadel_viewer.html"
 
 # A single embedded source is capped so a pathologically large raw file (a big PDF/CSV dump or a
 # repo digest) can't bloat the standalone document without bound; the body is truncated with a
@@ -104,7 +104,7 @@ def _load_manifest() -> dict:
     """The ingest manifest (source key -> {sha256, model, ...}) read from the LIVE wiki dir, so it
     follows a monkeypatched ``config.WIKI_DIR`` in tests rather than the import-time MANIFEST_PATH.
     Returns {} when absent/empty/corrupt — provenance is optional decoration, never required."""
-    path = config.WIKI_DIR / ".okf_ingested.json"
+    path = config.WIKI_DIR / ".citadel_ingested.json"
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -299,7 +299,7 @@ def build_html(pages=None) -> str:
 
 
 def write_viewer(out_path=None, pages=None) -> Path:
-    """Write the viewer document; default ``config.WIKI_DIR/.okf_viewer.html``. Returns the
+    """Write the viewer document; default ``config.WIKI_DIR/.citadel_viewer.html``. Returns the
     absolute path written."""
     if out_path is None:
         out_path = config.WIKI_DIR / VIEWER_FILENAME
@@ -1004,7 +1004,7 @@ _VIEWER_JS = r'''
     if (s.missing) {
       body = "<div class='callout'><div class='callout-title'>SOURCE UNAVAILABLE</div>" +
         "<div class='callout-body'>The raw file <code>" + esc(s.id) +
-        "</code> was not found when this viewer was generated. Re-run <code>okf-wiki view</code> " +
+        "</code> was not found when this viewer was generated. Re-run <code>citadel view</code> " +
         "with the source present to embed its content.</div></div>";
     } else if (s.kind === "binary") {
       // A PDF or other binary: we can't render it inline without a heavy dependency, so open the

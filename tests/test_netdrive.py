@@ -1,6 +1,6 @@
 """Tests for an out-of-repo wiki/raw layout — e.g. a mounted network drive (no CLI, no network).
 
-The user case: ``OKF_WIKI_DIR=T:\\team-wiki\\wiki`` / ``OKF_RAW_DIR=T:\\team-wiki\\raw`` while the
+The user case: ``CITADEL_WIKI_DIR=T:\\team-wiki\\wiki`` / ``CITADEL_RAW_DIR=T:\\team-wiki\\raw`` while the
 code is a normal checkout on another volume. These cover the full chain that used to assume
 everything lives under ``REPO_ROOT``:
 
@@ -21,7 +21,7 @@ import json
 import os
 from pathlib import Path
 
-from okf_wiki import config, ingest, lint, llm, manifest, okf, store, validate
+from citadel import config, ingest, lint, llm, manifest, okf, store, validate
 
 
 # --- config: the key<->path single source of truth -------------------------------------
@@ -73,17 +73,17 @@ def test_dir_setting_relative_against_repo_root_absolute_as_is(tmp_path, monkeyp
     monkeypatch.setattr(config, "REPO_ROOT", repo, raising=False)
 
     # A relative override resolves against the REPO ROOT, not the process CWD.
-    monkeypatch.setenv("OKF_X_DIR", "wiki")
-    assert config._dir_setting("OKF_X_DIR", repo / "default") == (repo / "wiki").resolve()
+    monkeypatch.setenv("CITADEL_X_DIR", "wiki")
+    assert config._dir_setting("CITADEL_X_DIR", repo / "default") == (repo / "wiki").resolve()
 
     # An absolute override is used as-is (so wiki/raw can live outside the repo).
     external = tmp_path / "net" / "wiki"
-    monkeypatch.setenv("OKF_X_DIR", str(external))
-    assert config._dir_setting("OKF_X_DIR", repo / "default") == external.resolve()
+    monkeypatch.setenv("CITADEL_X_DIR", str(external))
+    assert config._dir_setting("CITADEL_X_DIR", repo / "default") == external.resolve()
 
     # No override -> the default.
-    monkeypatch.delenv("OKF_X_DIR", raising=False)
-    assert config._dir_setting("OKF_X_DIR", repo / "default") == (repo / "default").resolve()
+    monkeypatch.delenv("CITADEL_X_DIR", raising=False)
+    assert config._dir_setting("CITADEL_X_DIR", repo / "default") == (repo / "default").resolve()
 
 
 # --- the agent bridge: absolute paths + per-CLI external-dir access ---------------------
@@ -107,7 +107,7 @@ def _wire_external(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "AGENT_RULES_PATH", repo / "AGENT_INGEST.md", raising=False)
     monkeypatch.setattr(config, "INDEX_PATH", wiki / "index.md", raising=False)
     monkeypatch.setattr(config, "LOG_PATH", wiki / "log.md", raising=False)
-    monkeypatch.setattr(config, "MANIFEST_PATH", wiki / ".okf_ingested.json", raising=False)
+    monkeypatch.setattr(config, "MANIFEST_PATH", wiki / ".citadel_ingested.json", raising=False)
     return repo, wiki, raw
 
 
@@ -298,7 +298,7 @@ def test_ingest_end_to_end_with_wiki_raw_outside_repo(tmp_path, monkeypatch):
 
     # Derived files + manifest live next to the (out-of-repo) wiki.
     assert "transformer.md" in (wiki / "index.md").read_text(encoding="utf-8")
-    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    data = json.loads((wiki / ".citadel_ingested.json").read_text(encoding="utf-8"))
     assert abs_key in data
 
     # Whole-wiki health check is clean, and re-running is a no-op (idempotent on the abs key).
@@ -339,7 +339,7 @@ def test_ingest_deletes_out_of_repo_source(tmp_path, monkeypatch):
     assert report.sources_deleted == [abs_key]
     assert not (wiki / "concepts" / "topic.md").exists()
     assert not report.errors
-    data = json.loads((wiki / ".okf_ingested.json").read_text(encoding="utf-8"))
+    data = json.loads((wiki / ".citadel_ingested.json").read_text(encoding="utf-8"))
     assert abs_key not in data                         # manifest key dropped
 
 
@@ -391,7 +391,7 @@ def test_ingest_canonicalizes_shortened_resource_for_out_of_repo_source(tmp_path
     monkeypatch.setattr(config, "INDEX_PATH", repo / "wiki" / "index.md", raising=False)
     monkeypatch.setattr(config, "LOG_PATH", repo / "wiki" / "log.md", raising=False)
     monkeypatch.setattr(
-        config, "MANIFEST_PATH", repo / "wiki" / ".okf_ingested.json", raising=False
+        config, "MANIFEST_PATH", repo / "wiki" / ".citadel_ingested.json", raising=False
     )
 
     # The raw source (PDF stand-in) lives OUTSIDE the repo — a mounted-drive source.

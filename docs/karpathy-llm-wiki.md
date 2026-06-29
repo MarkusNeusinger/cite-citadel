@@ -5,7 +5,7 @@
 > <https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f>
 >
 > This file is a faithful paraphrase kept under `docs/` as the founding idea for this
-> repository. When in doubt, defer to the gist. This project (`okf_llm_wiki_mcp`) is an
+> repository. When in doubt, defer to the gist. This project (`cite-citadel`) is an
 > implementation of the pattern, with the wiki stored in Google's
 > [Open Knowledge Format](./okf-reference.md).
 
@@ -67,6 +67,6 @@ human team would give up.
 | Raw sources (immutable)   | `raw/*.md` — drop arbitrary markdown here                   |
 | The wiki (LLM-generated)  | `wiki/` as an [OKF](./okf-reference.md) bundle              |
 | The schema/config         | [`SCHEMA.md`](../SCHEMA.md)                                  |
-| Ingest / Query / Lint     | the `okf-wiki` CLI (`ingest`, `lint`) + the MCP server      |
+| Ingest / Query / Lint     | the `citadel` CLI (`ingest`, `lint`) + the MCP server      |
 | Per-fact source reference | every fact in a wiki page cites the `raw/` file it came from |
 | Querying the wiki         | an **MCP server** an AI can use to search and read the wiki |

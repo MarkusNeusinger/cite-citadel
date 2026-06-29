@@ -11,7 +11,7 @@ import json
 import re
 from pathlib import Path
 
-from okf_wiki import config, okf, store, viewer
+from citadel import config, okf, store, viewer
 
 
 def _wire_tmp_wiki(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
@@ -112,7 +112,7 @@ def test_build_html_makes_sources_clickable(tmp_path, monkeypatch):
 
 
 def test_sources_keyed_by_browser_identity_in_nested_layout(tmp_path, monkeypatch):
-    # When wiki/ is NOT a direct child of the repo root (e.g. OKF_WIKI_DIR=sub/wiki), the citation
+    # When wiki/ is NOT a direct child of the repo root (e.g. CITADEL_WIKI_DIR=sub/wiki), the citation
     # climbs further but the in-browser resolver clamps '..' at the wiki root. The embedded source
     # must be keyed under that SAME clamped id, else the citation can't find it.
     repo = tmp_path
@@ -151,7 +151,7 @@ def test_manifest_model_and_repo_and_uncited(tmp_path, monkeypatch):
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
     (raw / "a.md").write_text("# A\n\ncited\n", encoding="utf-8")
     (raw / "lonely.md").write_text("# Lonely\n\nuncited\n", encoding="utf-8")
-    (wiki / ".okf_ingested.json").write_text(
+    (wiki / ".citadel_ingested.json").write_text(
         json.dumps(
             {
                 "raw/a.md": {"sha256": "h1", "model": "claude:sonnet"},
@@ -274,7 +274,7 @@ def test_write_viewer_creates_file_and_load_skips(tmp_path, monkeypatch):
     assert path.exists() and path.suffix == ".html" and path.name.startswith(".")
     assert path.read_text(encoding="utf-8") == viewer.build_html()
     # The generated artifact must not be loaded as a wiki page.
-    assert not any(p.rel_path.endswith(".okf_viewer.html") for p in store.load())
+    assert not any(p.rel_path.endswith(".citadel_viewer.html") for p in store.load())
 
 
 def test_view_no_open_returns_zero(tmp_path, monkeypatch):
@@ -285,7 +285,7 @@ def test_view_no_open_returns_zero(tmp_path, monkeypatch):
     rc = viewer.view(open_browser=False)
     assert rc == 0
     assert calls == []  # browser not launched
-    assert (wiki / ".okf_viewer.html").exists()
+    assert (wiki / ".citadel_viewer.html").exists()
 
 
 def test_view_handles_no_browser(tmp_path, monkeypatch):
@@ -298,7 +298,7 @@ def test_view_handles_no_browser(tmp_path, monkeypatch):
     monkeypatch.setattr(viewer.webbrowser, "open", boom)
     rc = viewer.view(open_browser=True)  # must not crash
     assert rc == 0
-    assert (wiki / ".okf_viewer.html").exists()
+    assert (wiki / ".citadel_viewer.html").exists()
 
 
 def test_empty_wiki(tmp_path, monkeypatch):
@@ -309,7 +309,7 @@ def test_empty_wiki(tmp_path, monkeypatch):
 
 
 def test_cli_view_wires_up():
-    from okf_wiki import cli
+    from citadel import cli
 
     args = cli.build_parser().parse_args(["view", "--no-open"])
     assert args.func is cli.cmd_view

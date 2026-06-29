@@ -7,14 +7,14 @@ best, and NEVER raises out of the tool: not-found / unsafe-path /
 missing-or-unusable-LLM-CLI conditions are returned as clear error strings
 so the server stays up.
 
-Run via ``okf-wiki serve`` or ``python -m okf_wiki.server``.
+Run via ``citadel serve`` or ``python -m citadel.server``.
 """
 
 from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
-mcp = FastMCP("okf-wiki")
+mcp = FastMCP("citadel")
 
 _SNIPPET_CHARS = 200
 
@@ -154,7 +154,7 @@ def wiki_index() -> str:
     try:
         return config.INDEX_PATH.read_text(encoding="utf-8")
     except FileNotFoundError:
-        return "error: wiki index not found (run `okf-wiki ingest` first)."
+        return "error: wiki index not found (run `citadel ingest` first)."
     except Exception as e:  # never raise out of the tool
         return f"error: could not read index: {e}"
 
@@ -174,7 +174,7 @@ def wiki_sources() -> str:
     try:
         return (config.WIKI_DIR / "sources" / "index.md").read_text(encoding="utf-8")
     except FileNotFoundError:
-        return "No sources catalog yet (run `okf-wiki ingest` first)."
+        return "No sources catalog yet (run `citadel ingest` first)."
     except Exception as e:  # never raise out of the tool
         return f"error: could not read sources catalog: {e}"
 

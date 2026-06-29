@@ -217,13 +217,13 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# okf-wiki generated viewer (regenerable artifact: `okf-wiki view`)
-.okf_viewer.html
-wiki/.okf_viewer.html
+# citadel generated viewer (regenerable artifact: `citadel view`)
+.citadel_viewer.html
+wiki/.citadel_viewer.html
 
-# okf-wiki ingest LLM transcripts (OKF_LLM_LOG_DIR / `okf-wiki ingest --log-dir`).
+# citadel ingest LLM transcripts (CITADEL_LLM_LOG_DIR / `citadel ingest --log-dir`).
 # Individual *.log files are already ignored above; this covers the suggested default dir.
-.okf_llm_logs/
+.citadel_llm_logs/
 
 # JetBrains IDE
 .idea/

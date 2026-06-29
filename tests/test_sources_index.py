@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from okf_wiki import config, manifest, okf, server, store
+from citadel import config, manifest, okf, server, store
 
 
 def _wire_tmp_wiki(tmp_path: Path, monkeypatch) -> Path:
@@ -21,7 +21,7 @@ def _wire_tmp_wiki(tmp_path: Path, monkeypatch) -> Path:
     monkeypatch.setattr(config, "REPO_ROOT", repo, raising=False)
     monkeypatch.setattr(config, "WIKI_DIR", wiki, raising=False)
     monkeypatch.setattr(config, "RAW_DIR", raw, raising=False)
-    monkeypatch.setattr(config, "MANIFEST_PATH", wiki / ".okf_ingested.json", raising=False)
+    monkeypatch.setattr(config, "MANIFEST_PATH", wiki / ".citadel_ingested.json", raising=False)
     monkeypatch.setattr(config, "INDEX_PATH", wiki / "index.md", raising=False)
     return wiki
 

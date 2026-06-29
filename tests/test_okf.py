@@ -5,7 +5,7 @@ No network, no API key. Only stdlib + pyyaml are needed.
 
 import pytest
 
-from okf_wiki import okf
+from citadel import okf
 
 
 def test_roundtrip():

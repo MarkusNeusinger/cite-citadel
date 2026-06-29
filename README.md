@@ -1,4 +1,9 @@
-# okf-llm-wiki-mcp
+# **cite**-citadel
+
+> **A fortress of cited knowledge.** An LLM-maintained, fully-cited personal wiki —
+> every fact is attested to its source, nothing is invented.
+
+The CLI is **`citadel`**; the package on PyPI is **`cite-citadel`**.
 
 An **LLM-maintained personal wiki** in Google's [Open Knowledge Format](docs/okf-reference.md),
 with an **MCP server** so an AI can search and read it.
@@ -19,11 +24,11 @@ notes.
   deletes pages whose content moved elsewhere — it does not pile up one page per raw file.
 - **Links keep working.** When a page is merged or renamed, the agent repoints the inbound
   cross-links to the survivor (and the system mechanically repoints a pure rename as a safety
-  net); any dangling link fails `okf-wiki lint` / `okf-wiki check`.
+  net); any dangling link fails `citadel lint` / `citadel check`.
 - **Honest provenance.** Raw facts are restated faithfully (same meaning/numbers) and cite
   their `raw/` file as `[^sN]`. The model **may** add a fact from its own knowledge only when
   it is essential, high-confidence, and on-topic — and must label it `[^llmN]` (source: `LLM`),
-  never disguised as a raw citation. A `[^sN]` citing a missing raw file fails `okf-wiki lint`;
+  never disguised as a raw citation. A `[^sN]` citing a missing raw file fails `citadel lint`;
   `[^llmN]` facts are surfaced by lint for audit.
 
 Ingest runs through a **coding-agent CLI you already have** (`claude`, `copilot`, or `gemini`)
@@ -55,7 +60,7 @@ authoritative rules — that file is also injected verbatim into the ingest mode
 ## Install (uv)
 
 ```bash
-uv sync                       # creates .venv, installs deps + the dev group + okf-wiki
+uv sync                       # creates .venv, installs deps + the dev group + citadel
 ```
 
 Runtime dependencies are just `mcp` and `pyyaml` (no LLM SDK). Then either activate the venv
@@ -64,22 +69,22 @@ Runtime dependencies are just `mcp` and `pyyaml` (no LLM SDK). Then either activ
 This README uses the **portable** invocation that works identically on Linux, macOS, and Windows:
 
 ```bash
-uv run python -m okf_wiki <subcommand>      # e.g. uv run python -m okf_wiki ingest
+uv run python -m citadel <subcommand>      # e.g. uv run python -m citadel ingest
 ```
 
-`uv run okf-wiki <subcommand>` is a shorthand, but **on Windows it often fails** with
-`error: failed to spawn okf-wiki: program not found` — uv's generated `okf-wiki.exe` launcher
+`uv run citadel <subcommand>` is a shorthand, but **on Windows it often fails** with
+`error: failed to spawn citadel: program not found` — uv's generated `citadel.exe` launcher
 stub gets quarantined by antivirus (e.g. Windows Defender, `os error 5`) and regenerated on every
 `uv sync`. Two AV-proof alternatives that need **no `.exe`**:
 
 ```powershell
-uv run python -m okf_wiki <subcommand>   # works everywhere (Linux/macOS/Windows)
-.\okf-wiki <subcommand>                  # bundled wrapper (PowerShell/cmd) -> python -m
+uv run python -m citadel <subcommand>   # works everywhere (Linux/macOS/Windows)
+.\citadel <subcommand>                  # bundled wrapper (PowerShell/cmd) -> python -m
 ```
 
-The bundled `okf-wiki.cmd` / `okf-wiki.ps1` are thin wrappers that just call
-`uv run python -m okf_wiki`, so there is no executable for AV to remove. (To get the
-`uv run okf-wiki` shorthand working instead, add the venv's `Scripts\` folder to your AV
+The bundled `citadel.cmd` / `citadel.ps1` are thin wrappers that just call
+`uv run python -m citadel`, so there is no executable for AV to remove. (To get the
+`uv run citadel` shorthand working instead, add the venv's `Scripts\` folder to your AV
 exclusions: `Add-MpPreference -ExclusionPath "<repo>\.venv\Scripts"`.)
 
 > Prefer pip? `python -m venv .venv && .venv/bin/pip install -e '.[dev]'` works too.
@@ -98,8 +103,8 @@ claude            # run once and /login if you haven't (uses your Claude subscri
 Defaults work out of the box. To tune, copy `.env.example` to `.env` (auto-loaded, gitignored):
 
 ```ini
-OKF_LLM_CLI=claude        # claude | copilot | gemini   (default: claude)
-OKF_INGEST_MODEL=sonnet   # claude model alias/id; opus or haiku also work
+CITADEL_LLM_CLI=claude        # claude | copilot | gemini   (default: claude)
+CITADEL_INGEST_MODEL=sonnet   # claude model alias/id; opus or haiku also work
 ```
 
 Ingest runs the CLI **agentically**: it is pointed at the repo and edits the wiki page files
@@ -107,7 +112,7 @@ itself (reads the raw file, searches the wiki, writes/merges/splits pages), so e
 with autonomous file tools — `claude` with `acceptEdits` + a tool allowlist, `copilot` with
 `--allow-all-tools`, `gemini` with `--approval-mode yolo`. `claude` takes a model alias;
 `copilot`/`gemini` use their own default model. A backend can be slower on big files — raise
-`OKF_LLM_TIMEOUT`. See `.env.example` for binary-path and timeout overrides. (Run ingest on a
+`CITADEL_LLM_TIMEOUT`. See `.env.example` for binary-path and timeout overrides. (Run ingest on a
 clean git tree so any stray edit is easy to spot.)
 
 #### See what the model did (debug an ingest)
@@ -117,12 +122,12 @@ an ingest that produces no edits (e.g. one model/backend works while another, li
 `copilot`, changes nothing) leaves no clue why. Two opt-in switches make it visible:
 
 ```bash
-okf-wiki ingest raw/notes.md --verbose          # stream the session live to the terminal
-okf-wiki ingest raw/notes.md --log-dir .okf_llm_logs   # save a transcript file per source
-okf-wiki ingest raw/notes.md -v --log-dir logs  # both
+citadel ingest raw/notes.md --verbose          # stream the session live to the terminal
+citadel ingest raw/notes.md --log-dir .citadel_llm_logs   # save a transcript file per source
+citadel ingest raw/notes.md -v --log-dir logs  # both
 ```
 
-Or via env (`OKF_LLM_VERBOSE=1`, `OKF_LLM_LOG_DIR=.okf_llm_logs`). A transcript records the exact
+Or via env (`CITADEL_LLM_VERBOSE=1`, `CITADEL_LLM_LOG_DIR=.citadel_llm_logs`). A transcript records the exact
 prompt, the full CLI stdout/stderr, the exit code and duration. `--verbose` streams the output as
 the session runs — `copilot`/`gemini` print their full agentic transcript (every tool call and
 edit), so you can watch what the model does without a `-p`-style headless run; the `claude` CLI is
@@ -137,11 +142,11 @@ while the code stays a normal checkout:
 
 ```ini
 # Windows mapped drive (T: -> \\server\share):
-OKF_WIKI_DIR=T:\team-wiki\wiki
-OKF_RAW_DIR=T:\team-wiki\raw
+CITADEL_WIKI_DIR=T:\team-wiki\wiki
+CITADEL_RAW_DIR=T:\team-wiki\raw
 # Linux/macOS mount:
-# OKF_WIKI_DIR=/mnt/llmwiki/wiki
-# OKF_RAW_DIR=/mnt/llmwiki/raw
+# CITADEL_WIKI_DIR=/mnt/llmwiki/wiki
+# CITADEL_RAW_DIR=/mnt/llmwiki/raw
 ```
 
 Two rules keep it sound: (1) a **relative** override resolves against the **repo root** (not your
@@ -158,8 +163,8 @@ plain text, code, JSON/CSV, PDF, PowerPoint/Word `.pptx`/`.docx`, … — in any
 
 ```bash
 cp ~/notes/q3-planning.md raw/
-uv run python -m okf_wiki ingest                    # ingest all new/changed files in raw/
-uv run python -m okf_wiki ingest docs/karpathy-llm-wiki.md   # or bootstrap from a specific file
+uv run python -m citadel ingest                    # ingest all new/changed files in raw/
+uv run python -m citadel ingest docs/karpathy-llm-wiki.md   # or bootstrap from a specific file
 ```
 
 Ingest folds each source into the **best-fitting** existing pages and restructures as the corpus
@@ -180,15 +185,15 @@ at it) and ingest treats the **whole repository as a single source**, not one se
 
 ```bash
 cp -r ~/work/acme-etl raw/            # the folder has a .git/
-uv run python -m okf_wiki ingest      # 'raw/acme-etl' is ONE source, folded in by one session
+uv run python -m citadel ingest      # 'raw/acme-etl' is ONE source, folded in by one session
 ```
 
 A sub-folder under `raw/` that holds a `.git/` is detected automatically (a git-less snapshot you
-want treated as a unit can opt in with an empty `.okfsource` marker file). Ingest builds a
+want treated as a unit can opt in with an empty `.citadelsource` marker file). Ingest builds a
 deterministic **digest** of the repo's high-signal files — README, dependency manifests, the
 connection/config layer, the data-transform/pipeline core, entry points — honoring `.gitignore`
 and dropping lockfiles, `node_modules`, and build output, capped to a budget
-(`OKF_REPO_DIGEST_MAX_CHARS`). One agent session folds that into a few pages answering **how to
+(`CITADEL_REPO_DIGEST_MAX_CHARS`). One agent session folds that into a few pages answering **how to
 use it, what it does, how it does it (the data flow), and what it outputs** — assuming ~99% of the
 code is irrelevant, capturing short usage snippets (a connection call, the key transform command,
 an env var) where the code itself is the fact, not a transcription. Every **external system** the
@@ -198,13 +203,13 @@ repo touches — a database, API, service, or tool like SAP/PLM — gets a `type
 becomes one growing page. The repo is tracked by its **HEAD commit** in the
 manifest, so a later commit **re-ingests only the diff** (`git diff` between the stored commit and
 HEAD); deleting the folder reconciles its citations out like any removed source. Set
-`OKF_REPO_SUPPORT=0` to fall back to the per-file walk.
+`CITADEL_REPO_SUPPORT=0` to fall back to the per-file walk.
 
 There is **one agent session per file** (and one per repo), so ingest shows live per-file progress on stderr
 (`[2/6] … 2 created, 1 updated` with a spinner + elapsed time) so a multi-file run never looks
 hung — pass `--quiet` to suppress it and print only the final report.
 
-Ingest is **idempotent**: a committed manifest at `wiki/.okf_ingested.json` maps each source's
+Ingest is **idempotent**: a committed manifest at `wiki/.citadel_ingested.json` maps each source's
 repo-relative path to a small record — its `sha256` and the **model that imported it** — so
 re-running with no new or changed files runs **zero** agent sessions. Exactly one agent session
 per source; if a session fails or times out, that source's wiki changes are rolled back and it is
@@ -215,9 +220,9 @@ retried next run.
 ```
 
 **Provenance — which model imported which source.** The recorded model label reflects the backend
-and model that actually ran: `claude:<OKF_INGEST_MODEL>` for the claude CLI, and for copilot/gemini
+and model that actually ran: `claude:<CITADEL_INGEST_MODEL>` for the claude CLI, and for copilot/gemini
 the model from the CLI's own env (`COPILOT_MODEL`/`GEMINI_MODEL`, so a local/Ollama model like
-`copilot:qwen3.6:27b` is captured), falling back to an explicit `OKF_INGEST_MODEL` or just the CLI
+`copilot:qwen3.6:27b` is captured), falling back to an explicit `CITADEL_INGEST_MODEL` or just the CLI
 name. Each ingest also regenerates a browsable catalog at **`wiki/sources/index.md`** (linked from
 the top `index.md`) — a table of every tracked source with its model and links to the wiki pages
 that cite it. The model also appears in the ingest report and the `wiki/log.md` line. (An older
@@ -250,9 +255,9 @@ cites the original Office file as the source. Legacy binary `.ppt`/`.doc` are no
 **Search** the synthesized wiki:
 
 ```bash
-uv run python -m okf_wiki search "caffeine content"        # ranked keyword hits across all pages
-uv run python -m okf_wiki search "caffeine" --tag brewing   # ...restricted to a tag
-uv run python -m okf_wiki tags                              # browse every tag and its pages
+uv run python -m citadel search "caffeine content"        # ranked keyword hits across all pages
+uv run python -m citadel search "caffeine" --tag brewing   # ...restricted to a tag
+uv run python -m citadel tags                              # browse every tag and its pages
 ```
 
 **Navigate by links and tags.** Pages cross-link densely (each ends with a `## See also`), and
@@ -266,8 +271,8 @@ relative non-broken links (no `[[wiki-links]]`). Ingest runs it automatically (a
 fails the run) and the ingest agent self-checks with it; you can also run it directly:
 
 ```bash
-uv run python -m okf_wiki check                 # the whole wiki
-uv run python -m okf_wiki check concepts/x.md   # just one page
+uv run python -m citadel check                 # the whole wiki
+uv run python -m citadel check concepts/x.md   # just one page
 ```
 
 **Lint** — a pure, offline health check (contradictions, orphaned pages, facts missing
@@ -277,7 +282,7 @@ across pages but never given an entry or spelled out inline — and `[[wiki-styl
 code is non-zero when the wiki is unhealthy, so it drops cleanly into CI:
 
 ```bash
-uv run python -m okf_wiki lint
+uv run python -m citadel lint
 ```
 
 ## Per-fact provenance
@@ -307,7 +312,7 @@ overwrite.
 Expose the wiki to an AI client over stdio:
 
 ```bash
-uv run python -m okf_wiki serve        # or: uv run okf-wiki serve
+uv run python -m citadel serve        # or: uv run citadel serve
 ```
 
 It serves seven tools: `wiki_search` (with an optional `tag` filter), `wiki_read`, `wiki_index`,
@@ -321,10 +326,10 @@ the CLI's own login:
 ```json
 {
   "mcpServers": {
-    "okf-wiki": {
+    "citadel": {
       "command": "uv",
-      "args": ["run", "python", "-m", "okf_wiki", "serve"],
-      "env": { "OKF_LLM_CLI": "claude", "OKF_INGEST_MODEL": "sonnet" }
+      "args": ["run", "python", "-m", "citadel", "serve"],
+      "env": { "CITADEL_LLM_CLI": "claude", "CITADEL_INGEST_MODEL": "sonnet" }
     }
   }
 }
@@ -339,12 +344,12 @@ documents.
 Browse the wiki visually with a built-in, dependency-free viewer:
 
 ```bash
-uv run python -m okf_wiki view            # generate + open in your browser
-uv run python -m okf_wiki view --no-open  # just (re)generate the file
-uv run python -m okf_wiki view --out /tmp/wiki.html
+uv run python -m citadel view            # generate + open in your browser
+uv run python -m citadel view --no-open  # just (re)generate the file
+uv run python -m citadel view --out /tmp/wiki.html
 ```
 
-This writes a **single self-contained** `wiki/.okf_viewer.html` — the pages, the cross-link
+This writes a **single self-contained** `wiki/.citadel_viewer.html` — the pages, the cross-link
 graph, the tags, **and the cited raw sources** embedded inline, rendered by a tiny hand-rolled
 markdown renderer and graph in vanilla JS. It opens straight from `file://` with **no server and
 no network**: nothing is fetched from a CDN, so **your wiki never leaves the machine**. The file
@@ -368,7 +373,7 @@ and the cross-link graph/backlinks all work natively and fully locally. Two note
 - The `## Sources` footnotes link to `../../raw/*.md`, which sit **outside** a `wiki/`-only
   vault. Open the **repository root** as the vault if you want those citation links to resolve.
 - Keep OKF's **standard markdown links** — do **not** convert to `[[wikilinks]]`, or the
-  link-graph, rewrite, and lint machinery break. (`okf-wiki view --obsidian` prints a best-effort
+  link-graph, rewrite, and lint machinery break. (`citadel view --obsidian` prints a best-effort
   deep link + the folder path.)
 
 ## Reference

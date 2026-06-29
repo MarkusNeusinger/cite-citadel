@@ -80,11 +80,11 @@ def _safe_resolve(path: Path) -> Path:
 def _dir_setting(env_key: str, default: Path) -> Path:
     """Resolve a configurable directory (wiki/raw/docs) to an absolute Path.
 
-    With no override, use ``default``. With ``OKF_*_DIR`` set: expand a leading ``~``, take an
+    With no override, use ``default``. With ``CITADEL_*_DIR`` set: expand a leading ``~``, take an
     ABSOLUTE override AS-IS — including a Windows mapped-drive path (``T:\\team-wiki\\wiki``) or a
     POSIX mount (``/mnt/share/wiki``) — so the wiki/raw can live OUTSIDE the repo, e.g. on a
     mounted network drive; and resolve a RELATIVE override against the REPO ROOT (not the process
-    CWD), so ``OKF_WIKI_DIR=wiki`` means ``REPO_ROOT/wiki`` regardless of where ``okf-wiki`` is
+    CWD), so ``CITADEL_WIKI_DIR=wiki`` means ``REPO_ROOT/wiki`` regardless of where ``citadel`` is
     launched from. Always returns a ``resolve()``-d absolute path."""
     raw = os.environ.get(env_key, "").strip()
     if not raw:
@@ -95,9 +95,9 @@ def _dir_setting(env_key: str, default: Path) -> Path:
     return _safe_resolve(path)
 
 
-WIKI_DIR: Path = _dir_setting("OKF_WIKI_DIR", REPO_ROOT / "wiki")
-RAW_DIR: Path = _dir_setting("OKF_RAW_DIR", REPO_ROOT / "raw")
-DOCS_DIR: Path = _dir_setting("OKF_DOCS_DIR", REPO_ROOT / "docs")
+WIKI_DIR: Path = _dir_setting("CITADEL_WIKI_DIR", REPO_ROOT / "wiki")
+RAW_DIR: Path = _dir_setting("CITADEL_RAW_DIR", REPO_ROOT / "raw")
+DOCS_DIR: Path = _dir_setting("CITADEL_DOCS_DIR", REPO_ROOT / "docs")
 
 
 def rel_or_abs_posix(path: Path | str) -> str:
@@ -172,45 +172,45 @@ SCHEMA_PATH: Path = REPO_ROOT / "SCHEMA.md"
 AGENT_RULES_PATH: Path = REPO_ROOT / "AGENT_INGEST.md"
 INDEX_PATH: Path = WIKI_DIR / "index.md"
 LOG_PATH: Path = WIKI_DIR / "log.md"
-MANIFEST_PATH: Path = WIKI_DIR / ".okf_ingested.json"
+MANIFEST_PATH: Path = WIKI_DIR / ".citadel_ingested.json"
 
 # Ingest backend: which coding-agent CLI to shell out to, and (for the claude
 # CLI) which model alias/id to pass. No API key is used.
-LLM_CLI: str = os.environ.get("OKF_LLM_CLI", "claude")
-INGEST_MODEL: str = os.environ.get("OKF_INGEST_MODEL", "sonnet")
-LLM_TIMEOUT: int = int(os.environ.get("OKF_LLM_TIMEOUT", "1200"))
+LLM_CLI: str = os.environ.get("CITADEL_LLM_CLI", "claude")
+INGEST_MODEL: str = os.environ.get("CITADEL_INGEST_MODEL", "sonnet")
+LLM_TIMEOUT: int = int(os.environ.get("CITADEL_LLM_TIMEOUT", "1200"))
 
 # Observability for the otherwise-headless agent session — by default the CLI's stdout/stderr is
 # captured only to detect failure and then DISCARDED, so there is no record of what the model
 # actually did (the very thing you need when one backend/model produces no edits while another
 # does). Two opt-in knobs, both read at call time (so tests/CLI flags can override them):
 #
-# - OKF_LLM_LOG_DIR: a directory to write ONE transcript file per agent session (prompt + full
+# - CITADEL_LLM_LOG_DIR: a directory to write ONE transcript file per agent session (prompt + full
 #   stdout/stderr + exit code + duration). Relative paths resolve under REPO_ROOT. Empty = off.
-# - OKF_LLM_VERBOSE: stream the CLI's output to the terminal live as the session runs, instead of
+# - CITADEL_LLM_VERBOSE: stream the CLI's output to the terminal live as the session runs, instead of
 #   capturing it silently — so you can watch the model work ("see everything") without dropping
 #   the non-interactive pipeline. copilot/gemini stream their full agentic transcript; the claude
 #   CLI (run with --output-format json) only emits its final result envelope, so prefer a transcript
 #   log there. Truthy: 1/true/yes/on.
-LLM_LOG_DIR: str = os.environ.get("OKF_LLM_LOG_DIR", "").strip()
-LLM_VERBOSE: bool = os.environ.get("OKF_LLM_VERBOSE", "").strip().lower() in (
+LLM_LOG_DIR: str = os.environ.get("CITADEL_LLM_LOG_DIR", "").strip()
+LLM_VERBOSE: bool = os.environ.get("CITADEL_LLM_VERBOSE", "").strip().lower() in (
     "1", "true", "yes", "on",
 )
 
 # Git-repository sources. A sub-folder under raw/ that is a git checkout (holds a ``.git``) — or
-# carries an opt-in ``.okfsource`` marker for a git-less snapshot — is ingested as ONE source: a
+# carries an opt-in ``.citadelsource`` marker for a git-less snapshot — is ingested as ONE source: a
 # size-capped DIGEST of its high-signal files (README, dependency manifests, the connection/config
 # layer, the data-transform/pipeline core, entry points) is folded in by a SINGLE agent session,
 # and the source is tracked by its HEAD commit so a later commit re-ingests only the diff. Set
-# OKF_REPO_SUPPORT=0 to fall back to the old per-file walk (every file its own source).
-REPO_SUPPORT: bool = os.environ.get("OKF_REPO_SUPPORT", "1").strip().lower() not in (
+# CITADEL_REPO_SUPPORT=0 to fall back to the old per-file walk (every file its own source).
+REPO_SUPPORT: bool = os.environ.get("CITADEL_REPO_SUPPORT", "1").strip().lower() not in (
     "0", "false", "no", "off", "",
 )
 # Total character budget for one repo digest, and the per-file cap inside it (a long file is
 # truncated with a marker). Generous defaults so the transform/pipeline core fits; raise for big
 # repos, lower to keep sessions cheap.
-REPO_DIGEST_MAX_CHARS: int = int(os.environ.get("OKF_REPO_DIGEST_MAX_CHARS", "120000"))
-REPO_PER_FILE_MAX_CHARS: int = int(os.environ.get("OKF_REPO_PER_FILE_MAX_CHARS", "8000"))
+REPO_DIGEST_MAX_CHARS: int = int(os.environ.get("CITADEL_REPO_DIGEST_MAX_CHARS", "120000"))
+REPO_PER_FILE_MAX_CHARS: int = int(os.environ.get("CITADEL_REPO_PER_FILE_MAX_CHARS", "8000"))
 
 
 # Where each non-claude backend keeps its OWN model id in the environment. A copilot user on a
@@ -222,7 +222,7 @@ _CLI_MODEL_ENV = {"copilot": "COPILOT_MODEL", "gemini": "GEMINI_MODEL"}
 
 def ingest_model_label() -> str:
     """A short, human-readable id of the model/backend that ingests a source — recorded per
-    source in the manifest (``wiki/.okf_ingested.json``) so you can see WHICH raw file was
+    source in the manifest (``wiki/.citadel_ingested.json``) so you can see WHICH raw file was
     imported by WHICH model. Resolved at call time so tests can monkeypatch the inputs.
 
     - ``claude`` — the only backend we pass ``--model`` to, so :data:`INGEST_MODEL` is exactly the
@@ -231,7 +231,7 @@ def ingest_model_label() -> str:
       priority order so it reflects what really ran:
         1. the CLI's OWN model env var (``COPILOT_MODEL`` / ``GEMINI_MODEL``) — this is what a
            local/Ollama copilot setup sets, e.g. ``"copilot:qwen3.6:27b"``;
-        2. an explicitly-set ``OKF_INGEST_MODEL`` (the default ``"sonnet"`` is claude-only, so it
+        2. an explicitly-set ``CITADEL_INGEST_MODEL`` (the default ``"sonnet"`` is claude-only, so it
            counts only when the user actually exported the var) — e.g. ``"copilot:gpt-5.4-mini"``;
         3. otherwise just the CLI name (``"copilot"``).
     """
@@ -242,7 +242,7 @@ def ingest_model_label() -> str:
     native = os.environ.get(_CLI_MODEL_ENV.get(cli, ""), "").strip()
     if native:
         return f"{cli}:{native}"
-    if "OKF_INGEST_MODEL" in os.environ and (INGEST_MODEL or "").strip():
+    if "CITADEL_INGEST_MODEL" in os.environ and (INGEST_MODEL or "").strip():
         return f"{cli}:{INGEST_MODEL.strip()}"
     return cli
 

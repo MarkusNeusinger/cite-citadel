@@ -1,4 +1,4 @@
-"""Treat a git repository (or a folder marked ``.okfsource``) under ``raw/`` as ONE source.
+"""Treat a git repository (or a folder marked ``.citadelsource``) under ``raw/`` as ONE source.
 
 A code repo is not ingested file-by-file — that would spawn one agent session per file and bury
 the wiki in per-function noise. Instead it is folded in as a single **digest**: the high-signal
@@ -16,7 +16,7 @@ session the diff.
 
 Everything here is pure/deterministic and shells out to ``git`` with a graceful fallback when git
 is unavailable (a manual walk + a junk filter). No wiki state is touched here — the caller
-(:mod:`okf_wiki.ingest`) drives the session and the manifest.
+(:mod:`citadel.ingest`) drives the session and the manifest.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from . import config, manifest
 
 # Opt-in marker: a folder carrying this file (even without a ``.git``) is treated as one source —
 # for a copied snapshot that has no git history. Its identity is then an aggregate content hash.
-MARKER = ".okfsource"
+MARKER = ".citadelsource"
 
 # Bounded git calls — repo introspection should never hang an ingest run.
 _GIT_TIMEOUT = 60

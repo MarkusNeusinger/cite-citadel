@@ -73,8 +73,8 @@ each run. The ingest agent must never create or edit them.
 `index.md` and `log.md` are the two OKF-reserved filenames and are **generated**, not written
 by the model. Per OKF they carry **no YAML frontmatter**: `index.md` is the progressive-
 disclosure catalog (pages by type, backlinks, a `## Tags` section) and `log.md` is the
-append-only history with `## YYYY-MM-DD` date headings. The loader skips both. (`okf-wiki view`
-also writes a `.okf_viewer.html` — a regenerable, gitignored offline viewer derived purely from
+append-only history with `## YYYY-MM-DD` date headings. The loader skips both. (`citadel view`
+also writes a `.citadel_viewer.html` — a regenerable, gitignored offline viewer derived purely from
 the bundle, not a source of truth; the loader skips it too.)
 
 `wiki/sources/index.md` is also **generated** (a frontmatter-free catalog under a `# Sources`
@@ -100,7 +100,7 @@ timestamp: 2026-06-21T12:00:00Z   # set automatically on every write — do NOT 
 ---
 ```
 
-`type` is all the OKF *spec* requires, but this wiki's `check` gate (`okf-wiki check`, MCP
+`type` is all the OKF *spec* requires, but this wiki's `check` gate (`citadel check`, MCP
 `wiki_validate`) treats `title`, `description`, `tags` (≥1), and `resource` as required too — a
 missing one is a hard error. Extra fields beyond these are allowed and preserved.
 
@@ -193,7 +193,7 @@ carries a `[^sN]` citation like any other fact. Route these facts into a page ab
 ## Git repositories — one source, captured by use
 
 A sub-folder under `raw/` that is a **git repository** (it holds a `.git/`) — or carries an opt-in
-empty `.okfsource` marker for a git-less snapshot — is ingested as **one source**, not file by
+empty `.citadelsource` marker for a git-less snapshot — is ingested as **one source**, not file by
 file. The system builds a deterministic **digest** of the repo's high-signal files (README,
 dependency manifests, the connection/config layer, the data-transform/pipeline core, entry points;
 `.gitignore` honored, lockfiles / `node_modules` / build output dropped, capped to a budget) and
@@ -239,14 +239,14 @@ path is the page's identity; the links form the knowledge graph.
   the pages that mention it.
 - Broken links are **tolerated** by readers (a link may point at a page not written yet), but
   a restructure never *creates* one: merges/renames repoint inbound links automatically, and
-  `okf-wiki lint` fails on any that remain. Lint also **suggests** links — it flags a page that
+  `citadel lint` fails on any that remain. Lint also **suggests** links — it flags a page that
   mentions another page's title in prose without linking it.
 
 ## Tags — browse by topic
 
 Give each page 2–5 lowercase `tags` from a shared vocabulary (reuse existing tag names where
 they fit). Tags are the OKF-native `tags` frontmatter field and a second navigation axis: they
-boost search ranking, power `okf-wiki tags` / `search --tag` / the MCP `wiki_tags` tool, and
+boost search ranking, power `citadel tags` / `search --tag` / the MCP `wiki_tags` tool, and
 are surfaced as a `## Tags` section in the generated `index.md`.
 
 ## Abbreviations — capture short + long so either form is found
@@ -278,7 +278,7 @@ for **either** finds it:
   out, cite it `[^sN]`. If it is a well-known standard abbreviation you are highly confident
   about, you may supply the expansion as a model fact `[^llmN]`. **If it is house-/project-
   internal and nothing defines it, do not guess** — leave the bare abbreviation in place; a
-  wrong expansion is worse than a missing one. `okf-wiki lint` lists abbreviations used across
+  wrong expansion is worse than a missing one. `citadel lint` lists abbreviations used across
   pages but never defined, so a human can fill those gaps.
 
 ## Contradictions — flag, resolve, don't overwrite
@@ -316,7 +316,7 @@ needed:
 the inbound cross-links to the survivor yourself (grep the wiki for relative links to the old
 file). For a pure rename (same title, new path) the system also repoints inbound links
 mechanically as a safety net; any link left dangling is surfaced by ingest and fails
-`okf-wiki lint` / `okf-wiki check`.
+`citadel lint` / `citadel check`.
 
 ## Workflows
 
@@ -333,11 +333,11 @@ mechanically as a safety net; any link left dangling is surfaced by ingest and f
 - **Query** — an AI searches the wiki via the MCP server (`wiki_search`, `wiki_read`,
   `wiki_index`, `wiki_sources`, `wiki_tags`) and synthesizes cited answers from the pages — it does not re-read
   `raw/`.
-- **Check** — the strict per-page gate (`okf-wiki check`, MCP `wiki_validate`): required
+- **Check** — the strict per-page gate (`citadel check`, MCP `wiki_validate`): required
   fields (type/title/description/tags/resource), honest citations, and relative non-broken
   links (no `[[wiki-links]]`). The ingest agent runs it on its own edits before finishing, and
   ingest re-runs it as a hard gate so a forgotten field fails the run.
-- **Lint** — a periodic health check (`okf-wiki lint`) surfaces contradictions, orphaned
+- **Lint** — a periodic health check (`citadel lint`) surfaces contradictions, orphaned
   pages, facts missing citations, broken cross-links, pages missing `type`, stale pages,
   **fabricated sources** (a fact citing a `raw/` file that does not exist), **undefined
   abbreviations** (a short form used across pages but never given an entry or an inline

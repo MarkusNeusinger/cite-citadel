@@ -46,7 +46,7 @@ external systems it touches — *not* its structure; see *Code & structured sour
    merge/split as needed (see *Restructuring*). Prefer extending or merging into an existing
    page over creating a new one. Do **not** mechanically make one page per raw file.
 4. **If the raw file adds nothing new, make no edits and stop.**
-5. **Before you stop: self-check.** Run `okf-wiki check` (or call the `wiki_validate` tool on
+5. **Before you stop: self-check.** Run `citadel check` (or call the `wiki_validate` tool on
    each page you created or changed) and **fix every reported error** before finishing —
    especially a missing `type`/`title`/`description`/`tags`/`resource`, an undefined or
    fabricated citation, or a broken or `[[wiki-style]]` link.
@@ -173,7 +173,7 @@ Slides and notes are full of abbreviations a newcomer can't decode. When you mee
   from these — don't hand-write a list.
 - Source the expansion like any fact: from a raw file → cite `[^sN]`; from your own knowledge,
   **only** for a well-known standard term you're sure of → `[^llmN]`. If it is internal and
-  nothing defines it, **leave it un-expanded rather than guess** — `okf-wiki lint` lists the
+  nothing defines it, **leave it un-expanded rather than guess** — `citadel lint` lists the
   gaps for a human. A wrong expansion is worse than a missing one.
 
 ## Restructuring — keep the wiki clean as it grows
@@ -233,5 +233,5 @@ Every marker used — both `[^sN]` sources and the `[^llmN]` resolution — must
 ## Off-limits
 
 Never edit `wiki/index.md`, `wiki/log.md`, any `*/index.md` (including the generated
-`wiki/sources/index.md` provenance catalog), or any dotfile (including `.okf_ingested.json` and
-`.okf_viewer.html`) — the system regenerates them. Make no changes outside `wiki/`.
+`wiki/sources/index.md` provenance catalog), or any dotfile (including `.citadel_ingested.json` and
+`.citadel_viewer.html`) — the system regenerates them. Make no changes outside `wiki/`.

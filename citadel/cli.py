@@ -1,14 +1,14 @@
 """Human command-line entry point mirroring the MCP tools.
 
-``okf-wiki`` with six subcommands::
+``citadel`` with six subcommands::
 
-    okf-wiki ingest [paths ...]   # fold raw/ (or explicit paths) into the wiki
-    okf-wiki serve                # run the MCP stdio server
-    okf-wiki search <query> [--limit N] [--tag T]
-    okf-wiki tags [tag]           # browse pages by tag
-    okf-wiki lint [--stale-days N]
-    okf-wiki check [paths ...]    # validate links/format/required-fields (the ingest gate)
-    okf-wiki view [--out PATH] [--no-open] [--obsidian]   # offline single-file HTML viewer
+    citadel ingest [paths ...]   # fold raw/ (or explicit paths) into the wiki
+    citadel serve                # run the MCP stdio server
+    citadel search <query> [--limit N] [--tag T]
+    citadel tags [tag]           # browse pages by tag
+    citadel lint [--stale-days N]
+    citadel check [paths ...]    # validate links/format/required-fields (the ingest gate)
+    citadel view [--out PATH] [--no-open] [--obsidian]   # offline single-file HTML viewer
 
 Exit codes are CI-friendly: ingest returns 1 if any source errored OR a structural
 problem remains (a broken cross-link or a page that failed validation — a missing or
@@ -27,9 +27,9 @@ import sys
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the ``okf-wiki`` argument parser with its seven subcommands."""
+    """Build the ``citadel`` argument parser with its seven subcommands."""
     parser = argparse.ArgumentParser(
-        prog="okf-wiki",
+        prog="citadel",
         description="An LLM-maintained personal wiki in Google OKF, with an MCP search server.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
@@ -63,7 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="DIR",
         help="Write a transcript file per source (prompt + full CLI output + exit/duration) to "
         "DIR, so you can inspect what the model did even in headless mode. Overrides "
-        "OKF_LLM_LOG_DIR.",
+        "CITADEL_LLM_LOG_DIR.",
     )
     p_ingest.set_defaults(func=cmd_ingest)
 
@@ -133,7 +133,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_view.add_argument(
         "--out",
         default=None,
-        help="Where to write the .html (default: wiki/.okf_viewer.html).",
+        help="Where to write the .html (default: wiki/.citadel_viewer.html).",
     )
     p_view.add_argument(
         "--no-open",
@@ -163,7 +163,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     if args.verbose:
         config.LLM_VERBOSE = True
     # `is not None` (not truthiness) so an explicit `--log-dir ""` is honored as "disable logging"
-    # — the documented override — rather than silently falling through to OKF_LLM_LOG_DIR.
+    # — the documented override — rather than silently falling through to CITADEL_LLM_LOG_DIR.
     if args.log_dir is not None:
         config.LLM_LOG_DIR = args.log_dir
 
@@ -172,7 +172,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         from .progress import ConsoleProgress
 
         # Base spinner suppression on the RESOLVED verbose state (config), so a session enabled via
-        # OKF_LLM_VERBOSE — not just the --verbose flag — also drops the spinner that would
+        # CITADEL_LLM_VERBOSE — not just the --verbose flag — also drops the spinner that would
         # otherwise clobber the streamed transcript.
         progress = ConsoleProgress(spinner=not config.LLM_VERBOSE)
     report = ingest.ingest(args.paths or None, progress=progress)
