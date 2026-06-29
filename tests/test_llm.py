@@ -220,11 +220,92 @@ def test_run_ingest_session_wires_resolve_build_run(monkeypatch):
     monkeypatch.setattr(config, "LLM_CLI", "copilot", raising=False)
     monkeypatch.setattr(llm, "_resolve_cli", lambda cli: (calls.__setitem__("resolve", calls["resolve"] + 1) or "/bin/copilot"))
 
-    def fake_run_session(cli, argv, stdin_text):
+    def fake_run_session(cli, argv, stdin_text, *, log_label=None):
         calls["run"] += 1
         assert cli == "copilot"
         assert "/bin/copilot" in argv[0]
+        # The session is labelled with the kind + source key so a transcript log can name it.
+        assert log_label == "ingest.raw/notes.md"
 
     monkeypatch.setattr(llm, "_run_session", fake_run_session)
     llm.run_ingest_session("raw/notes.md")
     assert calls == {"resolve": 1, "run": 1}
+
+
+def test_run_session_writes_transcript_when_log_dir_set(tmp_path, monkeypatch):
+    """With CITADEL_LLM_LOG_DIR set, _run_session records the prompt + full CLI output to a transcript
+    file — the visibility fix for an agent run that otherwise leaves no record of what it did."""
+    monkeypatch.setattr(config, "LLM_LOG_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(config, "LLM_VERBOSE", False, raising=False)
+
+    def fake_run(*a, **k):
+        return _FakeProc(returncode=0, stdout="the model said hello", stderr="a warning")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    llm._run_session("copilot", ["copilot", "-p", "x"], None, log_label="ingest.raw/notes.md")
+
+    logs = list(tmp_path.glob("*.log"))
+    assert len(logs) == 1
+    text = logs[0].read_text(encoding="utf-8")
+    assert "the model said hello" in text  # stdout captured
+    assert "a warning" in text             # stderr captured
+    assert "ingest.raw_notes.md" in logs[0].name  # label sanitized into the filename
+
+
+def test_run_session_no_transcript_when_log_dir_unset(tmp_path, monkeypatch):
+    """The transcript is strictly opt-in: with no log dir configured, nothing is written (the
+    captured, no-log path is the unchanged default)."""
+    monkeypatch.setattr(config, "LLM_LOG_DIR", "", raising=False)
+    monkeypatch.setattr(config, "LLM_VERBOSE", False, raising=False)
+
+    def fake_run(*a, **k):
+        return _FakeProc(returncode=0, stdout="x")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    llm._run_session("copilot", ["copilot", "-p", "x"], None)
+    assert list(tmp_path.glob("*.log")) == []
+
+
+def test_run_session_timeout_logs_partial_transcript(tmp_path, monkeypatch):
+    """On a timeout, the transcript captures the PARTIAL output the TimeoutExpired carries (what the
+    model produced before the kill) instead of an empty body — and notes that it timed out."""
+    monkeypatch.setattr(config, "LLM_LOG_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(config, "LLM_VERBOSE", False, raising=False)
+
+    def fake_run(*a, **k):
+        raise subprocess.TimeoutExpired(
+            cmd="copilot", timeout=config.LLM_TIMEOUT, output="partial work so far"
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(RuntimeError) as exc:
+        llm._run_session("copilot", ["copilot", "-p", "x"], None, log_label="ingest.raw/x.md")
+    assert "timed out" in str(exc.value)
+
+    logs = list(tmp_path.glob("*.log"))
+    assert len(logs) == 1
+    text = logs[0].read_text(encoding="utf-8")
+    assert "partial work so far" in text  # the partial output is preserved, not dropped
+    assert "timed out" in text            # and the transcript is annotated as a timeout
+
+
+def test_run_session_verbose_uses_streaming_not_capture(monkeypatch):
+    """With config.LLM_VERBOSE set, _run_session tees output via _stream_subprocess instead of the
+    silent capture path — and still applies the same exit-code error detection to its result."""
+    monkeypatch.setattr(config, "LLM_VERBOSE", True, raising=False)
+    monkeypatch.setattr(config, "LLM_LOG_DIR", "", raising=False)
+
+    used = {"stream": 0, "run": 0}
+
+    def fake_stream(cli, argv, stdin_text):
+        used["stream"] += 1
+        return 0, "streamed transcript", ""
+
+    def fake_run(*a, **k):  # must NOT be called in verbose mode
+        used["run"] += 1
+        return _FakeProc(returncode=0, stdout="")
+
+    monkeypatch.setattr(llm, "_stream_subprocess", fake_stream)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    llm._run_session("copilot", ["copilot", "-p", "x"], None)  # no raise
+    assert used == {"stream": 1, "run": 0}

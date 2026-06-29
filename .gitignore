@@ -221,6 +221,10 @@ __marimo__/
 .citadel_viewer.html
 wiki/.citadel_viewer.html
 
+# citadel ingest LLM transcripts (CITADEL_LLM_LOG_DIR / `citadel ingest --log-dir`).
+# Individual *.log files are already ignored above; this covers the suggested default dir.
+.citadel_llm_logs/
+
 # JetBrains IDE
 .idea/
 

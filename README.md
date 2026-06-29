@@ -115,6 +115,25 @@ with autonomous file tools — `claude` with `acceptEdits` + a tool allowlist, `
 `CITADEL_LLM_TIMEOUT`. See `.env.example` for binary-path and timeout overrides. (Run ingest on a
 clean git tree so any stray edit is easy to spot.)
 
+#### See what the model did (debug an ingest)
+
+By default the agent session's output is captured only to detect failure and then discarded, so
+an ingest that produces no edits (e.g. one model/backend works while another, like a local Ollama
+`copilot`, changes nothing) leaves no clue why. Two opt-in switches make it visible:
+
+```bash
+citadel ingest raw/notes.md --verbose          # stream the session live to the terminal
+citadel ingest raw/notes.md --log-dir .citadel_llm_logs   # save a transcript file per source
+citadel ingest raw/notes.md -v --log-dir logs  # both
+```
+
+Or via env (`CITADEL_LLM_VERBOSE=1`, `CITADEL_LLM_LOG_DIR=.citadel_llm_logs`). A transcript records the exact
+prompt, the full CLI stdout/stderr, the exit code and duration. `--verbose` streams the output as
+the session runs — `copilot`/`gemini` print their full agentic transcript (every tool call and
+edit), so you can watch what the model does without a `-p`-style headless run; the `claude` CLI is
+invoked with `--output-format json` and prints only its final result envelope, so prefer
+`--log-dir` for a complete `claude` record.
+
 ### Keep the wiki/raw outside the repo (e.g. a network drive)
 
 By default `wiki/`, `raw/`, and `docs/` live in the repo, but you can point them anywhere with
