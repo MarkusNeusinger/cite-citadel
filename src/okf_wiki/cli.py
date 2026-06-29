@@ -162,14 +162,19 @@ def cmd_ingest(args: argparse.Namespace) -> int:
 
     if args.verbose:
         config.LLM_VERBOSE = True
-    if args.log_dir:
+    # `is not None` (not truthiness) so an explicit `--log-dir ""` is honored as "disable logging"
+    # — the documented override — rather than silently falling through to OKF_LLM_LOG_DIR.
+    if args.log_dir is not None:
         config.LLM_LOG_DIR = args.log_dir
 
     progress = None
     if not args.quiet:
         from .progress import ConsoleProgress
 
-        progress = ConsoleProgress(spinner=not args.verbose)
+        # Base spinner suppression on the RESOLVED verbose state (config), so a session enabled via
+        # OKF_LLM_VERBOSE — not just the --verbose flag — also drops the spinner that would
+        # otherwise clobber the streamed transcript.
+        progress = ConsoleProgress(spinner=not config.LLM_VERBOSE)
     report = ingest.ingest(args.paths or None, progress=progress)
     print(report.render())
     # Non-zero on a per-source error OR a structural problem left behind (a broken

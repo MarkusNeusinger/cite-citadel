@@ -333,6 +333,26 @@ def _last_result_envelope(text: str) -> dict | None:
 _LOG_SEQ = 0
 
 
+def _decode_partial(data) -> str:
+    """Normalize the partial output a ``TimeoutExpired`` carries (``output``/``stderr``) to a string:
+    None -> "", str -> itself, bytes -> UTF-8 with replacement (the captured path may hand back bytes
+    if it timed out before decoding). Lets the timeout transcript include what was produced so far."""
+    if data is None:
+        return ""
+    if isinstance(data, bytes):
+        return data.decode("utf-8", errors="replace")
+    return str(data)
+
+
+def _echo_stderr(text: str) -> None:
+    """Write diagnostic text to stderr, swallowing a broken/closed pipe. The verbose stream and the
+    transcript-path notice are diagnostic ONLY, so a closed stderr (``2>|``, a downstream consumer
+    that exited) must never abort the ingest."""
+    with contextlib.suppress(OSError):
+        sys.stderr.write(text)
+        sys.stderr.flush()
+
+
 def _stream_subprocess(
     cli: str, argv: list[str], stdin_text: str | None
 ) -> tuple[int, str, str]:
@@ -373,24 +393,24 @@ def _stream_subprocess(
     timer = threading.Timer(config.LLM_TIMEOUT, _kill)
     timer.start()
     chunks: list[str] = []
-    sys.stderr.write(f"\n--- {cli} session (live) ---\n")
-    sys.stderr.flush()
+    # All terminal echo is diagnostic — a closed/broken stderr (e.g. `2>|`, or a downstream pipe
+    # consumer that exited) must never abort the ingest, so every write goes through _echo_stderr.
+    _echo_stderr(f"\n--- {cli} session (live) ---\n")
     try:
         if proc.stdout is not None:
             for line in proc.stdout:
                 chunks.append(line)
                 # Mirror the child's output to OUR stderr (stdout stays the final report), so a
                 # piped `okf-wiki ingest > report.txt` still shows the live transcript on screen.
-                with contextlib.suppress(OSError):
-                    sys.stderr.write(line)
-                    sys.stderr.flush()
+                _echo_stderr(line)
         proc.wait()
     finally:
         timer.cancel()
-    sys.stderr.write(f"--- {cli} session end (exit {proc.returncode}) ---\n")
-    sys.stderr.flush()
+    _echo_stderr(f"--- {cli} session end (exit {proc.returncode}) ---\n")
     if timed_out["v"]:
-        raise subprocess.TimeoutExpired(argv, config.LLM_TIMEOUT)
+        # Carry whatever was streamed before the kill so _run_session can log a useful PARTIAL
+        # transcript for the timed-out session instead of an empty one.
+        raise subprocess.TimeoutExpired(argv, config.LLM_TIMEOUT, output="".join(chunks))
     return proc.returncode, "".join(chunks), ""
 
 
@@ -440,9 +460,7 @@ def _write_transcript(
         if err:
             body += ["", "## STDERR", err]
         path.write_text("\n".join(body) + "\n", encoding="utf-8")
-        with contextlib.suppress(OSError):
-            sys.stderr.write(f"LLM transcript: {path}\n")
-            sys.stderr.flush()
+        _echo_stderr(f"LLM transcript: {path}\n")
     except OSError:
         pass  # logging is diagnostic only — never let it abort an ingest
 
@@ -483,8 +501,13 @@ def _run_session(
             )
             returncode, out_raw, err_raw = proc.returncode, proc.stdout, proc.stderr
     except subprocess.TimeoutExpired as exc:
+        # TimeoutExpired carries whatever was captured before the kill — subprocess.run populates
+        # .output/.stderr on the captured path, and _stream_subprocess attaches its streamed chunks
+        # via output= — so the timeout transcript logs the PARTIAL session, not an empty one.
+        partial_out = _decode_partial(exc.output)
+        partial_err = _decode_partial(exc.stderr)
         _write_transcript(
-            cli, argv, stdin_text, None, "", "", log_label,
+            cli, argv, stdin_text, None, partial_out, partial_err, log_label,
             time.monotonic() - started, note=f"timed out after {config.LLM_TIMEOUT}s",
         )
         raise RuntimeError(

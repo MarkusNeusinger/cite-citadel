@@ -266,6 +266,29 @@ def test_run_session_no_transcript_when_log_dir_unset(tmp_path, monkeypatch):
     assert list(tmp_path.glob("*.log")) == []
 
 
+def test_run_session_timeout_logs_partial_transcript(tmp_path, monkeypatch):
+    """On a timeout, the transcript captures the PARTIAL output the TimeoutExpired carries (what the
+    model produced before the kill) instead of an empty body — and notes that it timed out."""
+    monkeypatch.setattr(config, "LLM_LOG_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(config, "LLM_VERBOSE", False, raising=False)
+
+    def fake_run(*a, **k):
+        raise subprocess.TimeoutExpired(
+            cmd="copilot", timeout=config.LLM_TIMEOUT, output="partial work so far"
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(RuntimeError) as exc:
+        llm._run_session("copilot", ["copilot", "-p", "x"], None, log_label="ingest.raw/x.md")
+    assert "timed out" in str(exc.value)
+
+    logs = list(tmp_path.glob("*.log"))
+    assert len(logs) == 1
+    text = logs[0].read_text(encoding="utf-8")
+    assert "partial work so far" in text  # the partial output is preserved, not dropped
+    assert "timed out" in text            # and the transcript is annotated as a timeout
+
+
 def test_run_session_verbose_uses_streaming_not_capture(monkeypatch):
     """With config.LLM_VERBOSE set, _run_session tees output via _stream_subprocess instead of the
     silent capture path — and still applies the same exit-code error detection to its result."""
