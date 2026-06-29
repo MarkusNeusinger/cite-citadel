@@ -23,10 +23,14 @@ surface ``ingest``'s per-source ``try/except`` already expects).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
 import subprocess
+import sys
+import threading
+import time
 from pathlib import Path
 
 from . import config
@@ -325,36 +329,176 @@ def _last_result_envelope(text: str) -> dict | None:
     return found
 
 
-def _run_session(cli: str, argv: list[str], stdin_text: str | None) -> None:
+# Monotonic per-process counter so concurrent/same-second transcript files never collide.
+_LOG_SEQ = 0
+
+
+def _stream_subprocess(
+    cli: str, argv: list[str], stdin_text: str | None
+) -> tuple[int, str, str]:
+    """Run the CLI while TEEING its output to the terminal live (verbose mode), returning
+    ``(returncode, stdout, stderr)`` exactly like the captured path so the shared error-detection
+    and transcript-logging below are unchanged.
+
+    stderr is merged into stdout so the interleaved agent transcript is shown (and captured) in the
+    real order it was produced; the returned ``stderr`` is therefore always empty. The tiny prompt
+    is written to stdin and stdin is closed BEFORE reading any output, so there is no classic
+    pipe-buffer deadlock (the prompt is at most a couple KB, well under the pipe buffer). A
+    ``threading.Timer`` enforces ``config.LLM_TIMEOUT`` even if the child hangs producing no output
+    — killing it raises ``TimeoutExpired`` to match the captured path."""
+    proc = subprocess.Popen(  # noqa: S603 - argv is built internally, never from user input
+        argv,
+        stdin=subprocess.PIPE if stdin_text is not None else None,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+        cwd=str(config.REPO_ROOT),
+    )
+    if stdin_text is not None and proc.stdin is not None:
+        try:
+            proc.stdin.write(stdin_text)
+        finally:
+            proc.stdin.close()
+
+    timed_out = {"v": False}
+
+    def _kill() -> None:
+        timed_out["v"] = True
+        with contextlib.suppress(OSError):
+            proc.kill()
+
+    timer = threading.Timer(config.LLM_TIMEOUT, _kill)
+    timer.start()
+    chunks: list[str] = []
+    sys.stderr.write(f"\n--- {cli} session (live) ---\n")
+    sys.stderr.flush()
+    try:
+        if proc.stdout is not None:
+            for line in proc.stdout:
+                chunks.append(line)
+                # Mirror the child's output to OUR stderr (stdout stays the final report), so a
+                # piped `okf-wiki ingest > report.txt` still shows the live transcript on screen.
+                with contextlib.suppress(OSError):
+                    sys.stderr.write(line)
+                    sys.stderr.flush()
+        proc.wait()
+    finally:
+        timer.cancel()
+    sys.stderr.write(f"--- {cli} session end (exit {proc.returncode}) ---\n")
+    sys.stderr.flush()
+    if timed_out["v"]:
+        raise subprocess.TimeoutExpired(argv, config.LLM_TIMEOUT)
+    return proc.returncode, "".join(chunks), ""
+
+
+def _write_transcript(
+    cli: str,
+    argv: list[str],
+    prompt: str | None,
+    returncode: int | None,
+    out: str,
+    err: str,
+    label: str | None,
+    seconds: float,
+    note: str = "",
+) -> None:
+    """Write ONE agent session's full record to ``config.LLM_LOG_DIR`` (no-op when unset) so there
+    is an after-the-fact account of what the model saw and did — the prompt, the complete
+    stdout/stderr, the exit code and duration. Best-effort: a logging failure must NEVER break
+    ingest, so every error is swallowed. The path is announced on stderr so the user can find it."""
+    log_dir = (config.LLM_LOG_DIR or "").strip()
+    if not log_dir:
+        return
+    try:
+        global _LOG_SEQ
+        _LOG_SEQ += 1
+        directory = Path(log_dir)
+        if not directory.is_absolute():
+            directory = config.REPO_ROOT / directory
+        config.robust_mkdir(directory)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        safe = "".join(
+            c if (c.isalnum() or c in "-._") else "_" for c in (label or "session")
+        )[:80]
+        path = directory / f"{stamp}.{os.getpid()}.{_LOG_SEQ}.{safe}.log"
+        body = [
+            "# okf-wiki ingest — LLM agent session transcript",
+            f"time:        {stamp}",
+            f"cli:         {cli}",
+            f"model:       {config.ingest_model_label()}",
+            f"label:       {label or ''}",
+            f"returncode:  {returncode}",
+            f"duration_s:  {seconds:.1f}",
+            f"argv:        {argv}",
+        ]
+        if note:
+            body.append(f"note:        {note}")
+        body += ["", "## PROMPT", prompt or "(none)", "", "## STDOUT", out or "(empty)"]
+        if err:
+            body += ["", "## STDERR", err]
+        path.write_text("\n".join(body) + "\n", encoding="utf-8")
+        with contextlib.suppress(OSError):
+            sys.stderr.write(f"LLM transcript: {path}\n")
+            sys.stderr.flush()
+    except OSError:
+        pass  # logging is diagnostic only — never let it abort an ingest
+
+
+def _run_session(
+    cli: str, argv: list[str], stdin_text: str | None, *, log_label: str | None = None
+) -> None:
     """Run the agentic CLI once in ``config.REPO_ROOT``. Success = the session completed
     without error; the agent's edits are on disk. Raises ``RuntimeError`` on timeout, a
     spawn error, a non-zero exit, or (for claude) an ``is_error`` result envelope.
 
+    Output handling is observability-aware but otherwise unchanged: when ``config.LLM_VERBOSE`` is
+    set the CLI's output is TEED to the terminal live (:func:`_stream_subprocess`); otherwise it is
+    captured silently exactly as before. Either way, when ``config.LLM_LOG_DIR`` is set the full
+    session (prompt + stdout/stderr + exit/duration) is written to a transcript file, labelled with
+    ``log_label`` (the source key + kind). Both default OFF, so the captured, no-log path — and every
+    test that monkeypatches ``subprocess.run`` — is byte-for-byte the original behavior.
+
     Note: empty stdout is NOT a failure — an agent that legitimately changed nothing prints
     nothing and exits 0 (ingest's snapshot diff then simply shows no changes)."""
+    started = time.monotonic()
     try:
-        proc = subprocess.run(
-            argv,
-            input=stdin_text,
-            capture_output=True,
-            text=True,
-            # Force UTF-8 on the piped prompt and the decoded stdout/stderr regardless of the
-            # OS locale (e.g. cp1252 on German Windows); errors="replace" keeps a stray
-            # undecodable byte from killing the run.
-            encoding="utf-8",
-            errors="replace",
-            timeout=config.LLM_TIMEOUT,
-            cwd=str(config.REPO_ROOT),
-        )
+        if config.LLM_VERBOSE:
+            returncode, out_raw, err_raw = _stream_subprocess(cli, argv, stdin_text)
+        else:
+            proc = subprocess.run(
+                argv,
+                input=stdin_text,
+                capture_output=True,
+                text=True,
+                # Force UTF-8 on the piped prompt and the decoded stdout/stderr regardless of the
+                # OS locale (e.g. cp1252 on German Windows); errors="replace" keeps a stray
+                # undecodable byte from killing the run.
+                encoding="utf-8",
+                errors="replace",
+                timeout=config.LLM_TIMEOUT,
+                cwd=str(config.REPO_ROOT),
+            )
+            returncode, out_raw, err_raw = proc.returncode, proc.stdout, proc.stderr
     except subprocess.TimeoutExpired as exc:
+        _write_transcript(
+            cli, argv, stdin_text, None, "", "", log_label,
+            time.monotonic() - started, note=f"timed out after {config.LLM_TIMEOUT}s",
+        )
         raise RuntimeError(
             f"the {cli!r} CLI timed out after {config.LLM_TIMEOUT}s"
         ) from exc
     except OSError as exc:
         raise RuntimeError(f"failed to run the {cli!r} CLI: {exc}") from exc
 
-    out = (proc.stdout or "").strip()
-    err = (proc.stderr or "").strip()
+    out = (out_raw or "").strip()
+    err = (err_raw or "").strip()
+    _write_transcript(
+        cli, argv, stdin_text, returncode, out_raw or "", err_raw or "",
+        log_label, time.monotonic() - started,
+    )
 
     if cli == "claude":
         # `--output-format json` returns a single result envelope:
@@ -373,16 +517,16 @@ def _run_session(cli: str, argv: list[str], stdin_text: str | None) -> None:
                 + (f" ({status})" if status else "")
                 + f": {env.get('result') or err or 'unknown error'}"
             )
-        if proc.returncode != 0:
+        if returncode != 0:
             raise RuntimeError(
-                f"the claude CLI failed (exit {proc.returncode}): {(err or out)[:500]}"
+                f"the claude CLI failed (exit {returncode}): {(err or out)[:500]}"
             )
         return
 
     # copilot / gemini (and any unknown CLI): the exit code is the success signal.
-    if proc.returncode != 0:
+    if returncode != 0:
         raise RuntimeError(
-            f"the {cli!r} CLI failed (exit {proc.returncode}): {(err or out)[:500]}"
+            f"the {cli!r} CLI failed (exit {returncode}): {(err or out)[:500]}"
         )
     return
 
@@ -405,4 +549,4 @@ def run_ingest_session(rel_key: str, kind: str = "ingest", read_path: str | None
     cli_path = _resolve_cli(cli)
     prompt = _build_instruction(rel_key, kind, read_path)
     argv, stdin_text = _build_invocation(cli, cli_path, prompt, _external_dirs(rel_key, read_path))
-    _run_session(cli, argv, stdin_text)
+    _run_session(cli, argv, stdin_text, log_label=f"{kind}.{rel_key}")

@@ -180,6 +180,23 @@ LLM_CLI: str = os.environ.get("OKF_LLM_CLI", "claude")
 INGEST_MODEL: str = os.environ.get("OKF_INGEST_MODEL", "sonnet")
 LLM_TIMEOUT: int = int(os.environ.get("OKF_LLM_TIMEOUT", "1200"))
 
+# Observability for the otherwise-headless agent session — by default the CLI's stdout/stderr is
+# captured only to detect failure and then DISCARDED, so there is no record of what the model
+# actually did (the very thing you need when one backend/model produces no edits while another
+# does). Two opt-in knobs, both read at call time (so tests/CLI flags can override them):
+#
+# - OKF_LLM_LOG_DIR: a directory to write ONE transcript file per agent session (prompt + full
+#   stdout/stderr + exit code + duration). Relative paths resolve under REPO_ROOT. Empty = off.
+# - OKF_LLM_VERBOSE: stream the CLI's output to the terminal live as the session runs, instead of
+#   capturing it silently — so you can watch the model work ("see everything") without dropping
+#   the non-interactive pipeline. copilot/gemini stream their full agentic transcript; the claude
+#   CLI (run with --output-format json) only emits its final result envelope, so prefer a transcript
+#   log there. Truthy: 1/true/yes/on.
+LLM_LOG_DIR: str = os.environ.get("OKF_LLM_LOG_DIR", "").strip()
+LLM_VERBOSE: bool = os.environ.get("OKF_LLM_VERBOSE", "").strip().lower() in (
+    "1", "true", "yes", "on",
+)
+
 # Git-repository sources. A sub-folder under raw/ that is a git checkout (holds a ``.git``) — or
 # carries an opt-in ``.okfsource`` marker for a git-less snapshot — is ingested as ONE source: a
 # size-capped DIGEST of its high-signal files (README, dependency manifests, the connection/config

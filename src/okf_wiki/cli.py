@@ -49,6 +49,22 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Suppress the live per-file progress output (just print the final report).",
     )
+    p_ingest.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Stream each LLM agent session's output live to the terminal (see exactly what the "
+        "model does). copilot/gemini show their full transcript; the claude CLI only emits its "
+        "final result envelope — use --log-dir for a full claude record. Disables the spinner.",
+    )
+    p_ingest.add_argument(
+        "--log-dir",
+        default=None,
+        metavar="DIR",
+        help="Write a transcript file per source (prompt + full CLI output + exit/duration) to "
+        "DIR, so you can inspect what the model did even in headless mode. Overrides "
+        "OKF_LLM_LOG_DIR.",
+    )
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_serve = sub.add_parser(
@@ -136,14 +152,24 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def cmd_ingest(args: argparse.Namespace) -> int:
-    """Run an ingest pass (with live progress unless --quiet); 1 if any source errored."""
-    from . import ingest
+    """Run an ingest pass (with live progress unless --quiet); 1 if any source errored.
+
+    ``--verbose`` and ``--log-dir`` flip the observability knobs in ``config`` (read at call time by
+    ``llm._run_session``): verbose streams each agent session live to the terminal, and log-dir
+    writes a per-source transcript. With ``--verbose`` the spinner is suppressed so the streamed
+    transcript is not overwritten by the in-place progress line."""
+    from . import config, ingest
+
+    if args.verbose:
+        config.LLM_VERBOSE = True
+    if args.log_dir:
+        config.LLM_LOG_DIR = args.log_dir
 
     progress = None
     if not args.quiet:
         from .progress import ConsoleProgress
 
-        progress = ConsoleProgress()
+        progress = ConsoleProgress(spinner=not args.verbose)
     report = ingest.ingest(args.paths or None, progress=progress)
     print(report.render())
     # Non-zero on a per-source error OR a structural problem left behind (a broken
