@@ -322,11 +322,19 @@ uv run python -m okf_wiki view --out /tmp/wiki.html
 ```
 
 This writes a **single self-contained** `wiki/.okf_viewer.html` — the pages, the cross-link
-graph, and the tags embedded inline, rendered by a tiny hand-rolled markdown renderer and graph
-in vanilla JS. It opens straight from `file://` with **no server and no network**: nothing is
-fetched from a CDN, so **your wiki never leaves the machine**. The file is a regenerable
-artifact (like `index.md`), gitignored, and skipped by the loader. On a headless box / WSL with
-no browser, the command prints the `file://` path to open manually instead of failing.
+graph, the tags, **and the cited raw sources** embedded inline, rendered by a tiny hand-rolled
+markdown renderer and graph in vanilla JS. It opens straight from `file://` with **no server and
+no network**: nothing is fetched from a CDN, so **your wiki never leaves the machine**. The file
+is a regenerable artifact (like `index.md`), gitignored, and skipped by the loader. On a headless
+box / WSL with no browser, the command prints the `file://` path to open manually instead of
+failing.
+
+**Sources are clickable.** Every `[..](../../raw/x.md)` citation and `## Sources` footnote opens
+the cited raw file — rendered, in the same reader, with the model that imported it and a
+*Cited by* backlink list — and a hover preview peeks at it first. The raw content is embedded too,
+so opening a source stays fully offline. Browse provenance from the **Sources** group in the
+sidebar, or toggle the **source layer** (◉) in the map to see which pages cite which file. Long
+pages get an automatic table of contents, and `/` focuses the filter.
 
 ### Open in Obsidian
 

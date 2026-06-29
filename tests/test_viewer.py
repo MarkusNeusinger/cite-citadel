@@ -51,6 +51,48 @@ def _two_page_wiki(wiki: Path) -> None:
     )
 
 
+def test_bundle_embeds_cited_sources(tmp_path, monkeypatch):
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "a.md").write_text(
+        "# Coffee Overview\n\nCoffee is a brewed drink made from roasted beans.\n",
+        encoding="utf-8",
+    )
+    _two_page_wiki(wiki)
+    sources = viewer.build_bundle()["sources"]
+
+    assert "raw/a.md" in sources
+    s = sources["raw/a.md"]
+    assert s["missing"] is False
+    assert s["title"] == "Coffee Overview"
+    assert "brewed drink" in s["body"]
+    assert "brewed drink" in s["snippet"]
+    # Both pages cite raw/a.md (resource frontmatter + a ## Sources footnote link).
+    assert set(s["cited_by"]) == {"concepts/espresso.md", "concepts/caffeine.md"}
+
+
+def test_missing_source_is_flagged_not_fatal(tmp_path, monkeypatch):
+    wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _two_page_wiki(wiki)  # cites raw/a.md, but the raw file is absent
+    s = viewer.build_bundle()["sources"]["raw/a.md"]
+    assert s["missing"] is True
+    assert s["body"] == ""
+    assert set(s["cited_by"]) == {"concepts/espresso.md", "concepts/caffeine.md"}
+
+
+def test_build_html_makes_sources_clickable(tmp_path, monkeypatch):
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "a.md").write_text("# A\n\nbody text\n", encoding="utf-8")
+    _two_page_wiki(wiki)
+    html = viewer.build_html()
+    # The inlined viewer renders raw citations as clickable source links and can open them.
+    assert "data-source" in html
+    assert "srclink" in html
+    assert "openSource" in html
+    # Still fully offline with an embedded source present.
+    for bad in ("http://", "https://", "cdn", " src=", "fetch("):
+        assert bad not in html, f"network reference present: {bad!r}"
+
+
 def test_bundle_contains_pages_links_tags(tmp_path, monkeypatch):
     wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
     _two_page_wiki(wiki)
