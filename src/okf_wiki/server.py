@@ -1,8 +1,8 @@
 """MCP stdio server exposing the OKF wiki to AI clients.
 
-A FastMCP instance over stdio with six tools: five read-only
-(wiki_search / wiki_read / wiki_index / wiki_tags / wiki_validate) and one mutating
-(wiki_ingest). Every tool returns a plain markdown/text string, which an LLM consumes
+A FastMCP instance over stdio with seven tools: six read-only
+(wiki_search / wiki_read / wiki_index / wiki_sources / wiki_tags / wiki_validate) and one
+mutating (wiki_ingest). Every tool returns a plain markdown/text string, which an LLM consumes
 best, and NEVER raises out of the tool: not-found / unsafe-path /
 missing-or-unusable-LLM-CLI conditions are returned as clear error strings
 so the server stays up.
@@ -157,6 +157,26 @@ def wiki_index() -> str:
         return "error: wiki index not found (run `okf-wiki ingest` first)."
     except Exception as e:  # never raise out of the tool
         return f"error: could not read index: {e}"
+
+
+@mcp.tool()
+def wiki_sources() -> str:
+    """Return the contents of wiki/sources/index.md — the provenance catalog: one row per
+    ingested raw source, the model that imported it, and the wiki pages that cite it.
+
+    This is the browse-by-source axis — "what do I know, and from which source?" — complementary
+    to wiki_search / wiki_index, which browse by topic. (The catalog file is skipped by the page
+    loader, so wiki_search never returns it; this tool exposes it directly.) Returns a clear
+    message when nothing has been ingested yet. Never raises out of the tool.
+    """
+    from . import config
+
+    try:
+        return (config.WIKI_DIR / "sources" / "index.md").read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return "No sources catalog yet (run `okf-wiki ingest` first)."
+    except Exception as e:  # never raise out of the tool
+        return f"error: could not read sources catalog: {e}"
 
 
 @mcp.tool()

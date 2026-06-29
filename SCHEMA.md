@@ -25,17 +25,50 @@
 
 ## OKF types and folder routing
 
-`type` is the only **required** frontmatter field. Producers may use any type. This wiki
-routes by type:
+`type` is **required** and decides the page's home. (Per the OKF spec `type` is the only
+*spec-mandated* field; this wiki's `check` gate is stricter and additionally requires `title`,
+`description`, `tags`, and `resource` — see *Frontmatter fields* below.) The category set is split
+**by kind** so every page has exactly one home and even a small model can route without guessing.
+Route by the table; when two rows could fit, the **decision procedure** below resolves it (the
+first matching rule wins). Each row says what belongs there **and what does not**, so boundaries
+don't overlap.
 
-| `type`               | Folder            | Meaning                                       |
-| -------------------- | ----------------- | --------------------------------------------- |
-| `Concept`            | `wiki/concepts/`  | An idea/topic synthesized across sources.     |
-| `Entity`             | `wiki/entities/`  | A named thing: person, org, project, tool.    |
-| `Abbreviation`       | `wiki/abbreviations/` | A short form + its expansion (a glossary entry). |
-| `System`             | `wiki/systems/`   | An external system/service/tool a source touches: a database, API, queue, or product (SAP, PLM, Postgres). Accumulates across sources; kept separate from `entities/`. |
-| anything else        | `wiki/misc/`      | Note, Metric, Runbook, etc.                   |
-| `index.md` / `log.md`| (generated)       | OKF reserved navigation/history files — not authored by ingest. |
+| `type`         | Folder                | Goes here                                                                                                   | Does NOT go here |
+| -------------- | --------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------- |
+| `Concept`      | `wiki/concepts/`      | A principle, method, phenomenon, or topic — *how/why* knowledge that holds independent of one physical instance (espresso extraction, Ackermann steering geometry, torque). | A specific physical thing → `Object`; a named person/org → those |
+| `Object`       | `wiki/objects/`       | A physical or engineered **thing you could touch**: a product, assembly, component, part, material, or device (car, engine, steering, brake caliper, an apple). | A *principle* about it → `Concept`; a software service → `System` |
+| `System`       | `wiki/systems/`       | An external **software / IT** system, service, or tool a source connects to or uses: a database, API, queue, SaaS, or library (SAP, PLM, Postgres). Accumulates across sources. | A physical/mechanical part → `Object`; the vendor company → `Organization` |
+| `Person`       | `wiki/persons/`       | A specific, **named human**.                                                                                | An unnamed role ("the operator") → keep as a fact on the topic page |
+| `Organization` | `wiki/organizations/` | A specific, **named** company, institution, team, or group. (British spelling `Organisation` is accepted as an alias.) | A product it makes → `Object`/`System` |
+| `Project`      | `wiki/projects/`      | A specific, **named initiative/effort** with a goal and a lifecycle.                                        | The ongoing topic behind it → `Concept` |
+| `Abbreviation` | `wiki/abbreviations/` | A short form + its expansion (a glossary entry).                                                            | A full term with no acronym → `Concept` |
+| anything else  | `wiki/misc/`          | A genuine leftover only: Note, Metric, Runbook, Event, Place. **Last resort, never a shortcut.**            | Anything that fits a row above |
+| `Entity` *(legacy)* | `wiki/entities/` | **Deprecated** — the old catch-all for "person, org, project, tool". Still routed so old pages keep working; do **not** produce it. Use `Object`/`Person`/`Organization`/`Project`/`System`. | — |
+| `index.md` / `log.md` / `sources/index.md` | (generated) | OKF reserved navigation/provenance files — **never authored by ingest** (see below). | — |
+
+**Decision procedure — ask in order; the first rule that matches wins:**
+
+1. A short form / acronym with an expansion? → **Abbreviation**
+2. A specific named human? → **Person**
+3. A specific named organization (company, institution, team)? → **Organization**
+4. A specific named initiative/effort with a goal and lifecycle? → **Project**
+5. An external software/IT system or service the source connects to or uses (DB, API, queue, SaaS, library)? → **System**
+6. A physical/engineered thing you could **touch** (product, assembly, component, part, material, device)? → **Object**
+7. A principle, method, phenomenon, or topic (not one specific named thing)? → **Concept**
+8. None of the above? → **misc**
+
+This split-by-kind is what fixes the old `Entity` overload: people, organizations, projects,
+software systems, and physical objects are five different shapes of page, and each now has its own
+browsable axis. **Hierarchy is expressed with cross-links, not nested folders** — "the steering is
+part of the car" means `car`, `steering`, and `steering wheel` are each their own `Object` page,
+linked *part of* / *contains*.
+
+### Generated layer (never authored) — the provenance & navigation axis
+
+Beside the content categories above sits a second layer the model **never writes**: the generated
+navigation/provenance files. They are a real, separate browsing axis (by-type, by-tag, by-source,
+by-date), not pages to route facts into — the loader skips them all and the system rebuilds them
+each run. The ingest agent must never create or edit them.
 
 `index.md` and `log.md` are the two OKF-reserved filenames and are **generated**, not written
 by the model. Per OKF they carry **no YAML frontmatter**: `index.md` is the progressive-
@@ -46,24 +79,30 @@ the bundle, not a source of truth; the loader skips it too.)
 
 `wiki/sources/index.md` is also **generated** (a frontmatter-free catalog under a `# Sources`
 heading, linked from `index.md`): one row per ingested raw source with the **model that imported
-it** (from the manifest) and links to the pages that cite it. Like every `*/index.md` it is
-skipped by the loader; the system rebuilds it deterministically each run, so the **ingest
-agent/model must never author or edit it** (only the system writes it).
+it** (from the manifest) and links to the pages that cite it. It is the **browse-by-source axis**
+— the answer to "what do I know, and from which source?" — complementary to the by-topic axis of
+the content categories. Like every `*/index.md` it is skipped by the loader; the system rebuilds it
+deterministically each run, so the **ingest agent/model must never author or edit it** (only the
+system writes it). The loader skips it, so `wiki_search` never returns it; instead it is surfaced
+as a `## Sources` section in the generated `index.md` and read directly by the MCP `wiki_sources`
+tool (and browsable in the HTML viewer).
 
 ## Frontmatter fields
 
 ```yaml
 ---
-type: Concept                 # REQUIRED — the only mandatory field
-title: Transformer            # human label
-description: A self-attention architecture.   # one line; shown in index.md
-resource: raw/attention.md    # the PRIMARY raw file this page was derived from
-tags: [ml, architecture]      # lowercase
-timestamp: 2026-06-21T12:00:00Z   # set automatically on every write
+type: Concept                 # REQUIRED — routes the page (the only field OKF itself mandates)
+title: Transformer            # REQUIRED by `check` — human label
+description: A self-attention architecture.   # REQUIRED by `check` — one line; shown in index.md
+resource: raw/attention.md    # REQUIRED by `check` — the PRIMARY raw file this page was derived from
+tags: [ml, architecture]      # REQUIRED by `check` — ≥1 lowercase tag
+timestamp: 2026-06-21T12:00:00Z   # set automatically on every write — do NOT author
 ---
 ```
 
-Extra fields are allowed and preserved.
+`type` is all the OKF *spec* requires, but this wiki's `check` gate (`okf-wiki check`, MCP
+`wiki_validate`) treats `title`, `description`, `tags` (≥1), and `resource` as required too — a
+missing one is a hard error. Extra fields beyond these are allowed and preserved.
 
 ## Grounding — raw is primary truth; model-added facts must be labeled
 
@@ -292,7 +331,7 @@ mechanically as a safety net; any link left dangling is surfaced by ingest and f
   diffs the wiki, re-validates and re-stamps every changed page, repoints renamed-page links,
   and rebuilds the indexes.
 - **Query** — an AI searches the wiki via the MCP server (`wiki_search`, `wiki_read`,
-  `wiki_index`, `wiki_tags`) and synthesizes cited answers from the pages — it does not re-read
+  `wiki_index`, `wiki_sources`, `wiki_tags`) and synthesizes cited answers from the pages — it does not re-read
   `raw/`.
 - **Check** — the strict per-page gate (`okf-wiki check`, MCP `wiki_validate`): required
   fields (type/title/description/tags/resource), honest citations, and relative non-broken

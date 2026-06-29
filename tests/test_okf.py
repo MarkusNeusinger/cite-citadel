@@ -181,20 +181,28 @@ def test_safe_join_accepts_safe_relative(tmp_path):
 
 
 def test_default_rel_path_routing():
-    """Concept->concepts/, Entity->entities/, Abbreviation->abbreviations/, Metric->misc/.
-    Case-insensitive on the known types."""
+    """Each kind routes to its own folder; unknown types -> misc/. Case-insensitive."""
     assert okf.default_rel_path("Concept", "Transformer") == "concepts/transformer.md"
-    assert okf.default_rel_path("Entity", "Andrej Karpathy") == "entities/andrej-karpathy.md"
+    # The kinds split out of the old overloaded Entity each get their own folder.
+    assert okf.default_rel_path("Object", "Engine") == "objects/engine.md"
+    assert okf.default_rel_path("Person", "Andrej Karpathy") == "persons/andrej-karpathy.md"
+    assert okf.default_rel_path("Organization", "ACME Corp") == "organizations/acme-corp.md"
+    assert okf.default_rel_path("Project", "Acme Migration") == "projects/acme-migration.md"
+    assert okf.default_rel_path("System", "Postgres") == "systems/postgres.md"
     assert okf.default_rel_path("Metric", "Daily Active Users") == "misc/daily-active-users.md"
     # Abbreviation routes to its own folder; the "ABBR — Full Form" title slugifies cleanly.
     assert (
         okf.default_rel_path("Abbreviation", "TDS — Total Dissolved Solids")
         == "abbreviations/tds-total-dissolved-solids.md"
     )
-    # Case-insensitive on the known types.
+    # Case-insensitive on the known types; British 'Organisation' aliases to organizations/.
     assert okf.default_rel_path("concept", "X") == "concepts/x.md"
-    assert okf.default_rel_path("ENTITY", "Y") == "entities/y.md"
+    assert okf.default_rel_path("object", "Y") == "objects/y.md"
+    assert okf.default_rel_path("organisation", "Z") == "organizations/z.md"
     assert okf.default_rel_path("abbreviation", "API") == "abbreviations/api.md"
+    # Entity is kept as a tolerated legacy alias so old pages keep working.
+    assert okf.default_rel_path("Entity", "Legacy Thing") == "entities/legacy-thing.md"
+    assert okf.default_rel_path("ENTITY", "Y") == "entities/y.md"
     # Empty title -> 'untitled'.
     assert okf.default_rel_path("Note", "") == "misc/untitled.md"
 
