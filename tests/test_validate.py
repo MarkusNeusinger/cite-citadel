@@ -75,28 +75,19 @@ def test_resource_must_point_at_real_file(wiki):
 
 
 def test_fabricated_citation_is_error(wiki):
-    body = (
-        "A fact.[^s1]\n\n## Sources\n\n"
-        "[^s1]: [raw/ghost.md](../../raw/ghost.md) - missing\n"
-    )
+    body = "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/ghost.md](../../raw/ghost.md) - missing\n"
     issues = validate.validate_page("concepts/transformer.md", dict(_GOOD_FM), body)
     assert any(i.category == "bad_source" for i in _errors(issues))
 
 
 def test_wikilink_is_error(wiki):
-    body = _GOOD_BODY.replace(
-        "Transformers use self-attention.[^s1]",
-        "See [[Some Page]].[^s1]",
-    )
+    body = _GOOD_BODY.replace("Transformers use self-attention.[^s1]", "See [[Some Page]].[^s1]")
     issues = validate.validate_page("concepts/transformer.md", dict(_GOOD_FM), body)
     assert any(i.category == "wikilink" for i in _errors(issues))
 
 
 def test_backslash_link_is_error(wiki):
-    body = (
-        "See [Other](..\\concepts\\other.md).[^s1]\n\n## Sources\n\n"
-        "[^s1]: [raw/notes.md](../../raw/notes.md) - n\n"
-    )
+    body = "See [Other](..\\concepts\\other.md).[^s1]\n\n## Sources\n\n[^s1]: [raw/notes.md](../../raw/notes.md) - n\n"
     issues = validate.validate_page("concepts/transformer.md", dict(_GOOD_FM), body)
     assert any(i.category == "backslash_link" for i in _errors(issues))
 
@@ -131,7 +122,9 @@ def test_routing_and_filename_are_advisory(wiki):
 
 def test_validate_all_flags_broken_cross_link(wiki):
     _seed(
-        wiki, "concepts/a.md", dict(_GOOD_FM, title="Alpha"),
+        wiki,
+        "concepts/a.md",
+        dict(_GOOD_FM, title="Alpha"),
         "See [Ghost](./ghost.md).[^s1]\n\n## Sources\n\n[^s1]: [raw/notes.md](../../raw/notes.md) - n\n",
     )
     issues = validate.validate_all()

@@ -38,16 +38,11 @@ def test_index_renders_sources_section(tmp_path, monkeypatch):
     wiki = _wire_tmp_wiki(tmp_path, monkeypatch)
     (tmp_path / "raw" / "a.md").write_text("raw a\n", encoding="utf-8")
     (tmp_path / "raw" / "b.md").write_text("raw b\n", encoding="utf-8")
-    manifest.save(
-        {
-            "raw/a.md": manifest.make_entry("sha-a", model="sonnet"),
-            "raw/b.md": manifest.make_entry("sha-b"),
-        }
-    )
+    manifest.save({"raw/a.md": manifest.make_entry("sha-a", model="sonnet"), "raw/b.md": manifest.make_entry("sha-b")})
     _seed(
-        wiki, "concepts/espresso.md",
-        {"type": "Concept", "title": "Espresso", "description": "A brew.",
-         "tags": ["coffee"], "resource": "raw/a.md"},
+        wiki,
+        "concepts/espresso.md",
+        {"type": "Concept", "title": "Espresso", "description": "A brew.", "tags": ["coffee"], "resource": "raw/a.md"},
     )
 
     store.rebuild_indexes()
@@ -65,9 +60,9 @@ def test_index_has_no_sources_section_without_manifest(tmp_path, monkeypatch):
     """No tracked source -> no '## Sources' section (and no stale sources/index.md)."""
     wiki = _wire_tmp_wiki(tmp_path, monkeypatch)
     _seed(
-        wiki, "concepts/espresso.md",
-        {"type": "Concept", "title": "Espresso", "description": "A brew.",
-         "tags": ["coffee"], "resource": "raw/a.md"},
+        wiki,
+        "concepts/espresso.md",
+        {"type": "Concept", "title": "Espresso", "description": "A brew.", "tags": ["coffee"], "resource": "raw/a.md"},
     )
     store.rebuild_indexes()
     index = (wiki / "index.md").read_text(encoding="utf-8")
@@ -81,9 +76,9 @@ def test_wiki_sources_tool_returns_catalog(tmp_path, monkeypatch):
     (tmp_path / "raw" / "a.md").write_text("raw a\n", encoding="utf-8")
     manifest.save({"raw/a.md": manifest.make_entry("sha-a", model="sonnet")})
     _seed(
-        wiki, "concepts/espresso.md",
-        {"type": "Concept", "title": "Espresso", "description": "A brew.",
-         "tags": ["coffee"], "resource": "raw/a.md"},
+        wiki,
+        "concepts/espresso.md",
+        {"type": "Concept", "title": "Espresso", "description": "A brew.", "tags": ["coffee"], "resource": "raw/a.md"},
     )
     store.rebuild_indexes()
 

@@ -49,7 +49,7 @@ def _load_dotenv() -> None:
         if not line or line.startswith("#"):
             continue
         if line.startswith("export "):
-            line = line[len("export "):].strip()
+            line = line[len("export ") :].strip()
         if "=" not in line:
             continue
         key, _, value = line.partition("=")
@@ -67,6 +67,7 @@ REPO_ROOT: Path = _resolve_repo_root()
 # Load the optional .env BEFORE reading the env settings below, so a bare .env
 # (no exported vars) also works.
 _load_dotenv()
+
 
 def _safe_resolve(path: Path) -> Path:
     """``path.resolve()`` that never raises (falls back to an absolute, un-resolved path on a
@@ -166,6 +167,7 @@ def robust_mkdir(path: Path | str, attempts: int = 5) -> None:
                 raise
             time.sleep(0.2 * (attempt + 1))
 
+
 SCHEMA_PATH: Path = REPO_ROOT / "SCHEMA.md"
 # The direct-edit ingest rules the agentic CLI reads (by path) each run. Referenced in
 # the short ingest prompt; Python does not read it.
@@ -193,9 +195,7 @@ LLM_TIMEOUT: int = int(os.environ.get("CITADEL_LLM_TIMEOUT", "1200"))
 #   CLI (run with --output-format json) only emits its final result envelope, so prefer a transcript
 #   log there. Truthy: 1/true/yes/on.
 LLM_LOG_DIR: str = os.environ.get("CITADEL_LLM_LOG_DIR", "").strip()
-LLM_VERBOSE: bool = os.environ.get("CITADEL_LLM_VERBOSE", "").strip().lower() in (
-    "1", "true", "yes", "on",
-)
+LLM_VERBOSE: bool = os.environ.get("CITADEL_LLM_VERBOSE", "").strip().lower() in ("1", "true", "yes", "on")
 
 # Git-repository sources. A sub-folder under raw/ that is a git checkout (holds a ``.git``) — or
 # carries an opt-in ``.citadelsource`` marker for a git-less snapshot — is ingested as ONE source: a
@@ -203,9 +203,7 @@ LLM_VERBOSE: bool = os.environ.get("CITADEL_LLM_VERBOSE", "").strip().lower() in
 # layer, the data-transform/pipeline core, entry points) is folded in by a SINGLE agent session,
 # and the source is tracked by its HEAD commit so a later commit re-ingests only the diff. Set
 # CITADEL_REPO_SUPPORT=0 to fall back to the old per-file walk (every file its own source).
-REPO_SUPPORT: bool = os.environ.get("CITADEL_REPO_SUPPORT", "1").strip().lower() not in (
-    "0", "false", "no", "off", "",
-)
+REPO_SUPPORT: bool = os.environ.get("CITADEL_REPO_SUPPORT", "1").strip().lower() not in ("0", "false", "no", "off", "")
 # Total character budget for one repo digest, and the per-file cap inside it (a long file is
 # truncated with a marker). Generous defaults so the transform/pipeline core fits; raise for big
 # repos, lower to keep sessions cheap.
@@ -245,6 +243,7 @@ def ingest_model_label() -> str:
     if "CITADEL_INGEST_MODEL" in os.environ and (INGEST_MODEL or "").strip():
         return f"{cli}:{INGEST_MODEL.strip()}"
     return cli
+
 
 MAX_DIGEST_CHARS: int = 12000
 DIGEST_TOP_N: int = 6

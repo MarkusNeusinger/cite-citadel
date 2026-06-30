@@ -41,6 +41,7 @@ from pathlib import Path
 from . import config, extract, llm, manifest, okf, repo, store, validate
 from .okf import Page
 
+
 # How many leading bytes to sniff when deciding whether a raw file holds text the agent can
 # read. 64 KiB is plenty to classify text vs. binary without reading a huge file into memory.
 _SNIFF_BYTES = 65536
@@ -49,9 +50,7 @@ _SNIFF_BYTES = 65536
 # misread as binary. A NUL byte — or a high proportion of other control bytes — marks a file
 # binary. PDFs are detected separately by their magic header (the agent's reader extracts text
 # from them), so they are not rejected here.
-_TEXT_BYTES = bytes(
-    {7, 8, 9, 10, 11, 12, 13, 27} | set(range(0x20, 0x7F)) | set(range(0x80, 0x100))
-)
+_TEXT_BYTES = bytes({7, 8, 9, 10, 11, 12, 13, 27} | set(range(0x20, 0x7F)) | set(range(0x80, 0x100)))
 
 
 @dataclass
@@ -139,11 +138,7 @@ def _is_repo_source(path: Path) -> bool:
     dir (``.git``/``.citadelsource``), and it is NOT the corpus root ``RAW_DIR`` itself. The latter
     guard matters because a user may keep the whole ``raw/`` tree under git for backup — that must
     still be scanned file-by-file (its repo SUB-folders are the sources), not collapsed into one."""
-    return (
-        config.REPO_SUPPORT
-        and repo.is_repo_dir(path)
-        and not _same_path(path, config.RAW_DIR)
-    )
+    return config.REPO_SUPPORT and repo.is_repo_dir(path) and not _same_path(path, config.RAW_DIR)
 
 
 def _prune_repo_dirs(parent: Path, dirnames: list[str]) -> list[str]:
@@ -207,7 +202,7 @@ def _repos_under(root: Path) -> list[Path]:
     """Every git repository (or ``.citadelsource``-marked folder) under ``root``, not descending into a
     repo once found (a nested repo is part of its parent's tree). Deterministic order."""
     found: list[Path] = []
-    for dirpath, dirnames, filenames in os.walk(root):
+    for dirpath, dirnames, _filenames in os.walk(root):
         parent = Path(dirpath)
         kept: list[str] = []
         for name in sorted(dirnames):
@@ -285,9 +280,7 @@ def _is_ingestible(path: Path) -> bool:
 
 def _partition_sources(
     paths: list[str] | None, manifest_dict: dict[str, str]
-) -> tuple[
-    list[Path], list[str], list[tuple[str, str, str, bool]], list[Path], list[str], dict[Path, str]
-]:
+) -> tuple[list[Path], list[str], list[tuple[str, str, str, bool]], list[Path], list[str], dict[Path, str]]:
     """Split candidates into ``(pending, skipped, moved, unreadable, deleted, office_text)`` in one
     walk.
 
@@ -449,15 +442,12 @@ def _partition_repos(
             base = ident.split("+", 1)[0]
             if base and not base.startswith("snap."):
                 gone = sorted(
-                    k for k in by_commit.get(base, [])
-                    if k != key and not config.source_path_for_key(k).exists()
+                    k for k in by_commit.get(base, []) if k != key and not config.source_path_for_key(k).exists()
                 )
                 if gone:
                     moved.append((gone[0], key, ident))
                     continue
-        old_commit = (
-            manifest.entry_commit(stored) if manifest.is_repo_entry(stored) else None
-        )
+        old_commit = manifest.entry_commit(stored) if manifest.is_repo_entry(stored) else None
         kind = "repo-reconcile" if old_commit else "repo"
         pending.append(_RepoJob(path=path, key=key, kind=kind, old_commit=old_commit))
 
@@ -493,9 +483,7 @@ def _snapshot() -> dict[str, str]:
     return _hash_pages(store.load())
 
 
-def _diff(
-    before: dict[str, str], after: dict[str, str]
-) -> tuple[list[str], list[str], list[str]]:
+def _diff(before: dict[str, str], after: dict[str, str]) -> tuple[list[str], list[str], list[str]]:
     """``(created, updated, deleted)``, each sorted. created = in after not before;
     deleted = in before not after; updated = in both with a changed hash."""
     created = sorted(k for k in after if k not in before)
@@ -553,9 +541,7 @@ def _validate_and_restamp(rel_paths: list[str], rel_key: str) -> list[str]:
         except (FileNotFoundError, okf.OKFError) as exc:
             errors.append(f"{rel_key}: re-read {rel_path}: {exc}")
             continue
-        canonical = _canonical_resource_key(
-            str(page.frontmatter.get("resource") or ""), rel_key
-        )
+        canonical = _canonical_resource_key(str(page.frontmatter.get("resource") or ""), rel_key)
         if canonical is not None:
             page.frontmatter["resource"] = canonical
         bad = [
@@ -565,9 +551,7 @@ def _validate_and_restamp(rel_paths: list[str], rel_key: str) -> list[str]:
         ]
         if bad:
             for issue in bad:
-                errors.append(
-                    f"{rel_key}: invalid page {rel_path}: {issue.category}: {issue.detail}"
-                )
+                errors.append(f"{rel_key}: invalid page {rel_path}: {issue.category}: {issue.detail}")
             continue
         try:
             store.write_page(rel_path, page.frontmatter, page.body)
@@ -576,9 +560,7 @@ def _validate_and_restamp(rel_paths: list[str], rel_key: str) -> list[str]:
     return errors
 
 
-def _repair_renames(
-    before_pages: list[Page], created: list[str], deleted: list[str]
-) -> None:
+def _repair_renames(before_pages: list[Page], created: list[str], deleted: list[str]) -> None:
     """Deterministic safety net for inbound links the agent may not have fully repointed.
 
     A page that was DELETED while a page with the SAME title was CREATED this source is a
@@ -728,9 +710,7 @@ def _make_staging(live: Path) -> Path:
         if live.is_dir():
             # Skip any half-written *.citadeltmp left in live by an interrupted promote, so a stray
             # temp never rides along into staging (and back out again).
-            shutil.copytree(
-                live, staging, dirs_exist_ok=True, ignore=shutil.ignore_patterns("*.citadeltmp")
-            )
+            shutil.copytree(live, staging, dirs_exist_ok=True, ignore=shutil.ignore_patterns("*.citadeltmp"))
         else:
             config.robust_mkdir(staging)
     except OSError:
@@ -867,9 +847,7 @@ class _SourceOutcome:
     seconds: float = 0.0
 
 
-def _run_one_agent_session(
-    session_fn, rel_key: str, extra_check=None, allow_emptying: bool = False
-) -> _SourceOutcome:
+def _run_one_agent_session(session_fn, rel_key: str, extra_check=None, allow_emptying: bool = False) -> _SourceOutcome:
     """Run ONE agent session with full all-or-nothing safety, shared by the pending
     (ingest/reconcile) and deletion-cleanup loops.
 
@@ -906,30 +884,22 @@ def _run_one_agent_session(
 
             val_errors = _validate_and_restamp(created + updated, rel_key)
             if val_errors:
-                return _SourceOutcome(
-                    False, errors=val_errors, seconds=time.monotonic() - started
-                )
+                return _SourceOutcome(False, errors=val_errors, seconds=time.monotonic() - started)
 
             _repair_renames(before_pages, created, deleted)
 
             if extra_check is not None:
                 post_errors = extra_check()
                 if post_errors:
-                    return _SourceOutcome(
-                        False, created, updated, deleted, post_errors, time.monotonic() - started
-                    )
+                    return _SourceOutcome(False, created, updated, deleted, post_errors, time.monotonic() - started)
 
         # Clean session: commit it onto the live wiki (config now points back at live). This is the
         # ONLY step that touches the live wiki, and it is non-destructive — so an interrupt here
         # still cannot empty it.
         _promote(staging, live, allow_emptying=allow_emptying)
-        return _SourceOutcome(
-            True, created, updated, deleted, [], time.monotonic() - started
-        )
+        return _SourceOutcome(True, created, updated, deleted, [], time.monotonic() - started)
     except Exception as exc:  # noqa: BLE001 - collect per-source, keep going; live wiki untouched
-        return _SourceOutcome(
-            False, errors=[f"{rel_key}: {exc}"], seconds=time.monotonic() - started
-        )
+        return _SourceOutcome(False, errors=[f"{rel_key}: {exc}"], seconds=time.monotonic() - started)
     finally:
         # Discard staging on every exit (a clean session already promoted it; a failed or
         # interrupted one never touched the live wiki). A flaky share that refuses the delete only
@@ -1014,16 +984,12 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
     model = config.ingest_model_label()
     report = IngestReport([], [], [], [], model=model)
 
-    pending, skipped, moved, unreadable, deleted_sources, office_text = _partition_sources(
-        paths, manifest_dict
-    )
+    pending, skipped, moved, unreadable, deleted_sources, office_text = _partition_sources(paths, manifest_dict)
     # Git repositories under raw/ are ingested as ONE source each (a digest), versioned by commit.
     # Discover + partition them alongside the file sources; a vanished repo folder is reconciled out
     # by the SAME deletion-cleanup path as a file (its citations point at the repo folder key).
     repo_paths = _discover_repos(paths)
-    repo_pending, repo_moved, repo_deleted, repo_skipped = _partition_repos(
-        repo_paths, manifest_dict, paths is None
-    )
+    repo_pending, repo_moved, repo_deleted, repo_skipped = _partition_repos(repo_paths, manifest_dict, paths is None)
     report.skipped = skipped + repo_skipped
     deleted_sources = deleted_sources + repo_deleted
     # A pending source whose key is ALREADY tracked is a re-ingest of changed bytes (reconcile);
@@ -1119,14 +1085,7 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 read_key, extract_tmp = _office_write_temp(office, src.name)
             except OSError as exc:
                 report.errors.append(f"{rel_key}: write extracted office text: {exc}")
-                emit(
-                    "source_error",
-                    index=index,
-                    total=len(pending),
-                    source=rel_key,
-                    error=str(exc),
-                    seconds=0.0,
-                )
+                emit("source_error", index=index, total=len(pending), source=rel_key, error=str(exc), seconds=0.0)
                 continue
 
         try:
@@ -1202,23 +1161,16 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
             # Build the digest and materialize it to a temp file the agent reads (citing the repo
             # folder as the source of record). A build/temp failure is a per-source error.
             try:
-                digest = repo.build_digest(
-                    job.path, repo_key, only=only, change_summary=change_summary
-                )
+                digest = repo.build_digest(job.path, repo_key, only=only, change_summary=change_summary)
                 read_key, repo_tmp = _office_write_temp(digest, job.path.name)
             except Exception as exc:  # noqa: BLE001 - per-source, keep going
                 report.errors.append(f"{repo_key}: build digest: {exc}")
-                emit(
-                    "source_error", index=index, total=total_repos, source=repo_key,
-                    error=str(exc), seconds=0.0,
-                )
+                emit("source_error", index=index, total=total_repos, source=repo_key, error=str(exc), seconds=0.0)
                 continue
 
             try:
                 outcome = _run_one_agent_session(
-                    lambda rk=repo_key, k=job.kind, rp=read_key: llm.run_ingest_session(
-                        rk, kind=k, read_path=rp
-                    ),
+                    lambda rk=repo_key, k=job.kind, rp=read_key: llm.run_ingest_session(rk, kind=k, read_path=rp),
                     repo_key,
                 )
             except BaseException as exc:  # noqa: BLE001 - Ctrl+C: helper rolled back; re-raise later
@@ -1230,8 +1182,12 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
             if not outcome.ok:
                 report.errors.extend(outcome.errors)
                 emit(
-                    "source_error", index=index, total=total_repos, source=repo_key,
-                    error=outcome.errors[0] if outcome.errors else "", seconds=outcome.seconds,
+                    "source_error",
+                    index=index,
+                    total=total_repos,
+                    source=repo_key,
+                    error=outcome.errors[0] if outcome.errors else "",
+                    seconds=outcome.seconds,
                 )
                 continue
 
@@ -1245,9 +1201,14 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
             manifest.save(manifest_dict)
             report.processed.append(repo_key)
             emit(
-                "source_done", index=index, total=total_repos, source=repo_key,
-                created=len(outcome.created), updated=len(outcome.updated),
-                deleted=len(outcome.deleted), seconds=outcome.seconds,
+                "source_done",
+                index=index,
+                total=total_repos,
+                source=repo_key,
+                created=len(outcome.created),
+                updated=len(outcome.updated),
+                deleted=len(outcome.deleted),
+                seconds=outcome.seconds,
             )
 
     # --- Deleted sources: a tracked source vanished from disk (full run only). If any page still
@@ -1266,8 +1227,14 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 manifest.save(manifest_dict)
                 report.sources_deleted.append(key)
                 emit(
-                    "source_done", index=index, total=total_del, source=key,
-                    created=0, updated=0, deleted=0, seconds=0.0,
+                    "source_done",
+                    index=index,
+                    total=total_del,
+                    source=key,
+                    created=0,
+                    updated=0,
+                    deleted=0,
+                    seconds=0.0,
                 )
                 continue
             try:
@@ -1275,8 +1242,7 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                     lambda k=key: llm.run_ingest_session(k, kind="delete"),
                     key,
                     extra_check=lambda k=key: [
-                        f"{k}: still cited by {p} after cleanup"
-                        for p in store.find_raw_references(k)
+                        f"{k}: still cited by {p} after cleanup" for p in store.find_raw_references(k)
                     ],
                     # A delete cleanup MAY legitimately remove the last source's only page, leaving
                     # the wiki empty — so the anti-emptying valve does not apply here.
@@ -1316,13 +1282,7 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 seconds=outcome.seconds,
             )
 
-    if (
-        report.processed
-        or report.moved
-        or report.unreadable
-        or report.sources_deleted
-        or repointed
-    ):
+    if report.processed or report.moved or report.unreadable or report.sources_deleted or repointed:
         emit("finalize")
         # The manifest is already persisted incrementally (after each source, and right after the
         # move/unreadable bookkeeping) above, so a final save here would be redundant — just
@@ -1342,9 +1302,7 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 "recognized as moved, not re-ingested"
             )
         for key in report.unreadable:
-            store.append_log(
-                f"could not ingest {key}: no readable text found (binary or unsupported); skipped"
-            )
+            store.append_log(f"could not ingest {key}: no readable text found (binary or unsupported); skipped")
         for key in report.sources_deleted:
             store.append_log(
                 f"raw source {key} was deleted from disk; reconciled its citations out of the "

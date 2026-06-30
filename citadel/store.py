@@ -13,10 +13,10 @@ import os
 import re
 from datetime import datetime, timezone
 
-from . import config
+from . import config, okf
 from . import manifest as manifest_mod
-from . import okf
 from .okf import Page
+
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 # A relative markdown link whose target ends in '.md' (mirrors lint.LINK_RE). Used to
@@ -90,11 +90,7 @@ def _score(query_tokens: set[str], page: Page) -> float:
     return score
 
 
-def search(
-    query: str,
-    pages: list[Page] | None = None,
-    limit: int = 8,
-) -> list[tuple[Page, float]]:
+def search(query: str, pages: list[Page] | None = None, limit: int = 8) -> list[tuple[Page, float]]:
     """THE single swappable search seam. If pages is None, call load(). Score every
     page (token overlap with title*3/tags*2/description*1.5/body*1.0 plus a 0.5
     substring bonus when the lowercased query appears in the title or body), drop
@@ -108,9 +104,7 @@ def search(
     scored: list[tuple[Page, float]] = []
     for page in pages:
         score = _score(query_tokens, page)
-        if raw_query and (
-            raw_query in page.title.lower() or raw_query in page.body.lower()
-        ):
+        if raw_query and (raw_query in page.title.lower() or raw_query in page.body.lower()):
             score += 0.5
         if score > 0.0:
             scored.append((page, score))
@@ -152,12 +146,7 @@ def delete_page(rel_path: str) -> bool:
     index for folders that still hold pages and load() ignores index.md, so an empty
     folder is inert and drops out of the catalog on the next rebuild."""
     name = rel_path.rsplit("/", 1)[-1] if rel_path else ""
-    if (
-        not rel_path
-        or rel_path in ("index.md", "log.md")
-        or rel_path.endswith("/index.md")
-        or name.startswith(".")
-    ):
+    if not rel_path or rel_path in ("index.md", "log.md") or rel_path.endswith("/index.md") or name.startswith("."):
         raise okf.OKFError(f"refusing to delete protected file: {rel_path!r}")
     target = okf.safe_join(config.WIKI_DIR, rel_path)  # rejects ''/absolute/'..'
     if target.is_file():
@@ -297,9 +286,7 @@ def _link_points_at_key(page_rel: str, target: str, key: str) -> bool:
     if link_abs is None:
         return False
     target_abs = str(config.source_path_for_key(key))
-    return os.path.normcase(os.path.normpath(link_abs)) == os.path.normcase(
-        os.path.normpath(target_abs)
-    )
+    return os.path.normcase(os.path.normpath(link_abs)) == os.path.normcase(os.path.normpath(target_abs))
 
 
 def _source_key_to_page_link(page_rel: str, key: str) -> str:
@@ -341,9 +328,7 @@ def _rewrite_raw_body_links(page_rel: str, body: str, old_rel: str, new_rel: str
     return "".join(out)
 
 
-def rewrite_raw_references(
-    old_rel: str, new_rel: str, pages: list[Page] | None = None
-) -> list[str]:
+def rewrite_raw_references(old_rel: str, new_rel: str, pages: list[Page] | None = None) -> list[str]:
     """Repoint every reference to a RAW SOURCE file after it was MOVED on disk, so the wiki keeps
     pointing at it. ``old_rel``/``new_rel`` are source keys — repo-relative posix paths (e.g.
     ``'raw/coffee.md'`` -> ``'raw/drinks/coffee.md'``) or, for an out-of-repo source on a mounted
@@ -359,9 +344,7 @@ def rewrite_raw_references(
     changed: list[str] = []
     for page in pages:
         frontmatter = page.frontmatter
-        fm_changed = (
-            str(frontmatter.get("resource") or "").strip().replace("\\", "/") == old_rel
-        )
+        fm_changed = str(frontmatter.get("resource") or "").strip().replace("\\", "/") == old_rel
         if fm_changed:
             frontmatter = dict(frontmatter)
             frontmatter["resource"] = new_rel
@@ -460,9 +443,7 @@ def _md_cell(text: str) -> str:
 SOURCES_INDEX_REL = "sources/index.md"
 
 
-def _render_sources_catalog(
-    manifest_dict: dict, pages: list[Page]
-) -> str | None:
+def _render_sources_catalog(manifest_dict: dict, pages: list[Page]) -> str | None:
     """Render the body of ``wiki/sources/index.md`` — the provenance catalog.
 
     One row per tracked raw source (from the ingest manifest), showing the MODEL that imported it
@@ -492,9 +473,7 @@ def _render_sources_catalog(
         refs = find_raw_references(key, pages)
         if refs:
             ref_cell = ", ".join(
-                f"[{_md_cell(title_by_path.get(r, r))}]"
-                f"({okf.rel_path_between(SOURCES_INDEX_REL, r)})"
-                for r in refs
+                f"[{_md_cell(title_by_path.get(r, r))}]({okf.rel_path_between(SOURCES_INDEX_REL, r)})" for r in refs
             )
         else:
             ref_cell = "—"
@@ -556,9 +535,7 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
             lines.append(f"- [{page.title}]({page.rel_path}) — {page.description}")
             refs = inbound.get(page.rel_path, [])
             if refs:
-                reflinks = ", ".join(
-                    f"[{title_by_path.get(r, r)}]({r})" for r in refs
-                )
+                reflinks = ", ".join(f"[{title_by_path.get(r, r)}]({r})" for r in refs)
                 lines.append(f"  - ↳ referenced by: {reflinks}")
         lines.append("")
 
@@ -595,6 +572,7 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
     # ----- ## Abbreviations: the glossary, generated from every type: Abbreviation page -----
     abbrev_pages = [p for p in pages if (p.type or "").strip().lower() == "abbreviation"]
     if abbrev_pages:
+
         def _cell(text: str) -> str:
             return text.replace("|", "\\|").strip()
 
@@ -605,10 +583,7 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
         lines.append("| Abbreviation | Expansion | Page |")
         lines.append("| --- | --- | --- |")
         for (short, expansion), page in rows:
-            lines.append(
-                f"| {_cell(short)} | {_cell(expansion)} | "
-                f"[{_cell(page.title)}]({page.rel_path}) |"
-            )
+            lines.append(f"| {_cell(short)} | {_cell(expansion)} | [{_cell(page.title)}]({page.rel_path}) |")
         lines.append("")
 
     body = "\n".join(lines).rstrip("\n") + "\n"

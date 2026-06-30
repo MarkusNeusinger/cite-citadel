@@ -23,6 +23,7 @@ import sys
 import threading
 import time
 
+
 _FRAMES = "|/-\\"
 
 
@@ -55,8 +56,7 @@ class ConsoleProgress:
         pass
 
     def on_start(
-        self, pending: int, skipped: int, moved: int = 0, unreadable: int = 0,
-        deleted: int = 0, repos: int = 0
+        self, pending: int, skipped: int, moved: int = 0, unreadable: int = 0, deleted: int = 0, repos: int = 0
     ) -> None:
         bits = []
         if skipped:
@@ -93,8 +93,7 @@ class ConsoleProgress:
             self._start_spinner()
 
     def on_source_done(
-        self, index: int, total: int, source: str,
-        created: int, updated: int, deleted: int, seconds: float
+        self, index: int, total: int, source: str, created: int, updated: int, deleted: int, seconds: float
     ) -> None:
         self._stop_spinner()
         bits = []
@@ -107,9 +106,7 @@ class ConsoleProgress:
         summary = ", ".join(bits) if bits else "no changes"
         self._finishln(f"[{index}/{total}] OK  {source}  -  {summary}  ({seconds:.1f}s)")
 
-    def on_source_error(
-        self, index: int, total: int, source: str, error: str, seconds: float
-    ) -> None:
+    def on_source_error(self, index: int, total: int, source: str, error: str, seconds: float) -> None:
         self._stop_spinner()
         self._finishln(f"[{index}/{total}] ERR {source}  -  {error}  ({seconds:.1f}s)")
 

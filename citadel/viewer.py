@@ -29,7 +29,9 @@ import re
 import webbrowser
 from pathlib import Path
 
-from . import config, extract, manifest as manifest_mod, store
+from . import config, extract, store
+from . import manifest as manifest_mod
+
 
 # Default output: dot-prefixed so store.load() skips it (like .citadel_ingested.json) and it is
 # gitignored; it is a regenerable artifact, never a source of truth.
@@ -58,11 +60,7 @@ def build_bundle(pages=None) -> dict:
     types: dict[str, list[str]] = {}
     for page in pages:
         outbound = sorted(
-            {
-                resolved
-                for _raw, resolved in store._resolved_md_links(page.rel_path, page.body)
-                if resolved in paths
-            }
+            {resolved for _raw, resolved in store._resolved_md_links(page.rel_path, page.body) if resolved in paths}
         )
         for target in outbound:
             edges.append({"source": page.rel_path, "target": target})
@@ -80,10 +78,7 @@ def build_bundle(pages=None) -> dict:
             }
         )
 
-    tags = {
-        tag: [p.rel_path for p in tagged]
-        for tag, tagged in store.tag_catalog(pages).items()
-    }
+    tags = {tag: [p.rel_path for p in tagged] for tag, tagged in store.tag_catalog(pages).items()}
     return {
         "wiki_name": config.WIKI_DIR.name,
         "pages": pages_json,
@@ -194,9 +189,7 @@ def _source_title(body: str, view_id: str) -> str:
 def _source_snippet(body: str, limit: int = 240) -> str:
     """A short, whitespace-collapsed preview of a source's prose (headings dropped) for the hover
     popover."""
-    prose = " ".join(
-        line for line in body.splitlines() if not line.lstrip().startswith("#")
-    )
+    prose = " ".join(line for line in body.splitlines() if not line.lstrip().startswith("#"))
     return " ".join(prose.split())[:limit]
 
 
@@ -241,9 +234,7 @@ def _build_sources(pages) -> dict:
     sources tracked in the manifest even if currently uncited, so the Sources axis is complete;
     skips git-repository manifest entries (a folder, not a readable file)."""
     manifest = _load_manifest()
-    manifest_files = {
-        key for key, entry in manifest.items() if not manifest_mod.is_repo_entry(entry)
-    }
+    manifest_files = {key for key, entry in manifest.items() if not manifest_mod.is_repo_entry(entry)}
     # Cited sources keyed by the browser identity, then tracked-but-uncited files under a fallback
     # id so the Sources axis is complete (a git-repository entry is a folder, not a file — skipped).
     id_to_key = _collect_sources(pages)
@@ -287,9 +278,7 @@ def build_html(pages=None) -> str:
     bundle = build_bundle(pages)
     # Compact JSON; then escape '</' -> '<\/' so a literal '</script>' inside any page body
     # OR embedded source cannot close the data <script> early. (json.dumps does NOT do this.)
-    blob = json.dumps(bundle, ensure_ascii=False, separators=(",", ":")).replace(
-        "</", "<\\/"
-    )
+    blob = json.dumps(bundle, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     # Order matters: fill CSS and JS sentinels first, the data blob last, so a sentinel-like
     # substring inside page data is never re-interpreted.
     html = _TEMPLATE.replace("/*__CSS__*/", _CSS)
@@ -466,7 +455,7 @@ a.srclink::after { content:" \\2197"; font-size:.8em; opacity:.7; }
 """
 
 
-_VIEWER_JS = r'''
+_VIEWER_JS = r"""
 (function () {
   "use strict";
   var BUNDLE = JSON.parse(document.getElementById("bundle").textContent);
@@ -1152,7 +1141,7 @@ _VIEWER_JS = r'''
   else if (initial && PAGES[initial]) openPage(initial);
   else if (BUNDLE.pages.length) openPage(BUNDLE.pages[0].rel_path);
 })();
-'''
+"""
 
 
 _TEMPLATE = """<!doctype html>

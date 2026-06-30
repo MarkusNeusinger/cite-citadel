@@ -175,12 +175,7 @@ def test_list_files_fallback_skips_junk(tmp_path):
     root = _make_repo(
         tmp_path,
         "r",
-        {
-            "app.py": "x\n",
-            "node_modules/dep/index.js": "junk\n",
-            "dist/bundle.js": "junk\n",
-            "sub/util.py": "y\n",
-        },
+        {"app.py": "x\n", "node_modules/dep/index.js": "junk\n", "dist/bundle.js": "junk\n", "sub/util.py": "y\n"},
     )
     files = repo.list_files(root)
     assert "app.py" in files and "sub/util.py" in files
@@ -209,11 +204,7 @@ def test_build_digest_truncates_long_file(tmp_path):
 
 
 def test_build_digest_respects_budget_and_prioritizes_signal(tmp_path):
-    root = _make_repo(
-        tmp_path,
-        "p",
-        {"transform.py": "T" * 400, "notes.txt": "N" * 400},
-    )
+    root = _make_repo(tmp_path, "p", {"transform.py": "T" * 400, "notes.txt": "N" * 400})
     # Budget large enough for ~one inlined file: the high-signal transform wins, notes is omitted.
     digest = repo.build_digest(root, "raw/p", max_chars=900, per_file_chars=2000)
     assert "### transform.py" in digest
@@ -228,9 +219,7 @@ def test_build_digest_never_exceeds_budget(tmp_path):
     files["README.md"] = "Y" * 4000
     root = _make_repo(tmp_path, "big", files)
     summary = "Changed files:\n" + "\n".join(f"transform_{i}.py" for i in range(6)) * 50
-    digest = repo.build_digest(
-        root, "raw/big", max_chars=3000, per_file_chars=2000, change_summary=summary
-    )
+    digest = repo.build_digest(root, "raw/big", max_chars=3000, per_file_chars=2000, change_summary=summary)
     assert len(digest) <= 3000
     assert "# Repository digest: raw/big" in digest
 

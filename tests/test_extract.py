@@ -13,6 +13,7 @@ from pathlib import Path
 
 from citadel import extract
 
+
 _W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
@@ -30,7 +31,9 @@ def _zip(path: Path, entries: dict[str, str]) -> Path:
 def _docx(path: Path, body_xml: str) -> Path:
     return _zip(
         path,
-        {"word/document.xml": f'<?xml version="1.0"?><w:document xmlns:w="{_W}"><w:body>{body_xml}</w:body></w:document>'},
+        {
+            "word/document.xml": f'<?xml version="1.0"?><w:document xmlns:w="{_W}"><w:body>{body_xml}</w:body></w:document>'
+        },
     )
 
 
@@ -75,8 +78,8 @@ def test_extract_docx_paragraphs_runs_and_table_cells(tmp_path):
     )
     text = extract.extract_text(_docx(tmp_path / "doc.docx", body))
     assert "Hello world." in text
-    assert "Second paragraph with two runs." in text   # two runs joined within the paragraph
-    assert "Cell A" in text and "Cell B" in text        # table cell text captured
+    assert "Second paragraph with two runs." in text  # two runs joined within the paragraph
+    assert "Cell A" in text and "Cell B" in text  # table cell text captured
     # Document order is preserved.
     assert text.index("Hello world.") < text.index("Second paragraph") < text.index("Cell A")
 
@@ -112,7 +115,7 @@ def test_extract_pptx_orders_slides_numerically_with_notes(tmp_path):
     text = extract.extract_text(path)
     assert "Alpha title" in text and "Beta title" in text and "Gamma title" in text
     assert text.index("Alpha title") < text.index("Beta title") < text.index("Gamma title")
-    assert "## Slide 1" in text and "## Slide 3" in text   # slide10 is the 3rd in order
+    assert "## Slide 1" in text and "## Slide 3" in text  # slide10 is the 3rd in order
     assert "## Speaker notes" in text and "Speaker note for alpha" in text
 
 

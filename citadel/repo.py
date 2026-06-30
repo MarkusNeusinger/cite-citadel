@@ -30,6 +30,7 @@ from pathlib import Path
 
 from . import config, manifest
 
+
 # Opt-in marker: a folder carrying this file (even without a ``.git``) is treated as one source —
 # for a copied snapshot that has no git history. Its identity is then an aggregate content hash.
 MARKER = ".citadelsource"
@@ -40,15 +41,40 @@ _GIT_TIMEOUT = 60
 # Directories never worth reading (vendored deps, build output, caches). ``git ls-files`` already
 # excludes most of these; the list is the safety net for the no-git fallback walk.
 _SKIP_DIRS = {
-    "node_modules", "dist", "build", "out", "target", "vendor", "__pycache__",
-    ".venv", "venv", "env", ".tox", ".mypy_cache", ".pytest_cache", ".idea", ".vscode",
-    "coverage", ".next", ".nuxt", ".cache", "bower_components",
+    "node_modules",
+    "dist",
+    "build",
+    "out",
+    "target",
+    "vendor",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "env",
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".idea",
+    ".vscode",
+    "coverage",
+    ".next",
+    ".nuxt",
+    ".cache",
+    "bower_components",
 }
 
 # Exact filenames to drop: lockfiles carry no human knowledge, only resolved version pins.
 _EXCLUDE_NAMES = {
-    "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "cargo.lock",
-    "composer.lock", "gemfile.lock", "uv.lock", "go.sum", "podfile.lock",
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "poetry.lock",
+    "cargo.lock",
+    "composer.lock",
+    "gemfile.lock",
+    "uv.lock",
+    "go.sum",
+    "podfile.lock",
 }
 
 # Filename patterns to drop: minified bundles, source maps, any *.lock.
@@ -56,10 +82,26 @@ _EXCLUDE_RE = re.compile(r"\.min\.(js|css)$|\.map$|\.lock$", re.IGNORECASE)
 
 # Fence language hints by extension, for the digest's code blocks (cosmetic).
 _LANG = {
-    ".py": "python", ".js": "javascript", ".ts": "typescript", ".tsx": "tsx", ".jsx": "jsx",
-    ".sql": "sql", ".json": "json", ".yaml": "yaml", ".yml": "yaml", ".toml": "toml",
-    ".sh": "bash", ".go": "go", ".rb": "ruby", ".java": "java", ".cs": "csharp", ".rs": "rust",
-    ".php": "php", ".md": "markdown", ".ini": "ini", ".cfg": "ini",
+    ".py": "python",
+    ".js": "javascript",
+    ".ts": "typescript",
+    ".tsx": "tsx",
+    ".jsx": "jsx",
+    ".sql": "sql",
+    ".json": "json",
+    ".yaml": "yaml",
+    ".yml": "yaml",
+    ".toml": "toml",
+    ".sh": "bash",
+    ".go": "go",
+    ".rb": "ruby",
+    ".java": "java",
+    ".cs": "csharp",
+    ".rs": "rust",
+    ".php": "php",
+    ".md": "markdown",
+    ".ini": "ini",
+    ".cfg": "ini",
 }
 
 
@@ -125,9 +167,7 @@ def _walk_repo(path: Path) -> list[str]:
     root = Path(path)
     out: list[str] = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = sorted(
-            d for d in dirnames if not d.startswith(".") and d.lower() not in _SKIP_DIRS
-        )
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith(".") and d.lower() not in _SKIP_DIRS)
         for name in sorted(filenames):
             if name.startswith("."):
                 continue
@@ -221,17 +261,51 @@ _CORE_RE = re.compile(
     re.IGNORECASE,
 )
 _MANIFEST_NAMES = {
-    "package.json", "pyproject.toml", "setup.py", "setup.cfg", "go.mod", "cargo.toml",
-    "pom.xml", "build.gradle", "gemfile", "composer.json", "pipfile",
+    "package.json",
+    "pyproject.toml",
+    "setup.py",
+    "setup.cfg",
+    "go.mod",
+    "cargo.toml",
+    "pom.xml",
+    "build.gradle",
+    "gemfile",
+    "composer.json",
+    "pipfile",
 }
 _ENTRY_NAMES = {
-    "main.py", "app.py", "__main__.py", "cli.py", "server.py", "manage.py",
-    "index.js", "index.ts", "main.js", "main.ts", "main.go", "app.ts", "app.js", "server.js",
+    "main.py",
+    "app.py",
+    "__main__.py",
+    "cli.py",
+    "server.py",
+    "manage.py",
+    "index.js",
+    "index.ts",
+    "main.js",
+    "main.ts",
+    "main.go",
+    "app.ts",
+    "app.js",
+    "server.js",
 }
 _CONFIG_EXT = (".ini", ".cfg", ".toml", ".yaml", ".yml", ".env", ".conf")
 _CODE_EXT = (
-    ".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rb", ".java", ".cs", ".rs", ".php",
-    ".scala", ".kt", ".sh", ".sql",
+    ".py",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".jsx",
+    ".go",
+    ".rb",
+    ".java",
+    ".cs",
+    ".rs",
+    ".php",
+    ".scala",
+    ".kt",
+    ".sh",
+    ".sql",
 )
 _PROSE_EXT = (".md", ".txt", ".rst")
 
@@ -329,9 +403,7 @@ def build_digest(
     """
     root = Path(path)
     max_chars = max_chars if max_chars is not None else config.REPO_DIGEST_MAX_CHARS
-    per_file_chars = (
-        per_file_chars if per_file_chars is not None else config.REPO_PER_FILE_MAX_CHARS
-    )
+    per_file_chars = per_file_chars if per_file_chars is not None else config.REPO_PER_FILE_MAX_CHARS
 
     all_files = [f for f in list_files(root) if not _is_excluded(f)]
     inline_set = set(only) if only is not None else None
@@ -363,9 +435,7 @@ def build_digest(
     # File listing — capped to a bounded share of the remaining budget so a huge repo's path list
     # alone can't blow the cap (the contents below are where the value is).
     listing_header, listing_footer = "\n## Files\n", "\n"
-    listing_budget = max(
-        0, int((max_chars - used) * 0.4) - len(listing_header) - len(listing_footer)
-    )
+    listing_budget = max(0, int((max_chars - used) * 0.4) - len(listing_header) - len(listing_footer))
     listing_body = "\n".join(all_files)
     listing_truncated = False
     if len(listing_body) > listing_budget:
@@ -373,10 +443,7 @@ def build_digest(
         listing_body = clipped.rsplit("\n", 1)[0] if "\n" in clipped else ""
         listing_truncated = True
     listing = (
-        listing_header
-        + listing_body
-        + ("\n... [listing truncated]" if listing_truncated else "")
-        + listing_footer
+        listing_header + listing_body + ("\n... [listing truncated]" if listing_truncated else "") + listing_footer
     )
     parts.append(listing)
     used += len(listing)

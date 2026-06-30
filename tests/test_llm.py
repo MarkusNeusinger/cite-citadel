@@ -46,10 +46,10 @@ def test_build_instruction_uses_configured_wiki_dir(tmp_path, monkeypatch):
 
     prompt = llm._build_instruction("raw/notes.md")
 
-    assert "wikiET/" in prompt        # the configured wiki dir is used throughout...
-    assert "wiki/" not in prompt      # ...and no hardcoded bare 'wiki/' survives
-    assert "raw/notes.md" in prompt   # the raw source path is still referenced verbatim
-    assert len(prompt) < 3000         # still tiny (paths-only) — WinError 206 guard
+    assert "wikiET/" in prompt  # the configured wiki dir is used throughout...
+    assert "wiki/" not in prompt  # ...and no hardcoded bare 'wiki/' survives
+    assert "raw/notes.md" in prompt  # the raw source path is still referenced verbatim
+    assert len(prompt) < 3000  # still tiny (paths-only) — WinError 206 guard
 
 
 def test_rule_files_teach_path_and_filename_as_routing_context():
@@ -92,12 +92,12 @@ def test_build_instruction_office_read_path_points_to_extract_cites_original():
     while still citing the ORIGINAL source as `resource`/in `## Sources` — and stays tiny."""
     prompt = llm._build_instruction("raw/deck.pptx", "ingest", "/tmp/okf_extract_x/deck.md")
     low = prompt.lower()
-    assert "/tmp/okf_extract_x/deck.md" in prompt    # the extracted-text file to read
-    assert "raw/deck.pptx" in prompt                 # the original source of record
-    assert "resource: raw/deck.pptx" in prompt       # cite the original, not the extract
+    assert "/tmp/okf_extract_x/deck.md" in prompt  # the extracted-text file to read
+    assert "raw/deck.pptx" in prompt  # the original source of record
+    assert "resource: raw/deck.pptx" in prompt  # cite the original, not the extract
     assert "office" in low and "extracted" in low
-    assert "read that" in low                        # explicit: read the extracted file
-    assert len(prompt) < 2000                        # still paths-only — WinError 206 guard
+    assert "read that" in low  # explicit: read the extracted file
+    assert len(prompt) < 2000  # still paths-only — WinError 206 guard
 
 
 def test_build_instruction_no_read_path_keeps_direct_read_step():
@@ -116,7 +116,7 @@ def test_build_instruction_delete_strips_provenance_without_opening():
     low = prompt.lower()
     assert "delete" in low and "no longer exists" in low
     assert "do not try" in low and "open it" in low  # must not re-read a missing file
-    assert "resource" in low and "[^s" in prompt     # points at both provenance forms
+    assert "resource" in low and "[^s" in prompt  # points at both provenance forms
     assert len(prompt) < 3000
 
 
@@ -161,10 +161,10 @@ def test_build_invocation_gemini_yolo():
 
 def test_run_session_claude_is_error_raises(monkeypatch):
     """A claude result envelope with is_error=true raises (e.g. quota/auth)."""
+
     def fake_run(*a, **k):
         return _FakeProc(
-            returncode=0,
-            stdout='{"type":"result","is_error":true,"api_error_status":429,"result":"quota"}',
+            returncode=0, stdout='{"type":"result","is_error":true,"api_error_status":429,"result":"quota"}'
         )
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -175,6 +175,7 @@ def test_run_session_claude_is_error_raises(monkeypatch):
 
 def test_run_session_claude_success(monkeypatch):
     """A clean claude envelope (is_error false, exit 0) does not raise."""
+
     def fake_run(*a, **k):
         return _FakeProc(returncode=0, stdout='{"type":"result","is_error":false,"result":"done"}')
 
@@ -195,6 +196,7 @@ def test_run_session_nonzero_exit_raises(monkeypatch):
 def test_run_session_empty_output_is_success_for_copilot(monkeypatch):
     """An agentic session that legitimately changed nothing prints nothing and exits 0 —
     that must NOT be treated as a failure (this is the old 'no ops JSON' parse-bug fix)."""
+
     def fake_run(*a, **k):
         return _FakeProc(returncode=0, stdout="", stderr="")
 
@@ -218,7 +220,9 @@ def test_run_ingest_session_wires_resolve_build_run(monkeypatch):
     calls = {"resolve": 0, "run": 0}
 
     monkeypatch.setattr(config, "LLM_CLI", "copilot", raising=False)
-    monkeypatch.setattr(llm, "_resolve_cli", lambda cli: (calls.__setitem__("resolve", calls["resolve"] + 1) or "/bin/copilot"))
+    monkeypatch.setattr(
+        llm, "_resolve_cli", lambda cli: calls.__setitem__("resolve", calls["resolve"] + 1) or "/bin/copilot"
+    )
 
     def fake_run_session(cli, argv, stdin_text, *, log_label=None):
         calls["run"] += 1
@@ -248,7 +252,7 @@ def test_run_session_writes_transcript_when_log_dir_set(tmp_path, monkeypatch):
     assert len(logs) == 1
     text = logs[0].read_text(encoding="utf-8")
     assert "the model said hello" in text  # stdout captured
-    assert "a warning" in text             # stderr captured
+    assert "a warning" in text  # stderr captured
     assert "ingest.raw_notes.md" in logs[0].name  # label sanitized into the filename
 
 
@@ -273,9 +277,7 @@ def test_run_session_timeout_logs_partial_transcript(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "LLM_VERBOSE", False, raising=False)
 
     def fake_run(*a, **k):
-        raise subprocess.TimeoutExpired(
-            cmd="copilot", timeout=config.LLM_TIMEOUT, output="partial work so far"
-        )
+        raise subprocess.TimeoutExpired(cmd="copilot", timeout=config.LLM_TIMEOUT, output="partial work so far")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     with pytest.raises(RuntimeError) as exc:
@@ -286,7 +288,7 @@ def test_run_session_timeout_logs_partial_transcript(tmp_path, monkeypatch):
     assert len(logs) == 1
     text = logs[0].read_text(encoding="utf-8")
     assert "partial work so far" in text  # the partial output is preserved, not dropped
-    assert "timed out" in text            # and the transcript is annotated as a timeout
+    assert "timed out" in text  # and the transcript is annotated as a timeout
 
 
 def test_run_session_verbose_uses_streaming_not_capture(monkeypatch):

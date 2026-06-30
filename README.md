@@ -3,325 +3,119 @@
 > **A fortress of cited knowledge.** An LLM-maintained, fully-cited personal wiki —
 > every fact is attested to its source, nothing is invented.
 
-The CLI is **`citadel`**; the package on PyPI is **`cite-citadel`**.
+An LLM-maintained personal wiki in Google's [Open Knowledge Format](docs/okf-reference.md) (OKF),
+with an **MCP server** so an AI can search and read it — a KISS, pure-Python 3.12 take on Andrej
+Karpathy's [LLM-Wiki pattern](docs/karpathy-llm-wiki.md).
 
-An **LLM-maintained personal wiki** in Google's [Open Knowledge Format](docs/okf-reference.md),
-with an **MCP server** so an AI can search and read it.
+Drop arbitrary text-bearing files into `raw/` (markdown, code, JSON/CSV, PDF, `.pptx`/`.docx`, … in
+any sub-folder). One agentic CLI session per source folds it into a cross-linked OKF wiki under
+`wiki/` — **routing each fact to the page it best fits** and splitting/merging pages as the corpus
+grows, rather than making one page per file. Every fact is cited back to its `raw/` source, and the
+model uses **only** what is in `raw/`. An AI client then queries the synthesized wiki over MCP
+instead of re-reading your notes.
 
-This is a KISS, pure-Python (3.12) implementation of Andrej Karpathy's
-[LLM-Wiki pattern](docs/karpathy-llm-wiki.md): you drop arbitrary text-bearing files into `raw/`
-(markdown, plain text, code, JSON/CSV, PDF, PowerPoint/Word `.pptx`/`.docx`, … — any sub-folder), and
-one agentic CLI session per file folds each source into a cross-linked OKF wiki under `wiki/`.
-Instead of making one page per file, ingest **routes each fact to the page it best fits and restructures**
-(splits / merges) existing pages as the wiki grows. Every fact is cited back to the raw file it
-came from — and the model uses **only** what is in `raw/`, never its own knowledge. An AI client
-then queries the synthesized wiki over the Model Context Protocol instead of re-reading your raw
-notes.
+The CLI is **`citadel`**; the PyPI package is **`cite-citadel`**. The `wiki/` directory **is** the
+database — no SQLite, no vector store. Ingest runs through a **coding-agent CLI you already have**
+(`claude`, `copilot`, or `gemini`), so it uses your existing subscription and **needs no API key**.
 
-**Three guarantees that hold as the wiki grows** (see [`SCHEMA.md`](SCHEMA.md)):
+**Three guarantees that hold as the wiki grows** (full rules in [`SCHEMA.md`](SCHEMA.md)):
 
-- **It stays organized.** Ingest merges overlapping notes, splits pages that grow too big, and
-  deletes pages whose content moved elsewhere — it does not pile up one page per raw file.
-- **Links keep working.** When a page is merged or renamed, the agent repoints the inbound
-  cross-links to the survivor (and the system mechanically repoints a pure rename as a safety
-  net); any dangling link fails `citadel lint` / `citadel check`.
-- **Honest provenance.** Raw facts are restated faithfully (same meaning/numbers) and cite
-  their `raw/` file as `[^sN]`. The model **may** add a fact from its own knowledge only when
-  it is essential, high-confidence, and on-topic — and must label it `[^llmN]` (source: `LLM`),
-  never disguised as a raw citation. A `[^sN]` citing a missing raw file fails `citadel lint`;
-  `[^llmN]` facts are surfaced by lint for audit.
+- **Stays organized** — ingest merges, splits, and deletes pages by fit; it never piles up one page
+  per raw file.
+- **Links keep working** — merges/renames repoint inbound cross-links; any dangling link fails
+  `citadel lint` / `citadel check`.
+- **Honest provenance** — raw facts are restated faithfully and cite their source as `[^sN]`. A fact
+  the model adds from its own knowledge must be labeled `[^llmN]`, never disguised as a raw citation.
 
-Ingest runs through a **coding-agent CLI you already have** (`claude`, `copilot`, or `gemini`)
-— so it uses your existing subscription (e.g. a Claude Max plan) and **needs no API key**.
+## Install
 
-The `wiki/` directory **is** the database — there is no SQLite, no vector store, no second
-source of truth to keep in sync.
+```bash
+uv sync   # creates .venv, installs deps (just mcp + pyyaml) + the citadel CLI
+```
 
-## The three layers
+Run commands with the **portable** invocation that works the same on Linux/macOS/Windows:
 
-This project mirrors Karpathy's three-layer split (see [`SCHEMA.md`](SCHEMA.md) for the full,
-authoritative rules — that file is also injected verbatim into the ingest model's prompt):
+```bash
+uv run python -m citadel <subcommand>
+```
 
-1. **`raw/`** — immutable sources. You drop arbitrary `.md` here; ingest reads them but never
-   edits them. The seed articles in `docs/` are also ingestable on demand.
+(`uv run citadel …` is a shorthand but can be blocked by antivirus on Windows; the `python -m` form
+and the bundled `.\citadel` wrapper need no `.exe`. Prefer pip? `pip install -e '.[dev]'` works too.)
+
+## Quickstart
+
+Ingest shells out to a coding-agent CLI — install and log into one (default `claude`: run `claude`
+once and `/login`). Everything else (`search`, `tags`, `check`, `lint`, `view`, MCP) needs no CLI.
+
+```bash
+cp ~/notes/*.md raw/                          # drop in any text-bearing files
+uv run python -m citadel ingest               # fold new/changed sources into wiki/
+uv run python -m citadel search "caffeine"    # ranked keyword search (--tag to filter)
+uv run python -m citadel view                 # open the offline, single-file HTML viewer
+uv run python -m citadel serve                # run the MCP server (stdio)
+```
+
+Two health checks, both offline and CI-friendly:
+
+```bash
+uv run python -m citadel check    # strict per-page gate (fields, citations, links); ingest runs it too
+uv run python -m citadel lint     # health report (contradictions, orphans, fabricated sources, …)
+```
+
+Ingest is **idempotent** — a committed `wiki/.citadel_ingested.json` manifest tracks each source's
+hash and the model that imported it — and keeps the wiki in sync when a raw file is **edited,
+deleted, or moved**. Configure the backend in `.env` (copy [`.env.example`](.env.example)):
+
+```ini
+CITADEL_LLM_CLI=claude        # claude | copilot | gemini
+CITADEL_INGEST_MODEL=sonnet   # claude model alias/id
+```
+
+[`.env.example`](.env.example) documents every knob — timeouts, verbose/transcript debugging, an
+out-of-repo `wiki/`/`raw/` on a network drive, and ingesting a whole git repo as one source.
+
+## How it works
+
+Three layers (Karpathy's split; [`SCHEMA.md`](SCHEMA.md) has the authoritative rules and is injected
+verbatim into the ingest prompt):
+
+1. **`raw/`** — immutable sources; ingest reads but never edits them.
 2. **`wiki/`** — the LLM-owned OKF bundle: markdown pages with YAML frontmatter, routed **by kind**
-   into `concepts/` (principles/topics), `objects/` (physical/engineered things — a car, engine,
-   steering, an apple), `systems/` (external software systems/services a source connects to —
-   databases, APIs, SAP/PLM), `persons/`, `organizations/`, `projects/`, `abbreviations/`, and
-   `misc/`, cross-linked with relative links, each fact carrying a footnote citation to its `raw/`
-   source. Every page has exactly one home via a first-match-wins decision procedure (see
-   [`SCHEMA.md`](SCHEMA.md)). The OKF-reserved files are generated, not authored, and per OKF carry
-   **no frontmatter**: `index.md` (catalog + backlinks + a `## Tags` section), an append-only
-   `log.md` with `## YYYY-MM-DD` headings, and `sources/index.md` (the by-source provenance axis).
-3. **[`SCHEMA.md`](SCHEMA.md)** — the schema/config layer: allowed types, folder routing,
-   the per-fact provenance grammar, cross-linking and contradiction conventions. Editing it
-   changes how the wiki is built with **no code change**.
+   into `concepts/`, `objects/`, `systems/`, `persons/`, `organizations/`, `projects/`,
+   `abbreviations/`, `misc/`, densely cross-linked, each fact carrying a citation. The reserved
+   `index.md`, `log.md`, and `sources/index.md` are generated, not authored.
+3. **[`SCHEMA.md`](SCHEMA.md)** — the schema/config layer. Editing it changes how the wiki is built
+   with **no code change**.
 
-## Install (uv)
-
-```bash
-uv sync                       # creates .venv, installs deps + the dev group + citadel
-```
-
-Runtime dependencies are just `mcp` and `pyyaml` (no LLM SDK). Then either activate the venv
-(`source .venv/bin/activate`) or prefix commands with `uv run`.
-
-This README uses the **portable** invocation that works identically on Linux, macOS, and Windows:
-
-```bash
-uv run python -m citadel <subcommand>      # e.g. uv run python -m citadel ingest
-```
-
-`uv run citadel <subcommand>` is a shorthand, but **on Windows it often fails** with
-`error: failed to spawn citadel: program not found` — uv's generated `citadel.exe` launcher
-stub gets quarantined by antivirus (e.g. Windows Defender, `os error 5`) and regenerated on every
-`uv sync`. Two AV-proof alternatives that need **no `.exe`**:
-
-```powershell
-uv run python -m citadel <subcommand>   # works everywhere (Linux/macOS/Windows)
-.\citadel <subcommand>                  # bundled wrapper (PowerShell/cmd) -> python -m
-```
-
-The bundled `citadel.cmd` / `citadel.ps1` are thin wrappers that just call
-`uv run python -m citadel`, so there is no executable for AV to remove. (To get the
-`uv run citadel` shorthand working instead, add the venv's `Scripts\` folder to your AV
-exclusions: `Add-MpPreference -ExclusionPath "<repo>\.venv\Scripts"`.)
-
-> Prefer pip? `python -m venv .venv && .venv/bin/pip install -e '.[dev]'` works too.
-
-## Configure — pick your CLI (no API key)
-
-Ingest shells out to a coding-agent CLI on your machine. Make sure it is installed and logged
-in; everything else — `search`, `tags`, `lint`, `view`, and the read-only MCP tools — needs
-**no** CLI at all.
-
-```bash
-# default backend is the Claude Code CLI:
-claude            # run once and /login if you haven't (uses your Claude subscription)
-```
-
-Defaults work out of the box. To tune, copy `.env.example` to `.env` (auto-loaded, gitignored):
-
-```ini
-CITADEL_LLM_CLI=claude        # claude | copilot | gemini   (default: claude)
-CITADEL_INGEST_MODEL=sonnet   # claude model alias/id; opus or haiku also work
-```
-
-Ingest runs the CLI **agentically**: it is pointed at the repo and edits the wiki page files
-itself (reads the raw file, searches the wiki, writes/merges/splits pages), so each backend runs
-with autonomous file tools — `claude` with `acceptEdits` + a tool allowlist, `copilot` with
-`--allow-all-tools`, `gemini` with `--approval-mode yolo`. `claude` takes a model alias;
-`copilot`/`gemini` use their own default model. A backend can be slower on big files — raise
-`CITADEL_LLM_TIMEOUT`. See `.env.example` for binary-path and timeout overrides. (Run ingest on a
-clean git tree so any stray edit is easy to spot.)
-
-#### See what the model did (debug an ingest)
-
-By default the agent session's output is captured only to detect failure and then discarded, so
-an ingest that produces no edits (e.g. one model/backend works while another, like a local Ollama
-`copilot`, changes nothing) leaves no clue why. Two opt-in switches make it visible:
-
-```bash
-citadel ingest raw/notes.md --verbose          # stream the session live to the terminal
-citadel ingest raw/notes.md --log-dir .citadel_llm_logs   # save a transcript file per source
-citadel ingest raw/notes.md -v --log-dir logs  # both
-```
-
-Or via env (`CITADEL_LLM_VERBOSE=1`, `CITADEL_LLM_LOG_DIR=.citadel_llm_logs`). A transcript records the exact
-prompt, the full CLI stdout/stderr, the exit code and duration. `--verbose` streams the output as
-the session runs — `copilot`/`gemini` print their full agentic transcript (every tool call and
-edit), so you can watch what the model does without a `-p`-style headless run; the `claude` CLI is
-invoked with `--output-format json` and prints only its final result envelope, so prefer
-`--log-dir` for a complete `claude` record.
-
-### Keep the wiki/raw outside the repo (e.g. a network drive)
-
-By default `wiki/`, `raw/`, and `docs/` live in the repo, but you can point them anywhere with
-absolute paths — including a mounted network drive, so the corpus is shared/backed-up centrally
-while the code stays a normal checkout:
-
-```ini
-# Windows mapped drive (T: -> \\server\share):
-CITADEL_WIKI_DIR=T:\team-wiki\wiki
-CITADEL_RAW_DIR=T:\team-wiki\raw
-# Linux/macOS mount:
-# CITADEL_WIKI_DIR=/mnt/llmwiki/wiki
-# CITADEL_RAW_DIR=/mnt/llmwiki/raw
-```
-
-Two rules keep it sound: (1) a **relative** override resolves against the **repo root** (not your
-shell's CWD), while an **absolute** one is used as-is; (2) keep `wiki/` and `raw/` under a
-**common parent** (as above) so the `## Sources` citation links between them remain valid relative
-links. Ingest then grants the agentic CLI access to the out-of-repo locations automatically
-(`claude` via `--add-dir`, `copilot` via `--allow-all-paths`); the read-only tools (`search`,
-`lint`, `view`, MCP) work regardless.
-
-## Use
-
-**Ingest** — drop one or more arbitrary text-bearing files into `raw/` (any type — markdown,
-plain text, code, JSON/CSV, PDF, PowerPoint/Word `.pptx`/`.docx`, … — in any sub-folder), then fold them in:
-
-```bash
-cp ~/notes/q3-planning.md raw/
-uv run python -m citadel ingest                    # ingest all new/changed files in raw/
-uv run python -m citadel ingest docs/karpathy-llm-wiki.md   # or bootstrap from a specific file
-```
-
-Ingest folds each source into the **best-fitting** existing pages and restructures as the corpus
-grows; the report distinguishes pages **created**, **updated**, and **deleted** (restructured),
-and warns on any broken cross-link. When routing, the agent treats each source's **sub-folder
-path within `raw/` and its filename as context** — they often encode the project/topic the facts
-belong to (e.g. `raw/acme-migration/db/schema-notes.sql`) — and uses that, alongside the file's
-content, to pick the right page and tags (the path is never cited as a fact). For
-**code/config/data** sources, ingest captures the **essence** — a file's purpose, behavior, and
-the external systems it touches (e.g. which database and how it is accessed) — rather than
-transcribing structure, so a codebase folds into a few architecture notes instead of thousands of
-snippets (see *Code & structured sources* in [`SCHEMA.md`](SCHEMA.md)). Run several
-overlapping files (e.g. the bundled `raw/coffee*.md` set) and watch the wiki reorganize itself
-rather than accrete one page per file.
-
-**Ingest a whole git repository as one source.** Drop a code repo into `raw/` (or point ingest
-at it) and ingest treats the **whole repository as a single source**, not one session per file:
-
-```bash
-cp -r ~/work/acme-etl raw/            # the folder has a .git/
-uv run python -m citadel ingest      # 'raw/acme-etl' is ONE source, folded in by one session
-```
-
-A sub-folder under `raw/` that holds a `.git/` is detected automatically (a git-less snapshot you
-want treated as a unit can opt in with an empty `.citadelsource` marker file). Ingest builds a
-deterministic **digest** of the repo's high-signal files — README, dependency manifests, the
-connection/config layer, the data-transform/pipeline core, entry points — honoring `.gitignore`
-and dropping lockfiles, `node_modules`, and build output, capped to a budget
-(`CITADEL_REPO_DIGEST_MAX_CHARS`). One agent session folds that into a few pages answering **how to
-use it, what it does, how it does it (the data flow), and what it outputs** — assuming ~99% of the
-code is irrelevant, capturing short usage snippets (a connection call, the key transform command,
-an env var) where the code itself is the fact, not a transcription. Every **external system** the
-repo touches — a database, API, service, or tool like SAP/PLM — gets a `type: System` page under
-`wiki/systems/` (the software/IT axis, separate from the physical `objects/` and the
-`organizations/` that vend them) that **accumulates across sources**, so a DB used by several repos
-becomes one growing page. The repo is tracked by its **HEAD commit** in the
-manifest, so a later commit **re-ingests only the diff** (`git diff` between the stored commit and
-HEAD); deleting the folder reconciles its citations out like any removed source. Set
-`CITADEL_REPO_SUPPORT=0` to fall back to the per-file walk.
-
-There is **one agent session per file** (and one per repo), so ingest shows live per-file progress on stderr
-(`[2/6] … 2 created, 1 updated` with a spinner + elapsed time) so a multi-file run never looks
-hung — pass `--quiet` to suppress it and print only the final report.
-
-Ingest is **idempotent**: a committed manifest at `wiki/.citadel_ingested.json` maps each source's
-repo-relative path to a small record — its `sha256` and the **model that imported it** — so
-re-running with no new or changed files runs **zero** agent sessions. Exactly one agent session
-per source; if a session fails or times out, that source's wiki changes are rolled back and it is
-retried next run.
-
-```json
-"raw/aeropress.md": { "sha256": "dbea00…", "model": "claude:sonnet" }
-```
-
-**Provenance — which model imported which source.** The recorded model label reflects the backend
-and model that actually ran: `claude:<CITADEL_INGEST_MODEL>` for the claude CLI, and for copilot/gemini
-the model from the CLI's own env (`COPILOT_MODEL`/`GEMINI_MODEL`, so a local/Ollama model like
-`copilot:qwen3.6:27b` is captured), falling back to an explicit `CITADEL_INGEST_MODEL` or just the CLI
-name. Each ingest also regenerates a browsable catalog at **`wiki/sources/index.md`** (linked from
-the top `index.md`) — a table of every tracked source with its model and links to the wiki pages
-that cite it. The model also appears in the ingest report and the `wiki/log.md` line. (An older
-manifest that stored a bare sha string still works — it simply carries no model.)
-
-Crucially, ingest keeps the wiki in sync when a raw file **changes** or **disappears** — not
-just when one is added:
-
-- **Edit a raw file** (new sha) and it is **re-ingested in reconcile mode**: the agent re-reads
-  the current bytes and **updates or removes the now-stale facts** it previously derived from
-  that file (e.g. a corrected number overwrites the old one), rather than only appending new
-  ones — existing facts from *other* sources stay untouched.
-- **Delete a raw file** and a full `ingest` run **detects the vanished source** (its key is in
-  the manifest but the file is gone) and runs a **cleanup session** that strips every fact and
-  `[^sN]` citation that depended on it — dropping a co-cited fact's marker but keeping the fact
-  when another source still supports it, and deleting a page that loses its last source. The
-  cleanup is **all-or-nothing**: it is rolled back and retried unless *no* page references the
-  removed file afterwards, then the manifest key is dropped. (Deletion is swept only on a full
-  run, so `ingest <one-file>` never surprise-prunes.)
-- **Move or reorganize** a raw file (same bytes, new path, e.g. sorting `raw/` into sub-folders)
-  and ingest recognizes it — it is **not** re-ingested, and the wiki's `resource`/citation
-  references are repointed to the new path automatically (a move is **not** treated as a delete).
-
-A file with **no extractable text** (a binary blob, or an all-images `.pptx` with no text) is
-skipped and noted in `wiki/log.md` as unreadable rather than fed to the agent. PowerPoint/Word
-files (`.pptx`/`.docx`/`.pptm`/`.docm`) are handled by extracting their text first (slides +
-speaker notes / paragraphs + tables, standard-library only — no extra dependency); the wiki still
-cites the original Office file as the source. Legacy binary `.ppt`/`.doc` are not supported.
-
-**Search** the synthesized wiki:
-
-```bash
-uv run python -m citadel search "caffeine content"        # ranked keyword hits across all pages
-uv run python -m citadel search "caffeine" --tag brewing   # ...restricted to a tag
-uv run python -m citadel tags                              # browse every tag and its pages
-```
-
-**Navigate by links and tags.** Pages cross-link densely (each ends with a `## See also`), and
-the generated `index.md` lists, per page, who references it (`↳ referenced by: …`) plus a
-`## Tags` section — so you can browse by topic, not just search. `lint` even **suggests** missing
-links (a page that names another page without linking it).
-
-**Check** — the strict per-page gate that re-imposes the invariants the agent must honor:
-required fields (`type`/`title`/`description`/`tags`/`resource`), honest/defined citations, and
-relative non-broken links (no `[[wiki-links]]`). Ingest runs it automatically (a forgotten field
-fails the run) and the ingest agent self-checks with it; you can also run it directly:
-
-```bash
-uv run python -m citadel check                 # the whole wiki
-uv run python -m citadel check concepts/x.md   # just one page
-```
-
-**Lint** — a pure, offline health check (contradictions, orphaned pages, facts missing
-citations, broken cross-links, pages missing `type`, stale pages, **fabricated sources** — a
-fact citing a `raw/` file that does not exist — **undefined abbreviations** — a short form used
-across pages but never given an entry or spelled out inline — and `[[wiki-style]]` links). Exit
-code is non-zero when the wiki is unhealthy, so it drops cleanly into CI:
-
-```bash
-uv run python -m citadel lint
-```
-
-## Per-fact provenance
-
-Provenance is the load-bearing rule. Every factual sentence in a wiki page ends with a
-GitHub-Flavored-Markdown footnote marker (`[^s1]`), defined in a trailing `## Sources` section
-that links **relatively** to the originating `raw/` file:
+**Per-fact provenance** is the load-bearing rule. Every factual sentence ends with a GitHub-Flavored
+Markdown footnote, defined in a trailing `## Sources` section that links to the originating `raw/`
+file:
 
 ```markdown
 Robusta has about twice the caffeine of Arabica.[^s1]
 
 ## Sources
 
-[^s1]: [raw/caffeine.md](../../raw/caffeine.md) — caffeine notes (ingested 2026-06-22)
+[^s1]: [raw/coffee-guide.md](../../raw/coffee-guide.md) — coffee guide (ingested 2026-06-30)
 ```
 
-This renders on GitHub for free, is trivially greppable (`grep -rn '\[\^s' wiki/`), and needs
-zero custom tooling. The page's frontmatter `resource:` names the primary raw source. A raw
-claim that cannot be cited is dropped, never invented. A fact the model adds from its own
-knowledge — allowed only when essential, high-confidence, and on-topic — is labeled with a
-separate `[^llmN]` marker defined as `LLM - model knowledge` (grep them with `grep -rn '\[\^llm'
-wiki/`). Conflicting sources produce a `> [!CONTRADICTION]` callout rather than a silent
-overwrite.
+This renders on GitHub, is trivially greppable, and needs zero custom tooling. A claim that can't be
+cited is dropped, never invented; conflicting sources produce a `> [!CONTRADICTION]` callout. The
+`wiki/` folder also opens **as-is** as an [Obsidian](https://obsidian.md) vault.
+
+## Example corpus
+
+The bundled `raw/` is a deliberately overlapping **coffee + tea** corpus — 10 files in mixed styles
+(reference, prose, lab notes, FAQ, brand blog) with facts that repeat, contradict, and hide in one
+place, plus one deliberately-false sourced claim. Run `uv run python -m citadel ingest` and watch the
+wiki reorganize itself. The `verify-example` skill (`.claude/skills/verify-example/`) ingests it and
+grades the result against a ground-truth answer key — an end-to-end test of the three guarantees.
 
 ## MCP server
 
-Expose the wiki to an AI client over stdio:
-
-```bash
-uv run python -m citadel serve        # or: uv run citadel serve
-```
-
-It serves seven tools: `wiki_search` (with an optional `tag` filter), `wiki_read`, `wiki_index`,
-`wiki_sources` (the by-source provenance catalog), `wiki_tags`, and `wiki_validate` (read-only),
-and `wiki_ingest` (the only mutating tool, routed through the same path-safe ingest pipeline).
-
-Wire it into an MCP client (e.g. Claude Desktop's `claude_desktop_config.json`). The `python -m`
-form needs no `.exe`, so it is the safe choice on Windows. No API key in the env — ingest uses
-the CLI's own login:
+`citadel serve` exposes seven tools over stdio: `wiki_search`, `wiki_read`, `wiki_index`,
+`wiki_sources`, `wiki_tags`, `wiki_validate` (read-only), and `wiki_ingest` (the only mutating one).
+Wire it into an MCP client (e.g. Claude Desktop):
 
 ```json
 {
@@ -335,49 +129,14 @@ the CLI's own login:
 }
 ```
 
-Now an AI can `wiki_index()` to orient, `wiki_search(...)` to find pages, and `wiki_read(...)`
-to pull full cited context — answering from your synthesized wiki instead of re-retrieving raw
-documents.
-
-## Viewing
-
-Browse the wiki visually with a built-in, dependency-free viewer:
-
-```bash
-uv run python -m citadel view            # generate + open in your browser
-uv run python -m citadel view --no-open  # just (re)generate the file
-uv run python -m citadel view --out /tmp/wiki.html
-```
-
-This writes a **single self-contained** `wiki/.citadel_viewer.html` — the pages, the cross-link
-graph, the tags, **and the cited raw sources** embedded inline, rendered by a tiny hand-rolled
-markdown renderer and graph in vanilla JS. It opens straight from `file://` with **no server and
-no network**: nothing is fetched from a CDN, so **your wiki never leaves the machine**. The file
-is a regenerable artifact (like `index.md`), gitignored, and skipped by the loader. On a headless
-box / WSL with no browser, the command prints the `file://` path to open manually instead of
-failing.
-
-**Sources are clickable.** Every `[..](../../raw/x.md)` citation and `## Sources` footnote opens
-the cited raw file — rendered, in the same reader, with the model that imported it and a
-*Cited by* backlink list — and a hover preview peeks at it first. The raw content is embedded too,
-so opening a source stays fully offline. Browse provenance from the **Sources** group in the
-sidebar, or toggle the **source layer** (◉) in the map to see which pages cite which file. Long
-pages get an automatic table of contents, and `/` focuses the filter.
-
-### Open in Obsidian
-
-The `wiki/` directory also opens **as-is** as an [Obsidian](https://obsidian.md) vault (*Open
-folder as vault*) — frontmatter, `tags`, GFM footnote citations, `> [!CONTRADICTION]` callouts,
-and the cross-link graph/backlinks all work natively and fully locally. Two notes:
-
-- The `## Sources` footnotes link to `../../raw/*.md`, which sit **outside** a `wiki/`-only
-  vault. Open the **repository root** as the vault if you want those citation links to resolve.
-- Keep OKF's **standard markdown links** — do **not** convert to `[[wikilinks]]`, or the
-  link-graph, rewrite, and lint machinery break. (`citadel view --obsidian` prints a best-effort
-  deep link + the folder path.)
+An AI can then `wiki_index()` to orient, `wiki_search(...)` to find pages, and `wiki_read(...)` to
+pull full cited context — answering from your synthesized wiki instead of re-retrieving documents.
 
 ## Reference
 
-- [`SCHEMA.md`](SCHEMA.md) — the authoritative structure and maintenance rules.
-- [`docs/karpathy-llm-wiki.md`](docs/karpathy-llm-wiki.md) — the LLM-Wiki pattern this implements.
-- [`docs/okf-reference.md`](docs/okf-reference.md) — Google's Open Knowledge Format.
+- [`SCHEMA.md`](SCHEMA.md) — authoritative structure, routing, and provenance rules.
+- [`AGENT_INGEST.md`](AGENT_INGEST.md) — the operational rules the ingest agent follows.
+- [`.env.example`](.env.example) — every configuration knob.
+- [`docs/karpathy-llm-wiki.md`](docs/karpathy-llm-wiki.md) ·
+  [`docs/okf-reference.md`](docs/okf-reference.md) — the pattern and the format.
+- `CLAUDE.md` — architecture notes for contributors.

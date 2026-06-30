@@ -22,6 +22,7 @@ from pathlib import Path
 
 from . import config
 
+
 # A manifest value is either the current record ({"sha256": ..., "model": ...}) or, for an older
 # manifest, a bare sha256 string. The helpers below accept both so a pre-existing manifest keeps
 # working without a migration step.

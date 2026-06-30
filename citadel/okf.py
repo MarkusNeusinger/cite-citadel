@@ -16,6 +16,7 @@ from pathlib import Path
 
 import yaml
 
+
 REQUIRED_FIELD = "type"
 
 
@@ -25,7 +26,7 @@ class OKFError(Exception):
 
 @dataclass
 class Page:
-    rel_path: str           # e.g. 'concepts/transformer.md'
+    rel_path: str  # e.g. 'concepts/transformer.md'
     frontmatter: dict
     body: str
 
@@ -70,7 +71,7 @@ def parse(text: str) -> tuple[dict, str]:
     head = text.lstrip()
     if head.startswith("---\n") or head == "---" or head.startswith("---\r\n"):
         # Normalise the opening fence and look for the closing fence.
-        rest = head[len("---"):]
+        rest = head[len("---") :]
         # Strip a single newline right after the opening fence.
         if rest.startswith("\r\n"):
             rest = rest[2:]
@@ -80,7 +81,7 @@ def parse(text: str) -> tuple[dict, str]:
         match = re.search(r"(?m)^---[ \t]*\r?\n?", rest)
         if match is not None:
             fm_text = rest[: match.start()]
-            body = rest[match.end():]
+            body = rest[match.end() :]
             try:
                 loaded = yaml.safe_load(fm_text)
             except yaml.YAMLError:

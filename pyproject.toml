@@ -8,19 +8,87 @@ version = "0.1.0"
 description = "cite-citadel — an LLM-maintained, fully-cited personal wiki in Google OKF, fed by a coding-agent CLI (claude/copilot/gemini), with an MCP search server. Every fact is cited to its source; nothing is invented."
 readme = "README.md"
 requires-python = ">=3.12"
+license = { file = "LICENSE" }
+authors = [{ name = "Markus Neusinger" }]
+keywords = [
+    "wiki",
+    "okf",
+    "open-knowledge-format",
+    "knowledge-base",
+    "mcp",
+    "llm",
+    "citations",
+    "provenance",
+    "markdown",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Documentation",
+    "Topic :: Text Processing :: Markup :: Markdown",
+]
 # Ingest runs through a coding-agent CLI you already have logged in, so there is
 # no LLM SDK / API-key dependency here — just the MCP server SDK and a YAML parser.
 dependencies = ["mcp>=1.2", "pyyaml>=6.0"]
 
+[project.urls]
+Homepage = "https://github.com/MarkusNeusinger/cite-citadel"
+Repository = "https://github.com/MarkusNeusinger/cite-citadel"
+Issues = "https://github.com/MarkusNeusinger/cite-citadel/issues"
+
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "ruff>=0.15"]
 
 # uv installs the `dev` group by default on `uv sync` (PEP 735).
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "ruff>=0.15"]
 
 [project.scripts]
 citadel = "citadel.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["citadel"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "dist",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "F",     # pyflakes
+    "W",     # pycodestyle warnings
+    "I",     # isort
+    "C",     # flake8-comprehensions
+    "B",     # flake8-bugbear
+    "UP007", # pyupgrade: use X | Y instead of Optional[X] / Union[X, Y]
+    "UP045", # pyupgrade: use X | None instead of Optional[X]
+]
+ignore = [
+    "E501", # line too long (the formatter owns wrapping; prose comments may run long)
+    "C901", # too complex
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+skip-magic-trailing-comma = true
+
+[tool.ruff.lint.isort]
+force-single-line = false
+lines-after-imports = 2
+known-first-party = ["citadel"]
+split-on-trailing-comma = false

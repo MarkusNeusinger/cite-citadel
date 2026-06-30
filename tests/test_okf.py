@@ -32,11 +32,7 @@ def test_roundtrip():
         "[^s1]: [raw/attention.md](../../raw/attention.md) — notes\n"
     )
     frontmatter, body = okf.parse(text)
-    assert frontmatter == {
-        "type": "Concept",
-        "title": "Transformer",
-        "tags": ["ml", "architecture"],
-    }
+    assert frontmatter == {"type": "Concept", "title": "Transformer", "tags": ["ml", "architecture"]}
     assert body.startswith("# Transformer")
     assert "```python" in body
     assert "[Karpathy](../entities/andrej-karpathy.md)" in body
@@ -102,24 +98,8 @@ def test_parse_tolerates_leading_bom_and_whitespace():
     above the opening fence must NOT hide the frontmatter. Either one used to make the page
     parse as having no frontmatter so every required field read as missing — the symptom
     behind a whole ingest run failing with 'missing required field' on every page."""
-    expected = {
-        "type": "Concept",
-        "title": "Test",
-        "description": "d",
-        "tags": ["x"],
-        "resource": "raw/notes.md",
-    }
-    base = (
-        "---\n"
-        "type: Concept\n"
-        "title: Test\n"
-        "description: d\n"
-        "tags:\n"
-        "- x\n"
-        "resource: raw/notes.md\n"
-        "---\n"
-        "Body text.\n"
-    )
+    expected = {"type": "Concept", "title": "Test", "description": "d", "tags": ["x"], "resource": "raw/notes.md"}
+    base = "---\ntype: Concept\ntitle: Test\ndescription: d\ntags:\n- x\nresource: raw/notes.md\n---\nBody text.\n"
     # BOM, leading blank lines, leading spaces, CRLF newlines, and combinations all parse
     # to the same frontmatter, and the BOM/whitespace never leaks into the body.
     for label, text in {
@@ -215,20 +195,23 @@ def test_abbrev_short_long():
         return okf.Page(rel_path="abbreviations/x.md", frontmatter=frontmatter, body="")
 
     # Em-dash, en-dash, spaced hyphen all split.
-    assert okf.abbrev_short_long(
-        page({"type": "Abbreviation", "title": "TDS — Total Dissolved Solids"})
-    ) == ("TDS", "Total Dissolved Solids")
+    assert okf.abbrev_short_long(page({"type": "Abbreviation", "title": "TDS — Total Dissolved Solids"})) == (
+        "TDS",
+        "Total Dissolved Solids",
+    )
     assert okf.abbrev_short_long(
         page({"type": "Abbreviation", "title": "API – Application Programming Interface"})
     ) == ("API", "Application Programming Interface")
-    assert okf.abbrev_short_long(
-        page({"type": "Abbreviation", "title": "RO - Reverse Osmosis"})
-    ) == ("RO", "Reverse Osmosis")
+    assert okf.abbrev_short_long(page({"type": "Abbreviation", "title": "RO - Reverse Osmosis"})) == (
+        "RO",
+        "Reverse Osmosis",
+    )
     # No separator in title -> fall back to the first two aliases.
     assert okf.abbrev_short_long(
         page({"type": "Abbreviation", "title": "Reverse Osmosis", "aliases": ["RO", "Reverse Osmosis"]})
     ) == ("RO", "Reverse Osmosis")
     # No separator, no aliases -> (title, description).
-    assert okf.abbrev_short_long(
-        page({"type": "Abbreviation", "title": "Foo", "description": "Bar baz"})
-    ) == ("Foo", "Bar baz")
+    assert okf.abbrev_short_long(page({"type": "Abbreviation", "title": "Foo", "description": "Bar baz"})) == (
+        "Foo",
+        "Bar baz",
+    )

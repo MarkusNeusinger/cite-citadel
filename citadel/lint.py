@@ -26,10 +26,9 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from . import okf
-from . import store
-from . import validate
+from . import okf, store, validate
 from .okf import Page
+
 
 CONTRADICTION_MARKER = "> [!CONTRADICTION]"
 LINK_RE = re.compile(r"\]\(([^)]+\.md)\)")
@@ -61,14 +60,14 @@ _ABBREV_REPORT_CAP = 25
 
 @dataclass
 class LintReport:
-    contradictions: list[str] = field(default_factory=list)        # rel_paths
-    orphans: list[str] = field(default_factory=list)               # rel_paths
+    contradictions: list[str] = field(default_factory=list)  # rel_paths
+    orphans: list[str] = field(default_factory=list)  # rel_paths
     missing_cites: list[tuple[str, str]] = field(default_factory=list)  # (rel_path, preview)
-    broken_links: list[tuple[str, str]] = field(default_factory=list)   # (rel_path, target)
-    missing_type: list[str] = field(default_factory=list)          # rel_paths
-    stale: list[str] = field(default_factory=list)                 # rel_paths
-    bad_sources: list[tuple[str, str]] = field(default_factory=list)    # (rel_path, target)
-    llm_facts: list[str] = field(default_factory=list)             # rel_paths (advisory)
+    broken_links: list[tuple[str, str]] = field(default_factory=list)  # (rel_path, target)
+    missing_type: list[str] = field(default_factory=list)  # rel_paths
+    stale: list[str] = field(default_factory=list)  # rel_paths
+    bad_sources: list[tuple[str, str]] = field(default_factory=list)  # (rel_path, target)
+    llm_facts: list[str] = field(default_factory=list)  # rel_paths (advisory)
     # (rel_path, "links to add"): page mentions another page's title but doesn't link it.
     suggested_links: list[tuple[str, str]] = field(default_factory=list)  # advisory
     wikilinks: list[tuple[str, str]] = field(default_factory=list)  # (rel_path, [[target]])
@@ -83,9 +82,7 @@ class LintReport:
         use — it silently breaks navigation). The other categories — including llm_facts (pages
         carrying model-supplied facts, surfaced for transparency) — are advisory and do NOT flip
         ok()."""
-        return not (
-            self.missing_type or self.broken_links or self.bad_sources or self.wikilinks
-        )
+        return not (self.missing_type or self.broken_links or self.bad_sources or self.wikilinks)
 
     def render(self) -> str:
         """Human-readable report; lists every category with counts."""
@@ -129,9 +126,7 @@ class LintReport:
         for rel, target in self.suggested_links:
             lines.append(f"  - {rel} -> {target}")
 
-        lines.append(
-            f"Undefined abbreviations (used, never defined): {len(self.undefined_abbrevs)}"
-        )
+        lines.append(f"Undefined abbreviations (used, never defined): {len(self.undefined_abbrevs)}")
         for abbr, n_pages in self.undefined_abbrevs:
             lines.append(f"  - {abbr} (on {n_pages} pages)")
 
@@ -140,11 +135,7 @@ class LintReport:
             lines.append(f"  - {rel} -> [[{target}]]")
 
         lines.append("")
-        lines.append(
-            "OK"
-            if self.ok()
-            else "FAIL (missing type, broken links, fabricated sources, or [[wiki-links]])"
-        )
+        lines.append("OK" if self.ok() else "FAIL (missing type, broken links, fabricated sources, or [[wiki-links]])")
         return "\n".join(lines)
 
 
@@ -350,9 +341,7 @@ def _undefined_abbrevs(pages: list[Page]) -> list[tuple[str, int]]:
     candidates = [
         (token, len(where))
         for token, where in pages_by_token.items()
-        if len(where) >= _ABBREV_MIN_PAGES
-        and token.upper() not in defined
-        and token not in expanded
+        if len(where) >= _ABBREV_MIN_PAGES and token.upper() not in defined and token not in expanded
     ]
     candidates.sort(key=lambda t: (-t[1], t[0]))
     return candidates[:_ABBREV_REPORT_CAP]
@@ -381,11 +370,7 @@ def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
             inbound_targets.add(target)
 
     # Page titles long enough to match on (for the un-linked-mention suggestion).
-    title_index = [
-        (p.rel_path, p.title.strip().lower(), p.title.strip())
-        for p in pages
-        if len(p.title.strip()) >= 3
-    ]
+    title_index = [(p.rel_path, p.title.strip().lower(), p.title.strip()) for p in pages if len(p.title.strip()) >= 3]
 
     for page in pages:
         # missing_type

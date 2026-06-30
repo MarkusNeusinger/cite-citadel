@@ -35,12 +35,9 @@ from pathlib import Path
 
 from . import config
 
+
 # CLI binary resolution (env override name -> default binary name).
-_CLI_PATH_ENV = {
-    "claude": "CLAUDE_CODE_PATH",
-    "copilot": "COPILOT_CLI_PATH",
-    "gemini": "GEMINI_CLI_PATH",
-}
+_CLI_PATH_ENV = {"claude": "CLAUDE_CODE_PATH", "copilot": "COPILOT_CLI_PATH", "gemini": "GEMINI_CLI_PATH"}
 _CLI_DEFAULT_BIN = {"claude": "claude", "copilot": "copilot", "gemini": "gemini"}
 
 
@@ -79,12 +76,7 @@ def _external_dirs(rel_key: str, read_path: str | None = None) -> list[str]:
     and sorted — only the out-of-repo members of {wiki dir (written), raw dir, docs dir, the source
     file's own parent, and — for an Office source — the temp dir holding its extracted text}. Empty
     for the default in-repo layout, so the in-repo invocation is byte-for-byte unchanged."""
-    candidates = [
-        config.WIKI_DIR,
-        config.RAW_DIR,
-        config.DOCS_DIR,
-        config.source_path_for_key(rel_key).parent,
-    ]
+    candidates = [config.WIKI_DIR, config.RAW_DIR, config.DOCS_DIR, config.source_path_for_key(rel_key).parent]
     if read_path:
         # The extracted-text file lives in a system temp dir (outside the repo); the agent must be
         # granted access so it can read what to ingest.
@@ -133,8 +125,7 @@ def _build_instruction(rel_key: str, kind: str = "ingest", read_path: str | None
         # the provenance that pointed at it and removes/repoints it. The post-run check in
         # ingest re-runs find_raw_references and rolls back unless every reference is gone.
         return (
-            header
-            + f"The raw source {rel_key} was DELETED and no longer exists on disk. Do NOT try "
+            header + f"The raw source {rel_key} was DELETED and no longer exists on disk. Do NOT try "
             "to open it. Remove the provenance that depended on it by EDITING FILES DIRECTLY:\n"
             f"1. Search {wiki_rel}/ (Grep/Glob/Read) for every page that cites {rel_key}: a "
             f"`resource: {rel_key}` frontmatter field, or a `[^sN]` footnote whose `## Sources` "
@@ -166,9 +157,7 @@ def _build_instruction(rel_key: str, kind: str = "ingest", read_path: str | None
                 "and facts from OTHER sources intact. Do not merely append.\n\n"
             )
         return (
-            header
-            + reconcile_note
-            + f"The raw source {rel_key} is a GIT REPOSITORY (a whole code repo), not a single "
+            header + reconcile_note + f"The raw source {rel_key} is a GIT REPOSITORY (a whole code repo), not a single "
             f"file. A DIGEST of its high-signal files has been prepared at {read_path} — read THAT "
             f"for the content. Treat {rel_key} (the repo folder) as the source of record: set "
             f"`resource: {rel_key}` and cite {rel_key} in `## Sources` (the relative link points at "
@@ -291,15 +280,7 @@ def _build_invocation(
         # --allow-all-tools is required for non-interactive editing; --allow-all-paths lets it
         # reach the wiki/raw whether they are under cwd or on a mounted drive (so an out-of-repo
         # layout needs no extra flag); --no-ask-user keeps it autonomous; -s trims stats.
-        return [
-            cli_path,
-            "-p",
-            prompt,
-            "--allow-all-tools",
-            "--allow-all-paths",
-            "--no-ask-user",
-            "-s",
-        ], None
+        return [cli_path, "-p", prompt, "--allow-all-tools", "--allow-all-paths", "--no-ask-user", "-s"], None
     if cli == "gemini":
         # yolo auto-approves all tool calls (auto_edit still prompts for read/search tools,
         # which would hang with no TTY). --include-directories adds an out-of-repo wiki/raw to the
@@ -353,9 +334,7 @@ def _echo_stderr(text: str) -> None:
         sys.stderr.flush()
 
 
-def _stream_subprocess(
-    cli: str, argv: list[str], stdin_text: str | None
-) -> tuple[int, str, str]:
+def _stream_subprocess(cli: str, argv: list[str], stdin_text: str | None) -> tuple[int, str, str]:
     """Run the CLI while TEEING its output to the terminal live (verbose mode), returning
     ``(returncode, stdout, stderr)`` exactly like the captured path so the shared error-detection
     and transcript-logging below are unchanged.
@@ -440,9 +419,7 @@ def _write_transcript(
             directory = config.REPO_ROOT / directory
         config.robust_mkdir(directory)
         stamp = time.strftime("%Y%m%d-%H%M%S")
-        safe = "".join(
-            c if (c.isalnum() or c in "-._") else "_" for c in (label or "session")
-        )[:80]
+        safe = "".join(c if (c.isalnum() or c in "-._") else "_" for c in (label or "session"))[:80]
         path = directory / f"{stamp}.{os.getpid()}.{_LOG_SEQ}.{safe}.log"
         body = [
             "# citadel ingest — LLM agent session transcript",
@@ -465,9 +442,7 @@ def _write_transcript(
         pass  # logging is diagnostic only — never let it abort an ingest
 
 
-def _run_session(
-    cli: str, argv: list[str], stdin_text: str | None, *, log_label: str | None = None
-) -> None:
+def _run_session(cli: str, argv: list[str], stdin_text: str | None, *, log_label: str | None = None) -> None:
     """Run the agentic CLI once in ``config.REPO_ROOT``. Success = the session completed
     without error; the agent's edits are on disk. Raises ``RuntimeError`` on timeout, a
     spawn error, a non-zero exit, or (for claude) an ``is_error`` result envelope.
@@ -507,20 +482,24 @@ def _run_session(
         partial_out = _decode_partial(exc.output)
         partial_err = _decode_partial(exc.stderr)
         _write_transcript(
-            cli, argv, stdin_text, None, partial_out, partial_err, log_label,
-            time.monotonic() - started, note=f"timed out after {config.LLM_TIMEOUT}s",
+            cli,
+            argv,
+            stdin_text,
+            None,
+            partial_out,
+            partial_err,
+            log_label,
+            time.monotonic() - started,
+            note=f"timed out after {config.LLM_TIMEOUT}s",
         )
-        raise RuntimeError(
-            f"the {cli!r} CLI timed out after {config.LLM_TIMEOUT}s"
-        ) from exc
+        raise RuntimeError(f"the {cli!r} CLI timed out after {config.LLM_TIMEOUT}s") from exc
     except OSError as exc:
         raise RuntimeError(f"failed to run the {cli!r} CLI: {exc}") from exc
 
     out = (out_raw or "").strip()
     err = (err_raw or "").strip()
     _write_transcript(
-        cli, argv, stdin_text, returncode, out_raw or "", err_raw or "",
-        log_label, time.monotonic() - started,
+        cli, argv, stdin_text, returncode, out_raw or "", err_raw or "", log_label, time.monotonic() - started
     )
 
     if cli == "claude":
@@ -541,16 +520,12 @@ def _run_session(
                 + f": {env.get('result') or err or 'unknown error'}"
             )
         if returncode != 0:
-            raise RuntimeError(
-                f"the claude CLI failed (exit {returncode}): {(err or out)[:500]}"
-            )
+            raise RuntimeError(f"the claude CLI failed (exit {returncode}): {(err or out)[:500]}")
         return
 
     # copilot / gemini (and any unknown CLI): the exit code is the success signal.
     if returncode != 0:
-        raise RuntimeError(
-            f"the {cli!r} CLI failed (exit {returncode}): {(err or out)[:500]}"
-        )
+        raise RuntimeError(f"the {cli!r} CLI failed (exit {returncode}): {(err or out)[:500]}")
     return
 
 
