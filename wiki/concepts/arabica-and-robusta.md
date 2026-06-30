@@ -1,54 +1,46 @@
 ---
 type: Concept
 title: Arabica and Robusta
-description: The two dominant coffee species accounting for almost all global coffee
-  production
+description: The two coffee species that account for nearly all commercial production,
+  contrasted by growing conditions, flavor, and caffeine content.
 tags:
 - coffee
-- varieties
+- botany
 - species
-- caffeine
-resource: raw/arabica-vs-robusta.md
-timestamp: '2026-06-23T17:59:44Z'
+resource: raw/coffee-guide.md
+timestamp: '2026-06-30T22:49:00Z'
 ---
 
-Almost all coffee sold in the world comes from two species: *Coffea arabica* and *Coffea canephora* (usually called **Robusta**).[^s1]
+Two species account for essentially all commercial [coffee](coffee.md) production: *Coffea arabica*, almost always called simply Arabica, and *Coffea canephora*, universally known by its trade name Robusta.[^s1]
 
 ## Arabica
 
-**Arabica** accounts for roughly 60–70% of global production.[^s1] It grows best at high altitude (1,000–2,000 m), with a sweeter and more complex flavor profile featuring notes of fruit, sugar, and berries.[^s1] The resulting cup has a lighter body compared to Robusta.[^s1] However, Arabica is more fragile and more expensive to grow.[^s1]
-
-Arabica contains approximately 1.2% caffeine by mass.[^s1]
+Arabica is the dominant species in the global market, supplying roughly 60 to 70 percent of world production.[^s1] It is generally grown at higher altitudes, where cooler temperatures slow the maturation of the cherry and allow more complex sugars and aromatic compounds to develop, producing a cup regarded as sweeter, more nuanced, and more layered in flavor — often described as floral, fruity, or chocolate-like.[^s1] Arabica plants are comparatively delicate: sensitive to temperature swings, vulnerable to pests, and especially susceptible to coffee leaf rust, a fungal disease that has historically devastated entire growing regions.[^s1]
 
 ## Robusta
 
-**Robusta** grows at lower altitudes, resists disease and heat far better, and yields more per plant than Arabica.[^s1] The cup profile is harsher, woodier, and more bitter, with a heavier body—which is why it appears in many cheap blends and in traditional Italian espresso for its crema contribution.[^s1]
-
-Robusta's caffeine content is approximately 2.4% by mass, about double that of Arabica.[^s1]
+Robusta is a hardier plant that thrives at lower elevations and in warmer, more humid climates than Arabica can tolerate; it is more resistant to disease and pests, more forgiving of difficult growing conditions, and capable of a higher yield per plant, which makes it cheaper to cultivate.[^s1] In the cup, Robusta is generally described as harsher and more bitter, with an earthy or woody character and a heavier body.[^s1] It contains about twice the [caffeine](caffeine-in-coffee.md) of Arabica, a difference that contributes both to its more aggressive taste and to its natural resistance to insects, since caffeine acts as a chemical deterrent in the plant.[^s1][^s2] Robusta is widely used in instant coffee and in espresso blends, where it lends body and a thick, stable layer of crema.[^s1][^s2]
 
 ## Comparison
 
-| Trait            | Arabica            | Robusta              |
-| ---------------- | ------------------ | -------------------- |
-| Caffeine (by mass) | ~1.2%            | ~2.4% (about double) |
-| Altitude         | high               | low                  |
-| Flavor           | sweet, complex     | bitter, woody        |
-| Price            | higher             | lower                |
-| Crema in espresso| less               | more                 |
+| Trait | Arabica | Robusta |
+| --- | --- | --- |
+| Share of world production | ~60-70% | remainder |
+| Growing altitude | Higher | Lower |
+| Hardiness / disease resistance | Lower | Higher |
+| Yield | Lower | Higher |
+| Caffeine content | Baseline | ~2x that of Arabica |
+| Typical flavor | Sweeter, more complex | Harsher, more bitter |
 
-## Market Position
-
-Specialty coffee is overwhelmingly Arabica.[^s1] Robusta is making a comeback in high-quality "fine Robusta" form, but it remains the exception.[^s1]
+This table summarizes the principal contrasts between the two species.[^s1]
 
 ## See also
 
-- [Coffee History](../concepts/coffee-history.md) — origin of Arabica in Ethiopia
-- [Coffee Origins](../concepts/coffee-origins.md) — where coffee grows and regional flavor profiles
-- [Coffee Trade](../concepts/coffee-trade.md) — the two species in commercial trade and futures markets
-- [Roasting](../concepts/roasting.md) — roasting characteristics by species
-- [Espresso](../concepts/espresso.md) — Robusta in espresso blends
-- [Caffeine in Coffee](../concepts/caffeine-in-coffee.md)
+- [Coffee](coffee.md)
+- [Caffeine in coffee](caffeine-in-coffee.md)
+- [Caffeine and health](caffeine-and-health.md)
 
 ## Sources
 
-[^s1]: [raw/arabica-vs-robusta.md](../../raw/arabica-vs-robusta.md) — Arabica and Robusta overview (ingested 2026-06-23)
+[^s1]: [raw/coffee-guide.md](../../raw/coffee-guide.md) — general coffee survey article (ingested 2026-07-01)
+[^s2]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md) — coffee and caffeine health FAQ (ingested 2026-07-01)

@@ -4,25 +4,13 @@ Provenance for every ingested raw source: the model that imported it and the wik
 
 | Source | Model | Referenced by |
 | --- | --- | --- |
-| [raw/aeropress.md](../../raw/aeropress.md) | — | [AeroPress](../concepts/aeropress.md), [Brewing Ratios](../concepts/brewing-ratios.md) |
-| [raw/arabica-vs-robusta.md](../../raw/arabica-vs-robusta.md) | — | [Arabica and Robusta](../concepts/arabica-and-robusta.md) |
-| [raw/brewing-ratios.md](../../raw/brewing-ratios.md) | — | [Brewing Ratios](../concepts/brewing-ratios.md) |
-| [raw/caffeine.md](../../raw/caffeine.md) | — | [Caffeine in Coffee](../concepts/caffeine-in-coffee.md), [Espresso](../concepts/espresso.md), [Roasting](../concepts/roasting.md) |
-| [raw/coffee-grinders.md](../../raw/coffee-grinders.md) | — | [Coffee Grinders](../concepts/coffee-grinders.md), [Grinding](../concepts/grinding.md) |
-| [raw/coffee-health.md](../../raw/coffee-health.md) | — | [Caffeine in Coffee](../concepts/caffeine-in-coffee.md), [Coffee and Health](../concepts/coffee-and-health.md), [Decaf](../concepts/decaf.md) |
-| [raw/coffee-history-trade.md](../../raw/coffee-history-trade.md) | — | [Coffee History](../concepts/coffee-history.md), [Coffee Trade](../concepts/coffee-trade.md) |
-| [raw/coffee-origins.md](../../raw/coffee-origins.md) | — | [Coffee Origins](../concepts/coffee-origins.md) |
-| [raw/coffee-processing.md](../../raw/coffee-processing.md) | — | [Coffee Processing](../concepts/coffee-processing.md) |
-| [raw/coffee.md](../../raw/coffee.md) | — | [Coffee and Health](../concepts/coffee-and-health.md), [Coffee History](../concepts/coffee-history.md), [Coffee Storage](../concepts/coffee-storage.md), [Decaf](../concepts/decaf.md), [Espresso](../concepts/espresso.md), [Grinding](../concepts/grinding.md), [Roasting](../concepts/roasting.md) |
-| [raw/cold-brew-guide.md](../../raw/cold-brew-guide.md) | — | [Cold Brew](../concepts/cold-brew.md) |
-| [raw/cold-brew.md](../../raw/cold-brew.md) | — | [Cold Brew](../concepts/cold-brew.md) |
-| [raw/decaffeination.md](../../raw/decaffeination.md) | — | [Decaf](../concepts/decaf.md) |
-| [raw/espresso-extraction.md](../../raw/espresso-extraction.md) | — | [Brewing Ratios](../concepts/brewing-ratios.md), [Espresso](../concepts/espresso.md), [Grinding](../concepts/grinding.md) |
-| [raw/espresso.md](../../raw/espresso.md) | — | [Espresso](../concepts/espresso.md) |
-| [raw/french-press.md](../../raw/french-press.md) | — | [French Press](../concepts/french-press.md) |
-| [raw/grind-size.md](../../raw/grind-size.md) | — | [Grinding](../concepts/grinding.md) |
-| [raw/latte-art.md](../../raw/latte-art.md) | — | [Milk Steaming and Latte Art](../concepts/milk-steaming-and-latte-art.md) |
-| [raw/milk-drinks.md](../../raw/milk-drinks.md) | — | [Milk Drinks](../concepts/milk-drinks.md), [Milk Steaming and Latte Art](../concepts/milk-steaming-and-latte-art.md) |
-| [raw/pour-over.md](../../raw/pour-over.md) | — | [Pour-over](../concepts/pour-over.md) |
-| [raw/roast-levels.md](../../raw/roast-levels.md) | — | [Roasting](../concepts/roasting.md) |
-| [raw/water-for-coffee.md](../../raw/water-for-coffee.md) | — | [Water for Coffee](../concepts/water-for-coffee.md) |
+| [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md) | claude:sonnet | [Aurora Ritual](../concepts/aurora-ritual.md), [Aurora Midnight](../objects/aurora-midnight.md), [Caffe Aurora](../organizations/caffe-aurora.md), [Lina Marchetti](../persons/lina-marchetti.md) |
+| [raw/coffee-guide.md](../../raw/coffee-guide.md) | claude:sonnet | [EY — Extraction Yield](../abbreviations/ey-extraction-yield.md), [TDS — Total Dissolved Solids](../abbreviations/tds-total-dissolved-solids.md), [Arabica and Robusta](../concepts/arabica-and-robusta.md), [Brewing Ratios](../concepts/brewing-ratios.md), [Caffeine in Coffee](../concepts/caffeine-in-coffee.md), [Coffee History and Trade](../concepts/coffee-history-and-trade.md), [Coffee Processing](../concepts/coffee-processing.md), [Coffee](../concepts/coffee.md), [Roasting](../concepts/roasting.md), [Aurora Midnight](../objects/aurora-midnight.md) |
+| [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md) | claude:sonnet | [Arabica and Robusta](../concepts/arabica-and-robusta.md), [Caffeine and Health](../concepts/caffeine-and-health.md), [Caffeine in Coffee](../concepts/caffeine-in-coffee.md) |
+| [raw/cold-brew-notes.md](../../raw/cold-brew-notes.md) | claude:sonnet | [Brewing Ratios](../concepts/brewing-ratios.md), [Caffeine and Health](../concepts/caffeine-and-health.md), [Caffeine in Coffee](../concepts/caffeine-in-coffee.md), [Cold Brew](../concepts/cold-brew.md) |
+| [raw/espresso-and-cafe-culture.md](../../raw/espresso-and-cafe-culture.md) | claude:sonnet | [Brewing Ratios](../concepts/brewing-ratios.md), [Caffeine in Coffee](../concepts/caffeine-in-coffee.md), [Espresso](../concepts/espresso.md), [Aurora Midnight](../objects/aurora-midnight.md), [Caffe Aurora](../organizations/caffe-aurora.md), [Lina Marchetti](../persons/lina-marchetti.md) |
+| [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md) | claude:sonnet | [Matcha](../concepts/matcha.md) |
+| [raw/tea-guide.md](../../raw/tea-guide.md) | claude:sonnet | [Caffeine in Tea](../concepts/caffeine-in-tea.md), [Tea Antioxidants and Tannins](../concepts/tea-antioxidants-and-tannins.md), [Tea Brewing Temperature and Time](../concepts/tea-brewing-temperature-and-time.md), [Tea Growing and Harvesting](../concepts/tea-growing-and-harvesting.md), [Tea History](../concepts/tea-history.md), [Tea Types and Oxidation](../concepts/tea-types-and-oxidation.md), [Tea](../concepts/tea.md) |
+| [raw/tea-health-faq.md](../../raw/tea-health-faq.md) | claude:sonnet | [Caffeine in Tea](../concepts/caffeine-in-tea.md), [Tea Antioxidants and Tannins](../concepts/tea-antioxidants-and-tannins.md) |
+| [raw/tea-history-and-trade.md](../../raw/tea-history-and-trade.md) | claude:sonnet | [Caffeine in Tea](../concepts/caffeine-in-tea.md), [Coffee History and Trade](../concepts/coffee-history-and-trade.md), [Tea History](../concepts/tea-history.md), [Thornbury & Lin](../organizations/thornbury-and-lin.md), [Sir Edmund Thornbury](../persons/edmund-thornbury.md), [Mei Lin](../persons/mei-lin.md) |
+| [raw/thornbury-tea-blog.md](../../raw/thornbury-tea-blog.md) | claude:sonnet | [Tea History](../concepts/tea-history.md), [Lin's Evening](../objects/lin-s-evening.md), [Thornbury & Lin](../organizations/thornbury-and-lin.md), [Sir Edmund Thornbury](../persons/edmund-thornbury.md), [Mei Lin](../persons/mei-lin.md) |
