@@ -138,4 +138,6 @@ resolves all paths/settings. `cli.py` mirrors the MCP tools as subcommands.
   `CITADEL_INGEST_MODEL`, `CITADEL_LLM_TIMEOUT`, `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,
   `CITADEL_REPO_SUPPORT`, `CITADEL_IMAGE_SUPPORT` (read images visually), `CITADEL_MAX_SOURCE_CHARS`
   (large-source chunking threshold), `CITADEL_DEDUP_BY_BASENAME` (skip same-basename document
-  duplicates), the `CITADEL_*_DIR` path overrides, and `*_CLI_PATH` binary overrides.
+  duplicates), `CITADEL_IGNORE_PATTERNS` (OS/junk-file globs skipped at discovery — `Thumbs.db`,
+  `desktop.ini`, `~$` locks, …; a `+` prefix extends the built-in defaults), the `CITADEL_*_DIR`
+  path overrides, and `*_CLI_PATH` binary overrides.
