@@ -108,6 +108,7 @@ def _wire_external(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "INDEX_PATH", wiki / "index.md", raising=False)
     monkeypatch.setattr(config, "LOG_PATH", wiki / "log.md", raising=False)
     monkeypatch.setattr(config, "MANIFEST_PATH", wiki / ".citadel_ingested.json", raising=False)
+    monkeypatch.setattr(config, "FAILURES_PATH", wiki / ".citadel_failures.json", raising=False)
     return repo, wiki, raw
 
 
@@ -384,6 +385,7 @@ def test_ingest_canonicalizes_shortened_resource_for_out_of_repo_source(tmp_path
     monkeypatch.setattr(config, "INDEX_PATH", repo / "wiki" / "index.md", raising=False)
     monkeypatch.setattr(config, "LOG_PATH", repo / "wiki" / "log.md", raising=False)
     monkeypatch.setattr(config, "MANIFEST_PATH", repo / "wiki" / ".citadel_ingested.json", raising=False)
+    monkeypatch.setattr(config, "FAILURES_PATH", repo / "wiki" / ".citadel_failures.json", raising=False)
 
     # The raw source (PDF stand-in) lives OUTSIDE the repo — a mounted-drive source.
     net_raw = tmp_path / "net" / "raw"

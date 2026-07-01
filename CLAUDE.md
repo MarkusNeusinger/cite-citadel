@@ -64,7 +64,10 @@ recomputed from them in memory.
 
 **Ingest is the heart of the system** (`ingest.py` → `llm.py`). The flow per source:
 - `ingest.ingest()` partitions candidates into pending / already-ingested (sha match) / reorganized
-  (moved-or-duplicate) / unreadable (binary) / deleted (vanished from disk, full runs only).
+  (moved-or-duplicate) / unreadable (binary) / deleted (vanished from disk, full runs only) /
+  same-basename document duplicates (skipped in favor of one preferred format). A pending Office
+  source is extracted to text first; a pending image is read visually; a pending source larger than
+  `CITADEL_MAX_SOURCE_CHARS` is folded in over several passes.
 - For each pending source it runs the agent against a **per-source staging copy** of the wiki (a
   sibling dir, never the live wiki), then snapshots before/after and **diffs by content hash** to
   learn what the agent created/updated/deleted — the agent has no return value, its file edits *are*
@@ -81,8 +84,10 @@ agentic mode (`cwd` = repo root, autonomous file tools). The prompt is **paths-o
 the source and rules by path, never embeds file content — which keeps argv tiny (the Windows
 `WinError 206` fix). `kind` selects the propagation: `ingest` (new), `reconcile` (changed source —
 update/remove stale facts, don't just append), `delete` (source removed — strip its provenance),
-`repo`/`repo-reconcile` (a whole git repo folded as one digest). `run_ingest_session` is the single
-seam tests monkeypatch.
+`repo`/`repo-reconcile` (a whole git repo folded as one digest), and `image`/`image-reconcile` (an
+image source read visually). A large source is split into segments and folded in over several passes
+(`segment=(part, total)` on `run_ingest_session`, telling later passes to MERGE into earlier ones).
+`run_ingest_session` is the single seam tests monkeypatch.
 
 **Two checking layers, one implementation** (`validate.py`):
 - `citadel check` / `wiki_validate` — the **strict per-page gate** (required fields, honest/defined
@@ -99,8 +104,13 @@ the non-negotiable `safe_join` path guard — reuse it for any wiki-relative pat
 `index.md`, per-folder `index.md`, and `sources/index.md` mechanically from frontmatter +
 manifest), and the deterministic link-rewrite safety nets (`rewrite_links`, `rewrite_raw_references`,
 `find_raw_references`, `find_broken_links`). `manifest.py` tracks idempotency in
-`wiki/.citadel_ingested.json` (per source: sha256 or git commit + importing model). `repo.py` builds
-the digest for git-repo sources. `extract.py` pulls text from `.pptx`/`.docx` (stdlib-only).
+`wiki/.citadel_ingested.json` (per source: sha256 or git commit + importing model). `failures.py`
+persists the sources that could NOT be ingested (`wiki/.citadel_failures.json`: unreadable /
+errored / timed-out, with a reason), surfaced by `store` under a "Could not ingest" section of
+`sources/index.md`. `repo.py` builds the digest for git-repo sources. `extract.py` pulls text from
+Office files (stdlib-only): OOXML `.pptx`/`.docx`/`.xlsx` (+ macro-enabled) via zipfile+ElementTree,
+and legacy OLE `.ppt`/`.doc`/`.xls` via an in-module CFBF reader + best-effort text salvage; its
+`extract_media` also pulls embedded raster images out of OOXML files so the agent can view them.
 `server.py` is the FastMCP stdio server (7 tools; only `wiki_ingest` mutates; tools never raise —
 they return error strings). `viewer.py` builds the self-contained offline HTML viewer. `config.py`
 resolves all paths/settings. `cli.py` mirrors the MCP tools as subcommands.
@@ -126,4 +136,6 @@ resolves all paths/settings. `cli.py` mirrors the MCP tools as subcommands.
   Windows/SMB failures.
 - Config knobs live in `.env` (auto-loaded, gitignored; see `.env.example`): `CITADEL_LLM_CLI`,
   `CITADEL_INGEST_MODEL`, `CITADEL_LLM_TIMEOUT`, `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,
-  `CITADEL_REPO_SUPPORT`, the `CITADEL_*_DIR` path overrides, and `*_CLI_PATH` binary overrides.
+  `CITADEL_REPO_SUPPORT`, `CITADEL_IMAGE_SUPPORT` (read images visually), `CITADEL_MAX_SOURCE_CHARS`
+  (large-source chunking threshold), `CITADEL_DEDUP_BY_BASENAME` (skip same-basename document
+  duplicates), the `CITADEL_*_DIR` path overrides, and `*_CLI_PATH` binary overrides.

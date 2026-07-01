@@ -97,7 +97,10 @@ def test_build_instruction_office_read_path_points_to_extract_cites_original():
     assert "resource: raw/deck.pptx" in prompt  # cite the original, not the extract
     assert "office" in low and "extracted" in low
     assert "read that" in low  # explicit: read the extracted file
-    assert len(prompt) < 2000  # still paths-only — WinError 206 guard
+    assert "media/" in prompt  # points the agent at the extracted embedded images
+    # Still paths-only and tiny (WinError 206 guard). The bound matches the reconcile prompt's; an
+    # out-of-repo wiki/raw resolves to ABSOLUTE paths that appear several times, so allow headroom.
+    assert len(prompt) < 3000
 
 
 def test_build_instruction_no_read_path_keeps_direct_read_step():
@@ -106,6 +109,41 @@ def test_build_instruction_no_read_path_keeps_direct_read_step():
     prompt = llm._build_instruction("raw/notes.md")
     assert "Open and read the raw source file: raw/notes.md" in prompt
     assert "extracted to" not in prompt.lower()
+
+
+def test_build_instruction_image_tells_agent_to_view_and_cite():
+    """An image source: the prompt tells the agent to VIEW/read the image and transcribe its facts,
+    citing the image file — no read_path (the agent opens it directly)."""
+    prompt = llm._build_instruction("raw/diagram.png", "image")
+    low = prompt.lower()
+    assert "raw/diagram.png" in prompt
+    assert "image" in low and ("view" in low or "read" in low)
+    assert "cite" in low  # the agent is told to cite the transcribed facts (to the image source)
+    assert "resource" in low  # step 3 still requires setting the resource verbatim
+    assert "extracted to" not in low  # not the office path
+
+
+def test_build_instruction_segment_says_merge_not_duplicate():
+    """A later segment of a large source reads the segment file but cites the whole source, and is
+    told to MERGE into the pages earlier segments created (not duplicate)."""
+    prompt = llm._build_instruction("raw/big.txt", "ingest", "/tmp/okf_extract_y/big.md", (2, 3))
+    low = prompt.lower()
+    assert "/tmp/okf_extract_y/big.md" in prompt  # this segment's slice to read
+    assert "raw/big.txt" in prompt  # cite the whole source
+    assert "segment 2 of 3" in low
+    assert "merg" in low and "not duplicate" in low.replace("do not duplicate", "not duplicate")
+
+
+def test_build_instruction_multisegment_reconcile_does_not_blanket_delete():
+    """A CHANGED source split into segments must NOT get the blanket 'remove facts the file no
+    longer supports' instruction (the agent sees only one segment) — it is told update-in-place and
+    explicitly NOT to delete facts it cannot see in this segment."""
+    prompt = llm._build_instruction("raw/big.txt", "reconcile", "/tmp/okf_extract_z/big.md", (2, 3))
+    low = prompt.lower()
+    assert "changed" in low and "update" in low
+    assert "do not delete facts you cannot see" in low
+    # The dangerous single-segment removal directive from the normal reconcile note is absent.
+    assert "the current file no longer supports" not in low
 
 
 def test_build_instruction_delete_strips_provenance_without_opening():

@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from . import config, okf
+from . import failures as failures_mod
 from . import manifest as manifest_mod
 from .okf import Page
 
@@ -437,26 +438,31 @@ def tag_catalog(pages: list[Page] | None = None) -> dict[str, list[Page]]:
 
 
 def _md_cell(text: str) -> str:
-    """Escape a markdown-table cell: pipes would otherwise be read as column separators."""
-    return str(text).replace("|", "\\|").strip()
+    """Escape a markdown-table cell: pipes would otherwise be read as column separators, and a
+    newline (possible in a failure detail message) would break the row — collapse both."""
+    return re.sub(r"\s+", " ", str(text).replace("|", "\\|")).strip()
 
 
 SOURCES_INDEX_REL = "sources/index.md"
 
 
-def _render_sources_catalog(manifest_dict: dict, pages: list[Page]) -> str | None:
+def _render_sources_catalog(manifest_dict: dict, pages: list[Page], failures_dict: dict | None = None) -> str | None:
     """Render the body of ``wiki/sources/index.md`` — the provenance catalog.
 
     One row per tracked raw source (from the ingest manifest), showing the MODEL that imported it
     and the wiki pages that cite it (from the live link graph via :func:`find_raw_references`). The
     source path links to the raw file and each citing page links to its page, both relative to
     ``sources/index.md`` (so the links work from that file's location, in-repo or on a network
-    drive). Like ``index.md``/``log.md`` this is a generated, frontmatter-free OKF nav file —
-    load() skips it and delete_page refuses it.
+    drive). A trailing ``## Could not ingest`` section lists the sources that FAILED (from
+    ``failures_dict``: unreadable binaries, agent errors/timeouts) with their reason, so the
+    files that never made it into the wiki are visible here too — not just in the run's console.
+    Like ``index.md``/``log.md`` this is a generated, frontmatter-free OKF nav file — load() skips it
+    and delete_page refuses it.
 
-    Returns the markdown body, or None when no source is tracked (the caller then removes any stale
-    catalog) — so the catalog appears exactly when there is provenance to show."""
-    if not manifest_dict:
+    Returns the markdown body, or None when there is nothing to show (no tracked source AND no
+    failure) — the caller then removes any stale catalog."""
+    failures_dict = failures_dict or {}
+    if not manifest_dict and not failures_dict:
         return None
     title_by_path = {p.rel_path: p.title for p in pages}
     lines: list[str] = [
@@ -465,20 +471,40 @@ def _render_sources_catalog(manifest_dict: dict, pages: list[Page]) -> str | Non
         "Provenance for every ingested raw source: the model that imported it and the wiki "
         "pages that cite it. Generated — do not edit.",
         "",
-        "| Source | Model | Referenced by |",
-        "| --- | --- | --- |",
     ]
-    for key in sorted(manifest_dict):
-        model = manifest_mod.entry_model(manifest_dict[key]) or "—"
-        source_cell = f"[{_md_cell(key)}]({_source_key_to_page_link(SOURCES_INDEX_REL, key)})"
-        refs = find_raw_references(key, pages)
-        if refs:
-            ref_cell = ", ".join(
-                f"[{_md_cell(title_by_path.get(r, r))}]({okf.rel_path_between(SOURCES_INDEX_REL, r)})" for r in refs
-            )
-        else:
-            ref_cell = "—"
-        lines.append(f"| {source_cell} | {_md_cell(model)} | {ref_cell} |")
+    if manifest_dict:
+        lines += ["| Source | Model | Referenced by |", "| --- | --- | --- |"]
+        for key in sorted(manifest_dict):
+            model = manifest_mod.entry_model(manifest_dict[key]) or "—"
+            source_cell = f"[{_md_cell(key)}]({_source_key_to_page_link(SOURCES_INDEX_REL, key)})"
+            refs = find_raw_references(key, pages)
+            if refs:
+                ref_cell = ", ".join(
+                    f"[{_md_cell(title_by_path.get(r, r))}]({okf.rel_path_between(SOURCES_INDEX_REL, r)})" for r in refs
+                )
+            else:
+                ref_cell = "—"
+            lines.append(f"| {source_cell} | {_md_cell(model)} | {ref_cell} |")
+    if failures_dict:
+        lines += [
+            "",
+            f"## Could not ingest ({len(failures_dict)})",
+            "",
+            "Raw sources that were NOT folded into the wiki — a binary/unsupported file, a source "
+            "whose agent session errored or timed out, or one skipped as a same-basename `duplicate` "
+            "of another format that was ingested instead. Fix/convert the file (or remove the kept "
+            "duplicate) and re-run `citadel ingest`; a source that later succeeds drops off this "
+            "list. Generated — do not edit.",
+            "",
+            "| Source | Reason | Detail |",
+            "| --- | --- | --- |",
+        ]
+        for key in sorted(failures_dict):
+            entry = failures_dict[key] if isinstance(failures_dict[key], dict) else {}
+            reason = str(entry.get("reason") or "—")
+            detail = str(entry.get("detail") or "—")
+            source_cell = f"[{_md_cell(key)}]({_source_key_to_page_link(SOURCES_INDEX_REL, key)})"
+            lines.append(f"| {source_cell} | {_md_cell(reason)} | {_md_cell(detail)} |")
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
@@ -657,12 +683,14 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
     inbound = _inbound_map(pages)
 
     # ----- sources/index.md: the provenance catalog (source -> model + citing pages) -----
-    # Generated from the ingest manifest (the model lives there) + the live link graph. Written
-    # before the top index so its "See also" can link the catalog when it exists; removed when no
-    # source is tracked so a stale catalog never lingers. The manifest is loaded once and reused
-    # below for the index.md ## Sources section.
+    # Generated from the ingest manifest (the model lives there) + the live link graph, plus a
+    # "Could not ingest" section from the failures record. Written before the top index so its
+    # "See also" can link the catalog when it exists; removed when nothing is tracked or failed so a
+    # stale catalog never lingers. The manifest is loaded once and reused below for the index.md
+    # ## Sources section.
     manifest_dict = manifest_mod.load()
-    sources_body = _render_sources_catalog(manifest_dict, pages)
+    failures_dict = failures_mod.load()
+    sources_body = _render_sources_catalog(manifest_dict, pages, failures_dict)
     sources_path = config.WIKI_DIR / SOURCES_INDEX_REL
     if sources_body is not None:
         config.robust_mkdir(sources_path.parent)

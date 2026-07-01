@@ -175,6 +175,11 @@ AGENT_RULES_PATH: Path = REPO_ROOT / "AGENT_INGEST.md"
 INDEX_PATH: Path = WIKI_DIR / "index.md"
 LOG_PATH: Path = WIKI_DIR / "log.md"
 MANIFEST_PATH: Path = WIKI_DIR / ".citadel_ingested.json"
+# Persistent record of raw sources that could NOT be ingested — a binary/unsupported file, or a
+# source whose agent session errored/timed out — with the reason, so a failure survives the run
+# instead of scrolling past in the console. Regenerated each run (a source that later succeeds is
+# dropped) and surfaced in wiki/sources/index.md.
+FAILURES_PATH: Path = WIKI_DIR / ".citadel_failures.json"
 
 # Ingest backend: which coding-agent CLI to shell out to, and (for the claude
 # CLI) which model alias/id to pass. No API key is used.
@@ -209,6 +214,42 @@ REPO_SUPPORT: bool = os.environ.get("CITADEL_REPO_SUPPORT", "1").strip().lower()
 # repos, lower to keep sessions cheap.
 REPO_DIGEST_MAX_CHARS: int = int(os.environ.get("CITADEL_REPO_DIGEST_MAX_CHARS", "120000"))
 REPO_PER_FILE_MAX_CHARS: int = int(os.environ.get("CITADEL_REPO_PER_FILE_MAX_CHARS", "8000"))
+
+# Image sources. When on (default), a raw file that is a recognized image (screenshot, scan,
+# diagram, chart, photo) is handed to the agent to READ VISUALLY — the coding-agent CLI's file
+# reader can display images — instead of being rejected as a NUL-byte binary. Set
+# CITADEL_IMAGE_SUPPORT=0 to keep images out of the wiki (they then log as unreadable, as before).
+IMAGE_SUPPORT: bool = os.environ.get("CITADEL_IMAGE_SUPPORT", "1").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+    "off",
+    "",
+)
+
+# Same-basename document dedup. When on (default), if two or more raw files in the SAME folder
+# share a basename and are all document-export formats (a deck saved as both report.pptx AND
+# report.pdf, say — set below), only ONE is ingested and the rest are skipped as duplicates (the
+# skip is recorded in the failures report, pointing at the file that was kept). Preference order is
+# PDF first, then modern Office, then legacy. Re-evaluated every run, so deleting the kept file
+# promotes another. Set CITADEL_DEDUP_BY_BASENAME=0 to ingest every format separately.
+DEDUP_BY_BASENAME: bool = os.environ.get("CITADEL_DEDUP_BY_BASENAME", "1").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+    "off",
+    "",
+)
+
+# Large-source chunking. A single raw source whose extractable/readable text exceeds this many
+# characters is ingested in several sequential agent passes (segments split on paragraph
+# boundaries), so a file too big for one context window still folds in fully — each pass MERGES
+# into the pages the earlier passes created. 0 disables chunking (every source is one pass, the old
+# behavior). PDFs and images are never chunked (their text isn't extracted here — the agent reads
+# them whole). The default (~75k tokens) is generous — modern models rarely have less context — so
+# only genuinely large sources are split; lower it for a small-context backend, raise it (or set 0
+# to disable) for a very large one.
+MAX_SOURCE_CHARS: int = int(os.environ.get("CITADEL_MAX_SOURCE_CHARS", "300000"))
 
 
 # Where each non-claude backend keeps its OWN model id in the environment. A copilot user on a

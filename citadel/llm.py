@@ -88,7 +88,9 @@ def _external_dirs(rel_key: str, read_path: str | None = None) -> list[str]:
     return sorted(out)
 
 
-def _build_instruction(rel_key: str, kind: str = "ingest", read_path: str | None = None) -> str:
+def _build_instruction(
+    rel_key: str, kind: str = "ingest", read_path: str | None = None, segment: tuple[int, int] | None = None
+) -> str:
     """The short, paths-only agent prompt. References the rules and the raw source BY PATH
     (the agent opens them with its own tools), so it never embeds file content and stays paths-only
     — at most a couple thousand chars regardless of raw-file size, the WinError 206 fix. ``rel_key``
@@ -105,12 +107,18 @@ def _build_instruction(rel_key: str, kind: str = "ingest", read_path: str | None
     - ``"ingest"`` (default) — fold a NEW raw source into the wiki.
     - ``"reconcile"`` — the source CHANGED since it was last ingested; re-read it and UPDATE
       or REMOVE the now-stale facts it had produced, not merely append new ones.
+    - ``"image"`` / ``"image-reconcile"`` — ``rel_key`` is an IMAGE (screenshot/scan/diagram);
+      the agent VIEWS it with its file reader and transcribes the facts it shows.
     - ``"delete"`` — the source was REMOVED from disk; strip the facts/citations that came
       only from it (this is the only prompt that must NOT try to open ``rel_key``).
 
     ``read_path`` (ingest/reconcile only) is set when ``rel_key`` is a binary Office file the agent
     cannot open: ingest has extracted its text to that path, so the agent is told to READ
     ``read_path`` for content while still citing ``rel_key`` as the source of record.
+
+    ``segment`` is ``(part, total)`` when a LARGE source is ingested in several sequential passes:
+    ``read_path`` then holds this segment's slice, and the prompt tells the agent to MERGE later
+    segments into the pages earlier segments created (rather than duplicate them).
     """
     wiki_rel = _agent_path(config.WIKI_DIR)
     raw_rel = _agent_path(config.RAW_DIR)
@@ -189,8 +197,9 @@ def _build_instruction(rel_key: str, kind: str = "ingest", read_path: str | None
             f"fix every reported error.\nIf {rel_key} adds nothing new, make no edits and stop."
         )
 
+    multi_segment = segment is not None and segment[1] > 1
     note = ""
-    if kind == "reconcile":
+    if kind in ("reconcile", "image-reconcile") and not multi_segment:
         # Re-ingest of a CHANGED source: the wiki already holds facts it produced, so the agent
         # must reconcile (update/remove), not blindly append — otherwise a corrected number
         # leaves the stale one behind next to the new one.
@@ -203,23 +212,84 @@ def _build_instruction(rel_key: str, kind: str = "ingest", read_path: str | None
             "it (a co-cited fact stays — just remove this marker). Do not merely append, and "
             "leave facts from OTHER raw sources and their citations intact.\n\n"
         )
+    elif kind in ("reconcile", "image-reconcile") and multi_segment:
+        # A CHANGED source that is ALSO large enough to be split: the agent sees only ONE segment
+        # per pass, so it must NOT do the blanket "remove facts the file no longer supports" of a
+        # normal reconcile — a fact missing from THIS segment may live in another segment of the
+        # same source, and deleting it would lose valid content. Update-in-place only; the segment
+        # note below handles merging.
+        note = (
+            f"NOTE: {rel_key} CHANGED since it was last ingested AND is being re-ingested in "
+            f"{segment[1]} segments, so you see only PART of it this pass. UPDATE facts from THIS "
+            "segment whose numbers/names/claims changed, but do NOT delete facts you cannot see in "
+            "this segment — they may belong to another segment of the same source. Do not merely "
+            "append.\n\n"
+        )
 
-    if read_path:
-        # rel_key is a binary Office file (pptx/docx); its text was pre-extracted to read_path. The
-        # agent reads THAT for content but must cite the original rel_key as the source of record.
+    # A large source is ingested in several sequential passes (see ingest chunking): each pass reads
+    # ONE segment (materialized to read_path) but cites the whole source. The note tells the agent
+    # where it is in the sequence so later passes MERGE into the pages earlier passes created.
+    seg_note = ""
+    if segment is not None and segment[1] > 1:
+        part, total = segment
+        if part == 1:
+            seg_note = (
+                f"NOTE: {rel_key} is LARGE and is being ingested in {total} sequential SEGMENTS to "
+                f"fit context. This is segment 1 of {total} — the FIRST; later segments of the SAME "
+                "source will follow and EXTEND these pages, so capture this segment's facts now and "
+                "expect to add more.\n\n"
+            )
+        else:
+            seg_note = (
+                f"NOTE: {rel_key} is LARGE and is being ingested in {total} sequential SEGMENTS to "
+                f"fit context. This is segment {part} of {total}; segments 1..{part - 1} were "
+                "ALREADY folded into the wiki in prior passes. ADD this segment's facts, MERGING "
+                "into the existing pages for this source — do not duplicate pages or restate facts "
+                "already captured. More segments may follow.\n\n"
+            )
+
+    if kind in ("image", "image-reconcile"):
+        # rel_key is an image file. The agentic CLI's reader can DISPLAY images, so the agent views
+        # it and transcribes the facts it shows (text/labels/diagram/table/chart), citing the image.
         read_step = (
-            f"1. The raw source {rel_key} is a binary Office file (PowerPoint/Word) you cannot open "
-            f"directly. Its text has been EXTRACTED to {read_path} — read THAT file for the content. "
-            f"Treat {rel_key} as the source of record: set `resource: {rel_key}` and cite {rel_key} "
-            "(NOT the extracted file) in `## Sources`. If it holds no usable text, make no edits.\n"
+            f"1. The raw source {rel_key} is an IMAGE (screenshot, scan, diagram, chart, or photo). "
+            "OPEN AND VIEW it — your file reader can display images — and read the information it "
+            "shows: any text/labels, the diagram or table contents, chart values and axes, and what "
+            "it depicts. Transcribe the meaningful FACTS (cite them like any raw fact); do not "
+            "describe pixels, colors, or styling. If it shows no usable information, make no edits.\n"
+        )
+    elif segment is not None and read_path:
+        # A segment (slice) of a large source, written to read_path. Same-source-of-record rule as
+        # the Office path, but the wording tells the agent this is a partial view.
+        read_step = (
+            f"1. The raw source {rel_key} is too large for one pass, so it was SPLIT: segment "
+            f"{segment[0]} of {segment[1]} has been written to {read_path} — read THAT for this "
+            f"segment's content. Treat {rel_key} as the source of record: set `resource: {rel_key}` "
+            f"and cite {rel_key} (NOT the segment file) in `## Sources`. Ingest only what THIS "
+            "segment contains; do not invent continuations.\n"
+        )
+    elif read_path:
+        # rel_key is a binary Office file (pptx/docx/xlsx); its text was pre-extracted to read_path.
+        # The agent reads THAT for content but must cite the original rel_key as the source of record.
+        # Its embedded images (if any) were extracted to a `media/` folder beside read_path — the
+        # agent should VIEW the informative ones (diagrams/charts the text extractor cannot capture).
+        read_step = (
+            f"1. The raw source {rel_key} is a binary Office file (PowerPoint/Word/Excel) you cannot "
+            f"open directly. Its text has been EXTRACTED to {read_path} — read THAT for the content, "
+            "and VIEW any images in the `media/` folder beside it (diagrams/charts/screenshots carry "
+            f"facts too; ignore icons/logos). Treat {rel_key} as the source of record: set "
+            f"`resource: {rel_key}` and cite {rel_key} (NOT the extracted files) in `## Sources`. If "
+            "it holds no usable content, make no edits.\n"
         )
     else:
         read_step = (
             f"1. Open and read the raw source file: {rel_key}. It may be ANY text-bearing file type "
             "(markdown, plain text, code such as .py/.sql, JSON/CSV, PDF, ...) — extract its text "
-            "and ingest the facts. For CODE/config/data, capture its PURPOSE, BEHAVIOR and the "
-            "external systems it touches (which database and HOW), NOT its structure — see 'Code & "
-            "structured sources' in SCHEMA.md. If it holds no usable text, make no edits.\n"
+            "and ingest the facts. For a PDF, also LOOK AT the pages' figures, diagrams, and charts "
+            "(not just the body text) and capture what they show. For CODE/config/data, capture its "
+            "PURPOSE, BEHAVIOR and the external systems it touches (which database and HOW), NOT its "
+            "structure — see 'Code & structured sources' in SCHEMA.md. If it holds no usable text, "
+            "make no edits.\n"
         )
 
     # Fallback date for time-anchored (threaded) sources: the raw file's own modification date,
@@ -240,6 +310,7 @@ def _build_instruction(rel_key: str, kind: str = "ingest", read_path: str | None
     return (
         header
         + note
+        + seg_note
         + "Fold ONE raw source into the wiki by EDITING FILES DIRECTLY:\n"
         + read_step
         + f"2. The wiki is under {wiki_rel}/ (raw sources under {raw_rel}/). Search and read "
@@ -550,22 +621,27 @@ def _run_session(cli: str, argv: list[str], stdin_text: str | None, *, log_label
     return
 
 
-def run_ingest_session(rel_key: str, kind: str = "ingest", read_path: str | None = None) -> None:
+def run_ingest_session(
+    rel_key: str, kind: str = "ingest", read_path: str | None = None, segment: tuple[int, int] | None = None
+) -> None:
     """Run the configured agentic CLI once to propagate the raw source ``rel_key`` into the wiki.
 
     ``kind`` picks the propagation (see :func:`_build_instruction`): ``"ingest"`` folds in a new
-    source, ``"reconcile"`` re-ingests a CHANGED source (updating/removing its stale facts), and
-    ``"delete"`` strips the provenance of a source that was REMOVED from disk.
+    source, ``"reconcile"`` re-ingests a CHANGED source (updating/removing its stale facts),
+    ``"image"``/``"image-reconcile"`` VIEW an image source, and ``"delete"`` strips the provenance
+    of a source that was REMOVED from disk.
 
     ``read_path`` (ingest/reconcile only) is the path to the pre-extracted text of a binary Office
-    source: when set, the agent is told to READ it for content while still citing ``rel_key``, and
-    its directory is granted to the CLI alongside any out-of-repo wiki/raw.
+    source — or, when ``segment`` is set, this segment's slice of a large source: when set, the
+    agent is told to READ it for content while still citing ``rel_key``, and its directory is
+    granted to the CLI alongside any out-of-repo wiki/raw. ``segment`` is ``(part, total)`` for a
+    large source split across passes.
 
     Side-effecting only: the agent edits files under ``config.WIKI_DIR``. Returns None;
     ``ingest`` discovers what changed via a filesystem diff. Raises ``RuntimeError`` (collected
     per-source by ingest) on a missing/failed CLI or a timeout."""
     cli = (config.LLM_CLI or "claude").strip().lower()
     cli_path = _resolve_cli(cli)
-    prompt = _build_instruction(rel_key, kind, read_path)
+    prompt = _build_instruction(rel_key, kind, read_path, segment)
     argv, stdin_text = _build_invocation(cli, cli_path, prompt, _external_dirs(rel_key, read_path))
     _run_session(cli, argv, stdin_text, log_label=f"{kind}.{rel_key}")

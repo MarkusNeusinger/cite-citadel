@@ -10,9 +10,21 @@
 
 1. **Raw sources** — files the model reads but never edits: anything under `raw/`
    (any text-bearing file type — markdown, plain text, code such as `.py`/`.sql`, JSON/CSV,
-   PDF, … — in any sub-folder) and the seed docs in `docs/`. Ingest tries to extract text from
-   **every** file; one with no readable text (a binary blob) is skipped and logged as
-   unreadable. The wiki tracks each source by content hash, so a change to `raw/` propagates:
+   PDF, … — in any sub-folder) and the seed docs in `docs/`. **Office documents** are supported
+   too: PowerPoint/Word/Excel (`.pptx`/`.docx`/`.xlsx` and the legacy `.ppt`/`.doc`/`.xls`) have
+   their text extracted automatically, and the **images embedded in them** are pulled out for the
+   agent to view (the wiki still cites the original file). **Images** (`.png`/`.jpg`/…) are read
+   *visually* by the agent — a diagram, chart, scan, or screenshot is transcribed into cited facts,
+   and a PDF's figures are looked at alongside its text. Ingest tries to extract text from **every** file; one with no
+   readable text (a binary blob, or an all-image slide deck) is skipped and logged as unreadable.
+   A source too large for one context window is folded in over **several sequential passes** (each
+   pass reads one segment and merges into the pages the earlier passes created). When the same
+   document is present in **multiple formats** with the same basename (e.g. `report.pptx` +
+   `report.pdf`), only one is ingested (PDF preferred) and the rest are skipped as duplicates.
+   Sources that could not be ingested — unreadable files, ones whose session errored/timed out, and
+   skipped duplicates — are recorded persistently and listed under *Could not ingest* in
+   [`wiki/sources/index.md`](sources/index.md).
+   The wiki tracks each source by content hash, so a change to `raw/` propagates:
    a source that was **edited** is re-ingested in *reconcile* mode (the model updates or removes
    the now-stale facts it derived from it, not just appends); a source that was **deleted** is
    detected on a full run and its facts/citations are stripped from the wiki by a cleanup session

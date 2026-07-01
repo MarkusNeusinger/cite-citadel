@@ -7,12 +7,16 @@ An LLM-maintained personal wiki in Google's [Open Knowledge Format](docs/okf-ref
 with an **MCP server** so an AI can search and read it — a KISS, pure-Python 3.12 take on Andrej
 Karpathy's [LLM-Wiki pattern](docs/karpathy-llm-wiki.md).
 
-Drop arbitrary text-bearing files into `raw/` (markdown, code, JSON/CSV, PDF, `.pptx`/`.docx`, … in
-any sub-folder). One agentic CLI session per source folds it into a cross-linked OKF wiki under
-`wiki/` — **routing each fact to the page it best fits** and splitting/merging pages as the corpus
-grows, rather than making one page per file. Every fact is cited back to its `raw/` source, and the
-model uses **only** what is in `raw/`. An AI client then queries the synthesized wiki over MCP
-instead of re-reading your notes.
+Drop arbitrary files into `raw/` (markdown, code, JSON/CSV, PDF, PowerPoint/Word/Excel —
+`.pptx`/`.docx`/`.xlsx` and legacy `.ppt`/`.doc`/`.xls` — even images, in any sub-folder). One
+agentic CLI session per source folds it into a cross-linked OKF wiki under `wiki/` — **routing each
+fact to the page it best fits** and splitting/merging pages as the corpus grows, rather than making
+one page per file. Office files have their text extracted automatically; images are read *visually*;
+a file too big for one context window is folded in over several passes; the same document in two
+formats (`report.pdf` + `report.pptx`) is ingested once; and any source that can't be ingested is
+recorded (with the reason) in `wiki/sources/index.md`. Every fact is cited back to its `raw/`
+source, and the model uses **only** what is in `raw/`. An AI client then queries the synthesized
+wiki over MCP instead of re-reading your notes.
 
 The CLI is **`citadel`**; the PyPI package is **`cite-citadel`**. The `wiki/` directory **is** the
 database — no SQLite, no vector store. Ingest runs through a **coding-agent CLI you already have**
