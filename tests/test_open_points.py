@@ -9,11 +9,9 @@ rebuild wiring, mirroring ``test_sources_index.py``.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
-from citadel import config, lint, okf, store
+from citadel import lint, okf, store
 from citadel.okf import Page
 
 
@@ -120,25 +118,6 @@ def test_render_catalog_none_when_empty():
 # ----- rebuild_indexes wiring (tmp wiki), mirroring test_sources_index -----
 
 
-def _wire_tmp_wiki(tmp_path: Path, monkeypatch) -> Path:
-    repo = tmp_path
-    wiki, raw = repo / "wiki", repo / "raw"
-    for d in (wiki, raw):
-        d.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(config, "REPO_ROOT", repo, raising=False)
-    monkeypatch.setattr(config, "WIKI_DIR", wiki, raising=False)
-    monkeypatch.setattr(config, "RAW_DIR", raw, raising=False)
-    monkeypatch.setattr(config, "MANIFEST_PATH", wiki / ".citadel_ingested.json", raising=False)
-    monkeypatch.setattr(config, "INDEX_PATH", wiki / "index.md", raising=False)
-    return wiki
-
-
-def _seed(wiki: Path, rel_path: str, frontmatter: dict, body: str) -> None:
-    target = wiki / rel_path
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(okf.dump(frontmatter, body), encoding="utf-8")
-
-
 _FM = {
     "type": "System",
     "title": "Checkout Service",
@@ -148,9 +127,9 @@ _FM = {
 }
 
 
-def test_rebuild_writes_catalog_and_index_summary(tmp_path, monkeypatch):
-    wiki = _wire_tmp_wiki(tmp_path, monkeypatch)
-    _seed(wiki, "systems/checkout.md", _FM, TWO_POINTS_BODY)
+def test_rebuild_writes_catalog_and_index_summary(tmp_citadel, seed_page):
+    wiki = tmp_citadel.wiki
+    seed_page("systems/checkout.md", _FM, TWO_POINTS_BODY)
 
     store.rebuild_indexes()
 
@@ -158,7 +137,7 @@ def test_rebuild_writes_catalog_and_index_summary(tmp_path, monkeypatch):
     assert catalog.exists()
     assert "## Open (1)" in catalog.read_text(encoding="utf-8")
 
-    index = (wiki / "index.md").read_text(encoding="utf-8")
+    index = tmp_citadel.index_path.read_text(encoding="utf-8")
     assert "## Open Points" in index
     assert "2 tracked open point(s), 1 still open" in index
     assert "[open points](open-points/index.md)" in index  # See also link
@@ -169,17 +148,17 @@ def test_rebuild_writes_catalog_and_index_summary(tmp_path, monkeypatch):
         store.delete_page("open-points/index.md")
 
 
-def test_rebuild_removes_stale_catalog(tmp_path, monkeypatch):
-    wiki = _wire_tmp_wiki(tmp_path, monkeypatch)
-    _seed(wiki, "systems/checkout.md", _FM, TWO_POINTS_BODY)
+def test_rebuild_removes_stale_catalog(tmp_citadel, seed_page):
+    wiki = tmp_citadel.wiki
+    seed_page("systems/checkout.md", _FM, TWO_POINTS_BODY)
     store.rebuild_indexes()
     assert (wiki / "open-points" / "index.md").exists()
 
     # Re-seed the same page WITHOUT its Open Points section, then rebuild: the catalog is removed.
-    _seed(wiki, "systems/checkout.md", _FM, "Just a fact.[^s1]\n\n## See also\n\n- x\n")
+    seed_page("systems/checkout.md", _FM, "Just a fact.[^s1]\n\n## See also\n\n- x\n")
     store.rebuild_indexes()
     assert not (wiki / "open-points" / "index.md").exists()
-    assert "## Open Points" not in (wiki / "index.md").read_text(encoding="utf-8")
+    assert "## Open Points" not in tmp_citadel.index_path.read_text(encoding="utf-8")
 
 
 # ----- lint advisories (do NOT flip ok()) -----

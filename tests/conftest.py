@@ -1,0 +1,286 @@
+"""Shared fixtures for the citadel test suite (offline — no CLI, no network, ever).
+
+Every test that touches the filesystem is redirected into ``tmp_path`` by monkeypatching the
+``config.*`` attributes (the codebase reads ``config`` at call time, so patching the module
+attributes is the single supported seam). The agent bridge is replaced per-test with a
+:class:`FakeAgent` installed over ``llm.run_ingest_session`` — no test spawns a real CLI.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable
+
+import pytest
+
+from citadel import config, llm, okf, repo
+
+
+# --- layout wiring -----------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CitadelTmp:
+    """Handle onto a temp citadel layout that has been wired into ``config``.
+
+    THIN SEAM — depend only on this interface. Tests must reach the temp layout exclusively
+    through these attributes (``cit.wiki / "concepts/x.md"``, ``cit.raw / "notes.md"``, ...),
+    never by re-deriving paths from ``tmp_path`` or by assuming which ``config.*`` attributes
+    were patched: a later PR swaps the root-resolution internals (workspace discovery), and
+    only this interface is guaranteed to survive that swap.
+    """
+
+    root: Path  # the (fake) repo root -> config.REPO_ROOT
+    wiki: Path  # config.WIKI_DIR
+    raw: Path  # config.RAW_DIR
+    docs: Path  # config.DOCS_DIR
+    index_path: Path  # config.INDEX_PATH
+    log_path: Path  # config.LOG_PATH
+    manifest_path: Path  # config.MANIFEST_PATH
+    failures_path: Path  # config.FAILURES_PATH
+
+
+@pytest.fixture
+def make_citadel(tmp_path: Path, monkeypatch) -> Callable[..., CitadelTmp]:
+    """Factory behind ``tmp_citadel``/``tmp_citadel_external`` for tests that need a custom
+    layout (nested wiki dir, repo root in a subtree, ...). Wires the UNION of every config
+    attribute the suite's old per-file helpers patched, so no test leaks onto the real repo."""
+
+    def _make(
+        *, root: Path | None = None, wiki: Path | None = None, raw: Path | None = None, docs: Path | None = None
+    ) -> CitadelTmp:
+        root = root if root is not None else tmp_path
+        wiki = wiki if wiki is not None else root / "wiki"
+        raw = raw if raw is not None else root / "raw"
+        docs = docs if docs is not None else root / "docs"
+        for d in (root, wiki, raw, docs):
+            d.mkdir(parents=True, exist_ok=True)
+
+        # A SCHEMA.md so anything reading config.SCHEMA_PATH works (llm is faked, but be safe).
+        schema_path = root / "SCHEMA.md"
+        schema_path.write_text("# SCHEMA\n\ntest schema\n", encoding="utf-8")
+        rules_path = root / "AGENT_INGEST.md"  # not written — llm is always faked
+
+        cit = CitadelTmp(
+            root=root,
+            wiki=wiki,
+            raw=raw,
+            docs=docs,
+            index_path=wiki / "index.md",
+            log_path=wiki / "log.md",
+            manifest_path=wiki / ".citadel_ingested.json",
+            failures_path=wiki / ".citadel_failures.json",
+        )
+        # raising=True (the default): every one of these attributes exists in config today, so
+        # a PR that renames the config internals makes this seam fail LOUD instead of silently
+        # patching a dead attribute while the code reads the real (repo-local) one.
+        monkeypatch.setattr(config, "REPO_ROOT", cit.root)
+        monkeypatch.setattr(config, "WIKI_DIR", cit.wiki)
+        monkeypatch.setattr(config, "RAW_DIR", cit.raw)
+        monkeypatch.setattr(config, "DOCS_DIR", cit.docs)
+        monkeypatch.setattr(config, "SCHEMA_PATH", schema_path)
+        monkeypatch.setattr(config, "AGENT_RULES_PATH", rules_path)
+        monkeypatch.setattr(config, "INDEX_PATH", cit.index_path)
+        monkeypatch.setattr(config, "LOG_PATH", cit.log_path)
+        monkeypatch.setattr(config, "MANIFEST_PATH", cit.manifest_path)
+        monkeypatch.setattr(config, "FAILURES_PATH", cit.failures_path)
+        return cit
+
+    return _make
+
+
+@pytest.fixture
+def tmp_citadel(make_citadel) -> CitadelTmp:
+    """The default in-repo layout: wiki/, raw/, docs/ directly under the temp repo root."""
+    return make_citadel()
+
+
+@pytest.fixture
+def repo_wiki(tmp_citadel, monkeypatch) -> CitadelTmp:
+    """``tmp_citadel`` with repo-source support forced ON (the environment could disable it)."""
+    monkeypatch.setattr(config, "REPO_SUPPORT", True, raising=False)
+    return tmp_citadel
+
+
+def _make_repo(raw: Path, name: str, files: dict[str, str], marker: bool = True) -> Path:
+    """Create a folder under raw/ with the given files; add the ``.citadelsource`` marker so it is
+    treated as one repo source without needing git."""
+    root = raw / name
+    for rel, content in files.items():
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content, encoding="utf-8")
+    if marker:
+        (root / repo.MARKER).write_text("", encoding="utf-8")
+    return root
+
+
+@pytest.fixture
+def make_repo() -> Callable[..., Path]:
+    """Build a marker-based (hermetic, no git binary) repo source under any directory —
+    ``make_repo(raw, "svc", {"app.py": "x\\n"})`` — returning the repo root."""
+    return _make_repo
+
+
+@pytest.fixture
+def tmp_citadel_external(make_citadel, tmp_path: Path) -> CitadelTmp:
+    """The out-of-repo layout: the repo checkout on one subtree; wiki/ and raw/ on a SEPARATE
+    'net' subtree (a shared parent, as a mounted network drive would have); docs/ stays inside
+    the repo. Models ``CITADEL_WIKI_DIR=T:\\team-wiki\\wiki`` next to a normal checkout."""
+    net = tmp_path / "net"  # stands in for T:\team-wiki
+    return make_citadel(root=tmp_path / "repo", wiki=net / "wiki", raw=net / "raw")
+
+
+# --- seeding pages -----------------------------------------------------------------------
+
+
+@pytest.fixture
+def seed_page() -> Callable[..., Path]:
+    """Write a canonical OKF page directly under the CONFIGURED wiki (bypassing ingest).
+
+    Reads ``config.WIKI_DIR`` at call time, so it composes with any layout fixture
+    (``tmp_citadel``, ``tmp_citadel_external``, or a custom ``make_citadel`` layout).
+    """
+
+    def _seed(rel_path: str, frontmatter: dict, body: str = "Body.\n") -> Path:
+        target = Path(config.WIKI_DIR) / rel_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(okf.dump(frontmatter, body), encoding="utf-8")
+        return target
+
+    return _seed
+
+
+def _cite_page(rel_path: str, rel_key: str, body_fact: str) -> None:
+    """Write a minimal valid OKF page that cites ``rel_key`` once (for use inside fake sessions)."""
+    depth = "../../"
+    target = config.WIKI_DIR / rel_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        okf.dump(
+            {"type": "Note", "title": "Fact", "description": "d", "tags": ["t"], "resource": rel_key},
+            f"{body_fact}[^s1]\n\n## Sources\n\n[^s1]: [{rel_key}]({depth}{rel_key}) - src (ingested 2026-06-21)\n",
+        ),
+        encoding="utf-8",
+    )
+
+
+@pytest.fixture
+def cite_page() -> Callable[[str, str, str], None]:
+    """``seed_page``'s little sibling for fake-session bodies: ``cite_page(rel_path, rel_key,
+    fact)`` writes one valid page whose single fact cites ``rel_key``. Reads ``config.WIKI_DIR``
+    at call time, so inside a session it lands in ingest's per-source staging copy."""
+    return _cite_page
+
+
+def _make_pptx(path: Path, slides: list[list[str]]) -> None:
+    """Write a minimal real ``.pptx`` (a ZIP of slide XML) at ``path``; ``slides`` is a list of
+    slides, each a list of paragraph strings. An empty slide ([]) carries no text."""
+    import zipfile
+
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    p = "http://schemas.openxmlformats.org/presentationml/2006/main"
+    with zipfile.ZipFile(path, "w") as z:
+        for i, paras in enumerate(slides, 1):
+            runs = "".join(f"<a:p><a:r><a:t>{t}</a:t></a:r></a:p>" for t in paras)
+            z.writestr(
+                f"ppt/slides/slide{i}.xml",
+                f'<?xml version="1.0"?><p:sld xmlns:p="{p}" xmlns:a="{a}"><p:cSld><p:spTree>'
+                f"<p:sp><p:txBody>{runs}</p:txBody></p:sp></p:spTree></p:cSld></p:sld>",
+            )
+
+
+@pytest.fixture
+def make_pptx() -> Callable[[Path, list[list[str]]], None]:
+    """Materialize a tiny real PowerPoint file for Office-extraction tests:
+    ``make_pptx(raw / "deck.pptx", [["para", ...], ...])`` (one inner list per slide)."""
+    return _make_pptx
+
+
+@pytest.fixture
+def transformer_page() -> dict:
+    """The canonical one-page agent output (a Concept citing raw/notes.md) that many ingest tests
+    share — pass it straight to ``fake_agent`` to reproduce one deterministic ingest session."""
+    return {
+        "concepts/transformer.md": (
+            {
+                "type": "Concept",
+                "title": "Transformer",
+                "description": "self-attention model",
+                "tags": ["ml"],
+                "resource": "raw/notes.md",
+            },
+            "Transformers use self-attention.[^s1]\n\n"
+            "## Sources\n\n"
+            "[^s1]: [raw/notes.md](../../raw/notes.md) - notes (ingested 2026-06-21)\n",
+        )
+    }
+
+
+# --- faking the agent session ------------------------------------------------------------
+
+
+class FakeAgent:
+    """Deterministic stand-in for ``llm.run_ingest_session`` — the single seam tests patch.
+
+    The real agent has no return value: its file edits ARE the result. So the fake, per call:
+      1. records ``(rel_key, kind)`` in ``self.calls`` (assert on ``calls``/``count``);
+      2. raises ``error`` if given (a failed/timed-out session);
+      3. writes ``pages`` into the configured wiki — ingest's per-source STAGING copy, since
+         ``config.WIKI_DIR`` is read at call time (``{rel_path: (frontmatter, body)}`` dumped
+         via ``okf.dump``, or ``{rel_path: str}`` written verbatim);
+      4. passes the original args through to ``side_effect`` for bespoke per-call behavior
+         (e.g. deleting the pages that cite a removed source).
+    """
+
+    def __init__(
+        self,
+        pages: dict[str, Any] | None = None,
+        *,
+        error: BaseException | None = None,
+        side_effect: Callable[..., None] | None = None,
+    ) -> None:
+        self.pages = dict(pages or {})
+        self.error = error
+        self.side_effect = side_effect
+        self.calls: list[tuple[str, str]] = []
+
+    @property
+    def count(self) -> int:
+        return len(self.calls)
+
+    def reset(self) -> None:
+        self.calls.clear()
+
+    def __call__(self, *args, **kwargs) -> None:
+        rel_key = args[0] if args else kwargs.get("rel_key")
+        kind = args[1] if len(args) > 1 else kwargs.get("kind", "ingest")
+        self.calls.append((rel_key, kind))
+        if self.error is not None:
+            raise self.error
+        for rel_path, content in self.pages.items():
+            target = Path(config.WIKI_DIR) / rel_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            text = content if isinstance(content, str) else okf.dump(*content)
+            target.write_text(text, encoding="utf-8")
+        if self.side_effect is not None:
+            self.side_effect(*args, **kwargs)
+
+
+@pytest.fixture
+def fake_agent(monkeypatch) -> Callable[..., FakeAgent]:
+    """Factory: build a :class:`FakeAgent`, install it as ``llm.run_ingest_session`` (the one
+    place that would talk to an LLM), and return it for assertions."""
+
+    def _install(
+        pages: dict[str, Any] | None = None,
+        *,
+        error: BaseException | None = None,
+        side_effect: Callable[..., None] | None = None,
+    ) -> FakeAgent:
+        agent = FakeAgent(pages, error=error, side_effect=side_effect)
+        monkeypatch.setattr(llm, "run_ingest_session", agent, raising=False)
+        return agent
+
+    return _install

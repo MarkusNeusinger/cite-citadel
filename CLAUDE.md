@@ -32,10 +32,17 @@ session, `--log-dir DIR` writes a transcript per source, `--quiet` drops the pro
 Tests (pytest, all offline — no CLI/network is ever spawned):
 
 ```bash
-uv run pytest -q                                    # whole suite (~210 tests, ~3s)
-uv run pytest tests/test_ingest.py -q               # one file
-uv run pytest tests/test_ingest.py::test_ingest_creates_pages   # one test
+uv run pytest -q                                    # whole suite (~370 tests, ~3s)
+uv run pytest tests/test_ingest_core.py -q          # one file
+uv run pytest tests/test_ingest_core.py::test_ingest_creates_pages   # one test
 ```
+
+New tests build on the shared fixtures in `tests/conftest.py` — that layer is THE pattern:
+`tmp_citadel` (a temp repo/wiki/raw/docs layout wired into `config.*`; `tmp_citadel_external`
+for the out-of-repo mounted-drive layout, `make_citadel` for custom ones), `seed_page` (write a
+canonical OKF page into the configured wiki), and `fake_agent` (a recording `FakeAgent`
+installed over `llm.run_ingest_session` — pages to write, an error to raise, or a
+`side_effect`). Don't re-create per-file `_wire*`/fake-session copies.
 
 Lint and format with **ruff** (config in `pyproject.toml`; CI gates both, alongside pytest):
 

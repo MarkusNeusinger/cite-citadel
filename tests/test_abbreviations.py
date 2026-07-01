@@ -1,35 +1,14 @@
 """Offline tests for the abbreviation features: the generated ``## Abbreviations`` glossary
 table in ``index.md`` (store) and the undefined-abbreviation nudge (lint).
 
-No network, no LLM. The index test redirects ``config.*`` at a tmp wiki (same approach as
-test_viewer); the lint tests build Page objects directly, since ``lint.lint`` accepts a page
-list and needs no filesystem.
+No network, no LLM. The index tests use the shared ``tmp_citadel`` fixture (conftest.py); the
+lint tests build Page objects directly, since ``lint.lint`` accepts a page list and needs no
+filesystem.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from citadel import config, lint, okf, store
-
-
-def _wire_tmp_wiki(tmp_path: Path, monkeypatch) -> Path:
-    repo = tmp_path
-    wiki, raw, docs = repo / "wiki", repo / "raw", repo / "docs"
-    for d in (wiki, raw, docs):
-        d.mkdir(parents=True, exist_ok=True)
-    (repo / "SCHEMA.md").write_text("# SCHEMA\n", encoding="utf-8")
-    monkeypatch.setattr(config, "REPO_ROOT", repo, raising=False)
-    monkeypatch.setattr(config, "WIKI_DIR", wiki, raising=False)
-    monkeypatch.setattr(config, "RAW_DIR", raw, raising=False)
-    monkeypatch.setattr(config, "DOCS_DIR", docs, raising=False)
-    return wiki
-
-
-def _seed(wiki: Path, rel_path: str, frontmatter: dict, body: str = "Body.\n") -> None:
-    target = wiki / rel_path
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(okf.dump(frontmatter, body), encoding="utf-8")
+from citadel import lint, okf, store
 
 
 def _page(rel_path: str, body: str, **frontmatter) -> okf.Page:
@@ -41,12 +20,10 @@ def _page(rel_path: str, body: str, **frontmatter) -> okf.Page:
 # --------------------------------------------------------------------------- index table
 
 
-def test_index_renders_abbreviations_table(tmp_path, monkeypatch):
+def test_index_renders_abbreviations_table(tmp_citadel, seed_page):
     """rebuild_indexes emits a '## Abbreviations' table from every type: Abbreviation page,
     sorted by short form, with both forms and a link to the page."""
-    wiki = _wire_tmp_wiki(tmp_path, monkeypatch)
-    _seed(
-        wiki,
+    seed_page(
         "abbreviations/tds.md",
         {
             "type": "Abbreviation",
@@ -57,8 +34,7 @@ def test_index_renders_abbreviations_table(tmp_path, monkeypatch):
             "resource": "raw/a.md",
         },
     )
-    _seed(
-        wiki,
+    seed_page(
         "abbreviations/api.md",
         {
             "type": "Abbreviation",
@@ -68,14 +44,13 @@ def test_index_renders_abbreviations_table(tmp_path, monkeypatch):
             "resource": "raw/a.md",
         },
     )
-    _seed(
-        wiki,
+    seed_page(
         "concepts/espresso.md",
         {"type": "Concept", "title": "Espresso", "description": "A brew.", "tags": ["coffee"], "resource": "raw/a.md"},
     )
 
     store.rebuild_indexes()
-    index = (wiki / "index.md").read_text(encoding="utf-8")
+    index = tmp_citadel.index_path.read_text(encoding="utf-8")
 
     assert "## Abbreviations" in index
     assert "| Abbreviation | Expansion | Page |" in index
@@ -88,16 +63,14 @@ def test_index_renders_abbreviations_table(tmp_path, monkeypatch):
     assert index.index("| API |") < index.index("| TDS |")
 
 
-def test_index_has_no_abbreviations_table_without_entries(tmp_path, monkeypatch):
+def test_index_has_no_abbreviations_table_without_entries(tmp_citadel, seed_page):
     """A wiki with no Abbreviation pages gets no '## Abbreviations' section at all."""
-    wiki = _wire_tmp_wiki(tmp_path, monkeypatch)
-    _seed(
-        wiki,
+    seed_page(
         "concepts/espresso.md",
         {"type": "Concept", "title": "Espresso", "description": "A brew.", "tags": ["coffee"], "resource": "raw/a.md"},
     )
     store.rebuild_indexes()
-    index = (wiki / "index.md").read_text(encoding="utf-8")
+    index = tmp_citadel.index_path.read_text(encoding="utf-8")
     assert "## Abbreviations" not in index
 
 

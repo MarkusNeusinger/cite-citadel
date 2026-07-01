@@ -4,21 +4,16 @@ from __future__ import annotations
 
 import json
 
-from citadel import config, failures
+from citadel import failures
 
 
-def _wire(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "FAILURES_PATH", tmp_path / ".citadel_failures.json", raising=False)
-
-
-def test_record_clear_roundtrip(tmp_path, monkeypatch):
-    _wire(tmp_path, monkeypatch)
+def test_record_clear_roundtrip(tmp_citadel):
     d: dict[str, dict] = {}
     failures.record(d, "raw/a.bin", failures.UNREADABLE, "no extractable text")
     failures.record(d, "raw/b.log", failures.ERROR, "raw/b.log: boom", model="claude:sonnet")
     failures.save(d)
 
-    on_disk = json.loads((tmp_path / ".citadel_failures.json").read_text(encoding="utf-8"))
+    on_disk = json.loads(tmp_citadel.failures_path.read_text(encoding="utf-8"))
     assert on_disk["raw/a.bin"] == {"reason": "unreadable", "detail": "no extractable text"}
     assert on_disk["raw/b.log"]["model"] == "claude:sonnet"
     assert failures.load() == on_disk
@@ -28,9 +23,8 @@ def test_record_clear_roundtrip(tmp_path, monkeypatch):
     assert "raw/a.bin" not in d and "raw/b.log" in d
 
 
-def test_save_removes_file_when_empty(tmp_path, monkeypatch):
-    _wire(tmp_path, monkeypatch)
-    path = tmp_path / ".citadel_failures.json"
+def test_save_removes_file_when_empty(tmp_citadel):
+    path = tmp_citadel.failures_path
     failures.save({"raw/a.bin": {"reason": "unreadable", "detail": "x"}})
     assert path.exists()
     failures.save({})  # empties -> file removed, so a clean wiki carries no stale sidecar
@@ -45,7 +39,6 @@ def test_reason_for_categorizes_timeout_vs_error():
     assert failures.reason_for("") == failures.ERROR
 
 
-def test_load_tolerates_corrupt_file(tmp_path, monkeypatch):
-    _wire(tmp_path, monkeypatch)
-    (tmp_path / ".citadel_failures.json").write_text("{not json", encoding="utf-8")
+def test_load_tolerates_corrupt_file(tmp_citadel):
+    tmp_citadel.failures_path.write_text("{not json", encoding="utf-8")
     assert failures.load() == {}
