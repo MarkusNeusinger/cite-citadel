@@ -16,6 +16,7 @@ import io
 
 from citadel import progress
 
+
 # A long, fictional out-of-repo source key, of the shape that wrapped the terminal.
 _LONG_KEY = "//fileserver/share/projects/data/wiki/raw/sub/EXAMPLE_LONG_DOCUMENT.md"
 
@@ -95,8 +96,7 @@ def test_completion_line_prints_full_path():
     prog("source_start", {"index": 3, "total": 88, "source": _LONG_KEY})
     prog(
         "source_done",
-        {"index": 3, "total": 88, "source": _LONG_KEY,
-         "created": 1, "updated": 0, "deleted": 0, "seconds": 751.3},
+        {"index": 3, "total": 88, "source": _LONG_KEY, "created": 1, "updated": 0, "deleted": 0, "seconds": 751.3},
     )
 
     out = stream.getvalue()
@@ -109,10 +109,7 @@ def test_error_line_prints_full_path():
     """An error line likewise carries the full source path and the error text."""
     stream = io.StringIO()
     prog = progress.ConsoleProgress(stream=stream)
-    prog(
-        "source_error",
-        {"index": 1, "total": 1, "source": _LONG_KEY, "error": "CLI not found", "seconds": 0.2},
-    )
+    prog("source_error", {"index": 1, "total": 1, "source": _LONG_KEY, "error": "CLI not found", "seconds": 0.2})
     out = stream.getvalue()
     assert _LONG_KEY in out
     assert "CLI not found" in out

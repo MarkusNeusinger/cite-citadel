@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from . import config, okf, store
 from .okf import Page
 
+
 # STRICT — these frontmatter fields must be present and non-empty on every page.
 REQUIRED_FIELDS = ("type", "title", "description", "tags", "resource")
 
@@ -188,10 +189,7 @@ def validate_page(rel_path: str, frontmatter: dict, body: str) -> list[Issue]:
         # `resource` may also be a DIRECTORY — a whole git repository ingested as one source
         # (e.g. 'raw/acme-service') — so a directory is accepted alongside a file.
         if not (src_path.is_file() or src_path.is_dir()):
-            err(
-                "bad_resource",
-                f"resource points at a missing file or directory: {resource}",
-            )
+            err("bad_resource", f"resource points at a missing file or directory: {resource}")
 
     # --- file format ---
     # An embedded YAML frontmatter block in the body (the agent echoed it twice). After the
@@ -208,10 +206,7 @@ def validate_page(rel_path: str, frontmatter: dict, body: str) -> list[Issue]:
         expected_folder = okf.folder_for_type(type_)
         folder = rel_path.split("/", 1)[0] if "/" in rel_path else ""
         if folder != expected_folder:
-            adv(
-                "routing",
-                f"page is in {folder!r} but type {type_!r} routes to {expected_folder!r}",
-            )
+            adv("routing", f"page is in {folder!r} but type {type_!r} routes to {expected_folder!r}")
     title = str(frontmatter.get("title") or "").strip()
     if title:
         expected_name = okf.slugify(title) + ".md"
@@ -262,9 +257,7 @@ def render_issues(issues: list[Issue]) -> str:
     """Human-readable report of issues, grouped by page, errors first. Deterministic."""
     if not issues:
         return "OK — no validation issues."
-    ordered = sorted(
-        issues, key=lambda i: (i.rel_path, 0 if i.severity == "error" else 1, i.category)
-    )
+    ordered = sorted(issues, key=lambda i: (i.rel_path, 0 if i.severity == "error" else 1, i.category))
     lines: list[str] = []
     current = None
     for issue in ordered:

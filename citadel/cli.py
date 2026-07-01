@@ -29,25 +29,18 @@ import sys
 def build_parser() -> argparse.ArgumentParser:
     """Build the ``citadel`` argument parser with its seven subcommands."""
     parser = argparse.ArgumentParser(
-        prog="citadel",
-        description="An LLM-maintained personal wiki in Google OKF, with an MCP search server.",
+        prog="citadel", description="An LLM-maintained personal wiki in Google OKF, with an MCP search server."
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_ingest = sub.add_parser(
-        "ingest",
-        help="Fold new/changed raw files into the wiki (default: all of raw/).",
-    )
+    p_ingest = sub.add_parser("ingest", help="Fold new/changed raw files into the wiki (default: all of raw/).")
     p_ingest.add_argument(
         "paths",
         nargs="*",
-        help="Specific files or directories to ingest (default: every file under raw/, "
-        "recursively, any type).",
+        help="Specific files or directories to ingest (default: every file under raw/, recursively, any type).",
     )
     p_ingest.add_argument(
-        "--quiet",
-        action="store_true",
-        help="Suppress the live per-file progress output (just print the final report).",
+        "--quiet", action="store_true", help="Suppress the live per-file progress output (just print the final report)."
     )
     p_ingest.add_argument(
         "--verbose",
@@ -67,79 +60,39 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_ingest.set_defaults(func=cmd_ingest)
 
-    p_serve = sub.add_parser(
-        "serve",
-        help="Run the MCP stdio server (wiki_search/wiki_read/wiki_index/wiki_ingest).",
-    )
+    p_serve = sub.add_parser("serve", help="Run the MCP stdio server (wiki_search/wiki_read/wiki_index/wiki_ingest).")
     p_serve.set_defaults(func=cmd_serve)
 
-    p_search = sub.add_parser(
-        "search",
-        help="Keyword search across the wiki pages.",
-    )
+    p_search = sub.add_parser("search", help="Keyword search across the wiki pages.")
     p_search.add_argument("query", help="Search query.")
+    p_search.add_argument("--limit", type=int, default=8, help="Maximum number of hits to return (default: 8).")
     p_search.add_argument(
-        "--limit",
-        type=int,
-        default=8,
-        help="Maximum number of hits to return (default: 8).",
-    )
-    p_search.add_argument(
-        "--tag",
-        default=None,
-        help="Restrict the search to pages carrying this tag (case-insensitive).",
+        "--tag", default=None, help="Restrict the search to pages carrying this tag (case-insensitive)."
     )
     p_search.set_defaults(func=cmd_search)
 
-    p_tags = sub.add_parser(
-        "tags",
-        help="List all tags and the pages under each (browse the wiki by topic).",
-    )
-    p_tags.add_argument(
-        "tag",
-        nargs="?",
-        default=None,
-        help="Show only this tag's pages (default: list every tag).",
-    )
+    p_tags = sub.add_parser("tags", help="List all tags and the pages under each (browse the wiki by topic).")
+    p_tags.add_argument("tag", nargs="?", default=None, help="Show only this tag's pages (default: list every tag).")
     p_tags.set_defaults(func=cmd_tags)
 
     p_lint = sub.add_parser(
-        "lint",
-        help="Static health check (contradictions/orphans/missing-cites/broken-links/missing-type/stale).",
+        "lint", help="Static health check (contradictions/orphans/missing-cites/broken-links/missing-type/stale)."
     )
     p_lint.add_argument(
-        "--stale-days",
-        type=int,
-        default=365,
-        help="Pages older than this many days are flagged stale (default: 365).",
+        "--stale-days", type=int, default=365, help="Pages older than this many days are flagged stale (default: 365)."
     )
     p_lint.set_defaults(func=cmd_lint)
 
-    p_check = sub.add_parser(
-        "check",
-        help="Validate page links, file format, and required fields (the ingest gate).",
-    )
+    p_check = sub.add_parser("check", help="Validate page links, file format, and required fields (the ingest gate).")
     p_check.add_argument(
-        "paths",
-        nargs="*",
-        help="Wiki pages to check (rel_path or file path); default: the whole wiki.",
+        "paths", nargs="*", help="Wiki pages to check (rel_path or file path); default: the whole wiki."
     )
     p_check.set_defaults(func=cmd_check)
 
-    p_view = sub.add_parser(
-        "view",
-        help="Generate and open a single-file, offline HTML viewer for the wiki.",
-    )
+    p_view = sub.add_parser("view", help="Generate and open a single-file, offline HTML viewer for the wiki.")
+    p_view.add_argument("--out", default=None, help="Where to write the .html (default: wiki/.citadel_viewer.html).")
     p_view.add_argument(
-        "--out",
-        default=None,
-        help="Where to write the .html (default: wiki/.citadel_viewer.html).",
-    )
-    p_view.add_argument(
-        "--no-open",
-        dest="open_browser",
-        action="store_false",
-        help="Write the file but do not launch a browser.",
+        "--no-open", dest="open_browser", action="store_false", help="Write the file but do not launch a browser."
     )
     p_view.add_argument(
         "--obsidian",

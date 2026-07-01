@@ -36,16 +36,27 @@ def _seed(wiki: Path, rel_path: str, frontmatter: dict, body: str) -> None:
 
 def _two_page_wiki(wiki: Path) -> None:
     _seed(
-        wiki, "concepts/espresso.md",
-        {"type": "Concept", "title": "Espresso", "description": "A brew method.",
-         "tags": ["brewing", "coffee"], "resource": "raw/a.md"},
-        "Espresso uses pressure.[^s1]\n\n## Sources\n\n"
-        "[^s1]: [raw/a.md](../../raw/a.md) - n (ingested 2026-06-22)\n",
+        wiki,
+        "concepts/espresso.md",
+        {
+            "type": "Concept",
+            "title": "Espresso",
+            "description": "A brew method.",
+            "tags": ["brewing", "coffee"],
+            "resource": "raw/a.md",
+        },
+        "Espresso uses pressure.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - n (ingested 2026-06-22)\n",
     )
     _seed(
-        wiki, "concepts/caffeine.md",
-        {"type": "Concept", "title": "Caffeine", "description": "The stimulant.",
-         "tags": ["coffee"], "resource": "raw/a.md"},
+        wiki,
+        "concepts/caffeine.md",
+        {
+            "type": "Concept",
+            "title": "Caffeine",
+            "description": "The stimulant.",
+            "tags": ["coffee"],
+            "resource": "raw/a.md",
+        },
         "See [Espresso](./espresso.md) for the shot.[^s1]\n\n## Sources\n\n"
         "[^s1]: [raw/a.md](../../raw/a.md) - n (ingested 2026-06-22)\n",
     )
@@ -54,8 +65,7 @@ def _two_page_wiki(wiki: Path) -> None:
 def test_bundle_embeds_cited_sources(tmp_path, monkeypatch):
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
     (raw / "a.md").write_text(
-        "# Coffee Overview\n\nCoffee is a brewed drink made from roasted beans.\n",
-        encoding="utf-8",
+        "# Coffee Overview\n\nCoffee is a brewed drink made from roasted beans.\n", encoding="utf-8"
     )
     _two_page_wiki(wiki)
     sources = viewer.build_bundle()["sources"]
@@ -76,9 +86,10 @@ def test_binary_pdf_source_is_openable_not_unavailable(tmp_path, monkeypatch):
     # "open the original file" href so the browser can show it natively.
     (raw / "a.pdf").write_bytes(b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<<>>\nendobj\n")
     _seed(
-        wiki, "concepts/x.md", {"type": "Concept", "title": "X"},
-        "Body cites a pdf.[^s1]\n\n## Sources\n\n"
-        "[^s1]: [raw/a.pdf](../../raw/a.pdf) - n\n",
+        wiki,
+        "concepts/x.md",
+        {"type": "Concept", "title": "X"},
+        "Body cites a pdf.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.pdf](../../raw/a.pdf) - n\n",
     )
     s = viewer.build_bundle()["sources"]["raw/a.pdf"]
     assert s["missing"] is False
@@ -127,7 +138,9 @@ def test_sources_keyed_by_browser_identity_in_nested_layout(tmp_path, monkeypatc
     (raw / "x.md").write_text("# X source\n\ndetail\n", encoding="utf-8")
     # From repo/sub/wiki/concepts/p.md to repo/raw/x.md is '../../../raw/x.md'.
     _seed(
-        wiki, "concepts/p.md", {"type": "Concept", "title": "P"},
+        wiki,
+        "concepts/p.md",
+        {"type": "Concept", "title": "P"},
         "Cites x.[^s1]\n\n## Sources\n\n[^s1]: [raw/x.md](../../../raw/x.md) - n\n",
     )
     sources = viewer.build_bundle()["sources"]
@@ -179,7 +192,9 @@ def test_citation_inside_code_fence_is_not_a_source(tmp_path, monkeypatch):
     (raw / "real.md").write_text("# Real\n\nx\n", encoding="utf-8")
     (raw / "fenced.md").write_text("# Fenced\n\ny\n", encoding="utf-8")
     _seed(
-        wiki, "concepts/p.md", {"type": "Concept", "title": "P"},
+        wiki,
+        "concepts/p.md",
+        {"type": "Concept", "title": "P"},
         "Real cite.[^s1]\n\n```\n[raw/fenced.md](../../raw/fenced.md)\n```\n\n"
         "## Sources\n\n[^s1]: [raw/real.md](../../raw/real.md) - n\n",
     )
@@ -194,7 +209,9 @@ def test_angle_bracket_citation_is_discovered(tmp_path, monkeypatch):
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
     (raw / "x.md").write_text("# X\n\nbody\n", encoding="utf-8")
     _seed(
-        wiki, "concepts/p.md", {"type": "Concept", "title": "P"},
+        wiki,
+        "concepts/p.md",
+        {"type": "Concept", "title": "P"},
         "Cites x.[^s1]\n\n## Sources\n\n[^s1]: [raw/x.md](<../../raw/x.md>) - n\n",
     )
     sources = viewer.build_bundle()["sources"]
@@ -206,7 +223,9 @@ def test_docs_citation_is_a_source(tmp_path, monkeypatch):
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
     (config.DOCS_DIR / "ref.md").write_text("# Reference\n\nspec\n", encoding="utf-8")
     _seed(
-        wiki, "concepts/p.md", {"type": "Concept", "title": "P"},
+        wiki,
+        "concepts/p.md",
+        {"type": "Concept", "title": "P"},
         "Cites a doc.[^s1]\n\n## Sources\n\n[^s1]: [docs/ref.md](../../docs/ref.md) - n\n",
     )
     sources = viewer.build_bundle()["sources"]
@@ -237,9 +256,7 @@ def test_build_html_embeds_and_round_trips(tmp_path, monkeypatch):
     _two_page_wiki(wiki)
     html = viewer.build_html()
     assert "Espresso" in html and "concepts/caffeine.md" in html
-    m = re.search(
-        r'<script id="bundle" type="application/json">(.*?)</script>', html, re.DOTALL
-    )
+    m = re.search(r'<script id="bundle" type="application/json">(.*?)</script>', html, re.DOTALL)
     assert m, "embedded bundle script not found"
     parsed = json.loads(m.group(1).replace("<\\/", "</"))
     assert parsed == viewer.build_bundle()
@@ -256,12 +273,13 @@ def test_build_html_is_offline(tmp_path, monkeypatch):
 def test_build_html_escapes_script_close(tmp_path, monkeypatch):
     wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
     _seed(
-        wiki, "concepts/x.md", {"type": "Concept", "title": "X"},
-        "danger </script><b>x</b> end.[^s1]\n\n## Sources\n\n"
-        "[^s1]: [raw/a.md](../../raw/a.md) - n\n",
+        wiki,
+        "concepts/x.md",
+        {"type": "Concept", "title": "X"},
+        "danger </script><b>x</b> end.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - n\n",
     )
     html = viewer.build_html()
-    assert "<\\/script>" in html          # the body's </script> was escaped
+    assert "<\\/script>" in html  # the body's </script> was escaped
     assert "danger </script>" not in html  # ...and not left raw inside the data blob
     # exactly one real closing </script> per real <script> tag (bundle + viewer js)
     assert html.count("<script") == html.count("</script>")

@@ -1,24 +1,42 @@
 {
-  "raw/aeropress.md": "dbea00574a83126ba1ed9d668538507e53392392f2c1cb82c342230829231955",
-  "raw/arabica-vs-robusta.md": "133a3d3eddec2365af87ad35441f36c8b268faa2f4b744c1d7febf8590a6573c",
-  "raw/brewing-ratios.md": "fa67baee18dab02a706780c028353d5587a40135426cf8e0bfbb023370c19a88",
-  "raw/caffeine.md": "f2b5f0e06f13be065672f1a24d477d563e424fb438bba0e95c62082f3c4edf56",
-  "raw/coffee-grinders.md": "b3d30eab867ec1b105c881af5d91908fd05fc3fa127e2a162c2d4978c4a3505b",
-  "raw/coffee-health.md": "8434963009d0eb121c0d045d68603d9a83ffe2b625715ee13a1ee2e4bb8b583b",
-  "raw/coffee-history-trade.md": "79fd69d83423728de66deebe9450cb6b712d252fb750b37b668a6ff99a4c96e4",
-  "raw/coffee-origins.md": "e20fd046fe042b39d3abac652902aba78ea1cb17307bf976f2926046d5822cd9",
-  "raw/coffee-processing.md": "c8144ce317d357d2756f5edeef2cbc18dddd4baaa2bf9e670645ad90d1cc5b72",
-  "raw/coffee.md": "6680519a5073a5e2297a1482a4f51af30cf4239ac3506b5f88da4efed4e6c2dd",
-  "raw/cold-brew-guide.md": "ee90d5962fe1775313ce51cdb4dc0b392c5078e450aee4ae6693a68ffb19f50c",
-  "raw/cold-brew.md": "7f4a69c659ced6e8b7fc091c23dd7b3bc4325aefcb8670426a76e8a29b7f3171",
-  "raw/decaffeination.md": "5fa24af9d53a94ba2d67e0919a248eeb1ef65edba10ddddcb9a4e9bdd534ca0a",
-  "raw/espresso-extraction.md": "10a254c0fb8454d8c36d7a37f411955dd4f151882cfcc632b537146c20ca7c15",
-  "raw/espresso.md": "fcc361e5397517da9782c0b2003dddf1f2c7be4f489538affc3c50ea6afc5372",
-  "raw/french-press.md": "0f94c35aa97a0336138fe16f6e3b397bc33f9c8d2d9adb0eae0adc516cfdfc1f",
-  "raw/grind-size.md": "85296be5831c5a1387cdeb56ba7ed781b552b97c64ad70bbe4fdddb3d72e13ba",
-  "raw/latte-art.md": "9dc5b3328c1201f47c68957d7608cd489daf115602949e7e3daf51fb8195bc42",
-  "raw/milk-drinks.md": "e94cbf5207e8c523e2edc4cbe31fe1720ab5caa195beafefc5e3676f42a7d0d7",
-  "raw/pour-over.md": "e1e68a90d14a4b6473d56d53a5d7e4c3aa69f7f0c9434488d73e44a48a62f20e",
-  "raw/roast-levels.md": "f66a70c3595463c59b3c02fb2c379e9fc4868761a0924b622364aad2ad491570",
-  "raw/water-for-coffee.md": "87f628dc8ad5e9a9676eafba3e591145bb8d417222227c289d1c596fbcd45ce2"
+  "raw/aurora-coffee-blog.md": {
+    "model": "claude:sonnet",
+    "sha256": "fb5ef3ac8ea5cdd0a2035e7fee1ef640b8e7cc64df32ab7da82f95db03ef16ac"
+  },
+  "raw/coffee-guide.md": {
+    "model": "claude:sonnet",
+    "sha256": "a5ce5b7cbe8932d04d0f6221e69e68fadb7a16c5b15525a991644617c45562df"
+  },
+  "raw/coffee-health-faq.md": {
+    "model": "claude:sonnet",
+    "sha256": "713966806e572fb1b15df69c07a4d4ac8855466647976768a7d1165ba3bdffe3"
+  },
+  "raw/cold-brew-notes.md": {
+    "model": "claude:sonnet",
+    "sha256": "e450b5e377779b0af54538a448c9fb3d62523b01a1bfc1062d3582f4f03dd539"
+  },
+  "raw/espresso-and-cafe-culture.md": {
+    "model": "claude:sonnet",
+    "sha256": "1a651be2a1f6dca0b6d094dedecfb03fe8793a5133e5b491d6f0f39a413bccbf"
+  },
+  "raw/matcha-and-preparation.md": {
+    "model": "claude:sonnet",
+    "sha256": "35caf248497d59c8bac1cfecb2e7e3754d68c2512cc341b887831eea0a31a464"
+  },
+  "raw/tea-guide.md": {
+    "model": "claude:sonnet",
+    "sha256": "6fd78450d2f374dab18374796fe79849f8a197107183d3ee763bc5982757dc4b"
+  },
+  "raw/tea-health-faq.md": {
+    "model": "claude:sonnet",
+    "sha256": "3a5f36e46afb2d6953f9fa9430acfb8c07d4d5e9db228ed04e4607bc8d35944f"
+  },
+  "raw/tea-history-and-trade.md": {
+    "model": "claude:sonnet",
+    "sha256": "65c1d45687742f6c3de6e2423ca52f6a5a404eb03a8c31bb5a430675d41b37ac"
+  },
+  "raw/thornbury-tea-blog.md": {
+    "model": "claude:sonnet",
+    "sha256": "16e327b4ad25c1c0426c3943170c62fe6a882dc17a36a90822859ded65002ff6"
+  }
 }

@@ -27,6 +27,7 @@ import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+
 # OOXML packages all start with the ZIP local-file-header magic. We gate on BOTH the extension and
 # this magic so a plain ``.zip`` (or a renamed text file) is never mistaken for an Office document.
 _ZIP_MAGIC = b"PK\x03\x04"
@@ -123,14 +124,8 @@ def _extract_pptx(path: Path) -> str:
     out: list[str] = []
     with zipfile.ZipFile(path) as z:
         names = z.namelist()
-        slides = sorted(
-            (n for n in names if re.fullmatch(r"ppt/slides/slide\d+\.xml", n)),
-            key=_slide_number,
-        )
-        notes = sorted(
-            (n for n in names if re.fullmatch(r"ppt/notesSlides/notesSlide\d+\.xml", n)),
-            key=_slide_number,
-        )
+        slides = sorted((n for n in names if re.fullmatch(r"ppt/slides/slide\d+\.xml", n)), key=_slide_number)
+        notes = sorted((n for n in names if re.fullmatch(r"ppt/notesSlides/notesSlide\d+\.xml", n)), key=_slide_number)
         for i, name in enumerate(slides, 1):
             paras = _paragraph_texts(z.read(name), "p", "t")
             body = "\n".join(p for p in paras if p.strip()).strip()

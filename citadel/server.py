@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
+
 mcp = FastMCP("citadel")
 
 _SNIPPET_CHARS = 200
@@ -62,9 +63,7 @@ def wiki_search(query: str, limit: int = 8, tag: str = "") -> str:
         pages = None
         if tag.strip():
             want = tag.strip().lower()
-            pages = [
-                p for p in store.load() if want in [str(t).lower() for t in p.tags]
-            ]
+            pages = [p for p in store.load() if want in [str(t).lower() for t in p.tags]]
             if not pages:
                 return f"No pages tagged {tag!r}."
         hits = store.search(query, pages=pages, limit=limit)

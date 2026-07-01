@@ -1,23 +1,21 @@
 # concepts
 
-- [AeroPress](aeropress.md) — A manual hybrid brewer combining immersion steeping with gentle pressure through a paper micro-filter
-- [Arabica and Robusta](arabica-and-robusta.md) — The two dominant coffee species accounting for almost all global coffee production
-- [Brewing Ratios](brewing-ratios.md) — Coffee-to-water weight ratios for different brewing methods
-- [Caffeine in Coffee](caffeine-in-coffee.md) — How much caffeine is in different coffee drinks and what factors affect it
-- [Coffee and Health](coffee-and-health.md) — Health effects of coffee and caffeine — benefits, risks, pregnancy, antioxidants, and disease associations
-- [Coffee Grinders](coffee-grinders.md) — Blade vs burr grinders, burr geometries, adjustment, and the everyday issues of retention and static
-- [Coffee History](coffee-history.md) — The origins and global spread of coffee cultivation and consumption
-- [Coffee Origins](coffee-origins.md) — Where coffee grows around the world and how origin affects flavor
-- [Coffee Processing](coffee-processing.md) — Methods for separating coffee beans from fruit and drying them to stable moisture
-- [Coffee Storage](coffee-storage.md) — How to store roasted coffee beans to preserve freshness and flavor
-- [Coffee Trade](coffee-trade.md) — Coffee as a global commodity — futures markets, price volatility, and fair-trade, direct-trade, and specialty movements
-- [Cold Brew](cold-brew.md) — A smooth, low-acid coffee made by steeping grounds in cold water for 12–24 hours
-- [Decaf](decaf.md) — Decaffeinated coffee and caffeine removal processes
-- [Espresso](espresso.md) — A concentrated coffee shot pulled under pressure and the foundation for milk-based coffee drinks
-- [French Press](french-press.md) — A full-immersion brewing method using a metal mesh plunger to separate grounds
-- [Grinding](grinding.md) — How grind size controls extraction speed and how to choose the right grind for your brewing method
-- [Milk Drinks](milk-drinks.md) — Espresso drinks with steamed milk in different proportions and milk steaming techniques
-- [Milk Steaming and Latte Art](milk-steaming-and-latte-art.md) — Steaming milk into microfoam and free-pouring it over crema to make hearts, rosettas, and tulips
-- [Pour-over](pour-over.md) — A manual filter brewing method where hot water is poured over grounds
-- [Roasting](roasting.md) — How roasting develops coffee flavor and controls roast level darkness
-- [Water for Coffee](water-for-coffee.md) — Water chemistry and its critical impact on coffee flavor, extraction, and equipment
+- [Arabica and Robusta](arabica-and-robusta.md) — The two coffee species that account for nearly all commercial production, contrasted by growing conditions, flavor, and caffeine content.
+- [Aurora Ritual](aurora-ritual.md) — Caffe Aurora's three-step ceremony for drinking a cup of coffee — smell, taste plain, then customize.
+- [Brewing Ratios](brewing-ratios.md) — How coffee-to-water ratio, grind size, and contact time determine the strength and balance of brewed coffee.
+- [Caffeine and Health](caffeine-and-health.md) — How caffeine affects the body — the adenosine mechanism, half-life, safe limits, tolerance and withdrawal, and the evidence (and myths) around coffee and health.
+- [Caffeine in Coffee](caffeine-in-coffee.md) — How much caffeine coffee contains, what drives the differences between cups, and why roast level barely affects it.
+- [Caffeine in Tea](caffeine-in-tea.md) — How much caffeine the different tea types contain, why white tea is not caffeine-free despite being the least processed, and how tea's caffeine compares to coffee's and affects sleep and hydration.
+- [Coffee History and Trade](coffee-history-and-trade.md) — Coffee's spread from Ethiopia through Yemen and Europe to global cultivation, and today's leading producing countries.
+- [Coffee Processing](coffee-processing.md) — The washed, natural, and honey methods of extracting and drying coffee seeds after harvest, and how each shapes flavor.
+- [Coffee](coffee.md) — A brewed beverage made from the roasted, ground seeds of the Coffea plant, valued as a stimulant and for its varied sensory flavor.
+- [Cold Brew](cold-brew.md) — An immersion method that steeps coarse coffee grounds in room-temp or cold water for 12-18 hours to make a concentrate, diluted to taste before serving.
+- [Espresso](espresso.md) — A concentrated coffee brewing method made by forcing hot water through finely ground coffee under pressure, and the bar ritual built around it.
+- [Matcha](matcha.md) — Shade-grown green tea, dried and stone-ground into a fine powder that is whisked whole into hot water rather than steeped and discarded.
+- [Roasting](roasting.md) — The application of heat that transforms green coffee seeds into brown, aromatic beans, and how roast level from light to dark shapes flavor.
+- [Tea Antioxidants and Tannins](tea-antioxidants-and-tannins.md) — The catechins, tannins, and other compounds beyond caffeine that shape tea's taste and its reputation as a healthful drink.
+- [Tea Brewing Temperature and Time](tea-brewing-temperature-and-time.md) — Why different tea types need different water temperatures, and how steeping time shapes strength, sweetness, and astringency.
+- [Tea Growing and Harvesting](tea-growing-and-harvesting.md) — How Camellia sinensis is cultivated, the prized young "flush," and the two principal varieties, China and Assam.
+- [Tea History](tea-history.md) — Tea's legendary discovery in China and its spread to Japan and Europe along trade and religious routes.
+- [Tea Types and Oxidation](tea-types-and-oxidation.md) — How white, green, oolong, black, and pu-erh tea are made from the same plant but differ along the oxidation spectrum.
+- [Tea](tea.md) — An infusion brewed from the leaves of Camellia sinensis, second only to water as the most consumed beverage on the planet by volume.

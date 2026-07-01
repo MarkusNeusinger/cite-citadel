@@ -221,6 +221,14 @@ __marimo__/
 .citadel_viewer.html
 wiki/.citadel_viewer.html
 
+# citadel per-source ingest staging dirs (a sibling of the wiki named `.<wiki>.staging.<pid>.<n>`).
+# Swept automatically at the start of each run, but a crash / Ctrl-C can leave one behind — they
+# are inert scratch copies and must never be committed.
+.*.staging.*/
+
+# GitHub Pages build output (the pages workflow runs `citadel view --out _site/index.html`)
+_site/
+
 # citadel ingest LLM transcripts (CITADEL_LLM_LOG_DIR / `citadel ingest --log-dir`).
 # Individual *.log files are already ignored above; this covers the suggested default dir.
 .citadel_llm_logs/

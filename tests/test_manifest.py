@@ -14,10 +14,7 @@ from citadel import config, manifest
 
 def test_make_entry_includes_model_only_when_set():
     assert manifest.make_entry("abc") == {"sha256": "abc"}
-    assert manifest.make_entry("abc", "claude:sonnet") == {
-        "sha256": "abc",
-        "model": "claude:sonnet",
-    }
+    assert manifest.make_entry("abc", "claude:sonnet") == {"sha256": "abc", "model": "claude:sonnet"}
     # An empty/None model is omitted (a source no model imported records just its sha).
     assert manifest.make_entry("abc", "") == {"sha256": "abc"}
     assert manifest.make_entry("abc", None) == {"sha256": "abc"}
