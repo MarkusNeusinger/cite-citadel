@@ -113,6 +113,18 @@ def test_display_key_leaves_unrelated_absolute_key_unchanged(monkeypatch):
     assert config.display_key("//other/place/file.txt") == "//other/place/file.txt"
 
 
+def test_display_key_always_returns_normalized_str(monkeypatch):
+    """Every fallback path returns a normalized ``str`` — so the ``-> str`` contract holds even for a
+    non-str (``Path``) input, and backslashes are normalized rather than dropped, on a key that is
+    NOT collapsed under a known root."""
+    monkeypatch.setattr(config, "RAW_DIR", Path(_LONG_KEY_RAW_DIR))
+    # A backslash (Windows-style) key not under RAW_DIR keeps its normalization on the fallback.
+    assert config.display_key("\\\\host\\share\\other\\file.txt") == "//host/share/other/file.txt"
+    # A non-str input still comes back as a str.
+    result = config.display_key(Path("//other/place/file.txt"))
+    assert isinstance(result, str)
+
+
 def test_completion_line_shows_short_path(monkeypatch):
     """The per-file START and completion lines show the SHORT key (prefix before raw/ dropped), not
     the long network path. A StringIO is not a TTY, so no spinner thread runs — the source is

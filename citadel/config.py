@@ -136,14 +136,17 @@ def display_key(key: str) -> str:
     display). When the key lies under ``RAW_DIR`` (or ``DOCS_DIR``), collapse it to
     ``<folder-name>/<path-below>`` — dropping the WHOLE prefix before that folder, so
     ``//fileserver/.../raw/sub/notes.pdf`` shows as ``raw/sub/notes.pdf``. A repo-relative key
-    (already short, e.g. ``raw/notes.md``) or any key not under those roots is returned unchanged.
+    (already short, e.g. ``raw/notes.md``) or any key not under those roots is returned unchanged
+    apart from slash-normalization.
 
     Display-only: the CANONICAL key is still what the manifest, the report, and the citation
     bookkeeping use. Read ``RAW_DIR`` / ``DOCS_DIR`` at call time so tests can monkeypatch the layout.
-    Never raises — on any oddity it returns the key unchanged."""
+    Always returns a ``str`` (the input normalized to forward slashes) and never raises — every
+    fallback path returns the normalized string, so the ``-> str`` contract holds even for a non-str
+    (e.g. ``Path``) input and the normalization is never dropped."""
     text = str(key).replace("\\", "/").strip()
     if not text:
-        return key
+        return text
     try:
         p = Path(text)
         # Resolve an ABSOLUTE key through the same normalization the roots use, so the two compare in
@@ -157,8 +160,8 @@ def display_key(key: str) -> str:
                 continue
             return base.name + "/" + "/".join(rel.parts) if rel.parts else base.name
     except (OSError, ValueError):
-        return key
-    return key
+        return text
+    return text
 
 
 def is_outside_repo(path: Path | str) -> bool:
