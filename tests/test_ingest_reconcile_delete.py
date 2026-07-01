@@ -58,7 +58,7 @@ def test_deleted_source_citations_reconciled_out(tmp_citadel, fake_agent, seed_p
 
     import json
 
-    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))["sources"]
     assert "raw/gone.md" not in data  # manifest key dropped
     rep = lint.lint()
     assert rep.ok() and rep.bad_sources == []
@@ -128,7 +128,7 @@ def test_deleted_source_with_no_references_just_dropped(tmp_citadel, fake_agent,
 
     import json
 
-    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))["sources"]
     assert "raw/gone.md" not in data and "raw/keep.md" in data
 
 
@@ -154,7 +154,7 @@ def test_deleted_cleanup_incomplete_rolls_back_and_retries(tmp_citadel, fake_age
 
     import json
 
-    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))["sources"]
     assert "raw/gone.md" in data  # key kept -> retried next run
 
 
@@ -187,7 +187,7 @@ def test_deletion_swept_only_on_full_run_not_path_scoped(tmp_citadel, fake_agent
 
     import json
 
-    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))["sources"]
     assert "raw/gone.md" in data  # still tracked; not pruned by a scoped run
 
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+import citadel
 from citadel import cli, config, viewer
 from citadel import ingest as ingest_mod
 from citadel import lint as lint_mod
@@ -122,6 +123,17 @@ def test_no_args_exits_2(capsys):
         cli.main([])
     assert exc.value.code == 2
     assert "usage:" in capsys.readouterr().err
+
+
+def test_version_prints_and_exits_0_without_a_workspace(monkeypatch, tmp_path, capsys):
+    """``citadel --version`` must work from a bare CWD with NO workspace at all: argparse's
+    version action exits during parse_args, so main's fail-loud guard is never reached."""
+    monkeypatch.chdir(tmp_path)  # a bare tmp CWD — no citadel.toml, no CITADEL_* dirs
+    monkeypatch.setattr(config, "WORKSPACE_SOURCE", "fallback")  # what discovery resolves there
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--version"])
+    assert exc.value.code == 0
+    assert capsys.readouterr().out.strip() == f"citadel {citadel.__version__}"
 
 
 def test_runtime_error_from_subcommand_prints_to_stderr_and_returns_1(monkeypatch, capsys):

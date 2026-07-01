@@ -46,7 +46,7 @@ def test_large_text_source_is_chunked_into_ordered_passes(tmp_citadel, fake_agen
 
     import json
 
-    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))["sources"]
     assert "raw/big.txt" in data  # tracked once
     assert ingest.ingest().processed == []  # idempotent
 
@@ -111,5 +111,5 @@ def test_chunk_pass_failure_leaves_source_pending(tmp_citadel, fake_agent, cite_
     import json
 
     manifest_path = tmp_citadel.manifest_path
-    tracked = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
+    tracked = json.loads(manifest_path.read_text(encoding="utf-8"))["sources"] if manifest_path.exists() else {}
     assert "raw/big.txt" not in tracked  # not marked done -> pending again next run

@@ -22,7 +22,8 @@ The CLI is **`citadel`**; the PyPI package is **`cite-citadel`**. The `wiki/` di
 database — no SQLite, no vector store. Ingest runs through a **coding-agent CLI you already have**
 (`claude`, `copilot`, or `gemini`), so it uses your existing subscription and **needs no API key**.
 
-**Three guarantees that hold as the wiki grows** (full rules in [`SCHEMA.md`](SCHEMA.md)):
+**Three guarantees that hold as the wiki grows** (full rules in
+[`SCHEMA.md`](citadel/rules/SCHEMA.md)):
 
 - **Stays organized** — ingest merges, splits, and deletes pages by fit; it never piles up one page
   per raw file.
@@ -68,28 +69,31 @@ uv run python -m citadel lint     # health report (contradictions, orphans, fabr
 
 Ingest is **idempotent** — a committed `wiki/.citadel_ingested.json` manifest tracks each source's
 hash and the model that imported it — and keeps the wiki in sync when a raw file is **edited,
-deleted, or moved**. Configure the backend in `.env` (copy [`.env.example`](.env.example)):
+deleted, or moved**. Configure the backend in `.env` (`citadel init` scaffolds it from the
+packaged template, or copy [`citadel/templates/env.example`](citadel/templates/env.example)):
 
 ```ini
 CITADEL_LLM_CLI=claude        # claude | copilot | gemini
 CITADEL_INGEST_MODEL=sonnet   # claude model alias/id
 ```
 
-[`.env.example`](.env.example) documents every knob — timeouts, verbose/transcript debugging, an
-out-of-repo `wiki/`/`raw/` on a network drive, and ingesting a whole git repo as one source.
+[`citadel/templates/env.example`](citadel/templates/env.example) documents every knob — timeouts,
+verbose/transcript debugging, an out-of-workspace `wiki/`/`raw/` on a network drive, and ingesting
+a whole git repo as one source.
 
 ## How it works
 
-Three layers (Karpathy's split; [`SCHEMA.md`](SCHEMA.md) has the authoritative rules and is injected
-verbatim into the ingest prompt):
+Three layers (Karpathy's split; [`SCHEMA.md`](citadel/rules/SCHEMA.md) has the authoritative rules,
+which the ingest agent reads — referenced by path — every run):
 
 1. **`raw/`** — immutable sources; ingest reads but never edits them.
 2. **`wiki/`** — the LLM-owned OKF bundle: markdown pages with YAML frontmatter, routed **by kind**
    into `concepts/`, `objects/`, `systems/`, `persons/`, `organizations/`, `projects/`,
    `abbreviations/`, `misc/`, densely cross-linked, each fact carrying a citation. The reserved
    `index.md`, `log.md`, and `sources/index.md` are generated, not authored.
-3. **[`SCHEMA.md`](SCHEMA.md)** — the schema/config layer. Editing it changes how the wiki is built
-   with **no code change**.
+3. **[`SCHEMA.md`](citadel/rules/SCHEMA.md)** — the schema/config layer. Editing it changes how the
+   wiki is built with **no code change**. The rules live in the package (`citadel/rules/`) so a pip
+   install carries them; the repo-root `SCHEMA.md`/`AGENT_INGEST.md` are just pointer stubs.
 
 **Per-fact provenance** is the load-bearing rule. Every factual sentence ends with a GitHub-Flavored
 Markdown footnote, defined in a trailing `## Sources` section that links to the originating `raw/`
@@ -145,9 +149,11 @@ pull full cited context — answering from your synthesized wiki instead of re-r
 
 ## Reference
 
-- [`SCHEMA.md`](SCHEMA.md) — authoritative structure, routing, and provenance rules.
-- [`AGENT_INGEST.md`](AGENT_INGEST.md) — the operational rules the ingest agent follows.
-- [`.env.example`](.env.example) — every configuration knob.
+- [`SCHEMA.md`](citadel/rules/SCHEMA.md) — authoritative structure, routing, and provenance rules.
+- [`AGENT_INGEST.md`](citadel/rules/AGENT_INGEST.md) — the operational rules the ingest agent
+  follows.
+- [`citadel/templates/env.example`](citadel/templates/env.example) — every configuration knob
+  (the `citadel init` `.env` template; the repo-root `.env.example` is a pointer stub).
 - [`docs/karpathy-llm-wiki.md`](docs/karpathy-llm-wiki.md) ·
   [`docs/okf-reference.md`](docs/okf-reference.md) — the pattern and the format.
 - `CLAUDE.md` — architecture notes for contributors.

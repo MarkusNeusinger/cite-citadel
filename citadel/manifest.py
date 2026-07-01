@@ -1,26 +1,38 @@
 """Tracks which raw files were already ingested so re-running is idempotent and cheap.
 
-A tiny committed JSON file wiki/.citadel_ingested.json maps the source's repo-relative posix path
-(e.g. 'raw/notes.md') to a small record of how it was last ingested:
+A tiny committed JSON file wiki/.citadel_ingested.json:
 
-    {"sha256": "<hex>", "model": "claude:sonnet"}
+    {
+      "meta": {"format": 2, "workspace": "<abs posix workspace root>"},
+      "sources": {"raw/notes.md": {"sha256": "<hex>", "model": "claude:sonnet"}, ...}
+    }
 
-``sha256`` is the hash of the source's content (a file is (re)ingested only if absent or its
-hash changed); ``model`` is the model/backend that imported it (``config.ingest_model_label``),
-so you can see WHICH raw file was imported by WHICH model. ``model`` is omitted for a source
-that no model imported (a binary/unreadable file that was only seen and skipped).
+``sources`` maps the source's workspace-relative (or absolute, for an out-of-workspace source)
+posix key to how it was last ingested: ``sha256`` is the hash of the source's content (a file is
+(re)ingested only if absent or its hash changed); ``model`` is the model/backend that imported it
+(``config.ingest_model_label``), so you can see WHICH raw file was imported by WHICH model.
+``model`` is omitted for a source that no model imported (a binary/unreadable file that was only
+seen and skipped).
 
-Backward compatible: an older manifest whose value is a bare sha STRING is still read — that
-form simply carries no model. No DB.
+:func:`load` returns the FLAT sources dict — callers never see ``meta`` — and :func:`save` stamps
+``meta`` with the CURRENT workspace root. A legacy flat manifest (pre-workspace, no meta) is read
+as sources-only and upgraded to the stamped form on the next save; greenfield, no migration
+tooling (docs/refactor-plan.md). A bare-sha-string entry value is likewise still read (it simply
+carries no model). No DB.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 from . import config
+
+
+# The on-disk manifest format version stamped into ``meta`` by :func:`save`.
+MANIFEST_FORMAT = 2
 
 
 # A manifest value is either the current record ({"sha256": ..., "model": ...}) or, for an older
@@ -41,10 +53,10 @@ def file_sha256(path: Path) -> str:
 
 
 def rel_key(src: Path) -> str:
-    """Stable identity key for a raw source: its posix path relative to config.REPO_ROOT when it
-    lives under the repo (e.g. 'raw/notes.md', 'docs/karpathy-llm-wiki.md'), else its ABSOLUTE
-    posix path (e.g. 'T:/team-wiki/raw/notes.md') so a source on a mounted network drive gets a
-    unique, resolvable key instead of colliding on basename. Thin wrapper over the single
+    """Stable identity key for a raw source: its posix path relative to config.WORKSPACE_ROOT
+    when it lives under the workspace (e.g. 'raw/notes.md', 'docs/karpathy-llm-wiki.md'), else its
+    ABSOLUTE posix path (e.g. 'T:/team-wiki/raw/notes.md') so a source on a mounted network drive
+    gets a unique, resolvable key instead of colliding on basename. Thin wrapper over the single
     source of truth, config.rel_or_abs_posix."""
     return config.rel_or_abs_posix(src)
 
@@ -117,8 +129,46 @@ def model_of(manifest: dict[str, Entry], key: str) -> str | None:
     return entry_model(manifest[key])
 
 
+def _workspace_stamp() -> str:
+    """The absolute posix identity of the current workspace root — the value :func:`save` stamps
+    into ``meta.workspace``. Read at call time so tests can monkeypatch the layout."""
+    return config._safe_resolve(Path(config.WORKSPACE_ROOT)).as_posix()
+
+
+# Stamped roots already warned about, so one mismatching manifest warns ONCE per process instead
+# of once per load() (rebuild_indexes and the viewer re-load the manifest during a single run).
+_warned_workspaces: set[str] = set()
+
+
+def _check_workspace(meta: dict) -> None:
+    """Print ONE prominent stderr warning when the manifest was stamped by a workspace rooted
+    somewhere else. A warning, NOT an error: the same share can legitimately be mounted at
+    different paths (a Windows drive letter vs a WSL /mnt path), so a mismatch is suspicious but
+    must not block. The HARD workspace-identity guard — refusing to run so a nested marker cannot
+    silently re-key sources — is scheduled for PR4's deletion-sweep rework (docs/refactor-plan.md,
+    Z1 "key-space stability" / roadmap row 4)."""
+    stamped = str(meta.get("workspace") or "")
+    current = _workspace_stamp()
+    if not stamped or stamped == current or stamped in _warned_workspaces:
+        return
+    _warned_workspaces.add(stamped)
+    print(
+        f"WARNING: the ingest manifest ({config.MANIFEST_PATH}) was written by a workspace rooted at\n"
+        f"    {stamped}\n"
+        f"but the current workspace root is\n"
+        f"    {current}\n"
+        "Source keys may not line up (same share mounted at a different path?). Proceeding anyway;\n"
+        "verify the workspace before trusting change/deletion detection.",
+        file=sys.stderr,
+    )
+
+
 def load() -> dict[str, Entry]:
-    """json.loads(MANIFEST_PATH) or {} if missing/empty/corrupt."""
+    """The flat ``{source key: entry}`` dict from MANIFEST_PATH, or {} if missing/empty/corrupt.
+
+    Accepts both the stamped format-2 file (``{"meta": ..., "sources": {...}}`` — callers never
+    see ``meta``) and a legacy flat mapping (read as sources-only; upgraded on the next save).
+    A stamped workspace differing from the current one triggers one stderr warning."""
     path = config.MANIFEST_PATH
     try:
         text = path.read_text(encoding="utf-8")
@@ -132,15 +182,22 @@ def load() -> dict[str, Entry]:
         return {}
     if not isinstance(data, dict):
         return {}
-    return data
+    if isinstance(data.get("sources"), dict):
+        meta = data.get("meta")
+        if isinstance(meta, dict):
+            _check_workspace(meta)
+        return data["sources"]
+    return data  # legacy flat manifest: the whole mapping IS the sources dict
 
 
 def save(manifest: dict[str, Entry]) -> None:
-    """json.dump(manifest, sort_keys=True, indent=2) to MANIFEST_PATH (+ trailing
-    newline)."""
+    """Write ``{"meta": {format, workspace}, "sources": manifest}`` to MANIFEST_PATH
+    (sort_keys, indent=2, trailing newline). ``manifest`` is the flat sources dict the callers
+    hold; the workspace stamp records WHICH workspace the keys are relative to."""
     path = config.MANIFEST_PATH
     config.robust_mkdir(path.parent)
-    text = json.dumps(manifest, sort_keys=True, indent=2) + "\n"
+    data = {"meta": {"format": MANIFEST_FORMAT, "workspace": _workspace_stamp()}, "sources": manifest}
+    text = json.dumps(data, sort_keys=True, indent=2) + "\n"
     path.write_text(text, encoding="utf-8")
 
 

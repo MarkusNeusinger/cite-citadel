@@ -10,6 +10,7 @@ real CLI is ever spawned.
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -23,12 +24,21 @@ class _FakeProc:
         self.stderr = stderr
 
 
+def _rules_tokens() -> tuple[str, str]:
+    """The two rules-path tokens exactly as ``_build_instruction`` renders them into the prompt
+    (the same ``config.rel_or_abs_posix`` discipline as every other prompt path)."""
+    return config.rel_or_abs_posix(config.SCHEMA_PATH), config.rel_or_abs_posix(config.AGENT_RULES_PATH)
+
+
 def test_build_instruction_references_paths_not_content():
     """The prompt references the rules + raw source BY PATH and never embeds content, so it
-    stays tiny — the regression guard against the old WinError 206 (argv too long)."""
+    stays tiny — the regression guard against the old WinError 206 (argv too long). The rules are
+    named by their RESOLVED packaged locations (config.SCHEMA_PATH / config.AGENT_RULES_PATH),
+    not assumed to sit in the current directory."""
     prompt = llm._build_instruction("raw/notes.md")
-    assert "SCHEMA.md" in prompt
-    assert "AGENT_INGEST.md" in prompt
+    schema_token, rules_token = _rules_tokens()
+    assert schema_token in prompt
+    assert rules_token in prompt
     assert "raw/notes.md" in prompt
     assert "wiki/" in prompt
     # Must never embed a large blob — paths only.
@@ -40,9 +50,12 @@ def test_build_instruction_uses_configured_wiki_dir(tmp_path, monkeypatch):
     directory (CITADEL_WIKI_DIR), so with CITADEL_WIKI_DIR=wikiET the agent searches and writes
     wikiET/ — otherwise it edits 'wiki/' while ingest's snapshot/diff watches wikiET/ and sees
     nothing."""
-    monkeypatch.setattr(config, "REPO_ROOT", tmp_path, raising=False)
+    monkeypatch.setattr(config, "WORKSPACE_ROOT", tmp_path, raising=False)
     monkeypatch.setattr(config, "WIKI_DIR", tmp_path / "wikiET", raising=False)
     monkeypatch.setattr(config, "RAW_DIR", tmp_path / "raw", raising=False)
+    # Keep the rules tokens free of the real checkout's absolute path (which could contain 'wiki/').
+    monkeypatch.setattr(config, "SCHEMA_PATH", tmp_path / "rules" / "SCHEMA.md")
+    monkeypatch.setattr(config, "AGENT_RULES_PATH", tmp_path / "rules" / "AGENT_INGEST.md")
 
     prompt = llm._build_instruction("raw/notes.md")
 
@@ -161,13 +174,178 @@ def test_build_instruction_delete_strips_provenance_without_opening():
 def test_build_instruction_delete_honors_configured_wiki_dir(tmp_path, monkeypatch):
     """The delete prompt names the CONFIGURED wiki dir (CITADEL_WIKI_DIR), never a hardcoded
     'wiki/', so a custom layout is searched/edited correctly."""
-    monkeypatch.setattr(config, "REPO_ROOT", tmp_path, raising=False)
+    monkeypatch.setattr(config, "WORKSPACE_ROOT", tmp_path, raising=False)
     monkeypatch.setattr(config, "WIKI_DIR", tmp_path / "wikiET", raising=False)
     monkeypatch.setattr(config, "RAW_DIR", tmp_path / "raw", raising=False)
+    monkeypatch.setattr(config, "SCHEMA_PATH", tmp_path / "rules" / "SCHEMA.md")
+    monkeypatch.setattr(config, "AGENT_RULES_PATH", tmp_path / "rules" / "AGENT_INGEST.md")
 
     prompt = llm._build_instruction("raw/gone.md", "delete")
     assert "wikiET/" in prompt
     assert "wiki/" not in prompt
+
+
+# --- packaged rules: prompt repoint + access grants (PR2, refactor-plan Z1/Z8) ------------
+
+
+@pytest.fixture
+def pip_like_workspace(tmp_path, monkeypatch) -> Path:
+    """A workspace whose packaged rules live OUTSIDE it — the pip-install reality (the rules sit
+    in site-packages, never under a user workspace). Only the workspace moves to tmp; the REAL
+    packaged ``config.SCHEMA_PATH`` / ``config.AGENT_RULES_PATH`` stay in effect, so their prompt
+    tokens are ABSOLUTE paths here."""
+    root = tmp_path / "ws"
+    for d in ("wiki", "raw", "docs"):
+        (root / d).mkdir(parents=True)
+    monkeypatch.setattr(config, "WORKSPACE_ROOT", root)
+    monkeypatch.setattr(config, "WIKI_DIR", root / "wiki")
+    monkeypatch.setattr(config, "RAW_DIR", root / "raw")
+    monkeypatch.setattr(config, "DOCS_DIR", root / "docs")
+    return root
+
+
+# Every (kind, read_path, segment) variant _build_instruction can emit today.
+_KIND_VARIANTS = [
+    ("ingest", None, None),
+    ("reconcile", None, None),
+    ("image", None, None),
+    ("image-reconcile", None, None),
+    ("delete", None, None),
+    ("repo", "/tmp/okf_digest_x/repo.md", None),
+    ("repo-reconcile", "/tmp/okf_digest_x/repo.md", None),
+    ("ingest", "/tmp/okf_extract_x/deck.md", None),  # Office extract
+    ("reconcile", "/tmp/okf_extract_x/deck.md", None),
+    ("ingest", "/tmp/okf_extract_x/big.md", (1, 4)),  # large-source segments
+    ("ingest", "/tmp/okf_extract_x/big.md", (3, 4)),
+    ("reconcile", "/tmp/okf_extract_x/big.md", (2, 4)),
+]
+
+
+@pytest.mark.parametrize(("kind", "read_path", "segment"), _KIND_VARIANTS)
+def test_prompt_rules_paths_point_at_existing_files(kind, read_path, segment):
+    """Every rules path a built prompt references resolves — through the same key math the rest
+    of the system uses (config.source_path_for_key) — to an EXISTING file: the packaged
+    citadel/rules/ pair the wheel ships. A prompt pointing the agent at a missing rules file
+    would silently ingest without the schema."""
+    prompt = llm._build_instruction("raw/notes.md", kind, read_path, segment)
+    for token in _rules_tokens():
+        assert token in prompt
+        assert config.source_path_for_key(token).is_file()
+
+
+def test_external_dirs_always_grant_out_of_workspace_rules(pip_like_workspace):
+    """With the packaged rules OUTSIDE the workspace (pip install), _external_dirs must include
+    the resolved rules directory so the agent's file tools — otherwise scoped to cwd — can read
+    the very rules the prompt tells it to follow."""
+    dirs = llm._external_dirs("raw/notes.md")
+    assert str(Path(config.SCHEMA_PATH).parent.resolve()) in dirs
+    assert str(Path(config.AGENT_RULES_PATH).parent.resolve()) in dirs
+
+
+def test_claude_and_gemini_grant_rules_dir_copilot_needs_nothing(pip_like_workspace, monkeypatch):
+    """The rules-dir grant reaches each CLI's own mechanism: claude ``--add-dir``, gemini
+    ``--include-directories``. copilot has NO per-directory grant mechanism and needs none —
+    it always runs with ``--allow-all-paths`` (which covers site-packages)."""
+    monkeypatch.setattr(config, "INGEST_MODEL", "", raising=False)
+    dirs = llm._external_dirs("raw/notes.md")
+    rules_dir = str(Path(config.SCHEMA_PATH).parent.resolve())
+
+    argv, _ = llm._build_invocation("claude", "/bin/claude", "P", dirs)
+    granted = [argv[i + 1] for i, flag in enumerate(argv) if flag == "--add-dir"]
+    assert rules_dir in granted
+
+    argv, _ = llm._build_invocation("gemini", "/bin/gemini", "P", dirs)
+    included = argv[argv.index("--include-directories") + 1]
+    assert rules_dir in included.split(",")
+
+    argv, _ = llm._build_invocation("copilot", "/bin/copilot", "P", dirs)
+    assert "--allow-all-paths" in argv
+    assert rules_dir not in argv  # extra_dirs is deliberately unused for copilot
+
+
+def test_prompt_rules_paths_inside_cwd_or_granted(pip_like_workspace):
+    """The Z1 invariant: every rules path a built prompt references is readable by the agent —
+    either under its cwd (the workspace root) or inside a directory _external_dirs granted."""
+    prompt = llm._build_instruction("raw/notes.md")
+    dirs = llm._external_dirs("raw/notes.md")
+    for token in _rules_tokens():
+        assert token in prompt
+        resolved = config.source_path_for_key(token).resolve()
+        assert (not config.is_outside_repo(resolved)) or str(resolved.parent) in dirs
+
+
+def test_rules_inside_workspace_need_no_grant(tmp_path, make_citadel):
+    """The dev-checkout shape (rules under the workspace root): the prompt names them by their
+    short workspace-relative token and the cwd already covers them, so _external_dirs stays
+    empty and the all-under-workspace argv is byte-for-byte unchanged."""
+    make_citadel(root=tmp_path / "repo")
+    prompt = llm._build_instruction("raw/notes.md")
+    schema_token, rules_token = _rules_tokens()
+    assert not Path(schema_token).is_absolute() and schema_token in prompt
+    assert not Path(rules_token).is_absolute() and rules_token in prompt
+    assert llm._external_dirs("raw/notes.md") == []
+
+
+@pytest.mark.parametrize(("kind", "read_path", "segment"), _KIND_VARIANTS)
+def test_prompt_size_guard_every_kind(pip_like_workspace, kind, read_path, segment):
+    """The <3000-char argv guard (WinError 206) holds for EVERY prompt variant even in the
+    worst realistic case: the rules referenced by their ABSOLUTE site-packages paths."""
+    prompt = llm._build_instruction("raw/notes.md", kind, read_path, segment)
+    assert len(prompt) < 3000
+
+
+# The FULL pre-change kind=ingest prompt, rendered VERBATIM from `git show HEAD:citadel/llm.py`'s
+# literals at the PR2 base (rel_key="raw/notes.md", wiki dir "wiki", raw dir "raw", source absent
+# on disk -> no mtime date hint). Recorded so the PR2 repoint provably changes NOTHING but the two
+# rules-path tokens. Do not hand-edit; regenerate the same way if the prompt legitimately changes
+# (that is PR3's job — gutting _build_instruction — not PR2's).
+_PRE_CHANGE_INGEST_PROMPT = (
+    "You are the ingest engine for a self-structuring wiki in Google's Open Knowledge Format. Read "
+    "the rules in SCHEMA.md and AGENT_INGEST.md (current directory) and follow them exactly.\n"
+    "\n"
+    "Fold ONE raw source into the wiki by EDITING FILES DIRECTLY:\n"
+    "1. Open and read the raw source file: raw/notes.md. It may be ANY text-bearing file type "
+    "(markdown, plain text, code such as .py/.sql, JSON/CSV, PDF, ...) — extract its text and ingest "
+    "the facts. For a PDF, also LOOK AT the pages' figures, diagrams, and charts (not just the body "
+    "text) and capture what they show. For CODE/config/data, capture its PURPOSE, BEHAVIOR and the "
+    "external systems it touches (which database and HOW), NOT its structure — see 'Code & structured "
+    "sources' in SCHEMA.md. If it holds no usable text, make no edits.\n"
+    "2. The wiki is under wiki/ (raw sources under raw/). Search and read existing pages "
+    "(Grep/Glob/Read) before writing — prefer extending or merging into an existing page over "
+    "creating a new one.\n"
+    "3. Create/update/merge/split page files under wiki/ so every fact from raw/notes.md is captured, "
+    "cited ([^sN] for raw facts / [^llmN] for model facts, defined in a trailing ## Sources section), "
+    "and densely cross-linked with relative markdown links. Set frontmatter type, title, description, "
+    "tags (>=1 lowercase), and resource (verbatim); do NOT set timestamp.\n"
+    "3b. If raw/notes.md is a TIME-ANCHORED tracking artifact (meeting minutes, status update, "
+    "open-points/action list, changelog — judged from CONTENT, not name), ALSO maintain dated `## "
+    "Open Points` threads (and `## Change Log`) per the 'Threaded sources' rules in AGENT_INGEST.md: "
+    "fan facts out as normal, then append a dated `[^sN]` bullet to the matching `id: op-<slug>` "
+    "(never rewriting a past bullet; status is derived, not stored). Date entries from the source.\n"
+    "4. Never edit wiki/index.md, wiki/log.md, any */index.md, or any dotfile. Make no changes "
+    "outside wiki/.\n"
+    "5. When you delete or rename a page, repoint inbound relative links to it.\n"
+    "6. Before finishing, run `citadel check` (or `uv run python -m citadel check`) and fix every "
+    "reported error.\n"
+    "If raw/notes.md adds nothing new, make no edits and stop."
+)
+
+
+def test_prompt_shape_unchanged_modulo_rules_paths(pip_like_workspace):
+    """PR2's 'byte-identical modulo rules paths' gate: the assembled kind=ingest prompt equals the
+    recorded pre-change prompt EXCEPT for the two rules-path substitutions in the header —
+    ``SCHEMA.md`` -> the resolved config.SCHEMA_PATH token and ``AGENT_INGEST.md (current
+    directory)`` -> the resolved config.AGENT_RULES_PATH token (the old parenthetical LOCATED the
+    files, so it travels with the path it described). Undoing exactly those two substitutions must
+    reproduce the pre-change text byte for byte."""
+    prompt = llm._build_instruction("raw/notes.md")
+    schema_token, rules_token = _rules_tokens()
+    new_fragment = f"Read the rules in {schema_token} and {rules_token} and follow them exactly."
+    assert new_fragment in prompt
+    restored = prompt.replace(
+        new_fragment, "Read the rules in SCHEMA.md and AGENT_INGEST.md (current directory) and follow them exactly.", 1
+    )
+    assert restored == _PRE_CHANGE_INGEST_PROMPT
 
 
 def test_build_invocation_claude_uses_stdin_and_acceptedits(monkeypatch):

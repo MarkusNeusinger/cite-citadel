@@ -166,7 +166,11 @@ def _load_manifest() -> dict:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        return {}
+    if isinstance(data.get("sources"), dict):
+        return data["sources"]  # the stamped format-2 manifest ({"meta": ..., "sources": ...})
+    return data  # legacy flat manifest
 
 
 def _is_within(path_abs: str | os.PathLike, base) -> bool:

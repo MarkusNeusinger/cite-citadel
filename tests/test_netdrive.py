@@ -2,7 +2,7 @@
 
 The user case: ``CITADEL_WIKI_DIR=T:\\team-wiki\\wiki`` / ``CITADEL_RAW_DIR=T:\\team-wiki\\raw`` while the
 code is a normal checkout on another volume. These cover the full chain that used to assume
-everything lives under ``REPO_ROOT``:
+everything lives under ``WORKSPACE_ROOT``:
 
   * config key<->path helpers (the single source of truth) + env-override resolution;
   * the agent bridge (absolute paths in the prompt + ``--add-dir`` for claude / ``--include-
@@ -31,7 +31,7 @@ from citadel import config, ingest, lint, llm, manifest, okf, store, validate
 def test_rel_or_abs_posix_relative_in_repo_absolute_outside(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     (repo / "raw").mkdir(parents=True)
-    monkeypatch.setattr(config, "REPO_ROOT", repo, raising=False)
+    monkeypatch.setattr(config, "WORKSPACE_ROOT", repo, raising=False)
 
     inside = repo / "raw" / "notes.md"
     outside = tmp_path / "net" / "raw" / "notes.md"
@@ -48,9 +48,9 @@ def test_rel_or_abs_posix_relative_in_repo_absolute_outside(tmp_path, monkeypatc
 def test_source_path_for_key_inverts_rel_or_abs_posix(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
-    monkeypatch.setattr(config, "REPO_ROOT", repo, raising=False)
+    monkeypatch.setattr(config, "WORKSPACE_ROOT", repo, raising=False)
 
-    # repo-relative key -> under REPO_ROOT
+    # workspace-relative key -> under WORKSPACE_ROOT
     assert config.source_path_for_key("raw/notes.md") == repo / "raw" / "notes.md"
     # absolute key -> used as-is
     abs_key = (tmp_path / "net" / "raw" / "notes.md").resolve().as_posix()
@@ -63,7 +63,7 @@ def test_source_path_for_key_inverts_rel_or_abs_posix(tmp_path, monkeypatch):
 def test_is_outside_repo(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
-    monkeypatch.setattr(config, "REPO_ROOT", repo, raising=False)
+    monkeypatch.setattr(config, "WORKSPACE_ROOT", repo, raising=False)
     assert config.is_outside_repo(tmp_path / "net" / "wiki") is True
     assert config.is_outside_repo(repo / "wiki") is False
 
@@ -71,7 +71,7 @@ def test_is_outside_repo(tmp_path, monkeypatch):
 def test_dir_setting_relative_against_repo_root_absolute_as_is(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
-    monkeypatch.setattr(config, "REPO_ROOT", repo, raising=False)
+    monkeypatch.setattr(config, "WORKSPACE_ROOT", repo, raising=False)
 
     # A relative override resolves against the REPO ROOT, not the process CWD.
     monkeypatch.setenv("CITADEL_X_DIR", "wiki")
@@ -255,7 +255,7 @@ def test_ingest_end_to_end_with_wiki_raw_outside_repo(tmp_citadel_external, fake
 
     # Derived files + manifest live next to the (out-of-repo) wiki.
     assert "transformer.md" in tmp_citadel_external.index_path.read_text(encoding="utf-8")
-    data = json.loads(tmp_citadel_external.manifest_path.read_text(encoding="utf-8"))
+    data = json.loads(tmp_citadel_external.manifest_path.read_text(encoding="utf-8"))["sources"]
     assert abs_key in data
 
     # Whole-wiki health check is clean, and re-running is a no-op (idempotent on the abs key).
@@ -289,7 +289,7 @@ def test_ingest_deletes_out_of_repo_source(tmp_citadel_external, seed_page, fake
     assert report.sources_deleted == [abs_key]
     assert not (wiki / "concepts" / "topic.md").exists()
     assert not report.errors
-    data = json.loads(tmp_citadel_external.manifest_path.read_text(encoding="utf-8"))
+    data = json.loads(tmp_citadel_external.manifest_path.read_text(encoding="utf-8"))["sources"]
     assert abs_key not in data  # manifest key dropped
 
 

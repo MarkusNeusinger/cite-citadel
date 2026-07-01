@@ -20,6 +20,16 @@ from citadel import config, llm, okf, repo
 # --- layout wiring -----------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _stable_workspace_source(monkeypatch):
+    """Pin ``config.WORKSPACE_SOURCE`` to a resolved value for EVERY test, so the suite behaves
+    identically no matter which CWD pytest was launched from (workspace discovery runs at import
+    time and would otherwise leak the developer's CWD into ``cli.main``'s fail-loud guard).
+    A test exercising the guard overrides this with ``monkeypatch.setattr(config,
+    "WORKSPACE_SOURCE", "fallback")``."""
+    monkeypatch.setattr(config, "WORKSPACE_SOURCE", "marker")
+
+
 @dataclass(frozen=True)
 class CitadelTmp:
     """Handle onto a temp citadel layout that has been wired into ``config``.
@@ -31,7 +41,7 @@ class CitadelTmp:
     only this interface is guaranteed to survive that swap.
     """
 
-    root: Path  # the (fake) repo root -> config.REPO_ROOT
+    root: Path  # the (fake) workspace root -> config.WORKSPACE_ROOT
     wiki: Path  # config.WIKI_DIR
     raw: Path  # config.RAW_DIR
     docs: Path  # config.DOCS_DIR
@@ -75,7 +85,7 @@ def make_citadel(tmp_path: Path, monkeypatch) -> Callable[..., CitadelTmp]:
         # raising=True (the default): every one of these attributes exists in config today, so
         # a PR that renames the config internals makes this seam fail LOUD instead of silently
         # patching a dead attribute while the code reads the real (repo-local) one.
-        monkeypatch.setattr(config, "REPO_ROOT", cit.root)
+        monkeypatch.setattr(config, "WORKSPACE_ROOT", cit.root)
         monkeypatch.setattr(config, "WIKI_DIR", cit.wiki)
         monkeypatch.setattr(config, "RAW_DIR", cit.raw)
         monkeypatch.setattr(config, "DOCS_DIR", cit.docs)

@@ -34,7 +34,7 @@ def test_moved_raw_file_is_recognized_not_reingested(tmp_citadel, fake_agent, tr
 
     import json
 
-    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))["sources"]
     assert "raw/ml/notes.md" in data and "raw/notes.md" not in data  # re-keyed
 
     text = page.read_text(encoding="utf-8")
@@ -65,7 +65,7 @@ def test_duplicate_raw_file_not_reingested(tmp_citadel, fake_agent, transformer_
 
     import json
 
-    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))["sources"]
     assert "raw/notes.md" in data and "raw/copy.md" in data  # both tracked
 
     text = (wiki / "concepts" / "transformer.md").read_text(encoding="utf-8")
@@ -149,7 +149,7 @@ def test_ingest_records_importing_model_in_manifest(tmp_citadel, fake_agent, tra
     assert report.model == "claude:opus"
     assert "Model: claude:opus" in report.render()
 
-    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))["sources"]
     assert data["raw/notes.md"]["model"] == "claude:opus"
     assert "model" not in data["raw/blob.bin"]  # nothing imported it
 
@@ -226,7 +226,7 @@ def test_moved_source_carries_original_importing_model(tmp_citadel, fake_agent, 
     report = ingest.ingest()
     assert ("raw/notes.md", "raw/ml/notes.md") in report.moved
 
-    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))["sources"]
     assert "raw/notes.md" not in data
     assert data["raw/ml/notes.md"]["model"] == "claude:opus"  # original model carried, not haiku
 

@@ -220,7 +220,7 @@ def test_binary_raw_file_is_logged_unreadable_not_ingested(tmp_citadel, fake_age
 
     import json
 
-    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))["sources"]
     assert "raw/blob.bin" in data  # marked done
 
     second = ingest.ingest()

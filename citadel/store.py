@@ -282,7 +282,7 @@ def _link_points_at_key(page_rel: str, target: str, key: str) -> bool:
     raw source identified by ``key`` — a repo-relative key (``raw/x.md``) OR an absolute
     out-of-repo key (``T:/team-wiki/raw/x.md``). Compares absolute paths with OS-appropriate case
     folding, so a ``../../raw/x.md`` citation matches its source whether the wiki and raw live in
-    the repo or together on a mounted network drive. Replaces the old REPO_ROOT-relative resolver,
+    the repo or together on a mounted network drive. Replaces the old workspace-root-relative resolver,
     which returned None for any citation that pointed outside the repo."""
     link_abs = _link_abs(page_rel, target)
     if link_abs is None:

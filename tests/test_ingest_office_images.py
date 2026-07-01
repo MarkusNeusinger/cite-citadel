@@ -88,7 +88,7 @@ def test_office_pptx_extracted_to_temp_and_ingested(tmp_citadel, fake_agent, see
 
     import json
 
-    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))["sources"]
     assert "raw/deck.pptx" in data
 
     # The extracted-text temp dir/file is removed once the session is done (no litter).
@@ -155,7 +155,7 @@ def test_office_deck_without_text_is_unreadable(tmp_citadel, fake_agent, make_pp
 
     import json
 
-    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))["sources"]
     assert "raw/images.pptx" in data  # marked done
 
 
