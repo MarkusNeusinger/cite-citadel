@@ -275,12 +275,11 @@ def _build_instruction(
         # agent should VIEW the informative ones (diagrams/charts the text extractor cannot capture).
         read_step = (
             f"1. The raw source {rel_key} is a binary Office file (PowerPoint/Word/Excel) you cannot "
-            f"open directly. Its text has been EXTRACTED to {read_path} — read THAT file for the "
-            "content. Any images embedded in it were extracted to a `media/` folder beside that "
-            "file: VIEW the ones that carry information (diagrams, charts, screenshots) and ingest "
-            f"their facts too; ignore decorative icons/logos. Treat {rel_key} as the source of "
-            f"record: set `resource: {rel_key}` and cite {rel_key} (NOT the extracted files) in "
-            "`## Sources`. If it holds no usable content, make no edits.\n"
+            f"open directly. Its text has been EXTRACTED to {read_path} — read THAT for the content, "
+            "and VIEW any images in the `media/` folder beside it (diagrams/charts/screenshots carry "
+            f"facts too; ignore icons/logos). Treat {rel_key} as the source of record: set "
+            f"`resource: {rel_key}` and cite {rel_key} (NOT the extracted files) in `## Sources`. If "
+            "it holds no usable content, make no edits.\n"
         )
     else:
         read_step = (

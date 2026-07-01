@@ -97,7 +97,10 @@ def test_build_instruction_office_read_path_points_to_extract_cites_original():
     assert "resource: raw/deck.pptx" in prompt  # cite the original, not the extract
     assert "office" in low and "extracted" in low
     assert "read that" in low  # explicit: read the extracted file
-    assert len(prompt) < 2000  # still paths-only — WinError 206 guard
+    assert "media/" in prompt  # points the agent at the extracted embedded images
+    # Still paths-only and tiny (WinError 206 guard). The bound matches the reconcile prompt's; an
+    # out-of-repo wiki/raw resolves to ABSOLUTE paths that appear several times, so allow headroom.
+    assert len(prompt) < 3000
 
 
 def test_build_instruction_no_read_path_keeps_direct_read_step():
