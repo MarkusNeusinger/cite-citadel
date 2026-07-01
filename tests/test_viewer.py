@@ -358,6 +358,29 @@ def test_bundle_page_stats_zero_when_clean(tmp_path, monkeypatch):
     assert by_path["concepts/espresso.md"]["contradictions"] == 0
 
 
+def test_bundle_page_stats_ignores_fenced_and_sources_examples(tmp_path, monkeypatch):
+    # A page that DOCUMENTS the citation/contradiction format must not have its example markers
+    # counted: a callout inside a code fence is not a real contradiction, and a footnote marker
+    # mentioned inside another footnote's ## Sources definition note is not an inline use.
+    wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
+    body = (
+        "Real fact.[^s1]\n\n"
+        "Here is how the contradiction format looks:\n\n"
+        "```\n"
+        "> [!CONTRADICTION]\n"
+        "> raw/a.md says X [^s7]; raw/b.md says Y [^s8].\n"
+        "```\n\n"
+        "## Sources\n\n"
+        "[^s1]: [raw/a.md](../../raw/a.md) - derived alongside [^s2], see [^llm9] (ingested 2026-06-22)\n"
+        "[^s2]: [raw/b.md](../../raw/b.md) - n\n"
+    )
+    _seed(wiki, "concepts/format.md", {"type": "Concept", "title": "Format"}, body)
+    page = next(p for p in viewer.build_bundle()["pages"] if p["rel_path"] == "concepts/format.md")
+    assert page["contradictions"] == 0  # the fenced callout is documentation, not a real one
+    assert page["cites"] == 1  # only the inline [^s1]; fenced [^s7]/[^s8] and the def-note [^s2] excluded
+    assert page["llm"] == 0  # the [^llm9] mentioned in the def note is not an inline use
+
+
 def test_build_html_has_fulltext_search_badges_and_facets(tmp_path, monkeypatch):
     wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
     (raw / "a.md").write_text("# A\n\nbody text\n", encoding="utf-8")
@@ -377,9 +400,9 @@ def test_build_html_has_fulltext_search_badges_and_facets(tmp_path, monkeypatch)
         'id="facets"',
     ):
         assert marker in html, f"missing viewer feature marker: {marker!r}"
-    # Adding full text to the bundle must not break the offline guarantee.
-    for bad in ("http://", "https://", "cdn", " src=", "fetch("):
-        assert bad not in html, f"network reference present: {bad!r}"
+    # (The offline guarantee is asserted by test_build_html_is_offline /
+    # test_build_html_makes_sources_clickable — not re-scanned here, since those substrings can
+    # legitimately occur inside embedded source/page text on a real wiki.)
 
 
 def test_cli_view_wires_up():

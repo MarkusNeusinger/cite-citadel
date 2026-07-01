@@ -52,34 +52,45 @@ _SOURCE_MAX_CHARS = 200_000
 _HEADING_RE = re.compile(r"^#[ \t]+(.+?)[ \t]*$", re.MULTILINE)
 
 # Per-page provenance signal surfaced as sidebar badges and as the contradiction / LLM full-text
-# filters. An *inline* footnote marker `[^id]` — NOT a trailing `## Sources` definition (`[^id]:`,
-# excluded by the negative lookahead) — whose id tells a raw citation (`[^sN]`) from a
-# model-supplied fact (`[^llmN]`, mirroring ``lint.LLM_MARKER_RE``).
+# filters. An *inline* footnote marker `[^id]`; the id tells a raw citation (`[^sN]`) from a
+# model-supplied fact (`[^llmN]`, mirroring ``lint.LLM_MARKER_RE``). The `(?!:)` guards against a
+# stray footnote *definition* that sits outside a recognized ``## Sources`` section.
 _FN_INLINE_RE = re.compile(r"\[\^([\w.-]+)\](?!:)")
 # A contradiction callout header (``lint.CONTRADICTION_MARKER``), tolerant of leading indentation
-# and `>` spacing so an indented/nested callout still counts.
-_CONTRADICTION_RE = re.compile(r"^\s*>\s*\[!CONTRADICTION\]", re.IGNORECASE | re.MULTILINE)
+# and `>` spacing. Matched per prose line (not over the whole body) so a callout shown as an
+# example inside a code fence or the ``## Sources`` section is not counted.
+_CONTRADICTION_RE = re.compile(r"^\s*>\s*\[!CONTRADICTION\]", re.IGNORECASE)
+_SOURCES_HEADING_RE = re.compile(r"#+\s*sources\b", re.IGNORECASE)
 
 
 def _page_stats(body: str) -> tuple[int, int, int]:
     """``(raw_citations, llm_facts, contradictions)`` for one page body — the counts the viewer
-    shows as per-page sidebar badges and filters by. Fence-aware for the footnote markers (a
-    citation written as a literal inside a ``` code block is not counted), mirroring the store's
-    link scanners; contradiction callouts are counted by their ``[!CONTRADICTION]`` header."""
-    cites = llm = 0
-    in_fence = False
+    shows as per-page sidebar badges and filters by. Counts only *prose*: it skips fenced code
+    blocks and the trailing ``## Sources`` section (the same regions ``lint._prose_lines`` skips),
+    so a marker or ``[!CONTRADICTION]`` written as a literal example — e.g. on a page documenting
+    the citation format — is not miscounted, and a ``[^sN]`` mentioned inside another footnote's
+    definition note is not mistaken for an inline use."""
+    cites = llm = contradictions = 0
+    in_fence = in_sources = False
     for line in body.splitlines():
-        if line.lstrip().startswith("```"):
+        stripped = line.strip()
+        if stripped.startswith("```"):
             in_fence = not in_fence
             continue
         if in_fence:
+            continue
+        if stripped.startswith("#"):
+            in_sources = bool(_SOURCES_HEADING_RE.match(stripped))
+            continue
+        if in_sources:
             continue
         for match in _FN_INLINE_RE.finditer(line):
             if match.group(1).lower().startswith("llm"):
                 llm += 1
             else:
                 cites += 1
-    contradictions = len(_CONTRADICTION_RE.findall(body))
+        if _CONTRADICTION_RE.match(line):
+            contradictions += 1
     return cites, llm, contradictions
 
 
@@ -1145,35 +1156,54 @@ _VIEWER_JS = r"""
     return out ? "<div class='stats'>" + out + "</div>" : "";
   }
 
-  // Highlight every occurrence of the active query in the reader by wrapping matching text nodes
-  // in <mark> (DOM-safe — never touches tags/attributes). With `scroll`, the first hit is scrolled
-  // into view (on navigation); live typing passes false so the page doesn't jump. Skips the
-  // table-of-contents so its nav copy isn't marked. No-op when there is no query.
-  function applyHighlight(reader, scroll) {
-    if (!query) return;
+  // Wrap every occurrence of `needle` (already lowercased) in matching reader text nodes with a
+  // <mark>, returning the first mark (or null). DOM-safe — it only ever splits text nodes, never
+  // touches tags/attributes. Skips the table-of-contents so its nav copy isn't marked.
+  function markAll(reader, needle) {
     var walker = document.createTreeWalker(reader, NodeFilter.SHOW_TEXT, null);
     var targets = [], node;
     while ((node = walker.nextNode())) {
       var par = node.parentNode;
       if (!par || /^(SCRIPT|STYLE|MARK)$/.test(par.nodeName)) continue;
       if (par.closest && par.closest(".toc")) continue;
-      if (node.nodeValue.toLowerCase().indexOf(query) >= 0) targets.push(node);
+      if (node.nodeValue.toLowerCase().indexOf(needle) >= 0) targets.push(node);
     }
     var first = null;
     targets.forEach(function (n) {
       var text = n.nodeValue, low = text.toLowerCase(), frag = document.createDocumentFragment();
       var last = 0, i;
-      while ((i = low.indexOf(query, last)) >= 0) {
+      while ((i = low.indexOf(needle, last)) >= 0) {
         if (i > last) frag.appendChild(document.createTextNode(text.slice(last, i)));
         var mk = document.createElement("mark");
-        mk.textContent = text.slice(i, i + query.length);
+        mk.textContent = text.slice(i, i + needle.length);
         frag.appendChild(mk);
         if (!first) first = mk;
-        last = i + query.length;
+        last = i + needle.length;
       }
       if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
       n.parentNode.replaceChild(frag, n);
     });
+    return first;
+  }
+
+  // Highlight the active query in the reader and (with `scroll`) bring the first hit into view (on
+  // navigation; live typing passes false so the page doesn't jump). Tries the whole phrase first;
+  // if it matches nothing — the search index collapses newlines but the reader keeps block
+  // structure, so a multi-word phrase can straddle a heading/paragraph boundary — it falls back to
+  // highlighting each term, so a clicked result never lands on a page with no visible hit. No-op
+  // when there is no query.
+  function applyHighlight(reader, scroll) {
+    if (!query) return;
+    var first = markAll(reader, query);
+    if (!first && query.indexOf(" ") >= 0) {
+      var seen = {};
+      query.split(/\s+/).forEach(function (term) {
+        if (!term || seen[term]) return;
+        seen[term] = 1;
+        var f = markAll(reader, term);
+        if (!first) first = f;
+      });
+    }
     if (scroll && first) first.scrollIntoView({ block: "center" });
   }
 
