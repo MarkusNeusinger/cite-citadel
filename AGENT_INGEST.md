@@ -14,11 +14,21 @@
   yourself** and extract whatever text it contains, then ingest those facts. If the file holds
   no usable text (a stray binary that slipped through), make no edits and stop — the system logs
   it as unreadable. (Obvious binaries are filtered out before you run, so assume yours is
-  readable.) **PowerPoint/Word** (`.pptx`/`.docx`) are binary, so the system extracts their text
-  to a temporary file first; when your source is one of these, the instruction points you at that
-  **extracted** file to READ — but you still cite the **original** `.pptx`/`.docx` as the source
-  (`resource:` and `## Sources`). Its **sub-folder path and filename are context, not just an address** — they often
+  readable.) Its **sub-folder path and filename are context, not just an address** — they often
   name the project/topic/domain the facts belong to (see *Path & filename are context* below).
+- Some sources need special handling; your run instruction tells you which applies:
+  - **Office files** — PowerPoint/Word/Excel (`.pptx`/`.docx`/`.xlsx` and the legacy
+    `.ppt`/`.doc`/`.xls`) are binary, so the system extracts their text to a temporary file first
+    and points you at that **extracted** file to READ. You still cite the **original** Office file
+    as the source (`resource:` and `## Sources`), never the temp file.
+  - **Images** — a screenshot/scan/diagram/chart/photo. **View it** with your reader and transcribe
+    the FACTS it shows (text, labels, table cells, chart values/axes, what it depicts) — do not
+    describe pixels or styling. Cite the image file as the source.
+  - **A large source split into segments** — when a file is too big for one pass, the system feeds
+    it to you in several sequential passes, each reading ONE segment (a slice written to a temp
+    file) but citing the whole original source. Your instruction says which segment this is; on a
+    later segment, **merge into the pages the earlier segments created** — extend them, do not
+    duplicate pages or restate facts already captured.
 - The **wiki** lives under `wiki/`. Search and read it with your tools (Grep/Glob/Read)
   before writing — never assume a page does or doesn't exist; look.
 

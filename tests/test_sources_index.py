@@ -22,6 +22,7 @@ def _wire_tmp_wiki(tmp_path: Path, monkeypatch) -> Path:
     monkeypatch.setattr(config, "WIKI_DIR", wiki, raising=False)
     monkeypatch.setattr(config, "RAW_DIR", raw, raising=False)
     monkeypatch.setattr(config, "MANIFEST_PATH", wiki / ".citadel_ingested.json", raising=False)
+    monkeypatch.setattr(config, "FAILURES_PATH", wiki / ".citadel_failures.json", raising=False)
     monkeypatch.setattr(config, "INDEX_PATH", wiki / "index.md", raising=False)
     return wiki
 

@@ -116,6 +116,7 @@ def _wire_tmp_wiki(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
     monkeypatch.setattr(config, "INDEX_PATH", wiki / "index.md", raising=False)
     monkeypatch.setattr(config, "LOG_PATH", wiki / "log.md", raising=False)
     monkeypatch.setattr(config, "MANIFEST_PATH", wiki / ".citadel_ingested.json", raising=False)
+    monkeypatch.setattr(config, "FAILURES_PATH", wiki / ".citadel_failures.json", raising=False)
     return wiki, raw
 
 
@@ -460,6 +461,135 @@ def test_binary_raw_file_is_logged_unreadable_not_ingested(tmp_path, monkeypatch
     assert _CALLS["n"] == 1  # not re-run
 
 
+def test_failures_are_persisted_surfaced_and_cleared(tmp_path, monkeypatch):
+    """Unreadable AND errored/failed sources are written to a persistent .citadel_failures.json with
+    a reason and surfaced in wiki/sources/index.md — and a source that later succeeds drops off,
+    while an unreadable file (still stuck) stays listed across runs."""
+    import json
+
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "blob.bin").write_bytes(b"text\x00more\x00binary")  # unreadable
+    (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")  # will error
+
+    def failing(rel_key, kind="ingest", read_path=None, segment=None):
+        raise RuntimeError("agent exploded")
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", failing)
+    report = ingest.ingest()
+    assert "raw/notes.md" in report.errors[0] and report.processed == []
+
+    fpath = wiki / ".citadel_failures.json"
+    data = json.loads(fpath.read_text(encoding="utf-8"))
+    assert data["raw/blob.bin"]["reason"] == "unreadable"
+    assert data["raw/notes.md"]["reason"] == "error"
+
+    catalog = (wiki / "sources" / "index.md").read_text(encoding="utf-8")
+    assert "## Could not ingest" in catalog
+    assert "raw/blob.bin" in catalog and "raw/notes.md" in catalog
+
+    # Fix the session so notes.md now succeeds: its failure clears; the unreadable blob stays stuck.
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake_session_transformer)
+    ingest.ingest()
+    data2 = json.loads(fpath.read_text(encoding="utf-8"))
+    assert "raw/notes.md" not in data2  # succeeded -> dropped
+    assert data2["raw/blob.bin"]["reason"] == "unreadable"  # still stuck -> stays across runs
+
+
+def test_dedup_by_basename_keeps_pdf_over_pptx(tmp_path, monkeypatch):
+    """A same-folder, same-basename group of document formats collapses to one kept file (PDF
+    preferred), the rest reported as duplicates."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "deck.pdf").write_bytes(b"%PDF-1.7\n")
+    _make_pptx(raw / "deck.pptx", [["x"]])
+    kept, dups, dropped = ingest._dedup_by_basename([raw / "deck.pdf", raw / "deck.pptx"], {})
+    assert [p.name for p in kept] == ["deck.pdf"]
+    assert dups == [("raw/deck.pptx", "raw/deck.pdf")]
+    assert (raw / "deck.pptx") in dropped
+
+
+def test_dedup_leaves_group_with_nondoc_sibling_alone(tmp_path, monkeypatch):
+    """A group is only collapsed when ALL members are document formats — a hand-authored notes.md
+    sharing a stem with notes.pdf is never dropped."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "notes.pdf").write_bytes(b"%PDF-1.7\n")
+    (raw / "notes.md").write_text("real notes\n", encoding="utf-8")
+    kept, dups, dropped = ingest._dedup_by_basename([raw / "notes.pdf", raw / "notes.md"], {})
+    assert {p.name for p in kept} == {"notes.pdf", "notes.md"}
+    assert dups == [] and dropped == set()
+
+
+def test_dedup_staggered_skips_new_format_when_sibling_already_ingested(tmp_path, monkeypatch):
+    """If a same-basename document is ALREADY in the wiki (another format on disk), a newly-added
+    format is skipped as a duplicate rather than ingested as a second copy."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _make_pptx(raw / "deck.pptx", [["x"]])  # already ingested (below), still on disk
+    (raw / "deck.pdf").write_bytes(b"%PDF-1.7\n")  # newly added
+    manifest_dict = {"raw/deck.pptx": {"sha256": "abc", "model": "m"}}
+    kept, dups, dropped = ingest._dedup_by_basename([raw / "deck.pdf"], manifest_dict)
+    assert kept == []  # the new pdf is skipped
+    assert dups == [("raw/deck.pdf", "raw/deck.pptx")]  # points at the already-ingested sibling
+
+
+def test_dedup_does_not_drop_a_changed_document_as_its_own_duplicate(tmp_path, monkeypatch):
+    """A CHANGED document source is both pending AND in the manifest; it must NOT be treated as an
+    already-ingested sibling of itself and dropped — with no other same-basename format present it
+    is kept and re-ingested."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _make_pptx(raw / "deck.pptx", [["x"]])
+    manifest_dict = {"raw/deck.pptx": {"sha256": "oldsha", "model": "m"}}  # tracked (changed bytes)
+    kept, dups, dropped = ingest._dedup_by_basename([raw / "deck.pptx"], manifest_dict)
+    assert [p.name for p in kept] == ["deck.pptx"]
+    assert dups == [] and dropped == set()
+
+
+def test_same_basename_document_duplicate_is_skipped_and_recorded(tmp_path, monkeypatch):
+    """End to end: report.pdf + report.pptx -> only the pdf runs a session; the pptx is skipped and
+    recorded as a duplicate in the run report AND the persistent failures/sources catalog."""
+    import json
+
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "report.pdf").write_bytes(b"%PDF-1.7\ncontent")
+    _make_pptx(raw / "report.pptx", [["Slide fact."]])
+
+    seen: list[str] = []
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+        _CALLS["n"] += 1
+        seen.append(rel_key)
+        _cite_page("misc/report.md", rel_key, "A report fact.")
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    report = ingest.ingest()
+
+    assert report.processed == ["raw/report.pdf"] and seen == ["raw/report.pdf"]  # pptx never ran
+    assert report.duplicates == [("raw/report.pptx", "raw/report.pdf")]
+
+    data = json.loads((wiki / ".citadel_failures.json").read_text(encoding="utf-8"))
+    assert data["raw/report.pptx"]["reason"] == "duplicate"
+    assert "raw/report.pdf" in data["raw/report.pptx"]["detail"]
+    catalog = (wiki / "sources" / "index.md").read_text(encoding="utf-8")
+    assert "raw/report.pptx" in catalog and "duplicate" in catalog
+
+
+def test_dedup_disabled_ingests_every_format(tmp_path, monkeypatch):
+    """With CITADEL_DEDUP_BY_BASENAME off, both same-basename formats are ingested separately."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(config, "DEDUP_BY_BASENAME", False)
+    (raw / "report.pdf").write_bytes(b"%PDF-1.7\ncontent")
+    _make_pptx(raw / "report.pptx", [["Slide fact."]])
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+        _CALLS["n"] += 1
+        from pathlib import Path as _P
+
+        _cite_page(f"misc/report-{_P(rel_key).suffix[1:]}.md", rel_key, "A fact.")
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    report = ingest.ingest()
+    assert set(report.processed) == {"raw/report.pdf", "raw/report.pptx"}
+    assert report.duplicates == []
+
+
 def test_partition_classifies_office_text_vs_textless_once(tmp_path, monkeypatch):
     """Office routing lives in _partition_sources: a deck with extractable text is pending (and its
     text is cached for the agent step), a text-free deck is unreadable like any other binary — and
@@ -468,7 +598,7 @@ def test_partition_classifies_office_text_vs_textless_once(tmp_path, monkeypatch
     _make_pptx(raw / "withtext.pptx", [["A real fact."]])
     _make_pptx(raw / "notext.pptx", [[]])
 
-    pending, skipped, moved, unreadable, deleted, office_text = ingest._partition_sources(None, {})
+    pending, skipped, moved, unreadable, deleted, office_text, images, duplicates = ingest._partition_sources(None, {})
 
     pending_keys = {manifest.rel_key(p) for p in pending}
     unreadable_keys = {manifest.rel_key(p) for p in unreadable}
@@ -550,6 +680,194 @@ def test_office_deck_without_text_is_unreadable(tmp_path, monkeypatch):
 
     data = json.loads((wiki / ".citadel_ingested.json").read_text(encoding="utf-8"))
     assert "raw/images.pptx" in data  # marked done
+
+
+def _make_png(path: Path) -> None:
+    """Write a file that starts with the PNG signature (enough for _is_image_source's magic check)."""
+    path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00\x01\x02\x03fake-image-bytes")
+
+
+def _cite_page(rel_path: str, rel_key: str, body_fact: str) -> None:
+    """Write a minimal valid OKF page that cites ``rel_key`` once (for use inside fake sessions)."""
+    depth = "../../"
+    _agent_write(
+        rel_path,
+        {"type": "Note", "title": "Fact", "description": "d", "tags": ["t"], "resource": rel_key},
+        f"{body_fact}[^s1]\n\n## Sources\n\n[^s1]: [{rel_key}]({depth}{rel_key}) - src (ingested 2026-06-21)\n",
+    )
+
+
+def test_image_source_is_read_visually_by_agent(tmp_path, monkeypatch):
+    """A recognized image is fed to the agent with the IMAGE propagation (read visually, no text
+    extraction / no read_path) and the wiki cites the image file as its source."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _make_png(raw / "diagram.png")
+
+    seen: dict[str, object] = {}
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+        _CALLS["n"] += 1
+        seen.update(rel_key=rel_key, kind=kind, read_path=read_path, segment=segment)
+        _cite_page("misc/diagram.md", rel_key, "The diagram shows a pump loop.")
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    report = ingest.ingest()
+
+    assert report.processed == ["raw/diagram.png"]
+    assert seen["kind"] == "image"  # image propagation, not plain "ingest"
+    assert seen["read_path"] is None and seen["segment"] is None  # read the file directly, one pass
+    assert "resource: raw/diagram.png" in (wiki / "misc" / "diagram.md").read_text(encoding="utf-8")
+
+    # A CHANGED image re-ingests with the image-reconcile propagation.
+    _make_png(raw / "diagram.png")  # same bytes -> not changed; write different bytes:
+    (raw / "diagram.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"different-bytes-now")
+    ingest.ingest()
+    assert seen["kind"] == "image-reconcile"
+
+
+def test_image_support_off_marks_image_unreadable(tmp_path, monkeypatch):
+    """With image support disabled, an image is logged unreadable (never fed to the agent)."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(config, "IMAGE_SUPPORT", False)
+    _make_png(raw / "diagram.png")
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+        raise AssertionError("no session should run for an image when image support is off")
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    report = ingest.ingest()
+    assert "raw/diagram.png" in report.unreadable and report.processed == []
+
+
+def test_text_file_with_image_extension_is_not_treated_as_image(tmp_path, monkeypatch):
+    """A text file merely RENAMED to .png (no PNG magic) is not sent as an image — it falls through
+    to the normal text sniff and ingests as a plain source (kind 'ingest', read directly)."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "notreally.png").write_text("This is plain text, not a PNG at all.\n", encoding="utf-8")
+
+    seen: dict[str, object] = {}
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+        _CALLS["n"] += 1
+        seen.update(kind=kind, read_path=read_path)
+        _cite_page("misc/notreally.md", rel_key, "A plain fact.")
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    report = ingest.ingest()
+    assert report.processed == ["raw/notreally.png"]
+    assert seen["kind"] == "ingest" and seen["read_path"] is None  # not an image
+
+
+# --- large-source chunking --------------------------------------------------------------
+
+
+def _paras(n: int) -> str:
+    """n paragraphs (~55 chars each) separated by blank lines, each individually identifiable."""
+    return "\n\n".join(f"Paragraph number {i} with some filler content about topic {i}." for i in range(n))
+
+
+def test_large_text_source_is_chunked_into_ordered_passes(tmp_path, monkeypatch):
+    """A source larger than MAX_SOURCE_CHARS is split into ordered segments, each ingested in its
+    own pass (segment tuple (i, n), read_path holds that segment's slice), covering all content;
+    the source is processed once, tracked once, and all segment temp files are cleaned up."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 120)
+    (raw / "big.txt").write_text(_paras(6), encoding="utf-8")
+
+    calls: list[dict] = []
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+        _CALLS["n"] += 1
+        assert read_path is not None and segment is not None  # every chunked pass has both
+        assert Path(read_path).exists()  # the segment file exists at call time
+        calls.append({"segment": segment, "content": Path(read_path).read_text(encoding="utf-8")})
+        if segment[0] == 1:  # first pass sets up the page; later passes merge (no-op here)
+            _cite_page("misc/big.md", rel_key, "A fact from the big source.")
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    report = ingest.ingest()
+
+    n = len(calls)
+    assert n >= 2  # actually split
+    assert report.processed == ["raw/big.txt"]
+    assert [c["segment"] for c in calls] == [(i, n) for i in range(1, n + 1)]  # ordered (i, n)
+    assert all(len(c["content"]) <= 120 for c in calls)  # each within the cap
+    joined = "\n".join(c["content"] for c in calls)
+    for i in range(6):
+        assert f"Paragraph number {i}" in joined  # all content covered across segments
+
+    import json
+
+    data = json.loads((wiki / ".citadel_ingested.json").read_text(encoding="utf-8"))
+    assert "raw/big.txt" in data  # tracked once
+    assert ingest.ingest().processed == []  # idempotent
+
+
+def test_chunking_disabled_is_single_direct_pass(tmp_path, monkeypatch):
+    """With MAX_SOURCE_CHARS=0, even a large source is one pass and the agent reads it directly."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 0)
+    (raw / "big.txt").write_text(_paras(50), encoding="utf-8")
+
+    calls: list[tuple] = []
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+        _CALLS["n"] += 1
+        calls.append((read_path, segment))
+        assert read_path is None and segment is None  # not chunked -> read the file directly
+        _cite_page("misc/big.md", rel_key, "A fact.")
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    assert ingest.ingest().processed == ["raw/big.txt"]
+    assert len(calls) == 1
+
+
+def test_large_pdf_is_not_chunked(tmp_path, monkeypatch):
+    """A large PDF is handed to the agent whole (its text isn't extracted here to split), so it is
+    a single direct pass regardless of size."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 100)
+    (raw / "big.pdf").write_bytes(b"%PDF-1.7\n" + b"a" * 5000)
+
+    calls: list[tuple] = []
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+        _CALLS["n"] += 1
+        calls.append((read_path, segment))
+        assert read_path is None and segment is None  # PDF read directly, never chunked
+        _cite_page("misc/big.md", rel_key, "A fact.")
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    assert ingest.ingest().processed == ["raw/big.pdf"]
+    assert len(calls) == 1
+
+
+def test_chunk_pass_failure_leaves_source_pending(tmp_path, monkeypatch):
+    """If a later segment's session fails, the source is NOT marked done (so it re-ingests next run),
+    the failure is recorded, and the earlier promoted segment's page is still reported/indexed."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 120)
+    (raw / "big.txt").write_text(_paras(6), encoding="utf-8")
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+        _CALLS["n"] += 1
+        if segment[0] == 1:
+            _cite_page("misc/big.md", rel_key, "A fact from segment one.")
+        elif segment[0] == 2:
+            raise RuntimeError("segment two boom")
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    report = ingest.ingest()
+
+    assert "raw/big.txt" not in report.processed
+    assert report.errors  # the failure surfaced
+    assert (wiki / "misc" / "big.md").exists()  # segment one's page is live (documented partial)
+
+    import json
+
+    manifest_path = wiki / ".citadel_ingested.json"
+    tracked = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
+    assert "raw/big.txt" not in tracked  # not marked done -> pending again next run
 
 
 def test_moved_raw_file_is_recognized_not_reingested(tmp_path, monkeypatch):

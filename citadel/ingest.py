@@ -31,14 +31,15 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import os
+import re
 import shutil
 import stat
 import tempfile
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-from . import config, extract, llm, manifest, okf, repo, store, validate
+from . import config, extract, failures, llm, manifest, okf, repo, store, validate
 from .okf import Page
 
 
@@ -51,6 +52,11 @@ _SNIFF_BYTES = 65536
 # binary. PDFs are detected separately by their magic header (the agent's reader extracts text
 # from them), so they are not rejected here.
 _TEXT_BYTES = bytes({7, 8, 9, 10, 11, 12, 13, 27} | set(range(0x20, 0x7F)) | set(range(0x80, 0x100)))
+
+# Image sources the agent can read VISUALLY (its CLI reader displays them). Recognized by extension
+# AND magic bytes, so a renamed text file is not mistaken for an image — it falls through to the
+# normal text sniff instead. Gated by config.IMAGE_SUPPORT.
+_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff"}
 
 
 @dataclass
@@ -72,6 +78,8 @@ class IngestReport:
     moved: list[tuple[str, str]] = field(default_factory=list)
     # rel-keys of sources with no extractable text (binary/unsupported) — NOT ingested, logged.
     unreadable: list[str] = field(default_factory=list)
+    # (dropped_key, kept_key) for same-basename document files skipped in favor of another format.
+    duplicates: list[tuple[str, str]] = field(default_factory=list)
     # rel-keys of tracked sources that VANISHED from disk (a full run only): their provenance is
     # reconciled out of the wiki by a cleanup agent session, then the manifest key is dropped.
     sources_deleted: list[str] = field(default_factory=list)
@@ -90,6 +98,7 @@ class IngestReport:
             f"{len(self.moved)} reorganized, "
             f"{len(self.sources_deleted)} sources removed, "
             f"{len(self.unreadable)} unreadable, "
+            f"{len(self.duplicates)} duplicate(s) skipped, "
             f"{len(self.errors)} errors."
         )
         if self.processed:
@@ -113,6 +122,9 @@ class IngestReport:
         if self.unreadable:
             lines.append("Unreadable (no extractable text; not ingested):")
             lines.extend(f"  - {p}" for p in self.unreadable)
+        if self.duplicates:
+            lines.append("Skipped as duplicate (same basename as another format that was ingested):")
+            lines.extend(f"  - {dropped} (kept {kept})" for dropped, kept in self.duplicates)
         if self.skipped:
             lines.append("Skipped (already ingested):")
             lines.extend(f"  - {p}" for p in self.skipped)
@@ -278,11 +290,118 @@ def _is_ingestible(path: Path) -> bool:
     return (len(nontext) / len(chunk)) <= 0.30
 
 
+def _looks_like_image(head: bytes) -> bool:
+    """True if ``head`` (the first bytes of a file) carries a common image format's magic:
+    PNG/JPEG/GIF/BMP/TIFF/WEBP. Cheap signature check so a text file renamed ``.png`` is not sent to
+    the agent as an image (it fails this and is sniffed as text instead)."""
+    if head.startswith((b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"GIF87a", b"GIF89a", b"BM")):
+        return True
+    if head[:2] in (b"II", b"MM") and head[2:4] in (b"*\x00", b"\x00*"):  # TIFF (little/big-endian)
+        return True
+    return head[:4] == b"RIFF" and head[8:12] == b"WEBP"  # WEBP (RIFF container)
+
+
+def _is_image_source(path: Path) -> bool:
+    """True when image ingestion is on (``config.IMAGE_SUPPORT``) and ``path`` is a recognized image
+    (image extension AND matching magic). Such a source is handed to the agent to READ VISUALLY —
+    the CLI's file reader displays images — instead of being rejected by :func:`_is_ingestible` as a
+    NUL-byte binary. Never raises."""
+    if not config.IMAGE_SUPPORT or path.suffix.lower() not in _IMAGE_EXTS:
+        return False
+    try:
+        with open(path, "rb") as fh:
+            return _looks_like_image(fh.read(16))
+    except OSError:
+        return False
+
+
+# Document-export formats among which a same-basename group is deduplicated (a deck saved as both
+# .pptx and .pdf, a doc saved as .docx and .pdf, etc.). A group is collapsed ONLY when EVERY member
+# is one of these, so a hand-authored notes.md sharing a stem with notes.pdf is never dropped. The
+# order is the KEEP preference (earliest wins): PDF first, then modern Office, then legacy.
+_DEDUP_PRIORITY = [".pdf", ".docx", ".docm", ".doc", ".pptx", ".pptm", ".ppt", ".xlsx", ".xlsm", ".xls"]
+_DEDUP_EXTS = set(_DEDUP_PRIORITY)
+
+
+def _dedup_rank(ext: str) -> int:
+    """Preference rank of a document extension for same-basename dedup (lower = kept first)."""
+    return _DEDUP_PRIORITY.index(ext) if ext in _DEDUP_PRIORITY else len(_DEDUP_PRIORITY)
+
+
+def _dedup_by_basename(
+    pending: list[Path], manifest_dict: dict[str, str]
+) -> tuple[list[Path], list[tuple[str, str]], set[Path]]:
+    """Collapse same-folder, same-basename groups of DOCUMENT-export formats to a single kept file.
+
+    Returns ``(kept, duplicates, dropped)``: ``duplicates`` is ``[(dropped_key, kept_key)]`` for the
+    report/failures record, ``dropped`` the Paths removed from pending. Only a group whose members
+    are ALL document formats (:data:`_DEDUP_EXTS`) is collapsed — so a plain-text/markdown/code/image
+    source sharing a stem with a document is left alone.
+
+    Two cases:
+    - both formats are NEW this run → keep the preferred one (:func:`_dedup_rank`, PDF first), drop
+      the rest;
+    - a same-basename document was ALREADY ingested in another format (still on disk) → skip the new
+      one(s), keeping what is already in the wiki (so re-runs are stable and no second copy sneaks
+      in). Grouping is by the sources' posix identity keys, so pending and manifest members compare
+      in the same space."""
+    # A CHANGED document source is BOTH pending and in the manifest; excluding pending keys here
+    # keeps it from matching itself as an "already-ingested sibling" and being dropped as a
+    # duplicate of itself (which would stop it re-ingesting).
+    pending_keys = {manifest.rel_key(p) for p in pending}
+    ingested: dict[tuple[str, str], str] = {}
+    for k, v in manifest_dict.items():
+        if manifest.is_repo_entry(v) or k in pending_keys:
+            continue
+        kp = PurePosixPath(k)
+        if kp.suffix.lower() in _DEDUP_EXTS and config.source_path_for_key(k).exists():
+            ingested.setdefault((str(kp.parent), kp.stem.lower()), k)
+
+    groups: dict[tuple[str, str], list[Path]] = {}
+    for p in pending:
+        kp = PurePosixPath(manifest.rel_key(p))
+        groups.setdefault((str(kp.parent), kp.stem.lower()), []).append(p)
+
+    kept: list[Path] = []
+    duplicates: list[tuple[str, str]] = []
+    dropped: set[Path] = set()
+    for gid, members in groups.items():
+        if not all(m.suffix.lower() in _DEDUP_EXTS for m in members):
+            kept.extend(members)  # a non-document shares this stem: leave the whole group alone
+            continue
+        if gid in ingested:
+            # A same-basename document is already in the wiki (another format): skip the new one(s).
+            for m in members:
+                dropped.add(m)
+                duplicates.append((manifest.rel_key(m), ingested[gid]))
+            continue
+        if len(members) == 1:
+            kept.append(members[0])
+            continue
+        winner = min(members, key=lambda m: (_dedup_rank(m.suffix.lower()), m.suffix.lower()))
+        kept.append(winner)
+        for m in members:
+            if m is winner:
+                continue
+            dropped.add(m)
+            duplicates.append((manifest.rel_key(m), manifest.rel_key(winner)))
+    return kept, duplicates, dropped
+
+
 def _partition_sources(
     paths: list[str] | None, manifest_dict: dict[str, str]
-) -> tuple[list[Path], list[str], list[tuple[str, str, str, bool]], list[Path], list[str], dict[Path, str]]:
-    """Split candidates into ``(pending, skipped, moved, unreadable, deleted, office_text)`` in one
-    walk.
+) -> tuple[
+    list[Path],
+    list[str],
+    list[tuple[str, str, str, bool]],
+    list[Path],
+    list[str],
+    dict[Path, str],
+    set[Path],
+    list[tuple[str, str]],
+]:
+    """Split candidates into ``(pending, skipped, moved, unreadable, deleted, office_text, images,
+    duplicates)`` in one walk.
 
     - ``pending``: new/changed files with novel, readable content — fed to the agent (sorted,
       de-duplicated by resolved path).
@@ -296,9 +415,15 @@ def _partition_sources(
       source side of a move — their provenance is reconciled out of the wiki by a cleanup agent
       session. Computed ONLY for a full run (``paths is None``); a path-scoped run never sweeps
       the whole manifest for deletions, so it can't surprise-prune sources it wasn't pointed at.
-    - ``office_text``: ``{src_path: extracted_text}`` for the pending PowerPoint/Word sources whose
-      text was extracted here to classify them — reused by the agent step so a ``.pptx``/``.docx``
-      is parsed exactly once per run, not twice.
+    - ``office_text``: ``{src_path: extracted_text}`` for the pending PowerPoint/Word/Excel sources
+      (``.pptx``/``.docx``/``.xlsx`` and their macro-enabled + legacy ``.ppt``/``.doc``/``.xls``
+      siblings) whose text was extracted here to classify them — reused by the agent step so an
+      Office file is parsed exactly once per run, not twice.
+    - ``images``: the subset of ``pending`` that are image files (read visually by the agent, not
+      text-extracted) — so the agent step drives them with the ``image`` propagation.
+    - ``duplicates``: ``[(dropped_key, kept_key)]`` for same-basename document files skipped in
+      favor of another format (see :func:`_dedup_by_basename`), when ``config.DEDUP_BY_BASENAME`` is
+      on. The dropped files are removed from ``pending`` (and from ``office_text``/``images``).
 
     Move/duplicate detection only fires for a genuinely NEW path (``key not in manifest_dict``):
     an in-place edit of an already-tracked file is always re-ingested, even if its new content
@@ -317,6 +442,8 @@ def _partition_sources(
     # Office sources extracted here -> their text, so the agent step writes the temp .md without a
     # second ZIP/XML parse. Keyed by the same Path objects carried in `pending`.
     office_text: dict[Path, str] = {}
+    # Pending image sources — the agent reads these VISUALLY (no text extraction here).
+    images: set[Path] = set()
     seen: set[Path] = set()
     for src in _candidates(paths):
         try:
@@ -366,6 +493,12 @@ def _partition_sources(
             else:
                 unreadable.append(src)
             continue
+        if _is_image_source(src):
+            # An image the agent reads visually — routed to pending BEFORE the binary sniff (which
+            # would reject its NUL bytes). No text is extracted here; the agent opens it by path.
+            images.add(src)
+            pending.append(src)
+            continue
         if not _is_ingestible(src):
             unreadable.append(src)
             continue
@@ -384,7 +517,15 @@ def _partition_sources(
                 continue  # repo deletions are detected by _partition_repos, not the file sweep
             if not config.source_path_for_key(key).exists():
                 deleted.append(key)
-    return sorted(pending), skipped, moved, unreadable, deleted, office_text
+    # Collapse same-basename document duplicates (e.g. report.pptx + report.pdf) to one kept file,
+    # dropping the rest from pending (and from the office/image side-tables). Recorded for the run.
+    duplicates: list[tuple[str, str]] = []
+    if config.DEDUP_BY_BASENAME:
+        pending, duplicates, dropped = _dedup_by_basename(pending, manifest_dict)
+        for p in dropped:
+            office_text.pop(p, None)
+            images.discard(p)
+    return sorted(pending), skipped, moved, unreadable, deleted, office_text, images, duplicates
 
 
 @dataclass
@@ -929,12 +1070,116 @@ def _office_write_temp(text: str, name: str) -> tuple[str, str]:
     return config.rel_or_abs_posix(out), tmpdir
 
 
-def _pending_session(rel_key: str, kind: str, read_key: str | None) -> None:
-    """Drive ONE ingest/reconcile agent session. When ``read_key`` is set (an Office source whose
-    text was extracted), point the agent at it via ``read_path``; otherwise call exactly as before
-    so a non-Office source — and every existing test's faked session — is byte-for-byte unchanged."""
-    if read_key:
+def _read_source_text(src: Path) -> str | None:
+    """The decoded text of a plain-text source, for size-based chunking, or None when it should NOT
+    be chunked here: a PDF (binary — its ``%PDF-`` magic; the agent's reader extracts the text) or a
+    file we cannot read. Decoded with ``errors="replace"`` so an odd byte never raises. Only called
+    for pending, non-Office, non-image sources (already sniffed as text by :func:`_is_ingestible`)."""
+    try:
+        with open(src, "rb") as fh:
+            if fh.read(5) == b"%PDF-":
+                return None
+        return src.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def _text_atoms(text: str, max_chars: int) -> list[str]:
+    """Break ``text`` into atoms each at most ``max_chars`` long, preferring paragraph boundaries,
+    then line boundaries, then hard character slices for a pathological single long line."""
+    out: list[str] = []
+    for para in re.split(r"\n\s*\n", text):
+        if len(para) <= max_chars:
+            out.append(para)
+            continue
+        for line in para.split("\n"):
+            if len(line) <= max_chars:
+                out.append(line)
+            else:
+                out.extend(line[i : i + max_chars] for i in range(0, len(line), max_chars))
+    return [a for a in out if a.strip()]
+
+
+def _split_text(text: str, max_chars: int) -> list[str]:
+    """Split ``text`` into ordered segments each at most ``max_chars`` long (packing whole
+    paragraphs/lines together), or ``[text]`` when it already fits / chunking is off. Used to feed a
+    large source to the agent in several sequential passes."""
+    if max_chars <= 0 or len(text) <= max_chars:
+        return [text]
+    segments: list[str] = []
+    cur = ""
+    for atom in _text_atoms(text, max_chars):
+        candidate = atom if not cur else cur + "\n\n" + atom
+        if len(candidate) <= max_chars:
+            cur = candidate
+        else:
+            if cur:
+                segments.append(cur)
+            cur = atom
+    if cur:
+        segments.append(cur)
+    return segments or [text]
+
+
+def _prepare_passes(
+    src: Path, office: str | None, is_image: bool
+) -> tuple[list[tuple[str | None, tuple[int, int] | None]], list[str]]:
+    """Plan the agent session(s) for one pending source and return ``(passes, tmpdirs)``.
+
+    Each pass is ``(read_key, segment)``: ``read_key`` is the temp ``.md`` the agent reads (None =
+    read the source file directly), ``segment`` is ``(part, total)`` for a chunked large source
+    (None = single pass). ``tmpdirs`` are temp directories the caller MUST remove afterwards.
+
+    - image: one pass, read the file directly (viewed visually).
+    - a source (Office text, or — when chunking is on — a readable non-PDF text file) whose content
+      exceeds ``config.MAX_SOURCE_CHARS`` is SPLIT into segments, one pass each.
+    - a small Office file: one pass reading its extracted text (unchanged behavior).
+    - anything else (small plain text, a PDF, an image-less binary the agent reads): one pass
+      reading the file directly (unchanged behavior).
+
+    Raises ``OSError`` if a temp segment/extract file can't be written (handled per-source)."""
+    if is_image:
+        return [(None, None)], []
+    max_chars = config.MAX_SOURCE_CHARS
+    # Content we could chunk: pre-extracted Office text, or (chunking on) a readable text source.
+    content = office
+    if content is None and max_chars > 0:
+        content = _read_source_text(src)
+    if content is not None and max_chars > 0 and len(content) > max_chars:
+        segments = _split_text(content, max_chars)
+        passes: list[tuple[str | None, tuple[int, int] | None]] = []
+        tmpdirs: list[str] = []
+        try:
+            for i, seg in enumerate(segments, 1):
+                read_key, tmp = _office_write_temp(seg, src.name)
+                passes.append((read_key, (i, len(segments))))
+                tmpdirs.append(tmp)
+        except OSError:
+            for tmp in tmpdirs:
+                shutil.rmtree(tmp, ignore_errors=True)
+            raise
+        return passes, tmpdirs
+    if office is not None:
+        # Small Office file: one pass reading the extracted text, exactly as before chunking existed.
+        read_key, tmp = _office_write_temp(office, src.name)
+        return [(read_key, None)], [tmp]
+    # Small plain text, a PDF, or any other agent-readable source: read the file directly.
+    return [(None, None)], []
+
+
+def _pending_session(rel_key: str, kind: str, read_key: str | None, segment: tuple[int, int] | None = None) -> None:
+    """Drive ONE ingest/reconcile agent session. When ``read_key`` is set (an Office source or a
+    large-source segment whose text was extracted), point the agent at it via ``read_path``;
+    otherwise call exactly as before so a non-Office source — and every existing test's faked
+    session — is byte-for-byte unchanged. ``segment`` carries ``(part, total)`` for a chunked
+    source, and is passed to the backend ONLY when set, so a single-pass Office/text session calls
+    it exactly as before chunking existed."""
+    if read_key and segment is not None:
+        llm.run_ingest_session(rel_key, kind=kind, read_path=read_key, segment=segment)
+    elif read_key:
         llm.run_ingest_session(rel_key, kind=kind, read_path=read_key)
+    elif segment is not None:
+        llm.run_ingest_session(rel_key, kind=kind, segment=segment)
     else:
         llm.run_ingest_session(rel_key, kind=kind)
 
@@ -978,13 +1223,19 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 pass
 
     manifest_dict = manifest.load()
+    # Persistent record of sources that could not be ingested (unreadable / errored / timed out).
+    # Updated through the run and rewritten at the end, so it always reflects the CURRENT stuck set.
+    failures_dict = failures.load()
+    failures_before = {k: dict(v) if isinstance(v, dict) else v for k, v in failures_dict.items()}
     # The model/backend that will import this run's sources — recorded per-source in the manifest
     # so you can see which raw file was imported by which model. Resolved once (it does not change
     # mid-run) and read at call time so tests can monkeypatch the backend/model.
     model = config.ingest_model_label()
     report = IngestReport([], [], [], [], model=model)
 
-    pending, skipped, moved, unreadable, deleted_sources, office_text = _partition_sources(paths, manifest_dict)
+    pending, skipped, moved, unreadable, deleted_sources, office_text, images, duplicates = _partition_sources(
+        paths, manifest_dict
+    )
     # Git repositories under raw/ are ingested as ONE source each (a digest), versioned by commit.
     # Discover + partition them alongside the file sources; a vanished repo folder is reconciled out
     # by the SAME deletion-cleanup path as a file (its citations point at the repo folder key).
@@ -1016,6 +1267,8 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 continue
             manifest_dict.pop(old_key, None)
         manifest_dict[new_key] = manifest.make_entry(sha, carried_model)
+        failures.clear(failures_dict, old_key)
+        failures.clear(failures_dict, new_key)
         report.moved.append((old_key, new_key))
     # Repo moves: a repo whose folder was renamed (same base commit, old path gone). Repoint its
     # citations/`resource` to the new folder key and carry over its provenance — not a re-ingest.
@@ -1047,8 +1300,20 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
         except OSError:
             continue
         report.unreadable.append(key)
+        # Persist the failure so it survives the run (surfaced in wiki/sources/index.md; written by
+        # the finalization step below, which an unreadable source always triggers).
+        failures.record(failures_dict, key, failures.UNREADABLE, "no extractable text (binary/unsupported)")
     if unreadable:
         manifest.save(manifest_dict)
+
+    # --- Duplicate document sources: skipped in favor of another same-basename format (config
+    # DEDUP_BY_BASENAME). Record them (report + persistent failures) but do NOT mark them done, so a
+    # later run re-evaluates — deleting the kept file promotes one of these. ---
+    for dropped_key, kept_key in duplicates:
+        report.duplicates.append((dropped_key, kept_key))
+        failures.record(
+            failures_dict, dropped_key, failures.DUPLICATE, f"same basename as {kept_key}, which was ingested instead"
+        )
 
     emit(
         "start",
@@ -1067,59 +1332,90 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
     pending_interrupt: BaseException | None = None
     for index, src in enumerate(pending, 1):
         rel_key = manifest.rel_key(src)
+        is_image = src in images
         # An already-tracked key with new bytes is a re-ingest: reconcile (update/remove stale
-        # facts) rather than only appending. A brand-new key is a plain ingest.
-        kind = "reconcile" if rel_key in changed_keys else "ingest"
+        # facts) rather than only appending. A brand-new key is a plain ingest. Image sources take
+        # the image propagation (the agent VIEWS them) instead of reading text.
+        if is_image:
+            kind = "image-reconcile" if rel_key in changed_keys else "image"
+        else:
+            kind = "reconcile" if rel_key in changed_keys else "ingest"
         emit("source_start", index=index, total=len(pending), source=rel_key)
 
-        # PowerPoint/Word were extracted once during partitioning; materialize that text to a temp
-        # file the agent reads instead of the binary, while the wiki still cites the original `src`.
-        # A non-Office source isn't in `office_text`, so read_key stays None (the agent reads it
-        # directly, unchanged). A temp-write failure is a per-source error, NOT a run-aborting
-        # interrupt, so it is collected and the loop continues.
-        read_key: str | None = None
-        extract_tmp: str | None = None
+        # Plan the pass(es): an Office source materializes its extracted text to a temp .md the agent
+        # reads; a source too large for one context is SPLIT into segments (one pass each, each
+        # merging into the pages the earlier passes created); anything else is a single direct read.
+        # A temp-write failure is a per-source error, NOT a run-aborting interrupt.
         office = office_text.get(src)
-        if office is not None:
-            try:
-                read_key, extract_tmp = _office_write_temp(office, src.name)
-            except OSError as exc:
-                report.errors.append(f"{rel_key}: write extracted office text: {exc}")
-                emit("source_error", index=index, total=len(pending), source=rel_key, error=str(exc), seconds=0.0)
-                continue
-
         try:
-            outcome = _run_one_agent_session(
-                lambda rk=rel_key, k=kind, rp=read_key: _pending_session(rk, k, rp), rel_key
-            )
-        except BaseException as exc:  # noqa: BLE001 - Ctrl+C etc.: capture, finalize, re-raise
-            # The in-flight source was already rolled back inside the helper's `finally`; capture
-            # the interrupt, stop taking new sources, and re-raise it after finalization below.
-            pending_interrupt = exc
-            break
-        finally:
-            # Always remove the extracted-text temp dir (success, error, or interrupt-break).
-            if extract_tmp:
-                shutil.rmtree(extract_tmp, ignore_errors=True)
-
-        if not outcome.ok:
-            report.errors.extend(outcome.errors)
-            emit(
-                "source_error",
-                index=index,
-                total=len(pending),
-                source=rel_key,
-                error=outcome.errors[0] if outcome.errors else "",
-                seconds=outcome.seconds,
-            )
+            passes, tmpdirs = _prepare_passes(src, office, is_image)
+        except OSError as exc:
+            detail = f"{rel_key}: write source text: {exc}"
+            report.errors.append(detail)
+            failures.record(failures_dict, rel_key, failures.ERROR, detail, model)
+            emit("source_error", index=index, total=len(pending), source=rel_key, error=str(exc), seconds=0.0)
             continue
 
-        report.pages_created.extend(outcome.created)
-        report.pages_updated.extend(outcome.updated)
-        report.pages_written.extend(outcome.created + outcome.updated)
-        report.pages_deleted.extend(outcome.deleted)
+        created: list[str] = []
+        updated: list[str] = []
+        deleted: list[str] = []
+        seconds = 0.0
+        source_ok = True
+        try:
+            for read_key, segment in passes:
+                try:
+                    outcome = _run_one_agent_session(
+                        lambda rk=rel_key, k=kind, rp=read_key, sg=segment: _pending_session(rk, k, rp, sg), rel_key
+                    )
+                except BaseException as exc:  # noqa: BLE001 - Ctrl+C etc.: capture, finalize, re-raise
+                    # The in-flight pass was already rolled back inside the helper's `finally`;
+                    # capture the interrupt, stop taking new sources, and re-raise after finalization.
+                    pending_interrupt = exc
+                    source_ok = False
+                    break
+                seconds += outcome.seconds
+                if not outcome.ok:
+                    # A failed segment leaves earlier promoted segments in the live wiki but does NOT
+                    # mark the source done, so the whole source is re-ingested next run — as a fresh
+                    # `ingest` (the source is not in the manifest), whose search-and-merge step folds
+                    # the retried segments into the partial pages rather than duplicating them.
+                    report.errors.extend(outcome.errors)
+                    detail = outcome.errors[0] if outcome.errors else f"{rel_key}: agent session failed"
+                    failures.record(failures_dict, rel_key, failures.reason_for(detail), detail, model)
+                    emit(
+                        "source_error",
+                        index=index,
+                        total=len(pending),
+                        source=rel_key,
+                        error=outcome.errors[0] if outcome.errors else "",
+                        seconds=outcome.seconds,
+                    )
+                    source_ok = False
+                    break
+                created.extend(outcome.created)
+                updated.extend(outcome.updated)
+                deleted.extend(outcome.deleted)
+        finally:
+            # Always remove every extracted-text/segment temp dir (success, error, or interrupt).
+            for tmp in tmpdirs:
+                shutil.rmtree(tmp, ignore_errors=True)
+
+        # Record whatever the completed passes promoted — for a multi-pass source that failed or was
+        # interrupted mid-way, earlier segments are ALREADY live, so they are reported and indexed;
+        # only a fully-successful source is marked done and counted as processed below.
+        report.pages_created.extend(created)
+        report.pages_updated.extend(updated)
+        report.pages_written.extend(created + updated)
+        report.pages_deleted.extend(deleted)
+
+        if pending_interrupt is not None:
+            break
+        if not source_ok:
+            continue
 
         manifest.mark_done(manifest_dict, src, model)
+        # A source that had failed before now succeeded: drop its persisted failure.
+        failures.clear(failures_dict, rel_key)
         # Persist progress immediately after each completed source: a later Ctrl+C (or a crash)
         # must not erase sources already finished this run.
         manifest.save(manifest_dict)
@@ -1129,10 +1425,10 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
             index=index,
             total=len(pending),
             source=rel_key,
-            created=len(outcome.created),
-            updated=len(outcome.updated),
-            deleted=len(outcome.deleted),
-            seconds=outcome.seconds,
+            created=len(created),
+            updated=len(updated),
+            deleted=len(deleted),
+            seconds=seconds,
         )
 
     # --- Repo sources: each git repository under raw/ is folded in by ONE session reading a
@@ -1224,6 +1520,7 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 # Nothing cites it (e.g. a source that added no facts, or was unreadable): just
                 # forget it so a later run does not re-detect the same deletion.
                 manifest_dict.pop(key, None)
+                failures.clear(failures_dict, key)
                 manifest.save(manifest_dict)
                 report.sources_deleted.append(key)
                 emit(
@@ -1269,6 +1566,7 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
             report.pages_written.extend(outcome.created + outcome.updated)
             report.pages_deleted.extend(outcome.deleted)
             manifest_dict.pop(key, None)
+            failures.clear(failures_dict, key)
             manifest.save(manifest_dict)
             report.sources_deleted.append(key)
             emit(
@@ -1282,11 +1580,22 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 seconds=outcome.seconds,
             )
 
-    if report.processed or report.moved or report.unreadable or report.sources_deleted or repointed:
+    failures_changed = failures_dict != failures_before
+    if (
+        report.processed
+        or report.pages_written
+        or report.moved
+        or report.unreadable
+        or report.sources_deleted
+        or repointed
+        or failures_changed
+    ):
         emit("finalize")
         # The manifest is already persisted incrementally (after each source, and right after the
-        # move/unreadable bookkeeping) above, so a final save here would be redundant — just
+        # move/unreadable bookkeeping) above, so a final save here would be redundant. Persist the
+        # updated failures FIRST so the catalog rebuild below reflects this run's stuck set, then
         # rebuild the derived files (a move repoint can have changed page bodies/frontmatter).
+        failures.save(failures_dict)
         store.rebuild_indexes()
         # Surface any cross-link left dangling by a restructure so it is never silent.
         report.broken_links = store.find_broken_links()

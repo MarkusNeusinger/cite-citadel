@@ -44,6 +44,7 @@ def _wire(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
     monkeypatch.setattr(config, "INDEX_PATH", wiki / "index.md", raising=False)
     monkeypatch.setattr(config, "LOG_PATH", wiki / "log.md", raising=False)
     monkeypatch.setattr(config, "MANIFEST_PATH", wiki / ".citadel_ingested.json", raising=False)
+    monkeypatch.setattr(config, "FAILURES_PATH", wiki / ".citadel_failures.json", raising=False)
     monkeypatch.setattr(config, "REPO_SUPPORT", True, raising=False)
     return wiki, raw
 
