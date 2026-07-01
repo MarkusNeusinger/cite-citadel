@@ -8,6 +8,7 @@ attributes is the single supported seam). The agent bridge is replaced per-test 
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -21,13 +22,13 @@ from citadel import config, llm, okf, repo
 
 
 @pytest.fixture(autouse=True)
-def _stable_workspace_source(monkeypatch):
-    """Pin ``config.WORKSPACE_SOURCE`` to a resolved value for EVERY test, so the suite behaves
-    identically no matter which CWD pytest was launched from (workspace discovery runs at import
-    time and would otherwise leak the developer's CWD into ``cli.main``'s fail-loud guard).
-    A test exercising the guard overrides this with ``monkeypatch.setattr(config,
-    "WORKSPACE_SOURCE", "fallback")``."""
-    monkeypatch.setattr(config, "WORKSPACE_SOURCE", "marker")
+def _stable_workspace_found(monkeypatch):
+    """Pin ``config.WORKSPACE_FOUND`` to True for EVERY test, so the suite behaves identically
+    no matter which CWD pytest was launched from (workspace discovery runs at import time and
+    would otherwise leak the developer's CWD into ``cli.main``'s fail-loud guard). A test
+    exercising the guard overrides this with ``monkeypatch.setattr(config, "WORKSPACE_FOUND",
+    False)``."""
+    monkeypatch.setattr(config, "WORKSPACE_FOUND", True)
 
 
 @dataclass(frozen=True)
@@ -49,6 +50,23 @@ class CitadelTmp:
     log_path: Path  # config.LOG_PATH
     manifest_path: Path  # config.MANIFEST_PATH
     failures_path: Path  # config.FAILURES_PATH
+
+    def read_manifest(self) -> dict:
+        """The manifest's flat ``{source key: entry}`` dict, read from THIS layout's live
+        manifest file — the seam tests assert source entries through, instead of hand-unwrapping
+        the on-disk shape (which tests/test_workspace.py pins deliberately).
+
+        Reads ``self.manifest_path`` directly rather than calling ``manifest.load()``: the
+        dataclass pins the LIVE path, so the read stays correct even from a hook that runs while
+        ingest has ``config`` repointed at its per-source staging copy. Unwraps the format-2
+        ``{"meta", "sources"}`` envelope (a legacy flat mapping reads as-is) and returns {} when
+        no manifest exists yet."""
+        try:
+            data = json.loads(self.manifest_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {}
+        sources = data.get("sources") if isinstance(data, dict) else None
+        return sources if isinstance(sources, dict) else data
 
 
 @pytest.fixture

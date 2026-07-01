@@ -43,10 +43,7 @@ def test_ingest_creates_pages(tmp_citadel, fake_agent, transformer_page):
     log_text = tmp_citadel.log_path.read_text(encoding="utf-8")
     assert "ingest" in log_text and "created" in log_text and "deleted" in log_text
 
-    import json
-
-    manifest_data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))["sources"]
-    assert "raw/notes.md" in manifest_data
+    assert "raw/notes.md" in tmp_citadel.read_manifest()
 
 
 def test_ingest_accepts_bom_prefixed_page(tmp_citadel, fake_agent, transformer_page):

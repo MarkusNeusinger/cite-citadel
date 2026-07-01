@@ -11,7 +11,6 @@ reported as skipped, so re-running init on a live workspace is always safe. The 
 
 from __future__ import annotations
 
-from importlib import resources
 from pathlib import Path
 
 from . import config
@@ -25,10 +24,11 @@ _ENV_FALLBACK: str = "# citadel workspace settings (CITADEL_* env vars; see the 
 
 
 def _env_template() -> str:
-    """The packaged .env template (``citadel/templates/env.example``). Best-effort: a missing
-    template degrades to a one-line stub instead of failing init."""
+    """The packaged .env template (``citadel/templates/env.example`` — a real file next to this
+    module, in a checkout and in site-packages alike). Best-effort: a missing template degrades
+    to a one-line stub instead of failing init."""
     try:
-        return (resources.files("citadel") / "templates" / "env.example").read_text(encoding="utf-8")
+        return (Path(__file__).resolve().parent / "templates" / "env.example").read_text(encoding="utf-8")
     except Exception:
         return _ENV_FALLBACK
 

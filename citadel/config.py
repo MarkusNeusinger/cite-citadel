@@ -6,18 +6,17 @@ never configuration; scaffold one with ``citadel init``). Discovery order at imp
 never raise on import):
 
 1. ``$CITADEL_WORKSPACE`` — the explicit override an MCP-host config sets so ``citadel serve``
-   works from any CWD ........................................ ``WORKSPACE_SOURCE == "env"``
-2. the nearest ``citadel.toml`` walking UP from the CWD (a nested marker shadows an outer one)
-   ............................................................ ``"marker"``
+   works from any CWD;
+2. the nearest ``citadel.toml`` walking UP from the CWD (a nested marker shadows an outer one);
 3. no marker, but BOTH ``CITADEL_WIKI_DIR`` and ``CITADEL_RAW_DIR`` are set: an env-dirs
-   workspace — the CWD is only the nominal root (those dirs carry absolute keys anyway)
-   ............................................................ ``"env-dirs"``
-4. otherwise the bare CWD, recorded as ``"fallback"`` — ``cli.main`` fails loud on every
-   workspace-needing subcommand instead of silently building a wiki in a random directory.
+   workspace — the CWD is only the nominal root (those dirs carry absolute keys anyway);
+4. otherwise NO workspace resolved: ``WORKSPACE_FOUND`` is False and ``WORKSPACE_ROOT`` falls
+   back to the bare CWD — ``cli.main`` fails loud on every workspace-needing subcommand instead
+   of silently building a wiki in a random directory.
 
 Reads env with sane defaults so a fresh workspace works out of the box. Includes a tiny optional
 ``.env`` loader (no dependency) that populates ``os.environ`` from ``WORKSPACE_ROOT/.env`` when a
-workspace actually resolved (sources 1-3) and the var is unset.
+workspace actually resolved (``WORKSPACE_FOUND``) and the var is unset.
 
 Ingest runs through a coding-agent CLI (claude/copilot/gemini), so there is no
 API key to manage — the CLI uses whatever subscription it is logged into.
@@ -33,7 +32,6 @@ from __future__ import annotations
 
 import os
 import time
-from importlib import resources
 from pathlib import Path, PurePosixPath
 
 
@@ -63,23 +61,23 @@ def _find_marker_root(start: Path) -> Path | None:
     return None
 
 
-def _resolve_workspace(cwd: Path | None = None) -> tuple[Path, str]:
-    """Resolve ``(workspace root, source)`` per the module-docstring order; ``source`` is one of
-    ``"env"`` / ``"marker"`` / ``"env-dirs"`` / ``"fallback"``. Pure and never raises — callers
-    (and tests) may pass an explicit ``cwd``; the import-time call uses the process CWD."""
+def _resolve_workspace(cwd: Path | None = None) -> Path | None:
+    """Resolve the workspace root per the module-docstring order (env override > nearest marker >
+    env-dirs pair), or None when NO workspace resolved. Pure and never raises — callers (and
+    tests) may pass an explicit ``cwd``; the import-time call uses the process CWD."""
     try:
         cwd = cwd if cwd is not None else Path.cwd()
         env = os.environ.get("CITADEL_WORKSPACE", "").strip()
         if env:
-            return _safe_resolve(Path(env).expanduser()), "env"
+            return _safe_resolve(Path(env).expanduser())
         marker_root = _find_marker_root(cwd)
         if marker_root is not None:
-            return marker_root, "marker"
+            return marker_root
         if os.environ.get("CITADEL_WIKI_DIR", "").strip() and os.environ.get("CITADEL_RAW_DIR", "").strip():
-            return _safe_resolve(cwd), "env-dirs"
-        return _safe_resolve(cwd), "fallback"
+            return _safe_resolve(cwd)
+        return None
     except OSError:  # e.g. the CWD vanished — nothing can resolve; fail loud later, not here
-        return Path("."), "fallback"
+        return None
 
 
 def _load_dotenv(root: Path) -> None:
@@ -109,14 +107,25 @@ def _load_dotenv(root: Path) -> None:
         os.environ[key] = value
 
 
-WORKSPACE_ROOT: Path
-WORKSPACE_SOURCE: str
-WORKSPACE_ROOT, WORKSPACE_SOURCE = _resolve_workspace()
+def _cwd_fallback() -> Path:
+    """The bare process CWD as the nominal (non-)workspace root; never raises on import."""
+    try:
+        return _safe_resolve(Path.cwd())
+    except OSError:  # the CWD vanished — nothing can resolve; fail loud later, not here
+        return Path(".")
+
+
+_resolved_root = _resolve_workspace()
+# Whether discovery actually found a workspace. False means WORKSPACE_ROOT is only the bare CWD
+# fallback — cli.main fails loud on every workspace-needing subcommand.
+WORKSPACE_FOUND: bool = _resolved_root is not None
+WORKSPACE_ROOT: Path = _resolved_root if _resolved_root is not None else _cwd_fallback()
+del _resolved_root
 
 # Load the optional workspace .env BEFORE reading the env settings below, so a bare .env
-# (no exported vars) also works. Only when a workspace actually resolved — the "fallback"
+# (no exported vars) also works. Only when a workspace actually resolved — the fallback
 # CWD is NOT a workspace, so a stray .env in some random directory is never slurped.
-if WORKSPACE_SOURCE != "fallback":
+if WORKSPACE_FOUND:
     _load_dotenv(WORKSPACE_ROOT)
 
 
@@ -206,7 +215,7 @@ def display_key(key: str) -> str:
     return text
 
 
-def is_outside_repo(path: Path | str) -> bool:
+def is_outside_workspace(path: Path | str) -> bool:
     """True if ``path`` does NOT live under ``WORKSPACE_ROOT`` — so the agentic CLI must be
     granted explicit access to it (e.g. claude ``--add-dir``), since its file tools are otherwise
     scoped to the workspace-root working directory."""
@@ -247,21 +256,11 @@ def robust_mkdir(path: Path | str, attempts: int = 5) -> None:
             time.sleep(0.2 * (attempt + 1))
 
 
-def _packaged_rules_dir() -> Path:
-    """The packaged rules directory (``citadel/rules/``) as a REAL filesystem Path. The wheel
-    installs real files into site-packages and a checkout keeps them in the source tree, so the
-    resolved path is absolute, readable from ANY CWD, and referenceable in the paths-only agent
-    prompt. ``importlib.resources`` is the supported lookup; the fallback keeps import safe even
-    if resource resolution ever fails."""
-    try:
-        return Path(str(resources.files("citadel") / "rules"))
-    except Exception:  # never raise on import — fall back to the source layout
-        return Path(__file__).resolve().parent / "rules"
-
-
 # The rules layer the agentic CLI reads (by path) each run — packaged with the wheel so a
-# pip-installed citadel carries its own rules. Python does not read these files.
-PACKAGED_RULES_DIR: Path = _packaged_rules_dir()
+# pip-installed citadel carries its own rules. Python does not read these files; they MUST be
+# real files on disk (the agent opens them by path), so they resolve directly off this module's
+# location — absolute, readable from ANY CWD, in a checkout and in site-packages alike.
+PACKAGED_RULES_DIR: Path = Path(__file__).resolve().parent / "rules"
 SCHEMA_PATH: Path = PACKAGED_RULES_DIR / "SCHEMA.md"
 AGENT_RULES_PATH: Path = PACKAGED_RULES_DIR / "AGENT_INGEST.md"
 INDEX_PATH: Path = WIKI_DIR / "index.md"

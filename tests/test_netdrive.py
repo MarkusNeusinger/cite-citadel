@@ -18,7 +18,6 @@ spawned.
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
@@ -60,12 +59,12 @@ def test_source_path_for_key_inverts_rel_or_abs_posix(tmp_path, monkeypatch):
         assert config.source_path_for_key(config.rel_or_abs_posix(p)) == p.resolve()
 
 
-def test_is_outside_repo(tmp_path, monkeypatch):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    monkeypatch.setattr(config, "WORKSPACE_ROOT", repo, raising=False)
-    assert config.is_outside_repo(tmp_path / "net" / "wiki") is True
-    assert config.is_outside_repo(repo / "wiki") is False
+def test_is_outside_workspace(tmp_path, monkeypatch):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    monkeypatch.setattr(config, "WORKSPACE_ROOT", ws, raising=False)
+    assert config.is_outside_workspace(tmp_path / "net" / "wiki") is True
+    assert config.is_outside_workspace(ws / "wiki") is False
 
 
 def test_dir_setting_relative_against_repo_root_absolute_as_is(tmp_path, monkeypatch):
@@ -255,7 +254,7 @@ def test_ingest_end_to_end_with_wiki_raw_outside_repo(tmp_citadel_external, fake
 
     # Derived files + manifest live next to the (out-of-repo) wiki.
     assert "transformer.md" in tmp_citadel_external.index_path.read_text(encoding="utf-8")
-    data = json.loads(tmp_citadel_external.manifest_path.read_text(encoding="utf-8"))["sources"]
+    data = tmp_citadel_external.read_manifest()
     assert abs_key in data
 
     # Whole-wiki health check is clean, and re-running is a no-op (idempotent on the abs key).
@@ -289,7 +288,7 @@ def test_ingest_deletes_out_of_repo_source(tmp_citadel_external, seed_page, fake
     assert report.sources_deleted == [abs_key]
     assert not (wiki / "concepts" / "topic.md").exists()
     assert not report.errors
-    data = json.loads(tmp_citadel_external.manifest_path.read_text(encoding="utf-8"))["sources"]
+    data = tmp_citadel_external.read_manifest()
     assert abs_key not in data  # manifest key dropped
 
 

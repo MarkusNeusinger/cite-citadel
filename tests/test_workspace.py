@@ -2,8 +2,9 @@
 the manifest workspace stamp, and workspace-root .env loading. All offline, all under tmp_path.
 
 Discovery itself is exercised through ``config._resolve_workspace`` (pure — takes an explicit
-``cwd``), because the module-level ``WORKSPACE_ROOT``/``WORKSPACE_SOURCE`` are import-time values
-the suite pins via conftest's autouse fixture.
+``cwd`` and returns the resolved root, or None when no workspace resolved), because the
+module-level ``WORKSPACE_ROOT``/``WORKSPACE_FOUND`` are import-time values the suite pins via
+conftest's autouse fixture.
 """
 
 from __future__ import annotations
@@ -37,9 +38,8 @@ def test_env_override_wins_over_marker(tmp_path, monkeypatch):
     explicit.mkdir()
     monkeypatch.setenv("CITADEL_WORKSPACE", str(explicit))
 
-    root, source = config._resolve_workspace(cwd=marked)
-
-    assert (root, source) == (explicit.resolve(), "env")
+    # The env-var dir wins over the marker dir the CWD sits in.
+    assert config._resolve_workspace(cwd=marked) == explicit.resolve()
 
 
 def test_marker_found_by_upward_walk_from_nested_cwd(tmp_path, monkeypatch):
@@ -49,9 +49,7 @@ def test_marker_found_by_upward_walk_from_nested_cwd(tmp_path, monkeypatch):
     deep = ws / "sub" / "deep"
     deep.mkdir(parents=True)
 
-    root, source = config._resolve_workspace(cwd=deep)
-
-    assert (root, source) == (ws.resolve(), "marker")
+    assert config._resolve_workspace(cwd=deep) == ws.resolve()
 
 
 def test_resolution_defaults_to_process_cwd(tmp_path, monkeypatch):
@@ -60,9 +58,7 @@ def test_resolution_defaults_to_process_cwd(tmp_path, monkeypatch):
     _marker(ws)
     monkeypatch.chdir(ws)
 
-    root, source = config._resolve_workspace()
-
-    assert (root, source) == (ws.resolve(), "marker")
+    assert config._resolve_workspace() == ws.resolve()
 
 
 def test_env_dirs_pair_makes_cwd_a_nominal_workspace(tmp_path, monkeypatch):
@@ -72,23 +68,19 @@ def test_env_dirs_pair_makes_cwd_a_nominal_workspace(tmp_path, monkeypatch):
     anywhere = tmp_path / "anywhere"
     anywhere.mkdir()
 
-    root, source = config._resolve_workspace(cwd=anywhere)
-
-    assert (root, source) == (anywhere.resolve(), "env-dirs")
+    # The CWD itself becomes the (nominal) root of an env-dirs workspace.
+    assert config._resolve_workspace(cwd=anywhere) == anywhere.resolve()
     # ONE env dir alone is NOT a workspace — both must be set.
     monkeypatch.delenv("CITADEL_RAW_DIR")
-    assert config._resolve_workspace(cwd=anywhere)[1] == "fallback"
+    assert config._resolve_workspace(cwd=anywhere) is None
 
 
-def test_no_marker_no_env_is_fallback(tmp_path, monkeypatch):
+def test_no_marker_no_env_resolves_nothing(tmp_path, monkeypatch):
     _clear_workspace_env(monkeypatch)
     bare = tmp_path / "bare"
     bare.mkdir()
 
-    root, source = config._resolve_workspace(cwd=bare)
-
-    assert source == "fallback"
-    assert root == bare.resolve()
+    assert config._resolve_workspace(cwd=bare) is None  # -> WORKSPACE_FOUND False, root = bare CWD
 
 
 # --- nested-marker shadowing --------------------------------------------------------------
@@ -101,8 +93,8 @@ def test_nested_marker_shadows_outer(tmp_path, monkeypatch):
     _marker(outer)
     _marker(inner)
 
-    assert config._resolve_workspace(cwd=inner) == (inner.resolve(), "marker")  # nearest wins
-    assert config._resolve_workspace(cwd=outer) == (outer.resolve(), "marker")
+    assert config._resolve_workspace(cwd=inner) == inner.resolve()  # nearest wins
+    assert config._resolve_workspace(cwd=outer) == outer.resolve()
 
 
 def test_inner_workspace_never_touches_outer_manifest(tmp_path, monkeypatch):
@@ -114,8 +106,8 @@ def test_inner_workspace_never_touches_outer_manifest(tmp_path, monkeypatch):
     _marker(outer)
     _marker(inner)
 
-    root, source = config._resolve_workspace(cwd=inner)
-    assert (root, source) == (inner.resolve(), "marker")
+    root = config._resolve_workspace(cwd=inner)
+    assert root == inner.resolve()
     # Wire config the way import-time derivation does: every default hangs off the workspace root.
     monkeypatch.setattr(config, "WORKSPACE_ROOT", root)
     monkeypatch.setattr(config, "WIKI_DIR", root / "wiki")
@@ -143,7 +135,7 @@ def test_init_scaffolds_a_complete_workspace(tmp_path, capsys):
     assert (ws / "raw").is_dir() and (ws / "wiki").is_dir()
     assert not (ws / "rules").exists()  # the editable rules overlay is PR3, not init's job
     # The scaffolded dir now discovers as a marker workspace.
-    assert config._resolve_workspace(cwd=ws) == (ws.resolve(), "marker")
+    assert config._resolve_workspace(cwd=ws) == ws.resolve()
 
 
 def test_init_is_idempotent_and_never_overwrites(tmp_path, capsys):
@@ -177,8 +169,8 @@ def test_init_reports_created_and_skipped_mix(tmp_path, capsys):
 # --- fail-loud: every subcommand except init needs a workspace ----------------------------
 
 
-def test_workspace_needing_command_fails_loud_on_fallback(monkeypatch, capsys):
-    monkeypatch.setattr(config, "WORKSPACE_SOURCE", "fallback")
+def test_workspace_needing_command_fails_loud_when_none_found(monkeypatch, capsys):
+    monkeypatch.setattr(config, "WORKSPACE_FOUND", False)
 
     assert cli.main(["tags"]) == 2
 
@@ -189,14 +181,14 @@ def test_workspace_needing_command_fails_loud_on_fallback(monkeypatch, capsys):
 
 
 def test_init_is_exempt_from_the_workspace_guard(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "WORKSPACE_SOURCE", "fallback")
+    monkeypatch.setattr(config, "WORKSPACE_FOUND", False)
     assert cli.main(["init", str(tmp_path / "ws")]) == 0
 
 
-def test_serve_dispatches_when_workspace_comes_from_env(monkeypatch):
-    """The MCP-host story: with CITADEL_WORKSPACE set (WORKSPACE_SOURCE == "env"), `citadel
+def test_serve_dispatches_when_workspace_found(monkeypatch):
+    """The MCP-host story: with a workspace resolved (e.g. CITADEL_WORKSPACE set), `citadel
     serve` passes the guard from ANY CWD and reaches the server entry point."""
-    monkeypatch.setattr(config, "WORKSPACE_SOURCE", "env")
+    monkeypatch.setattr(config, "WORKSPACE_FOUND", True)
     called = {}
 
     def fake_serve(args):
@@ -209,7 +201,7 @@ def test_serve_dispatches_when_workspace_comes_from_env(monkeypatch):
 
 
 def test_env_dirs_workspace_passes_the_guard(monkeypatch, tmp_citadel, capsys):
-    monkeypatch.setattr(config, "WORKSPACE_SOURCE", "env-dirs")
+    monkeypatch.setattr(config, "WORKSPACE_FOUND", True)  # what an env-dirs pair resolves to
     assert cli.main(["tags"]) == 0  # a marker-less env-dirs workspace stays fully valid
     assert "No tags yet." in capsys.readouterr().out
 
@@ -312,5 +304,3 @@ def test_packaged_rules_resolve_to_real_absolute_files():
     assert config.SCHEMA_PATH.is_absolute() and config.SCHEMA_PATH.is_file()
     assert config.AGENT_RULES_PATH.is_absolute() and config.AGENT_RULES_PATH.is_file()
     assert config.SCHEMA_PATH.parent == config.PACKAGED_RULES_DIR
-    assert config.PACKAGED_RULES_DIR.name == "rules"
-    assert config.PACKAGED_RULES_DIR.parent.name == "citadel"

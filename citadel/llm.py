@@ -15,7 +15,7 @@ agent can handle an arbitrarily large raw file.
   their own default model.
 
 One function does real work: ``run_ingest_session(rel_key)`` runs the chosen CLI once against
-the repo. It has no return value — the result is whatever the agent wrote under ``wiki/``,
+the workspace. It has no return value — the result is whatever the agent wrote under ``wiki/``,
 which ``ingest`` discovers via a filesystem diff. It raises ``RuntimeError`` on a missing/
 unusable CLI, a non-zero exit, a claude ``is_error`` envelope, or a timeout (the failure
 surface ``ingest``'s per-source ``try/except`` already expects).
@@ -61,11 +61,11 @@ def _resolve_cli(cli: str) -> str:
 def _agent_path(path: Path) -> str:
     """The path string to name a configured directory (wiki/raw) in the agent prompt. The agentic
     CLI runs with ``cwd`` = ``config.WORKSPACE_ROOT``, so a directory UNDER the workspace is named relative
-    to it (short, cwd-relative), while one OUTSIDE the repo — e.g. a wiki/raw tree on a mounted
+    to it (short, cwd-relative), while one OUTSIDE the workspace — e.g. a wiki/raw tree on a mounted
     network drive — is named by its ABSOLUTE path so the agent (granted access via ``--add-dir``)
-    can find it. Honors ``CITADEL_WIKI_DIR`` / ``CITADEL_RAW_DIR`` and never collapses an out-of-repo dir
-    to a bare name (the old bug that made the agent edit a non-existent ``./wiki``). Single source
-    of truth: ``config.rel_or_abs_posix``."""
+    can find it. Honors ``CITADEL_WIKI_DIR`` / ``CITADEL_RAW_DIR`` and never collapses an
+    out-of-workspace dir to a bare name (the old bug that made the agent edit a non-existent
+    ``./wiki``). Single source of truth: ``config.rel_or_abs_posix``."""
     return config.rel_or_abs_posix(path)
 
 
@@ -89,12 +89,12 @@ def _external_dirs(rel_key: str, read_path: str | None = None) -> list[str]:
         config.source_path_for_key(rel_key).parent,
     ]
     if read_path:
-        # The extracted-text file lives in a system temp dir (outside the repo); the agent must be
-        # granted access so it can read what to ingest.
+        # The extracted-text file lives in a system temp dir (outside the workspace); the agent
+        # must be granted access so it can read what to ingest.
         candidates.append(Path(read_path).parent)
     out: dict[str, None] = {}
     for d in candidates:
-        if config.is_outside_repo(d):
+        if config.is_outside_workspace(d):
             out[str(Path(d).resolve())] = None
     return sorted(out)
 
@@ -113,7 +113,7 @@ def _build_instruction(
     out-of-workspace source on a mounted drive); ``cwd`` is the workspace root, so an in-workspace
     path is named relative to it and an out-of-workspace path absolutely. The wiki/raw
     directory names are read from config (``CITADEL_WIKI_DIR`` / ``CITADEL_RAW_DIR``) at CALL time via
-    :func:`_agent_path`, so a custom layout — a renamed in-repo dir (``CITADEL_WIKI_DIR=wikiET``) or a
+    :func:`_agent_path`, so a custom layout — a renamed in-workspace dir (``CITADEL_WIKI_DIR=wikiET``) or a
     network-drive path (``CITADEL_WIKI_DIR=T:\\team-wiki\\wiki``) — is searched and written correctly
     instead of a hardcoded ``wiki/``.
 
@@ -657,7 +657,7 @@ def run_ingest_session(
     ``read_path`` (ingest/reconcile only) is the path to the pre-extracted text of a binary Office
     source — or, when ``segment`` is set, this segment's slice of a large source: when set, the
     agent is told to READ it for content while still citing ``rel_key``, and its directory is
-    granted to the CLI alongside any out-of-repo wiki/raw. ``segment`` is ``(part, total)`` for a
+    granted to the CLI alongside any out-of-workspace wiki/raw. ``segment`` is ``(part, total)`` for a
     large source split across passes.
 
     Side-effecting only: the agent edits files under ``config.WIKI_DIR``. Returns None;

@@ -112,19 +112,21 @@ jobs:
 
       - name: Install ONLY the wheel into a clean venv
         # --seed puts pip into the venv; the activate glob resolves bin/ (POSIX) or Scripts/ (Windows).
-        # SMOKE_DIR is a temp dir OUTSIDE the checkout — every citadel command below runs from there.
+        # The venv's script dir goes onto $GITHUB_PATH once (pwd -W yields the native Windows path
+        # under git-bash; plain pwd elsewhere), so every later step runs citadel/python directly —
+        # from a smoke dir OUTSIDE the checkout, via per-step working-directory.
         run: |
           uv venv --seed smoke-venv
           source smoke-venv/*/activate
           python -m pip install --no-cache-dir dist/*.whl
-          echo "SMOKE_DIR=$(mktemp -d)" >> "$GITHUB_ENV"
+          echo "$(cd "$(dirname smoke-venv/*/activate)" && { pwd -W 2>/dev/null || pwd; })" >> "$GITHUB_PATH"
+          mkdir -p "${{ runner.temp }}/smoke"
 
       - name: Wheel completeness — packaged rules + templates
         # From a CWD with no ./citadel directory, imports MUST resolve to site-packages; the agent
         # rules and the .env template are package data and must travel inside the wheel.
+        working-directory: ${{ runner.temp }}/smoke
         run: |
-          source smoke-venv/*/activate
-          cd "$SMOKE_DIR"
           python - <<'EOF'
           from importlib import resources
           import citadel
@@ -137,15 +139,12 @@ jobs:
           EOF
 
       - name: Smoke — citadel --version (console entry point)
-        run: |
-          source smoke-venv/*/activate
-          cd "$SMOKE_DIR"
-          citadel --version
+        working-directory: ${{ runner.temp }}/smoke
+        run: citadel --version
 
       - name: Smoke — fail loud outside any workspace (no phantom workspace)
+        working-directory: ${{ runner.temp }}/smoke
         run: |
-          source smoke-venv/*/activate
-          cd "$SMOKE_DIR"
           if citadel check; then
             echo "::error::'citadel check' succeeded in a CWD with no citadel.toml marker and no CITADEL_* dirs — workspace discovery invented a phantom workspace"
             exit 1
@@ -153,9 +152,8 @@ jobs:
           echo "OK: workspace-less 'citadel check' failed loud, as designed"
 
       - name: Smoke — citadel init demo (workspace scaffold)
+        working-directory: ${{ runner.temp }}/smoke
         run: |
-          source smoke-venv/*/activate
-          cd "$SMOKE_DIR"
           citadel init demo
           test -f demo/citadel.toml
           test -f demo/.env
@@ -163,13 +161,9 @@ jobs:
           test -d demo/wiki
 
       - name: Smoke — citadel check on the fresh workspace (must be clean)
-        run: |
-          source smoke-venv/*/activate
-          cd "$SMOKE_DIR/demo"
-          citadel check
+        working-directory: ${{ runner.temp }}/smoke/demo
+        run: citadel check
 
       - name: Smoke — citadel search on the empty wiki (must exit 0, no matches)
-        run: |
-          source smoke-venv/*/activate
-          cd "$SMOKE_DIR/demo"
-          citadel search x
+        working-directory: ${{ runner.temp }}/smoke/demo
+        run: citadel search x

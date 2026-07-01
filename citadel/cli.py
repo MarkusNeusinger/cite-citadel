@@ -41,6 +41,8 @@ def build_parser() -> argparse.ArgumentParser:
     # `--version` exits inside parse_args (like --help), so it works everywhere — including
     # a bare CWD with no workspace: main's fail-loud guard is never reached.
     parser.add_argument("--version", action="version", version=f"citadel {__version__}")
+    # Every subcommand needs a resolved workspace unless it opts out (init, which CREATES one).
+    parser.set_defaults(needs_workspace=True)
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_init = sub.add_parser("init", help="Scaffold a citadel workspace (citadel.toml marker, .env, raw/, wiki/).")
@@ -50,7 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=".",
         help="Directory to initialize (created if missing; default: the current directory).",
     )
-    p_init.set_defaults(func=cmd_init)
+    p_init.set_defaults(func=cmd_init, needs_workspace=False)
 
     p_ingest = sub.add_parser("ingest", help="Fold new/changed raw files into the wiki (default: all of raw/).")
     p_ingest.add_argument(
@@ -134,7 +136,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     root, results = workspace.init_workspace(Path(args.dir))
     print(f"Workspace: {root}")
     for status, name in results:
-        print(f"  {status:7s} {name}")
+        print(f"  {status} {name}")
     if all(status == "skipped" for status, _ in results):
         print("Nothing to do — the workspace is already initialized.")
     return 0
@@ -279,12 +281,12 @@ def cmd_view(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     """Parse arguments and dispatch to the chosen subcommand.
 
-    Every subcommand except ``init`` operates on a workspace, so when discovery fell all the way
-    through to the bare-CWD fallback (``config.WORKSPACE_SOURCE == "fallback"``) main aborts with
-    an actionable error instead of silently reading/writing a wiki in whatever directory the
-    process happens to run from (the pip-installed phantom-workspace bug class). ``--help`` and
-    ``--version`` never reach the guard (argparse exits first), and ``init`` is exempt — it
-    CREATES the workspace.
+    Every subcommand that operates on a workspace declares ``needs_workspace=True`` (the parser
+    default), so when discovery found none (``config.WORKSPACE_FOUND`` is False and
+    ``WORKSPACE_ROOT`` is only the bare-CWD fallback) main aborts with an actionable error
+    instead of silently reading/writing a wiki in whatever directory the process happens to run
+    from (the pip-installed phantom-workspace bug class). ``--help`` and ``--version`` never
+    reach the guard (argparse exits first), and ``init`` opts out — it CREATES the workspace.
 
     On a RuntimeError raised by a subcommand, print the message to stderr and
     return 1. (Ingest collects per-source LLM-CLI failures into its report
@@ -295,7 +297,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from . import config
 
-    if args.command != "init" and config.WORKSPACE_SOURCE == "fallback":
+    if getattr(args, "needs_workspace", True) and not config.WORKSPACE_FOUND:
         print(
             "error: no citadel workspace found — this command needs one.\n"
             f"  No {config.WORKSPACE_MARKER} marker exists in the current directory or any parent, and no\n"

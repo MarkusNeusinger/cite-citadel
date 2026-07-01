@@ -34,7 +34,7 @@ session, `--log-dir DIR` writes a transcript per source, `--quiet` drops the pro
 Tests (pytest, all offline — no CLI/network is ever spawned):
 
 ```bash
-uv run pytest -q                                    # whole suite (~430 tests, ~3s)
+uv run pytest -q                                    # whole suite (~420 tests, ~3s)
 uv run pytest tests/test_ingest_core.py -q          # one file
 uv run pytest tests/test_ingest_core.py::test_ingest_creates_pages   # one test
 ```
@@ -77,8 +77,9 @@ recomputed from them in memory.
 `citadel.toml` marker (a pure marker, never config — scaffold one with `citadel init [DIR]`).
 Discovery order: `CITADEL_WORKSPACE` env var > nearest marker walking up from the CWD (nested
 markers shadow outer ones) > an env-dirs workspace (`CITADEL_WIKI_DIR`+`CITADEL_RAW_DIR` both
-set) > fail-loud fallback (`config.WORKSPACE_SOURCE`; every subcommand except `init` aborts on
-it). The dev checkout carries a marker, so it is itself a workspace.
+set) > otherwise none: `config.WORKSPACE_FOUND` is False, `WORKSPACE_ROOT` falls back to the
+bare CWD, and every subcommand except `init` fails loud. The dev checkout carries a marker, so
+it is itself a workspace.
 
 **Ingest is the heart of the system** (`ingest.py` → `llm.py`). The flow per source:
 - `ingest.ingest()` partitions candidates into pending / already-ingested (sha match) / reorganized

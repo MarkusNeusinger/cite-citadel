@@ -129,7 +129,7 @@ def test_version_prints_and_exits_0_without_a_workspace(monkeypatch, tmp_path, c
     """``citadel --version`` must work from a bare CWD with NO workspace at all: argparse's
     version action exits during parse_args, so main's fail-loud guard is never reached."""
     monkeypatch.chdir(tmp_path)  # a bare tmp CWD — no citadel.toml, no CITADEL_* dirs
-    monkeypatch.setattr(config, "WORKSPACE_SOURCE", "fallback")  # what discovery resolves there
+    monkeypatch.setattr(config, "WORKSPACE_FOUND", False)  # what discovery resolves there
     with pytest.raises(SystemExit) as exc:
         cli.main(["--version"])
     assert exc.value.code == 0
