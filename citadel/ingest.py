@@ -29,6 +29,7 @@ marked done only on a clean session. ``llm.run_ingest_session`` is the single ou
 from __future__ import annotations
 
 import contextlib
+import fnmatch
 import hashlib
 import os
 import re
@@ -145,6 +146,16 @@ def _same_path(a: Path, b: Path) -> bool:
         return a == b
 
 
+def _is_ignored_name(name: str) -> bool:
+    """True if ``name`` (a file OR directory BASENAME) matches one of the configured OS/junk-file
+    ignore globs (``config.IGNORE_PATTERNS``), matched case-insensitively. Such entries are noise
+    (Windows ``Thumbs.db``/``desktop.ini``, macOS ``.DS_Store``, Office ``~$`` lock files, editor
+    swap/backup files) and are skipped entirely during discovery: never ingested, never recorded in
+    the manifest or the failures catalog. Read at call time so tests/env can override the list."""
+    lowered = name.lower()
+    return any(fnmatch.fnmatchcase(lowered, pattern.lower()) for pattern in config.IGNORE_PATTERNS)
+
+
 def _is_repo_source(path: Path) -> bool:
     """True if ``path`` should be ingested as ONE repo source: repo support is on, it is a repo
     dir (``.git``/``.citadelsource``), and it is NOT the corpus root ``RAW_DIR`` itself. The latter
@@ -157,11 +168,14 @@ def _prune_repo_dirs(parent: Path, dirnames: list[str]) -> list[str]:
     """Drop the sub-directories of ``parent`` that are repo roots (a ``.git`` or ``.citadelsource``
     marker) when repo support is on, so the per-file walk does NOT descend into a repository — it
     is ingested as one source instead (see :mod:`citadel.repo`). With repo support off, nothing is
-    pruned and a repo's files are walked individually (the legacy behavior). Hidden dirs are always
-    dropped, as before."""
+    pruned and a repo's files are walked individually (the legacy behavior). Hidden dirs, and any
+    dir whose name matches an ignore glob (``$RECYCLE.BIN`` etc.; see :func:`_is_ignored_name`), are
+    always dropped."""
     kept: list[str] = []
     for name in sorted(dirnames):
         if name.startswith("."):
+            continue
+        if _is_ignored_name(name):
             continue
         if _is_repo_source(parent / name):
             continue
@@ -171,8 +185,10 @@ def _prune_repo_dirs(parent: Path, dirnames: list[str]) -> list[str]:
 
 def _walk_files(root: Path) -> list[Path]:
     """Every file under ``root``, recursively, in deterministic order — skipping hidden files
-    and hidden directories (a leading ``.``: ``.gitkeep``, ``.git``, etc.) and NOT descending into
-    git repositories (handled as one source each; see :func:`_prune_repo_dirs`).
+    and hidden directories (a leading ``.``: ``.gitkeep``, ``.git``, etc.), skipping OS/junk files
+    and folders that match an ignore glob (``Thumbs.db``, ``desktop.ini``, ``~$*`` lock files, …;
+    see :func:`_is_ignored_name`), and NOT descending into git repositories (handled as one source
+    each; see :func:`_prune_repo_dirs`).
 
     Unlike the old top-level ``*.md`` glob, this picks up ANY file type (``.txt``/``.py``/
     ``.sql``/``.pdf``/…) and descends into sub-folders, so a user can organize ``raw/`` however
@@ -182,7 +198,7 @@ def _walk_files(root: Path) -> list[Path]:
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = _prune_repo_dirs(Path(dirpath), dirnames)
         for name in sorted(filenames):
-            if name.startswith("."):
+            if name.startswith(".") or _is_ignored_name(name):
                 continue
             out.append(Path(dirpath) / name)
     return out
@@ -1236,6 +1252,20 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
     # Updated through the run and rewritten at the end, so it always reflects the CURRENT stuck set.
     failures_dict = failures.load()
     failures_before = {k: dict(v) if isinstance(v, dict) else v for k, v in failures_dict.items()}
+    # Migration sweep: drop any entry a PREVIOUS run recorded for a file that is NOW ignored
+    # (Thumbs.db & friends, before this feature existed). It still exists on disk, so a full run
+    # would never re-detect it as deleted — clean it out of the manifest AND the failures catalog
+    # directly so wiki/sources/index.md stops carrying the noise. Repo entries never match (their
+    # key basename is a folder name), so this only touches junk-file keys.
+    pruned_ignored = False
+    for key in [k for k in manifest_dict if _is_ignored_name(PurePosixPath(k).name)]:
+        del manifest_dict[key]
+        pruned_ignored = True
+    for key in [k for k in failures_dict if _is_ignored_name(PurePosixPath(k).name)]:
+        failures.clear(failures_dict, key)
+        pruned_ignored = True
+    if pruned_ignored:
+        manifest.save(manifest_dict)
     # The model/backend that will import this run's sources — recorded per-source in the manifest
     # so you can see which raw file was imported by which model. Resolved once (it does not change
     # mid-run) and read at call time so tests can monkeypatch the backend/model.
@@ -1598,6 +1628,7 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
         or report.sources_deleted
         or repointed
         or failures_changed
+        or pruned_ignored
     ):
         emit("finalize")
         # The manifest is already persisted incrementally (after each source, and right after the

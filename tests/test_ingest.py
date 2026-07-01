@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from citadel import config, ingest, lint, manifest, okf, store, validate
+from citadel import config, failures, ingest, lint, manifest, okf, store, validate
 
 
 # A counter so tests can assert the fake session runs exactly once per source.
@@ -391,6 +391,100 @@ def test_candidates_walks_recursively_and_skips_hidden(tmp_path, monkeypatch):
     explicit = {str(p.relative_to(raw)).replace("\\", "/") for p in ingest._candidates([str(raw)])}
     assert default == expected
     assert explicit == expected
+
+
+def test_discovery_skips_os_junk_files_and_dirs(tmp_path, monkeypatch):
+    """OS/system junk (Thumbs.db, desktop.ini, ~$ Office locks, *.tmp, editor backups) and junk
+    folders ($RECYCLE.BIN) are skipped during discovery — never fed to the agent — while real
+    sources in the same folders are kept."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "notes.md").write_text("real content\n", encoding="utf-8")
+    (raw / "Thumbs.db").write_bytes(b"\x00\x01thumbnail cache\x00")
+    (raw / "desktop.ini").write_text("[.ShellClassInfo]\n", encoding="utf-8")
+    (raw / "~$report.docx").write_bytes(b"\x00office lock\x00")
+    (raw / "scratch.tmp").write_text("temp\n", encoding="utf-8")
+    (raw / "notes.md~").write_text("editor backup\n", encoding="utf-8")
+    (raw / "sub").mkdir()
+    (raw / "sub" / "b.txt").write_text("b\n", encoding="utf-8")
+    (raw / "sub" / "Thumbs.db").write_bytes(b"\x00more\x00")
+    (raw / "$RECYCLE.BIN").mkdir()
+    (raw / "$RECYCLE.BIN" / "deleted.md").write_text("in recycle bin\n", encoding="utf-8")
+
+    got = {str(p.relative_to(raw)).replace("\\", "/") for p in ingest._candidates(None)}
+    assert got == {"notes.md", "sub/b.txt"}
+
+
+def test_os_junk_not_recorded_in_manifest_or_failures(tmp_path, monkeypatch):
+    """A junk file next to a real source is ignored entirely: NOT ingested, NOT surfaced as
+    unreadable, and NOT written into the manifest or the failures catalog (the user's complaint)."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake_session_transformer)
+
+    (raw / "Thumbs.db").write_bytes(b"\x00\x01\x02thumbnail\x00")
+    (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
+
+    report = ingest.ingest()
+    assert "raw/notes.md" in report.processed
+    assert "raw/Thumbs.db" not in report.unreadable
+    assert not any("Thumbs.db" in e for e in report.errors)
+    assert "raw/Thumbs.db" not in manifest.load()
+    assert "raw/Thumbs.db" not in failures.load()
+
+
+def test_prior_junk_entries_are_pruned_on_next_run(tmp_path, monkeypatch):
+    """A junk file recorded by a PREVIOUS run (before it was ignored) is swept out of the manifest
+    and the failures catalog on the next run, even though the file still sits on disk."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake_session_transformer)
+
+    junk = raw / "Thumbs.db"
+    junk.write_bytes(b"\x00\x01thumbnail\x00")
+    notes = raw / "notes.md"
+    notes.write_text("Transformers use self-attention.\n", encoding="utf-8")
+    # Seed prior state: notes.md already ingested (so it is skipped, not re-run), and Thumbs.db
+    # recorded exactly as the old code left it — a manifest entry plus an unreadable failure.
+    seeded = manifest.load()
+    seeded["raw/notes.md"] = manifest.make_entry(manifest.file_sha256(notes), "claude:sonnet")
+    seeded["raw/Thumbs.db"] = manifest.make_entry(manifest.file_sha256(junk), None)
+    manifest.save(seeded)
+    fails = failures.load()
+    failures.record(fails, "raw/Thumbs.db", failures.UNREADABLE, "no extractable text")
+    failures.save(fails)
+
+    report = ingest.ingest()
+    assert _CALLS["n"] == 0  # notes.md unchanged -> skipped; junk pruned without a session
+    after = manifest.load()
+    assert "raw/notes.md" in after  # the real source is left tracked
+    assert "raw/Thumbs.db" not in after
+    assert "raw/Thumbs.db" not in failures.load()
+    assert "raw/Thumbs.db" not in report.unreadable
+
+
+def test_ignore_patterns_config_resolution(monkeypatch):
+    """CITADEL_IGNORE_PATTERNS: unset keeps defaults, a leading `+` extends them, any other value
+    replaces them; parsing splits on commas and newlines and trims blanks."""
+    monkeypatch.delenv("CITADEL_IGNORE_PATTERNS", raising=False)
+    assert config._resolve_ignore_patterns() == list(config._DEFAULT_IGNORE_PATTERNS)
+
+    monkeypatch.setenv("CITADEL_IGNORE_PATTERNS", "+*.bak, ~backup* \n")
+    extended = config._resolve_ignore_patterns()
+    assert extended[: len(config._DEFAULT_IGNORE_PATTERNS)] == list(config._DEFAULT_IGNORE_PATTERNS)
+    assert extended[len(config._DEFAULT_IGNORE_PATTERNS) :] == ["*.bak", "~backup*"]
+
+    monkeypatch.setenv("CITADEL_IGNORE_PATTERNS", "only.this,*.foo")
+    assert config._resolve_ignore_patterns() == ["only.this", "*.foo"]
+
+
+def test_is_ignored_name_is_case_insensitive(monkeypatch):
+    """Matching a basename against the ignore globs is case-insensitive (Windows filenames vary),
+    and only fires for configured patterns."""
+    monkeypatch.setattr(config, "IGNORE_PATTERNS", ["Thumbs.db", "*.tmp", "~$*"], raising=False)
+    assert ingest._is_ignored_name("Thumbs.db")
+    assert ingest._is_ignored_name("thumbs.DB")
+    assert ingest._is_ignored_name("SCRATCH.TMP")
+    assert ingest._is_ignored_name("~$Report.docx")
+    assert not ingest._is_ignored_name("notes.md")
+    assert not ingest._is_ignored_name("thumbnails.md")
 
 
 def test_ingest_discovers_subfolders_and_nonmd(tmp_path, monkeypatch):

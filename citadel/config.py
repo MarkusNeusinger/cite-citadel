@@ -251,6 +251,64 @@ DEDUP_BY_BASENAME: bool = os.environ.get("CITADEL_DEDUP_BY_BASENAME", "1").strip
 # to disable) for a very large one.
 MAX_SOURCE_CHARS: int = int(os.environ.get("CITADEL_MAX_SOURCE_CHARS", "300000"))
 
+# OS/system junk files & folders to IGNORE entirely during a raw/ scan — never ingested, never
+# recorded in the manifest or the failures catalog. These are noise a file manager or the OS drops
+# into folders (Windows thumbnail caches / desktop.ini, macOS .DS_Store / resource forks, Office
+# ~$ lock files, editor swap & backup files) that carry no wiki-worthy content — folding each into a
+# "could not ingest" entry only clutters wiki/sources/index.md. Each pattern is a shell-style glob
+# matched case-insensitively against a file OR directory BASENAME (fnmatch), so `*.tmp` and `~$*`
+# work. Hidden dotfiles/dirs are already skipped separately, so these mainly cover the NON-hidden
+# junk (a few common hidden ones are listed too, as documentation).
+_DEFAULT_IGNORE_PATTERNS: tuple[str, ...] = (
+    # Windows Explorer / system noise
+    "Thumbs.db",
+    "Thumbs.db:encryptable",
+    "ehthumbs.db",
+    "ehthumbs_vista.db",
+    "desktop.ini",
+    "$RECYCLE.BIN",
+    "System Volume Information",
+    # macOS Finder noise
+    ".DS_Store",
+    "._*",
+    ".Spotlight-V100",
+    ".Trashes",
+    ".TemporaryItems",
+    ".fseventsd",
+    ".apdisk",
+    # Office / editor lock, swap & backup files
+    "~$*",
+    "*.tmp",
+    "*.temp",
+    "*.swp",
+    "*.swo",
+    "*~",
+    ".~lock.*#",
+)
+
+
+def _parse_ignore_patterns(raw: str) -> list[str]:
+    """Split a comma/newline-separated ignore-pattern string into a clean list (whitespace stripped,
+    blank entries dropped)."""
+    return [p.strip() for p in raw.replace("\n", ",").split(",") if p.strip()]
+
+
+def _resolve_ignore_patterns() -> list[str]:
+    """Build the effective ignore list from the built-in defaults and ``CITADEL_IGNORE_PATTERNS``:
+    unset/blank keeps the defaults; a value with a leading ``+`` is ADDED to them (e.g.
+    ``+*.bak,~backup*``); any other value REPLACES them (set it to a pattern that matches nothing to
+    effectively disable — though ignoring these is almost always wanted)."""
+    raw = os.environ.get("CITADEL_IGNORE_PATTERNS", "").strip()
+    if not raw:
+        return list(_DEFAULT_IGNORE_PATTERNS)
+    if raw.startswith("+"):
+        return list(_DEFAULT_IGNORE_PATTERNS) + _parse_ignore_patterns(raw[1:])
+    return _parse_ignore_patterns(raw)
+
+
+# Read at call time by ingest's discovery walk (tests monkeypatch this list directly).
+IGNORE_PATTERNS: list[str] = _resolve_ignore_patterns()
+
 
 # Where each non-claude backend keeps its OWN model id in the environment. A copilot user on a
 # local/Ollama model sets COPILOT_MODEL (e.g. "qwen3.6:27b"); gemini uses GEMINI_MODEL. We read
