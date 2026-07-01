@@ -326,6 +326,85 @@ def test_empty_wiki(tmp_path, monkeypatch):
     assert "<!doctype html>" in html
 
 
+def test_bundle_page_stats_counts_cites_llm_contradictions(tmp_path, monkeypatch):
+    wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
+    body = (
+        "Espresso uses pressure.[^s1] It is strong.[^s2]\n\n"
+        "A model-supplied note.[^llm1]\n\n"
+        "> [!CONTRADICTION]\n"
+        "> raw/a.md says 9 bar [^s1]; raw/b.md says 8 bar [^s2].\n\n"
+        "```\n[^s9]\n```\n\n"
+        "## Sources\n\n"
+        "[^s1]: [raw/a.md](../../raw/a.md) - n\n"
+        "[^s2]: [raw/b.md](../../raw/b.md) - n\n"
+        "[^llm1]: LLM - model knowledge, not from a raw file (added 2026-06-22)\n"
+    )
+    _seed(wiki, "concepts/espresso.md", {"type": "Concept", "title": "Espresso"}, body)
+    page = next(p for p in viewer.build_bundle()["pages"] if p["rel_path"] == "concepts/espresso.md")
+    # 2 raw cites in prose + 2 inside the contradiction callout; the fenced [^s9] and the
+    # trailing ## Sources definitions ([^sN]:) are not counted.
+    assert page["cites"] == 4
+    # Inline [^llm1]; the ## Sources definition is not counted as a use.
+    assert page["llm"] == 1
+    assert page["contradictions"] == 1
+
+
+def test_bundle_page_stats_zero_when_clean(tmp_path, monkeypatch):
+    wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _two_page_wiki(wiki)  # one [^s1] each, no llm, no contradiction
+    by_path = {p["rel_path"]: p for p in viewer.build_bundle()["pages"]}
+    assert by_path["concepts/espresso.md"]["cites"] == 1
+    assert by_path["concepts/espresso.md"]["llm"] == 0
+    assert by_path["concepts/espresso.md"]["contradictions"] == 0
+
+
+def test_bundle_page_stats_ignores_fenced_and_sources_examples(tmp_path, monkeypatch):
+    # A page that DOCUMENTS the citation/contradiction format must not have its example markers
+    # counted: a callout inside a code fence is not a real contradiction, and a footnote marker
+    # mentioned inside another footnote's ## Sources definition note is not an inline use.
+    wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
+    body = (
+        "Real fact.[^s1]\n\n"
+        "Here is how the contradiction format looks:\n\n"
+        "```\n"
+        "> [!CONTRADICTION]\n"
+        "> raw/a.md says X [^s7]; raw/b.md says Y [^s8].\n"
+        "```\n\n"
+        "## Sources\n\n"
+        "[^s1]: [raw/a.md](../../raw/a.md) - derived alongside [^s2], see [^llm9] (ingested 2026-06-22)\n"
+        "[^s2]: [raw/b.md](../../raw/b.md) - n\n"
+    )
+    _seed(wiki, "concepts/format.md", {"type": "Concept", "title": "Format"}, body)
+    page = next(p for p in viewer.build_bundle()["pages"] if p["rel_path"] == "concepts/format.md")
+    assert page["contradictions"] == 0  # the fenced callout is documentation, not a real one
+    assert page["cites"] == 1  # only the inline [^s1]; fenced [^s7]/[^s8] and the def-note [^s2] excluded
+    assert page["llm"] == 0  # the [^llm9] mentioned in the def note is not an inline use
+
+
+def test_build_html_has_fulltext_search_badges_and_facets(tmp_path, monkeypatch):
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "a.md").write_text("# A\n\nbody text\n", encoding="utf-8")
+    _two_page_wiki(wiki)
+    html = viewer.build_html()
+    # Full-text search over bodies + result highlighting, the sidebar badge/facet machinery, and
+    # the reader jump-to-contradiction/LLM affordance are all present in the inlined viewer.
+    for marker in (
+        "searchResults",
+        "applyHighlight",
+        "renderResults",
+        "badgesHtml",
+        "renderFacets",
+        "data-facet",
+        "data-jump",
+        "<mark>",
+        'id="facets"',
+    ):
+        assert marker in html, f"missing viewer feature marker: {marker!r}"
+    # (The offline guarantee is asserted by test_build_html_is_offline /
+    # test_build_html_makes_sources_clickable — not re-scanned here, since those substrings can
+    # legitimately occur inside embedded source/page text on a real wiki.)
+
+
 def test_cli_view_wires_up():
     from citadel import cli
 
