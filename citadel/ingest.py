@@ -1265,7 +1265,11 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
         failures.clear(failures_dict, key)
         pruned_ignored = True
     if pruned_ignored:
+        # Persist BOTH catalogs together, so an early exit (Ctrl+C / an unexpected error before
+        # finalization) can't leave the manifest cleaned while the failures catalog still carries
+        # the junk keys — the two would then disagree until the next run reconciled them.
         manifest.save(manifest_dict)
+        failures.save(failures_dict)
     # The model/backend that will import this run's sources — recorded per-source in the manifest
     # so you can see which raw file was imported by which model. Resolved once (it does not change
     # mid-run) and read at call time so tests can monkeypatch the backend/model.

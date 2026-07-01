@@ -460,6 +460,35 @@ def test_prior_junk_entries_are_pruned_on_next_run(tmp_path, monkeypatch):
     assert "raw/Thumbs.db" not in report.unreadable
 
 
+def test_migration_sweep_persists_both_catalogs_even_on_early_abort(tmp_path, monkeypatch):
+    """The junk-entry sweep persists the manifest AND the failures catalog together: if the run
+    aborts right after the sweep (before finalization), neither still carries the pruned junk key —
+    they never disagree. Simulated by making the partition step (which runs AFTER the sweep) raise."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+
+    junk = raw / "Thumbs.db"
+    junk.write_bytes(b"\x00\x01thumbnail\x00")
+    seeded = manifest.load()
+    seeded["raw/Thumbs.db"] = manifest.make_entry(manifest.file_sha256(junk), None)
+    manifest.save(seeded)
+    fails = failures.load()
+    failures.record(fails, "raw/Thumbs.db", failures.UNREADABLE, "no extractable text")
+    failures.save(fails)
+
+    # Abort AFTER the sweep: _partition_sources is called once the manifest/failures were pruned.
+    def boom(*_a, **_k):
+        raise RuntimeError("early abort after the migration sweep")
+
+    monkeypatch.setattr(ingest, "_partition_sources", boom)
+
+    with pytest.raises(RuntimeError):
+        ingest.ingest()
+
+    # Both sidecars were flushed in the sweep, so on disk they agree — the junk is gone from each.
+    assert "raw/Thumbs.db" not in manifest.load()
+    assert "raw/Thumbs.db" not in failures.load()
+
+
 def test_ignore_patterns_config_resolution(monkeypatch):
     """CITADEL_IGNORE_PATTERNS: unset keeps defaults, a leading `+` extends them, any other value
     replaces them; parsing splits on commas and newlines and trims blanks."""
