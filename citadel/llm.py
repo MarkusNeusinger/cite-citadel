@@ -222,6 +222,21 @@ def _build_instruction(rel_key: str, kind: str = "ingest", read_path: str | None
             "structured sources' in SCHEMA.md. If it holds no usable text, make no edits.\n"
         )
 
+    # Fallback date for time-anchored (threaded) sources: the raw file's own modification date,
+    # used only when the source's CONTENT states no date. Computed here (guarded) so the paths-only
+    # prompt can name it without changing run_ingest_session's signature. time.gmtime avoids a
+    # datetime import; a missing file (e.g. in a unit test) simply yields no hint.
+    fallback_date = ""
+    with contextlib.suppress(OSError):
+        src = config.source_path_for_key(rel_key)
+        if src.is_file():
+            fallback_date = time.strftime("%Y-%m-%d", time.gmtime(src.stat().st_mtime))
+    date_hint = (
+        f" If the source itself states no date, use this source's file date as the fallback: {fallback_date}."
+        if fallback_date
+        else ""
+    )
+
     return (
         header
         + note
@@ -235,6 +250,12 @@ def _build_instruction(rel_key: str, kind: str = "ingest", read_path: str | None
         "trailing ## Sources section), and densely cross-linked with relative markdown links. "
         "Set frontmatter type, title, description, tags (>=1 lowercase), and resource (verbatim); "
         "do NOT set timestamp.\n"
+        f"3b. If {rel_key} is a TIME-ANCHORED tracking artifact (meeting minutes, status update, "
+        "open-points/action list, changelog — judged from CONTENT, not name), ALSO maintain dated "
+        "`## Open Points` threads (and `## Change Log`) per the 'Threaded sources' rules in "
+        "AGENT_INGEST.md: fan facts out as normal, then append a dated `[^sN]` bullet to the "
+        "matching `id: op-<slug>` (never rewriting a past bullet; status is derived, not stored). "
+        "Date entries from the source." + date_hint + "\n"
         f"4. Never edit {wiki_rel}/index.md, {wiki_rel}/log.md, any */index.md, or any dotfile. "
         f"Make no changes outside {wiki_rel}/.\n"
         "5. When you delete or rename a page, repoint inbound relative links to it.\n"

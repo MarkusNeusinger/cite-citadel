@@ -21,6 +21,7 @@ seeded wiki and avoids failing on the advisory missing-cites heuristic.
 
 from __future__ import annotations
 
+import difflib
 import os
 import re
 from dataclasses import dataclass, field
@@ -56,6 +57,12 @@ _SCRIPT_DIGITS = "₀₁₂₃₄₅₆₇₈₉⁰¹²³⁴⁵⁶⁷⁸⁹"
 _ABBREV_MIN_PAGES = 2
 # Cap on the undefined-abbreviation list so a jargon-dense wiki can't drown the report.
 _ABBREV_REPORT_CAP = 25
+# Two open-point identities this similar (SequenceMatcher ratio) are flagged as a possible
+# duplicate/typo. This is a TYPO guard only — it cannot catch two different noun phrases for the
+# same point (which share no characters); the generated open-points catalog is the real review
+# surface for that. Capped so a busy wiki can't drown the report.
+_OP_DUP_RATIO = 0.85
+_OP_DUP_CAP = 50
 
 
 @dataclass
@@ -74,6 +81,11 @@ class LintReport:
     # (abbr, #pages): an abbreviation used on >=2 pages with no Abbreviation entry and no
     # inline parenthetical expansion anywhere — a candidate for the glossary. Advisory.
     undefined_abbrevs: list[tuple[str, int]] = field(default_factory=list)
+    # ("rel#title", "rel#title"): two open-point threads with near-identical identities — a
+    # TYPO/near-duplicate guard (it cannot catch two different noun phrases for one point). Advisory.
+    duplicate_open_points: list[tuple[str, str]] = field(default_factory=list)
+    # (rel_path, title): an open-point thread missing its `id:` line or any dated bullet. Advisory.
+    malformed_open_points: list[tuple[str, str]] = field(default_factory=list)
 
     def ok(self) -> bool:
         """True unless there are structural-integrity problems: missing_type, broken_links,
@@ -133,6 +145,14 @@ class LintReport:
         lines.append(f"Wiki-style [[links]] (not allowed): {len(self.wikilinks)}")
         for rel, target in self.wikilinks:
             lines.append(f"  - {rel} -> [[{target}]]")
+
+        lines.append(f"Near-duplicate open points (review for a fork): {len(self.duplicate_open_points)}")
+        for a, b in self.duplicate_open_points:
+            lines.append(f"  - {a} ~ {b}")
+
+        lines.append(f"Malformed open points (no id/date): {len(self.malformed_open_points)}")
+        for rel, title in self.malformed_open_points:
+            lines.append(f"  - {rel}: {title}")
 
         lines.append("")
         lines.append("OK" if self.ok() else "FAIL (missing type, broken links, fabricated sources, or [[wiki-links]])")
@@ -347,6 +367,41 @@ def _undefined_abbrevs(pages: list[Page]) -> list[tuple[str, int]]:
     return candidates[:_ABBREV_REPORT_CAP]
 
 
+def _open_point_key(pt: store.OpenPoint) -> str:
+    """The identity to compare threads on: the explicit ``op-<slug>`` id, or the slugified title
+    when the ``id:`` line is missing."""
+    return pt.point_id or okf.slugify(pt.title)
+
+
+def _duplicate_open_points(points: list[store.OpenPoint]) -> list[tuple[str, str]]:
+    """Pairs of open-point threads whose identities are near-identical (>= _OP_DUP_RATIO) — a typo
+    /near-duplicate nudge, NOT a merge oracle (two different noun phrases for one point share no
+    characters and are invisible here; the generated catalog is the real review surface). Sorted,
+    de-duplicated, capped."""
+    labeled = [(_open_point_key(pt), f"{pt.page_rel}#{pt.title}") for pt in points]
+    labeled = [(k, label) for k, label in labeled if k]
+    pairs: set[tuple[str, str]] = set()
+    for i, (key_a, label_a) in enumerate(labeled):
+        # Reuse one matcher per outer key so its second-sequence index is computed once, and gate
+        # the O(len) ratio() behind the two cheap upper-bound ratios so obvious mismatches are
+        # skipped. Short-circuit once _OP_DUP_CAP pairs are found — deterministic given the stable
+        # rel_path/title ordering — so this never scans the full O(n^2) space on a large wiki.
+        matcher = difflib.SequenceMatcher(None, b=key_a)
+        for key_b, label_b in labeled[i + 1 :]:
+            if label_a == label_b:
+                continue
+            matcher.set_seq1(key_b)
+            if (
+                matcher.real_quick_ratio() >= _OP_DUP_RATIO
+                and matcher.quick_ratio() >= _OP_DUP_RATIO
+                and matcher.ratio() >= _OP_DUP_RATIO
+            ):
+                pairs.add(tuple(sorted((label_a, label_b))))
+                if len(pairs) >= _OP_DUP_CAP:
+                    return sorted(pairs)
+    return sorted(pairs)
+
+
 def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
     """If pages is None, store.load(). Build the link graph; flag orphans (no inbound
     and no outbound non-raw links), contradictions (marker present), missing_type
@@ -422,6 +477,14 @@ def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
     # undefined_abbrevs (advisory): a whole-corpus pass — an abbreviation is "defined" if any
     # page gives it an entry or an inline expansion, so this can't be decided per-page.
     report.undefined_abbrevs = _undefined_abbrevs(pages)
+
+    # open points (advisory): near-duplicate identities (a typo guard) + malformed blocks (a
+    # thread with no id: line or no dated bullet). Neither flips ok() — both are review nudges.
+    op_points = store.collect_open_points(pages)
+    report.malformed_open_points = sorted(
+        (pt.page_rel, pt.title) for pt in op_points if not pt.point_id or not pt.bullets
+    )
+    report.duplicate_open_points = _duplicate_open_points(op_points)
 
     # Deterministic ordering.
     report.contradictions.sort()
