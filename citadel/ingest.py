@@ -1503,7 +1503,9 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 digest = repo.build_digest(job.path, repo_key, only=only, change_summary=change_summary)
                 read_key, repo_tmp = _office_write_temp(digest, job.path.name)
             except Exception as exc:  # noqa: BLE001 - per-source, keep going
-                report.errors.append(f"{repo_key}: build digest: {exc}")
+                detail = f"{repo_key}: build digest: {exc}"
+                report.errors.append(detail)
+                failures.record(failures_dict, repo_key, failures.ERROR, detail, model)
                 emit("source_error", index=index, total=total_repos, source=repo_key, error=str(exc), seconds=0.0)
                 continue
 
@@ -1519,7 +1521,11 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 shutil.rmtree(repo_tmp, ignore_errors=True)
 
             if not outcome.ok:
+                # Persist the failure exactly like a failed FILE source: recorded for triage, but
+                # the manifest is left untouched so the repo is retried next run.
                 report.errors.extend(outcome.errors)
+                detail = outcome.errors[0] if outcome.errors else f"{repo_key}: agent session failed"
+                failures.record(failures_dict, repo_key, failures.reason_for(detail), detail, model)
                 emit(
                     "source_error",
                     index=index,
@@ -1537,6 +1543,8 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
             manifest_dict[repo_key] = manifest.make_repo_entry(
                 repo.identity(job.path), model, repo.remote_url(job.path)
             )
+            # A repo that had failed before now succeeded: drop its persisted failure.
+            failures.clear(failures_dict, repo_key)
             manifest.save(manifest_dict)
             report.processed.append(repo_key)
             emit(
@@ -1593,7 +1601,11 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 break
 
             if not outcome.ok:
+                # Persist the failure exactly like a failed FILE source: the manifest key is KEPT
+                # (only success drops it), so the deletion cleanup is retried next full run.
                 report.errors.extend(outcome.errors)
+                detail = outcome.errors[0] if outcome.errors else f"{key}: delete cleanup failed"
+                failures.record(failures_dict, key, failures.reason_for(detail), detail, model)
                 emit(
                     "source_error",
                     index=index,

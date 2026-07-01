@@ -2,41 +2,19 @@
 
 No browser, no network: every test only calls build_bundle/build_html/write_viewer/view and
 asserts on strings (webbrowser.open is monkeypatched). Filesystem state is redirected to
-tmp_path by monkeypatching config.* (same approach as test_ingest).
+tmp_path by the shared ``tmp_citadel`` fixture (see conftest.py).
 """
 
 from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 
-from citadel import config, okf, store, viewer
-
-
-def _wire_tmp_wiki(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
-    """Redirect all config paths at a fresh tmp wiki/raw layout. Return (wiki, raw)."""
-    repo = tmp_path
-    wiki, raw, docs = repo / "wiki", repo / "raw", repo / "docs"
-    for d in (wiki, raw, docs):
-        d.mkdir(parents=True, exist_ok=True)
-    (repo / "SCHEMA.md").write_text("# SCHEMA\n", encoding="utf-8")
-    monkeypatch.setattr(config, "REPO_ROOT", repo, raising=False)
-    monkeypatch.setattr(config, "WIKI_DIR", wiki, raising=False)
-    monkeypatch.setattr(config, "RAW_DIR", raw, raising=False)
-    monkeypatch.setattr(config, "DOCS_DIR", docs, raising=False)
-    return wiki, raw
+from citadel import store, viewer
 
 
-def _seed(wiki: Path, rel_path: str, frontmatter: dict, body: str) -> None:
-    target = wiki / rel_path
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(okf.dump(frontmatter, body), encoding="utf-8")
-
-
-def _two_page_wiki(wiki: Path) -> None:
-    _seed(
-        wiki,
+def _two_page_wiki(seed_page) -> None:
+    seed_page(
         "concepts/espresso.md",
         {
             "type": "Concept",
@@ -47,8 +25,7 @@ def _two_page_wiki(wiki: Path) -> None:
         },
         "Espresso uses pressure.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - n (ingested 2026-06-22)\n",
     )
-    _seed(
-        wiki,
+    seed_page(
         "concepts/caffeine.md",
         {
             "type": "Concept",
@@ -62,12 +39,11 @@ def _two_page_wiki(wiki: Path) -> None:
     )
 
 
-def test_bundle_embeds_cited_sources(tmp_path, monkeypatch):
-    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
-    (raw / "a.md").write_text(
+def test_bundle_embeds_cited_sources(tmp_citadel, seed_page):
+    (tmp_citadel.raw / "a.md").write_text(
         "# Coffee Overview\n\nCoffee is a brewed drink made from roasted beans.\n", encoding="utf-8"
     )
-    _two_page_wiki(wiki)
+    _two_page_wiki(seed_page)
     sources = viewer.build_bundle()["sources"]
 
     assert "raw/a.md" in sources
@@ -80,13 +56,11 @@ def test_bundle_embeds_cited_sources(tmp_path, monkeypatch):
     assert set(s["cited_by"]) == {"concepts/espresso.md", "concepts/caffeine.md"}
 
 
-def test_binary_pdf_source_is_openable_not_unavailable(tmp_path, monkeypatch):
-    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+def test_binary_pdf_source_is_openable_not_unavailable(tmp_citadel, seed_page):
     # A real PDF is binary (not UTF-8). It must not be reported as missing — instead it carries an
     # "open the original file" href so the browser can show it natively.
-    (raw / "a.pdf").write_bytes(b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<<>>\nendobj\n")
-    _seed(
-        wiki,
+    (tmp_citadel.raw / "a.pdf").write_bytes(b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<<>>\nendobj\n")
+    seed_page(
         "concepts/x.md",
         {"type": "Concept", "title": "X"},
         "Body cites a pdf.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.pdf](../../raw/a.pdf) - n\n",
@@ -99,19 +73,17 @@ def test_binary_pdf_source_is_openable_not_unavailable(tmp_path, monkeypatch):
     assert s["cited_by"] == ["concepts/x.md"]
 
 
-def test_missing_source_is_flagged_not_fatal(tmp_path, monkeypatch):
-    wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
-    _two_page_wiki(wiki)  # cites raw/a.md, but the raw file is absent
+def test_missing_source_is_flagged_not_fatal(tmp_citadel, seed_page):
+    _two_page_wiki(seed_page)  # cites raw/a.md, but the raw file is absent
     s = viewer.build_bundle()["sources"]["raw/a.md"]
     assert s["missing"] is True
     assert s["body"] == ""
     assert set(s["cited_by"]) == {"concepts/espresso.md", "concepts/caffeine.md"}
 
 
-def test_build_html_makes_sources_clickable(tmp_path, monkeypatch):
-    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
-    (raw / "a.md").write_text("# A\n\nbody text\n", encoding="utf-8")
-    _two_page_wiki(wiki)
+def test_build_html_makes_sources_clickable(tmp_citadel, seed_page):
+    (tmp_citadel.raw / "a.md").write_text("# A\n\nbody text\n", encoding="utf-8")
+    _two_page_wiki(seed_page)
     html = viewer.build_html()
     # The inlined viewer renders raw citations as clickable source links and can open them.
     assert "data-source" in html
@@ -122,23 +94,14 @@ def test_build_html_makes_sources_clickable(tmp_path, monkeypatch):
         assert bad not in html, f"network reference present: {bad!r}"
 
 
-def test_sources_keyed_by_browser_identity_in_nested_layout(tmp_path, monkeypatch):
+def test_sources_keyed_by_browser_identity_in_nested_layout(tmp_path, make_citadel, seed_page):
     # When wiki/ is NOT a direct child of the repo root (e.g. CITADEL_WIKI_DIR=sub/wiki), the citation
     # climbs further but the in-browser resolver clamps '..' at the wiki root. The embedded source
     # must be keyed under that SAME clamped id, else the citation can't find it.
-    repo = tmp_path
-    wiki, raw, docs = repo / "sub" / "wiki", repo / "raw", repo / "docs"
-    for d in (wiki, raw, docs):
-        d.mkdir(parents=True, exist_ok=True)
-    (repo / "SCHEMA.md").write_text("# SCHEMA\n", encoding="utf-8")
-    monkeypatch.setattr(config, "REPO_ROOT", repo, raising=False)
-    monkeypatch.setattr(config, "WIKI_DIR", wiki, raising=False)
-    monkeypatch.setattr(config, "RAW_DIR", raw, raising=False)
-    monkeypatch.setattr(config, "DOCS_DIR", docs, raising=False)
-    (raw / "x.md").write_text("# X source\n\ndetail\n", encoding="utf-8")
+    cit = make_citadel(wiki=tmp_path / "sub" / "wiki")
+    (cit.raw / "x.md").write_text("# X source\n\ndetail\n", encoding="utf-8")
     # From repo/sub/wiki/concepts/p.md to repo/raw/x.md is '../../../raw/x.md'.
-    _seed(
-        wiki,
+    seed_page(
         "concepts/p.md",
         {"type": "Concept", "title": "P"},
         "Cites x.[^s1]\n\n## Sources\n\n[^s1]: [raw/x.md](../../../raw/x.md) - n\n",
@@ -150,21 +113,19 @@ def test_sources_keyed_by_browser_identity_in_nested_layout(tmp_path, monkeypatc
     assert sources["raw/x.md"]["cited_by"] == ["concepts/p.md"]
 
 
-def test_sources_truncated_when_oversized(tmp_path, monkeypatch):
-    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+def test_sources_truncated_when_oversized(tmp_citadel, seed_page):
     big = "x" * (viewer._SOURCE_MAX_CHARS + 50)
-    (raw / "a.md").write_text(big, encoding="utf-8")
-    _two_page_wiki(wiki)
+    (tmp_citadel.raw / "a.md").write_text(big, encoding="utf-8")
+    _two_page_wiki(seed_page)
     s = viewer.build_bundle()["sources"]["raw/a.md"]
     assert s["truncated"] is True
     assert len(s["body"]) == viewer._SOURCE_MAX_CHARS
 
 
-def test_manifest_model_and_repo_and_uncited(tmp_path, monkeypatch):
-    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
-    (raw / "a.md").write_text("# A\n\ncited\n", encoding="utf-8")
-    (raw / "lonely.md").write_text("# Lonely\n\nuncited\n", encoding="utf-8")
-    (wiki / ".citadel_ingested.json").write_text(
+def test_manifest_model_and_repo_and_uncited(tmp_citadel, seed_page):
+    (tmp_citadel.raw / "a.md").write_text("# A\n\ncited\n", encoding="utf-8")
+    (tmp_citadel.raw / "lonely.md").write_text("# Lonely\n\nuncited\n", encoding="utf-8")
+    tmp_citadel.manifest_path.write_text(
         json.dumps(
             {
                 "raw/a.md": {"sha256": "h1", "model": "claude:sonnet"},
@@ -174,7 +135,7 @@ def test_manifest_model_and_repo_and_uncited(tmp_path, monkeypatch):
         ),
         encoding="utf-8",
     )
-    _two_page_wiki(wiki)
+    _two_page_wiki(seed_page)
     sources = viewer.build_bundle()["sources"]
     # Model attribution flows from the manifest onto the cited source.
     assert sources["raw/a.md"]["model"] == "claude:sonnet"
@@ -187,12 +148,10 @@ def test_manifest_model_and_repo_and_uncited(tmp_path, monkeypatch):
     assert all(s["key"] != "raw/somerepo" for s in sources.values())
 
 
-def test_citation_inside_code_fence_is_not_a_source(tmp_path, monkeypatch):
-    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
-    (raw / "real.md").write_text("# Real\n\nx\n", encoding="utf-8")
-    (raw / "fenced.md").write_text("# Fenced\n\ny\n", encoding="utf-8")
-    _seed(
-        wiki,
+def test_citation_inside_code_fence_is_not_a_source(tmp_citadel, seed_page):
+    (tmp_citadel.raw / "real.md").write_text("# Real\n\nx\n", encoding="utf-8")
+    (tmp_citadel.raw / "fenced.md").write_text("# Fenced\n\ny\n", encoding="utf-8")
+    seed_page(
         "concepts/p.md",
         {"type": "Concept", "title": "P"},
         "Real cite.[^s1]\n\n```\n[raw/fenced.md](../../raw/fenced.md)\n```\n\n"
@@ -203,13 +162,11 @@ def test_citation_inside_code_fence_is_not_a_source(tmp_path, monkeypatch):
     assert "raw/fenced.md" not in sources  # the fenced citation is a literal, not provenance
 
 
-def test_angle_bracket_citation_is_discovered(tmp_path, monkeypatch):
+def test_angle_bracket_citation_is_discovered(tmp_citadel, seed_page):
     # A citation written in markdown's <...> target form must still be discovered and embedded
     # (store._split_link_target strips the brackets); the in-browser resolveLink strips them too.
-    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
-    (raw / "x.md").write_text("# X\n\nbody\n", encoding="utf-8")
-    _seed(
-        wiki,
+    (tmp_citadel.raw / "x.md").write_text("# X\n\nbody\n", encoding="utf-8")
+    seed_page(
         "concepts/p.md",
         {"type": "Concept", "title": "P"},
         "Cites x.[^s1]\n\n## Sources\n\n[^s1]: [raw/x.md](<../../raw/x.md>) - n\n",
@@ -219,11 +176,9 @@ def test_angle_bracket_citation_is_discovered(tmp_path, monkeypatch):
     assert sources["raw/x.md"]["cited_by"] == ["concepts/p.md"]
 
 
-def test_docs_citation_is_a_source(tmp_path, monkeypatch):
-    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
-    (config.DOCS_DIR / "ref.md").write_text("# Reference\n\nspec\n", encoding="utf-8")
-    _seed(
-        wiki,
+def test_docs_citation_is_a_source(tmp_citadel, seed_page):
+    (tmp_citadel.docs / "ref.md").write_text("# Reference\n\nspec\n", encoding="utf-8")
+    seed_page(
         "concepts/p.md",
         {"type": "Concept", "title": "P"},
         "Cites a doc.[^s1]\n\n## Sources\n\n[^s1]: [docs/ref.md](../../docs/ref.md) - n\n",
@@ -233,9 +188,8 @@ def test_docs_citation_is_a_source(tmp_path, monkeypatch):
     assert sources["docs/ref.md"]["title"] == "Reference"
 
 
-def test_bundle_contains_pages_links_tags(tmp_path, monkeypatch):
-    wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
-    _two_page_wiki(wiki)
+def test_bundle_contains_pages_links_tags(tmp_citadel, seed_page):
+    _two_page_wiki(seed_page)
     b = viewer.build_bundle()
 
     by_path = {p["rel_path"]: p for p in b["pages"]}
@@ -251,9 +205,8 @@ def test_bundle_contains_pages_links_tags(tmp_path, monkeypatch):
     assert b["types"]["Concept"] == ["concepts/caffeine.md", "concepts/espresso.md"]
 
 
-def test_build_html_embeds_and_round_trips(tmp_path, monkeypatch):
-    wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
-    _two_page_wiki(wiki)
+def test_build_html_embeds_and_round_trips(tmp_citadel, seed_page):
+    _two_page_wiki(seed_page)
     html = viewer.build_html()
     assert "Espresso" in html and "concepts/caffeine.md" in html
     m = re.search(r'<script id="bundle" type="application/json">(.*?)</script>', html, re.DOTALL)
@@ -262,18 +215,15 @@ def test_build_html_embeds_and_round_trips(tmp_path, monkeypatch):
     assert parsed == viewer.build_bundle()
 
 
-def test_build_html_is_offline(tmp_path, monkeypatch):
-    wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
-    _two_page_wiki(wiki)
+def test_build_html_is_offline(tmp_citadel, seed_page):
+    _two_page_wiki(seed_page)
     html = viewer.build_html()
     for bad in ("http://", "https://", "cdn", " src=", "fetch("):
         assert bad not in html, f"network reference present: {bad!r}"
 
 
-def test_build_html_escapes_script_close(tmp_path, monkeypatch):
-    wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
-    _seed(
-        wiki,
+def test_build_html_escapes_script_close(tmp_citadel, seed_page):
+    seed_page(
         "concepts/x.md",
         {"type": "Concept", "title": "X"},
         "danger </script><b>x</b> end.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - n\n",
@@ -285,9 +235,8 @@ def test_build_html_escapes_script_close(tmp_path, monkeypatch):
     assert html.count("<script") == html.count("</script>")
 
 
-def test_write_viewer_creates_file_and_load_skips(tmp_path, monkeypatch):
-    wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
-    _two_page_wiki(wiki)
+def test_write_viewer_creates_file_and_load_skips(tmp_citadel, seed_page):
+    _two_page_wiki(seed_page)
     path = viewer.write_viewer()
     assert path.exists() and path.suffix == ".html" and path.name.startswith(".")
     assert path.read_text(encoding="utf-8") == viewer.build_html()
@@ -295,20 +244,18 @@ def test_write_viewer_creates_file_and_load_skips(tmp_path, monkeypatch):
     assert not any(p.rel_path.endswith(".citadel_viewer.html") for p in store.load())
 
 
-def test_view_no_open_returns_zero(tmp_path, monkeypatch):
-    wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
-    _two_page_wiki(wiki)
+def test_view_no_open_returns_zero(tmp_citadel, seed_page, monkeypatch):
+    _two_page_wiki(seed_page)
     calls = []
     monkeypatch.setattr(viewer.webbrowser, "open", lambda *a, **k: calls.append(a))
     rc = viewer.view(open_browser=False)
     assert rc == 0
     assert calls == []  # browser not launched
-    assert (wiki / ".citadel_viewer.html").exists()
+    assert (tmp_citadel.wiki / ".citadel_viewer.html").exists()
 
 
-def test_view_handles_no_browser(tmp_path, monkeypatch):
-    wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
-    _two_page_wiki(wiki)
+def test_view_handles_no_browser(tmp_citadel, seed_page, monkeypatch):
+    _two_page_wiki(seed_page)
 
     def boom(*a, **k):
         raise viewer.webbrowser.Error("no browser")
@@ -316,18 +263,16 @@ def test_view_handles_no_browser(tmp_path, monkeypatch):
     monkeypatch.setattr(viewer.webbrowser, "open", boom)
     rc = viewer.view(open_browser=True)  # must not crash
     assert rc == 0
-    assert (wiki / ".citadel_viewer.html").exists()
+    assert (tmp_citadel.wiki / ".citadel_viewer.html").exists()
 
 
-def test_empty_wiki(tmp_path, monkeypatch):
-    _wire_tmp_wiki(tmp_path, monkeypatch)
+def test_empty_wiki(tmp_citadel):
     html = viewer.build_html()
     assert '"pages":[]' in html.replace(" ", "")
     assert "<!doctype html>" in html
 
 
-def test_bundle_page_stats_counts_cites_llm_contradictions(tmp_path, monkeypatch):
-    wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
+def test_bundle_page_stats_counts_cites_llm_contradictions(tmp_citadel, seed_page):
     body = (
         "Espresso uses pressure.[^s1] It is strong.[^s2]\n\n"
         "A model-supplied note.[^llm1]\n\n"
@@ -339,7 +284,7 @@ def test_bundle_page_stats_counts_cites_llm_contradictions(tmp_path, monkeypatch
         "[^s2]: [raw/b.md](../../raw/b.md) - n\n"
         "[^llm1]: LLM - model knowledge, not from a raw file (added 2026-06-22)\n"
     )
-    _seed(wiki, "concepts/espresso.md", {"type": "Concept", "title": "Espresso"}, body)
+    seed_page("concepts/espresso.md", {"type": "Concept", "title": "Espresso"}, body)
     page = next(p for p in viewer.build_bundle()["pages"] if p["rel_path"] == "concepts/espresso.md")
     # 2 raw cites in prose + 2 inside the contradiction callout; the fenced [^s9] and the
     # trailing ## Sources definitions ([^sN]:) are not counted.
@@ -349,20 +294,18 @@ def test_bundle_page_stats_counts_cites_llm_contradictions(tmp_path, monkeypatch
     assert page["contradictions"] == 1
 
 
-def test_bundle_page_stats_zero_when_clean(tmp_path, monkeypatch):
-    wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
-    _two_page_wiki(wiki)  # one [^s1] each, no llm, no contradiction
+def test_bundle_page_stats_zero_when_clean(tmp_citadel, seed_page):
+    _two_page_wiki(seed_page)  # one [^s1] each, no llm, no contradiction
     by_path = {p["rel_path"]: p for p in viewer.build_bundle()["pages"]}
     assert by_path["concepts/espresso.md"]["cites"] == 1
     assert by_path["concepts/espresso.md"]["llm"] == 0
     assert by_path["concepts/espresso.md"]["contradictions"] == 0
 
 
-def test_bundle_page_stats_ignores_fenced_and_sources_examples(tmp_path, monkeypatch):
+def test_bundle_page_stats_ignores_fenced_and_sources_examples(tmp_citadel, seed_page):
     # A page that DOCUMENTS the citation/contradiction format must not have its example markers
     # counted: a callout inside a code fence is not a real contradiction, and a footnote marker
     # mentioned inside another footnote's ## Sources definition note is not an inline use.
-    wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
     body = (
         "Real fact.[^s1]\n\n"
         "Here is how the contradiction format looks:\n\n"
@@ -374,17 +317,16 @@ def test_bundle_page_stats_ignores_fenced_and_sources_examples(tmp_path, monkeyp
         "[^s1]: [raw/a.md](../../raw/a.md) - derived alongside [^s2], see [^llm9] (ingested 2026-06-22)\n"
         "[^s2]: [raw/b.md](../../raw/b.md) - n\n"
     )
-    _seed(wiki, "concepts/format.md", {"type": "Concept", "title": "Format"}, body)
+    seed_page("concepts/format.md", {"type": "Concept", "title": "Format"}, body)
     page = next(p for p in viewer.build_bundle()["pages"] if p["rel_path"] == "concepts/format.md")
     assert page["contradictions"] == 0  # the fenced callout is documentation, not a real one
     assert page["cites"] == 1  # only the inline [^s1]; fenced [^s7]/[^s8] and the def-note [^s2] excluded
     assert page["llm"] == 0  # the [^llm9] mentioned in the def note is not an inline use
 
 
-def test_build_html_has_fulltext_search_badges_and_facets(tmp_path, monkeypatch):
-    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
-    (raw / "a.md").write_text("# A\n\nbody text\n", encoding="utf-8")
-    _two_page_wiki(wiki)
+def test_build_html_has_fulltext_search_badges_and_facets(tmp_citadel, seed_page):
+    (tmp_citadel.raw / "a.md").write_text("# A\n\nbody text\n", encoding="utf-8")
+    _two_page_wiki(seed_page)
     html = viewer.build_html()
     # Full-text search over bodies + result highlighting, the sidebar badge/facet machinery, and
     # the reader jump-to-contradiction/LLM affordance are all present in the inlined viewer.

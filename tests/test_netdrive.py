@@ -11,8 +11,9 @@ everything lives under ``REPO_ROOT``:
   * source-citation matching (find/rewrite) with absolute keys;
   * and an END-TO-END ingest whose wiki/raw sit OUTSIDE the repo.
 
-All filesystem state is redirected to tmp_path and ``llm.run_ingest_session`` is faked, so no real
-CLI is ever spawned.
+All filesystem state is redirected to tmp_path (the shared ``tmp_citadel_external`` fixture
+models the mounted drive) and ``llm.run_ingest_session`` is faked, so no real CLI is ever
+spawned.
 """
 
 from __future__ import annotations
@@ -89,33 +90,10 @@ def test_dir_setting_relative_against_repo_root_absolute_as_is(tmp_path, monkeyp
 # --- the agent bridge: absolute paths + per-CLI external-dir access ---------------------
 
 
-def _wire_external(tmp_path, monkeypatch):
-    """REPO_ROOT on one subtree; wiki/raw on a SEPARATE 'net' subtree (a shared parent, as a
-    mounted drive would have). Returns (repo, wiki, raw)."""
-    repo = tmp_path / "repo"
-    net = tmp_path / "net"  # stands in for T:\team-wiki
-    wiki, raw, docs = net / "wiki", net / "raw", repo / "docs"
-    for d in (repo, wiki, raw, docs):
-        d.mkdir(parents=True, exist_ok=True)
-    (repo / "SCHEMA.md").write_text("# SCHEMA\n", encoding="utf-8")
-
-    monkeypatch.setattr(config, "REPO_ROOT", repo, raising=False)
-    monkeypatch.setattr(config, "WIKI_DIR", wiki, raising=False)
-    monkeypatch.setattr(config, "RAW_DIR", raw, raising=False)
-    monkeypatch.setattr(config, "DOCS_DIR", docs, raising=False)
-    monkeypatch.setattr(config, "SCHEMA_PATH", repo / "SCHEMA.md", raising=False)
-    monkeypatch.setattr(config, "AGENT_RULES_PATH", repo / "AGENT_INGEST.md", raising=False)
-    monkeypatch.setattr(config, "INDEX_PATH", wiki / "index.md", raising=False)
-    monkeypatch.setattr(config, "LOG_PATH", wiki / "log.md", raising=False)
-    monkeypatch.setattr(config, "MANIFEST_PATH", wiki / ".citadel_ingested.json", raising=False)
-    monkeypatch.setattr(config, "FAILURES_PATH", wiki / ".citadel_failures.json", raising=False)
-    return repo, wiki, raw
-
-
-def test_build_instruction_uses_absolute_paths_when_wiki_outside_repo(tmp_path, monkeypatch):
+def test_build_instruction_uses_absolute_paths_when_wiki_outside_repo(tmp_path, tmp_citadel_external):
     """With the wiki/raw outside the repo, the agent prompt names them by ABSOLUTE path (not a
     bare 'wiki'/'raw' that the repo-root CWD can't find) and still stays tiny."""
-    repo, wiki, raw = _wire_external(tmp_path, monkeypatch)
+    wiki, raw = tmp_citadel_external.wiki, tmp_citadel_external.raw
     abs_key = config.rel_or_abs_posix(raw / "notes.md")
 
     prompt = llm._build_instruction(abs_key)
@@ -127,40 +105,28 @@ def test_build_instruction_uses_absolute_paths_when_wiki_outside_repo(tmp_path, 
     assert len(prompt) < 3000  # paths + rule pointers, never file content (WinError 206 guard)
 
 
-def test_external_dirs_lists_only_out_of_repo_dirs(tmp_path, monkeypatch):
-    repo, wiki, raw = _wire_external(tmp_path, monkeypatch)  # docs is INSIDE the repo
-    abs_key = config.rel_or_abs_posix(raw / "notes.md")
+def test_external_dirs_lists_only_out_of_repo_dirs(tmp_citadel_external):
+    cit = tmp_citadel_external  # docs is INSIDE the repo
+    abs_key = config.rel_or_abs_posix(cit.raw / "notes.md")
 
     dirs = llm._external_dirs(abs_key)
 
-    assert str(wiki.resolve()) in dirs
-    assert str(raw.resolve()) in dirs
-    assert str((repo / "docs").resolve()) not in dirs  # in-repo docs needs no grant
+    assert str(cit.wiki.resolve()) in dirs
+    assert str(cit.raw.resolve()) in dirs
+    assert str(cit.docs.resolve()) not in dirs  # in-repo docs needs no grant
 
 
-def test_external_dirs_empty_for_in_repo_layout(tmp_path, monkeypatch):
+def test_external_dirs_empty_for_in_repo_layout(tmp_path, make_citadel):
     """The default in-repo layout grants nothing extra (so the invocation is unchanged)."""
-    repo = tmp_path / "repo"
-    for sub in ("wiki", "raw", "docs"):
-        (repo / sub).mkdir(parents=True)
-    monkeypatch.setattr(config, "REPO_ROOT", repo, raising=False)
-    monkeypatch.setattr(config, "WIKI_DIR", repo / "wiki", raising=False)
-    monkeypatch.setattr(config, "RAW_DIR", repo / "raw", raising=False)
-    monkeypatch.setattr(config, "DOCS_DIR", repo / "docs", raising=False)
+    make_citadel(root=tmp_path / "repo")
 
     assert llm._external_dirs("raw/notes.md") == []
 
 
-def test_external_dirs_grants_office_extract_tmp_even_in_repo(tmp_path, monkeypatch):
+def test_external_dirs_grants_office_extract_tmp_even_in_repo(tmp_path, make_citadel):
     """For an Office source the extracted-text temp dir lives OUTSIDE the repo, so it must be
     granted to the CLI even in the otherwise-unchanged default in-repo layout."""
-    repo = tmp_path / "repo"
-    for sub in ("wiki", "raw", "docs"):
-        (repo / sub).mkdir(parents=True)
-    monkeypatch.setattr(config, "REPO_ROOT", repo, raising=False)
-    monkeypatch.setattr(config, "WIKI_DIR", repo / "wiki", raising=False)
-    monkeypatch.setattr(config, "RAW_DIR", repo / "raw", raising=False)
-    monkeypatch.setattr(config, "DOCS_DIR", repo / "docs", raising=False)
+    make_citadel(root=tmp_path / "repo")
 
     extract_dir = tmp_path / "okf_extract_zzz"  # sibling of the repo -> outside it
     dirs = llm._external_dirs("raw/deck.pptx", str(extract_dir / "deck.md"))
@@ -196,8 +162,8 @@ def test_build_invocation_gemini_includes_directories_only_when_external():
 # --- resource validation against an absolute out-of-repo path ---------------------------
 
 
-def test_validate_resource_absolute_out_of_repo(tmp_path, monkeypatch):
-    repo, wiki, raw = _wire_external(tmp_path, monkeypatch)
+def test_validate_resource_absolute_out_of_repo(tmp_citadel_external):
+    raw = tmp_citadel_external.raw
     (raw / "notes.md").write_text("src\n", encoding="utf-8")
     abs_key = config.rel_or_abs_posix(raw / "notes.md")
 
@@ -215,19 +181,15 @@ def test_validate_resource_absolute_out_of_repo(tmp_path, monkeypatch):
 # --- source-citation matching with absolute keys ----------------------------------------
 
 
-def test_find_and_rewrite_raw_references_with_absolute_keys(tmp_path, monkeypatch):
-    repo, wiki, raw = _wire_external(tmp_path, monkeypatch)
+def test_find_and_rewrite_raw_references_with_absolute_keys(tmp_citadel_external, seed_page):
+    raw = tmp_citadel_external.raw
     (raw / "notes.md").write_text("x\n", encoding="utf-8")
     abs_key = config.rel_or_abs_posix(raw / "notes.md")
 
-    page = wiki / "concepts" / "t.md"
-    page.parent.mkdir(parents=True, exist_ok=True)
-    page.write_text(
-        okf.dump(
-            {"type": "Concept", "title": "T", "description": "d", "tags": ["x"], "resource": abs_key},
-            f"A fact.[^s1]\n\n## Sources\n\n[^s1]: [{abs_key}](../../raw/notes.md) - n\n",
-        ),
-        encoding="utf-8",
+    page = seed_page(
+        "concepts/t.md",
+        {"type": "Concept", "title": "T", "description": "d", "tags": ["x"], "resource": abs_key},
+        f"A fact.[^s1]\n\n## Sources\n\n[^s1]: [{abs_key}](../../raw/notes.md) - n\n",
     )
 
     # find: matches via BOTH the absolute resource frontmatter and the relative citation link.
@@ -270,9 +232,9 @@ def _fake_session(rel_key, kind="ingest"):
     )
 
 
-def test_ingest_end_to_end_with_wiki_raw_outside_repo(tmp_path, monkeypatch):
-    repo, wiki, raw = _wire_external(tmp_path, monkeypatch)
-    monkeypatch.setattr(ingest.llm, "run_ingest_session", _fake_session)
+def test_ingest_end_to_end_with_wiki_raw_outside_repo(tmp_citadel_external, fake_agent):
+    repo, wiki, raw = tmp_citadel_external.root, tmp_citadel_external.wiki, tmp_citadel_external.raw
+    fake_agent(side_effect=_fake_session)
     (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
 
     report = ingest.ingest()
@@ -292,60 +254,52 @@ def test_ingest_end_to_end_with_wiki_raw_outside_repo(tmp_path, monkeypatch):
     assert "(../../raw/notes.md)" in text  # valid relative citation across the net dir
 
     # Derived files + manifest live next to the (out-of-repo) wiki.
-    assert "transformer.md" in (wiki / "index.md").read_text(encoding="utf-8")
-    data = json.loads((wiki / ".citadel_ingested.json").read_text(encoding="utf-8"))
+    assert "transformer.md" in tmp_citadel_external.index_path.read_text(encoding="utf-8")
+    data = json.loads(tmp_citadel_external.manifest_path.read_text(encoding="utf-8"))
     assert abs_key in data
 
     # Whole-wiki health check is clean, and re-running is a no-op (idempotent on the abs key).
-    assert lint.lint().ok() and lint.lint().bad_sources == []
+    rep = lint.lint()
+    assert rep.ok() and rep.bad_sources == []
     assert ingest.ingest().processed == []
 
 
-def test_ingest_deletes_out_of_repo_source(tmp_path, monkeypatch):
+def test_ingest_deletes_out_of_repo_source(tmp_citadel_external, seed_page, fake_agent):
     """A tracked out-of-repo source that vanished from the drive is detected (existence check via
     source_path_for_key) and its provenance reconciled out — exercising find_raw_references on an
     absolute key for both the resource and the citation link."""
-    repo, wiki, raw = _wire_external(tmp_path, monkeypatch)
+    wiki, raw = tmp_citadel_external.wiki, tmp_citadel_external.raw
     abs_key = config.rel_or_abs_posix(raw / "notes.md")  # never created -> "deleted" on disk
 
-    page = wiki / "concepts" / "topic.md"
-    page.parent.mkdir(parents=True, exist_ok=True)
-    page.write_text(
-        okf.dump(
-            {"type": "Concept", "title": "Topic", "description": "d", "tags": ["x"], "resource": abs_key},
-            f"A fact.[^s1]\n\n## Sources\n\n[^s1]: [{abs_key}](../../raw/notes.md) - n\n",
-        ),
-        encoding="utf-8",
+    seed_page(
+        "concepts/topic.md",
+        {"type": "Concept", "title": "Topic", "description": "d", "tags": ["x"], "resource": abs_key},
+        f"A fact.[^s1]\n\n## Sources\n\n[^s1]: [{abs_key}](../../raw/notes.md) - n\n",
     )
     manifest.save({abs_key: "deadbeef"})
 
-    calls: list[tuple[str, str]] = []
-
-    def fake_delete(rel_key, kind="ingest"):
-        calls.append((rel_key, kind))
+    def unlink_topic(rel_key, kind="ingest"):
         (config.WIKI_DIR / "concepts" / "topic.md").unlink()
 
-    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake_delete)
+    agent = fake_agent(side_effect=unlink_topic)
 
     report = ingest.ingest()
 
-    assert calls == [(abs_key, "delete")]  # a delete-cleanup session for the abs key
+    assert agent.calls == [(abs_key, "delete")]  # a delete-cleanup session for the abs key
     assert report.sources_deleted == [abs_key]
     assert not (wiki / "concepts" / "topic.md").exists()
     assert not report.errors
-    data = json.loads((wiki / ".citadel_ingested.json").read_text(encoding="utf-8"))
+    data = json.loads(tmp_citadel_external.manifest_path.read_text(encoding="utf-8"))
     assert abs_key not in data  # manifest key dropped
 
 
 # --- canonicalizing a shortened `resource` for an out-of-repo source --------------------
 
 
-def test_canonical_resource_key_repairs_only_shortened_current_source(tmp_path, monkeypatch):
+def test_canonical_resource_key_repairs_only_shortened_current_source(tmp_path, make_citadel):
     """The unit guard behind the repair: a broken `resource` that names the source being ingested
     is canonicalized to its real key; anything else is left untouched."""
-    repo = tmp_path / "repo"
-    (repo / "raw").mkdir(parents=True)
-    monkeypatch.setattr(config, "REPO_ROOT", repo, raising=False)
+    cit = make_citadel(root=tmp_path / "repo")
 
     net = tmp_path / "net" / "raw"
     net.mkdir(parents=True)
@@ -364,28 +318,17 @@ def test_canonical_resource_key_repairs_only_shortened_current_source(tmp_path, 
     ghost = config.rel_or_abs_posix(net / "ghost.pdf")  # source itself missing
     assert ingest._canonical_resource_key("raw/ghost.pdf", ghost) is None
     # A `resource` that already resolves to a real file is never second-guessed.
-    (repo / "raw" / "notes.pdf").write_text("z\n", encoding="utf-8")
+    (cit.raw / "notes.pdf").write_text("z\n", encoding="utf-8")
     assert ingest._canonical_resource_key("raw/notes.pdf", abs_key) is None
 
 
-def test_ingest_canonicalizes_shortened_resource_for_out_of_repo_source(tmp_path, monkeypatch):
+def test_ingest_canonicalizes_shortened_resource_for_out_of_repo_source(tmp_path, make_citadel, fake_agent):
     """The reported case: wiki/raw live IN the repo, but the SOURCE being ingested is on a mounted
     drive (an out-of-repo absolute key — e.g. a PDF under ``T:\\...\\raw``). The agent records the
     conventional short ``raw/<file>`` as the page's ``resource`` instead of the long absolute key,
     which used to fail every page with ``bad_resource`` and roll the whole (long) session back.
     Ingest must now canonicalize it to the real key and succeed."""
-    repo = tmp_path / "repo"
-    (repo / "wiki").mkdir(parents=True)
-    (repo / "raw").mkdir(parents=True)
-    (repo / "SCHEMA.md").write_text("# SCHEMA\n", encoding="utf-8")
-    monkeypatch.setattr(config, "REPO_ROOT", repo, raising=False)
-    monkeypatch.setattr(config, "WIKI_DIR", repo / "wiki", raising=False)
-    monkeypatch.setattr(config, "RAW_DIR", repo / "raw", raising=False)
-    monkeypatch.setattr(config, "DOCS_DIR", repo / "docs", raising=False)
-    monkeypatch.setattr(config, "INDEX_PATH", repo / "wiki" / "index.md", raising=False)
-    monkeypatch.setattr(config, "LOG_PATH", repo / "wiki" / "log.md", raising=False)
-    monkeypatch.setattr(config, "MANIFEST_PATH", repo / "wiki" / ".citadel_ingested.json", raising=False)
-    monkeypatch.setattr(config, "FAILURES_PATH", repo / "wiki" / ".citadel_failures.json", raising=False)
+    cit = make_citadel(root=tmp_path / "repo")
 
     # The raw source (PDF stand-in) lives OUTSIDE the repo — a mounted-drive source.
     net_raw = tmp_path / "net" / "raw"
@@ -414,13 +357,13 @@ def test_ingest_canonicalizes_shortened_resource_for_out_of_repo_source(tmp_path
             encoding="utf-8",
         )
 
-    monkeypatch.setattr(ingest.llm, "run_ingest_session", shortened_session)
+    fake_agent(side_effect=shortened_session)
 
     report = ingest.ingest([str(source)])
 
     assert report.processed == [abs_key]  # keyed by the absolute out-of-repo path
     assert not report.errors  # NOT rolled back over the short resource
-    page = repo / "wiki" / "concepts" / "internal-data-analysis.md"
+    page = cit.wiki / "concepts" / "internal-data-analysis.md"
     text = page.read_text(encoding="utf-8")
     assert f"resource: {abs_key}" in text  # canonicalized to the real absolute key
     assert "resource: raw/datenanalyse.md" not in text  # the broken short form is gone

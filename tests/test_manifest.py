@@ -4,7 +4,6 @@ resolution that feeds it. No CLI, no filesystem beyond tmp_path."""
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from citadel import config, manifest
 
@@ -43,10 +42,8 @@ def test_model_of_lookups():
     assert manifest.model_of(m, "raw/missing.md") is None
 
 
-def test_is_pending_compares_sha_for_both_forms(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "REPO_ROOT", tmp_path, raising=False)
-    src = tmp_path / "raw" / "notes.md"
-    src.parent.mkdir(parents=True, exist_ok=True)
+def test_is_pending_compares_sha_for_both_forms(tmp_citadel):
+    src = tmp_citadel.raw / "notes.md"
     src.write_text("hello\n", encoding="utf-8")
     sha = manifest.file_sha256(src)
     key = manifest.rel_key(src)
@@ -57,11 +54,8 @@ def test_is_pending_compares_sha_for_both_forms(tmp_path, monkeypatch):
     assert manifest.is_pending({key: {"sha256": "other"}}, src) is True  # changed bytes
 
 
-def test_mark_done_records_model_and_roundtrips(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "REPO_ROOT", tmp_path, raising=False)
-    monkeypatch.setattr(config, "MANIFEST_PATH", tmp_path / "m.json", raising=False)
-    src = tmp_path / "raw" / "notes.md"
-    src.parent.mkdir(parents=True, exist_ok=True)
+def test_mark_done_records_model_and_roundtrips(tmp_citadel):
+    src = tmp_citadel.raw / "notes.md"
     src.write_text("hello\n", encoding="utf-8")
 
     m: dict = {}
@@ -73,7 +67,7 @@ def test_mark_done_records_model_and_roundtrips(tmp_path, monkeypatch):
     reread = manifest.load()
     assert reread[key]["model"] == "claude:opus"
     # save() is plain JSON the value of which is the dict record.
-    on_disk = json.loads(Path(config.MANIFEST_PATH).read_text(encoding="utf-8"))
+    on_disk = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
     assert on_disk[key]["sha256"] == manifest.file_sha256(src)
 
 
