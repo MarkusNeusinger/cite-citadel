@@ -39,6 +39,16 @@ def _two_page_wiki(seed_page) -> None:
     )
 
 
+def _embedded_bundle(html: str) -> tuple[str, dict]:
+    """Pull the embedded JSON bundle out of a built viewer document: returns ``(blob, bundle)``
+    where ``blob`` is the raw (still ``<\\/``-escaped) script payload and ``bundle`` is the dict
+    parsed after the documented unescape."""
+    m = re.search(r'<script id="bundle" type="application/json">(.*?)</script>', html, re.DOTALL)
+    assert m, "embedded bundle script not found"
+    blob = m.group(1)
+    return blob, json.loads(blob.replace("<\\/", "</"))
+
+
 def test_bundle_embeds_cited_sources(tmp_citadel, seed_page):
     (tmp_citadel.raw / "a.md").write_text(
         "# Coffee Overview\n\nCoffee is a brewed drink made from roasted beans.\n", encoding="utf-8"
@@ -209,9 +219,7 @@ def test_build_html_embeds_and_round_trips(tmp_citadel, seed_page):
     _two_page_wiki(seed_page)
     html = viewer.build_html()
     assert "Espresso" in html and "concepts/caffeine.md" in html
-    m = re.search(r'<script id="bundle" type="application/json">(.*?)</script>', html, re.DOTALL)
-    assert m, "embedded bundle script not found"
-    parsed = json.loads(m.group(1).replace("<\\/", "</"))
+    _, parsed = _embedded_bundle(html)
     assert parsed == viewer.build_bundle()
 
 
@@ -345,6 +353,34 @@ def test_build_html_has_fulltext_search_badges_and_facets(tmp_citadel, seed_page
     # (The offline guarantee is asserted by test_build_html_is_offline /
     # test_build_html_makes_sources_clickable — not re-scanned here, since those substrings can
     # legitimately occur inside embedded source/page text on a real wiki.)
+
+
+def test_golden_bundle_structural_invariants(tmp_citadel, seed_page):
+    """Golden test on the BUILT document over a seeded 3-page wiki, pinning exactly three
+    invariants of the Python-side embedding rules on the real artifact: the embedded page map
+    contains the seeded rel_paths, cross-page links resolve to wiki-root-relative ids, and a
+    literal ``</script>`` in a body escape-round-trips through the data blob (in place of any
+    Python-vs-JS runtime parity test — no JS runtime in the suite)."""
+    seed_page("concepts/alpha.md", {"type": "Concept", "title": "Alpha"}, "Links to [Beta](./beta.md).\n")
+    seed_page("concepts/beta.md", {"type": "Concept", "title": "Beta"}, "Links to [Gamma](../misc/gamma.md).\n")
+    seed_page("misc/gamma.md", {"type": "Note", "title": "Gamma"}, "Contains a literal </script> tag in prose.\n")
+    blob, bundle = _embedded_bundle(viewer.build_html())
+
+    # The '</' escape: gamma's literal '</script>' must not close the data <script> early in the
+    # raw blob, and must round-trip back to '</script>' after the documented unescape.
+    assert "<\\/script> tag in prose" in blob
+    assert "</script> tag in prose" not in blob
+    by_path = {p["rel_path"]: p for p in bundle["pages"]}
+    assert "</script> tag in prose" in by_path["misc/gamma.md"]["body"]
+
+    # The embedded page map contains exactly the seeded rel_paths.
+    assert set(by_path) == {"concepts/alpha.md", "concepts/beta.md", "misc/gamma.md"}
+
+    # Resolved hrefs between the pages: relative links resolve to wiki-root-relative ids in
+    # outbound/inbound (edges are derived from outbound).
+    assert by_path["concepts/alpha.md"]["outbound"] == ["concepts/beta.md"]
+    assert by_path["concepts/beta.md"]["outbound"] == ["misc/gamma.md"]
+    assert by_path["misc/gamma.md"]["inbound"] == ["concepts/beta.md"]
 
 
 def test_cli_view_wires_up():

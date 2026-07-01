@@ -127,11 +127,13 @@ persists the sources that could NOT be ingested (`wiki/.citadel_failures.json`: 
 errored / timed-out, with a reason), surfaced by `store` under a "Could not ingest" section of
 `sources/index.md`. `repo.py` builds the digest for git-repo sources. `extract.py` pulls text from
 Office files (stdlib-only): OOXML `.pptx`/`.docx`/`.xlsx` (+ macro-enabled) via zipfile+ElementTree,
-and legacy OLE `.ppt`/`.doc`/`.xls` via an in-module CFBF reader + best-effort text salvage; its
+and legacy OLE `.ppt`/`.doc`/`.xls` via the CFBF reader + best-effort text salvage in
+`extract_ole.py` (imported lazily, only when a legacy OLE file is dispatched); its
 `extract_media` also pulls embedded raster images out of OOXML files so the agent can view them.
 `server.py` is the FastMCP stdio server (7 tools; only `wiki_ingest` mutates; tools never raise —
-they return error strings). `viewer.py` builds the self-contained offline HTML viewer. `config.py`
-resolves all paths/settings. `cli.py` mirrors the MCP tools as subcommands.
+they return error strings). The `viewer/` subpackage builds the self-contained offline HTML viewer
+(build logic in `__init__.py`; `template.html`/`app.css`/`app.js` are real package-data assets loaded
+via `importlib.resources`). `config.py` resolves all paths/settings. `cli.py` mirrors the MCP tools as subcommands.
 
 ## Conventions specific to this codebase
 

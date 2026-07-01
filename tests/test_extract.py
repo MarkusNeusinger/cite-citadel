@@ -11,7 +11,7 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
-from citadel import extract
+from citadel import extract, extract_ole
 
 
 _W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -275,7 +275,7 @@ def _minimal_cfbf(stream_name: str, payload: bytes) -> bytes:
 def test_cfbf_reader_round_trips_a_stream():
     text = "Compound file body text. " * 300  # >4096 bytes so it lives in the FAT, not the mini-FAT
     payload = text.encode("utf-16-le")
-    streams = extract._cfbf_streams(_minimal_cfbf("WordDocument", payload))
+    streams = extract_ole._cfbf_streams(_minimal_cfbf("WordDocument", payload))
     assert "WordDocument" in streams
     assert streams["WordDocument"] == payload
 
@@ -301,13 +301,13 @@ def test_extract_ole_falls_back_to_whole_file_salvage(tmp_path):
 def test_salvage_text_recovers_singlebyte_runs():
     # No UTF-16 (no interleaved NULs) -> the CP-1252 single-byte pass recovers the run.
     data = b"\x01\x02\x03Widget assembly torque spec is 12 Nm\xff\xfe"
-    out = extract._salvage_text(data)
+    out = extract_ole._salvage_text(data)
     assert "Widget assembly torque spec is 12 Nm" in out
 
 
 def test_salvage_text_drops_wordless_noise():
     # A run with no alphanumerics is structural noise and must be dropped.
-    assert extract._salvage_text(b"\x00\x00---!!!===\x00\x00") == ""
+    assert extract_ole._salvage_text(b"\x00\x00---!!!===\x00\x00") == ""
 
 
 def test_is_office_source_true_for_legacy_ole(tmp_path):
