@@ -568,7 +568,9 @@ def parse_open_points(page: Page) -> list[OpenPoint]:
             continue
         m_id = _OP_ID_RE.match(stripped)
         if m_id and not cur_bullets:
-            cur_id = m_id.group(1)
+            # Normalize to lowercase: ids follow the (lowercase) slugify rule, so a stray `OP-Foo`
+            # must still match `op-foo` in the duplicate check and render consistently in the catalog.
+            cur_id = m_id.group(1).lower()
             continue
         m_bullet = _OP_BULLET_RE.match(stripped)
         if m_bullet:

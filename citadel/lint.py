@@ -381,15 +381,25 @@ def _duplicate_open_points(points: list[store.OpenPoint]) -> list[tuple[str, str
     labeled = [(_open_point_key(pt), f"{pt.page_rel}#{pt.title}") for pt in points]
     labeled = [(k, label) for k, label in labeled if k]
     pairs: set[tuple[str, str]] = set()
-    for i in range(len(labeled)):
-        for j in range(i + 1, len(labeled)):
-            key_a, label_a = labeled[i]
-            key_b, label_b = labeled[j]
+    for i, (key_a, label_a) in enumerate(labeled):
+        # Reuse one matcher per outer key so its second-sequence index is computed once, and gate
+        # the O(len) ratio() behind the two cheap upper-bound ratios so obvious mismatches are
+        # skipped. Short-circuit once _OP_DUP_CAP pairs are found — deterministic given the stable
+        # rel_path/title ordering — so this never scans the full O(n^2) space on a large wiki.
+        matcher = difflib.SequenceMatcher(None, b=key_a)
+        for key_b, label_b in labeled[i + 1 :]:
             if label_a == label_b:
                 continue
-            if difflib.SequenceMatcher(None, key_a, key_b).ratio() >= _OP_DUP_RATIO:
+            matcher.set_seq1(key_b)
+            if (
+                matcher.real_quick_ratio() >= _OP_DUP_RATIO
+                and matcher.quick_ratio() >= _OP_DUP_RATIO
+                and matcher.ratio() >= _OP_DUP_RATIO
+            ):
                 pairs.add(tuple(sorted((label_a, label_b))))
-    return sorted(pairs)[:_OP_DUP_CAP]
+                if len(pairs) >= _OP_DUP_CAP:
+                    return sorted(pairs)
+    return sorted(pairs)
 
 
 def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:

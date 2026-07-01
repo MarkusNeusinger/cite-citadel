@@ -75,6 +75,12 @@ def test_no_section_returns_empty():
     assert store.parse_open_points(_page("systems/x.md", "Just a fact.[^s1]\n\n## See also\n")) == []
 
 
+def test_open_point_id_normalized_to_lowercase():
+    body = "## Open Points\n\n### Login timeout\nid: OP-Login-Timeout\n- 2026-01-01: raised. [^s1]\n"
+    (pt,) = store.parse_open_points(_page("systems/x.md", body))
+    assert pt.point_id == "op-login-timeout"  # ids follow the lowercase slugify rule
+
+
 def test_open_points_ignores_code_fence():
     body = """## Open Points
 
