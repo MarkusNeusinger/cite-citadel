@@ -297,6 +297,40 @@ why, as a model-knowledge `[^llmN]` fact (defined in `## Sources`). If unsure, l
 without taking sides — never guess. (Multiple sources that *agree* on a fact are cited together
 behind it: `... fact.[^s1][^s2]`.)
 
+## Threaded sources — time, open points, and design over time
+
+Some sources are **time-anchored tracking artifacts** rather than durable reference material —
+meeting minutes, a status update/mail, an open-points/action-item list, a decision log, a changelog,
+a spec revision. Their value is the **sequence over time** (what was decided when, who owns it,
+what's still open, how a design evolved), which the per-fact fold-out dissolves. The ingest model
+**detects this genre from the content** (shape *or* semantics — a dated header + owners, an
+action/decision/"offene Punkte" list, a status mail referencing prior items, or an unstructured note
+naming an owner + an unresolved action), and **excludes standing/recurring material** (runbook,
+checklist, policy — items that never reach a terminal *done*). The full operational rules live in
+[`AGENT_INGEST.md`](AGENT_INGEST.md); the load-bearing invariants are:
+
+- **Fan-out stays mandatory; the thread is an additive overlay.** Every durable fact is still a
+  normal cited sentence on its entity page — deleting the thread loses no fact. Threading is the
+  higher-confidence extra step, so erring toward *not* threading is always safe.
+- **A point lives on its most-relevant entity page** under a `## Open Points` section, one `### `
+  block per point with an `id: op-<slug>` line (slug via the standard title→slug rule) and
+  **append-only** dated `[^sN]` bullets. The `id:` is the stable cross-source identity; the model
+  reads the whole section and appends to the matching block instead of forking a duplicate.
+- **Dated bullets are history — never rewritten or deleted, even on reconcile** (a correction is a
+  new dated bullet). **Status is derived from the latest bullet, never stored.** A point advancing
+  ("open" → "resolved") is **not** a contradiction.
+- **The date discriminates contradiction from evolution.** Differing values for the same
+  *changeable* attribute at *different* dates (housing material Kunststoff → aluminium → coated) are
+  a **design change over time** — a dated `## Change Log` on that thing's page, with the current
+  value kept as the live cited fact — not a `> [!CONTRADICTION]`. Same moment / immutable property →
+  contradiction. The per-source date comes from the source's content, or falls back to the source
+  file's own date.
+
+The generated `wiki/open-points/index.md` catalog (built mechanically from every `## Open Points`
+section, like `sources/index.md`) is the derived "what's still open / timeline per point" view;
+`citadel lint` surfaces near-duplicate and malformed points. Neither is a source of truth — both are
+recomputed from the pages.
+
 ## Restructuring — keep the wiki clean as it grows
 
 Ingest does **not** mechanically produce one wiki page per raw file. It routes each piece

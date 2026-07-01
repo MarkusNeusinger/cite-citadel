@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import re
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from . import config, okf
@@ -481,6 +482,161 @@ def _render_sources_catalog(manifest_dict: dict, pages: list[Page]) -> str | Non
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
+OPEN_POINTS_INDEX_REL = "open-points/index.md"
+
+# A dated timeline bullet inside an `## Open Points` thread: "- 2026-06-10: text [^s2]".
+_OP_BULLET_RE = re.compile(r"^-\s*(\d{4}-\d{2}-\d{2})\s*:\s*(.*)$")
+# The stable identity line under a thread's `### ` heading: "id: op-checkout-latency".
+_OP_ID_RE = re.compile(r"^id:\s*(\S+)\s*$", re.IGNORECASE)
+# H2 headings whose section holds open-point threads (English + German).
+_OP_SECTION_TITLES = ("open points", "offene punkte")
+# Deriving a point's CURRENT status from its latest dated bullet (never stored): a reopen tell
+# wins (still open), else a done tell closes it, else it is open.
+_OP_DONE_RE = re.compile(
+    r"\b(done|resolved|closed|fixed|shipped|completed|complete|erledigt|abgeschlossen|geschlossen|gel[oö]st)\b",
+    re.IGNORECASE,
+)
+_OP_REOPEN_RE = re.compile(r"\b(reopened|reopen|regression|regressed|wieder\s+offen)\b", re.IGNORECASE)
+# Flatten a bullet for the catalog: inline links -> their text, footnote markers dropped.
+_OP_MD_LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]+\)")
+_OP_FOOTNOTE_RE = re.compile(r"\s*\[\^[\w.-]+\]")
+
+
+@dataclass
+class OpenPoint:
+    """One `### ` thread parsed from a page's `## Open Points` section: its stable id, title,
+    append-only dated bullets, and a status DERIVED from the latest bullet (never stored)."""
+
+    page_rel: str
+    point_id: str  # "op-..." slug, or "" when the id: line is missing (malformed)
+    title: str
+    bullets: list[tuple[str, str]]  # (YYYY-MM-DD, text) in document order
+    status: str  # "done" | "open" — derived from the latest-dated bullet
+    last_date: str  # the max bullet date, or "" when there is no dated bullet
+
+
+def _op_derive_status(bullets: list[tuple[str, str]]) -> tuple[str, str]:
+    """``(status, last_date)`` from the LATEST-dated bullet's text — one source of truth, no
+    stored cursor. A reopen keyword forces open; else a done keyword closes it; else open."""
+    if not bullets:
+        return "open", ""
+    date, text = max(bullets, key=lambda b: b[0])
+    if _OP_REOPEN_RE.search(text):
+        return "open", date
+    if _OP_DONE_RE.search(text):
+        return "done", date
+    return "open", date
+
+
+def parse_open_points(page: Page) -> list[OpenPoint]:
+    """Extract every `### ` thread under a page's `## Open Points` section (code fences skipped).
+    A thread is its heading title, an optional `id: op-<slug>` line, and append-only dated
+    ``- YYYY-MM-DD: ...`` bullets. Returns ``[]`` for a page with no such section."""
+    points: list[OpenPoint] = []
+    in_section = False
+    in_fence = False
+    cur_title: str | None = None
+    cur_id = ""
+    cur_bullets: list[tuple[str, str]] = []
+
+    def flush() -> None:
+        nonlocal cur_title, cur_id, cur_bullets
+        if cur_title is not None:
+            status, last = _op_derive_status(cur_bullets)
+            points.append(OpenPoint(page.rel_path, cur_id, cur_title, cur_bullets, status, last))
+        cur_title, cur_id, cur_bullets = None, "", []
+
+    for line in page.body.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if stripped.startswith("### "):
+            # An H3 thread heading (only meaningful inside the section).
+            if in_section:
+                flush()
+                cur_title = stripped[4:].strip()
+            continue
+        if stripped.startswith("## "):
+            # An H2 boundary: enter the Open-Points section, or leave it for any other H2.
+            flush()
+            in_section = stripped[3:].strip().lower() in _OP_SECTION_TITLES
+            continue
+        if not in_section or cur_title is None:
+            continue
+        m_id = _OP_ID_RE.match(stripped)
+        if m_id and not cur_bullets:
+            cur_id = m_id.group(1)
+            continue
+        m_bullet = _OP_BULLET_RE.match(stripped)
+        if m_bullet:
+            cur_bullets.append((m_bullet.group(1), m_bullet.group(2).strip()))
+    flush()
+    return points
+
+
+def collect_open_points(pages: list[Page]) -> list[OpenPoint]:
+    """Every open-point thread across all pages, in page rel_path then document order."""
+    out: list[OpenPoint] = []
+    for page in sorted(pages, key=lambda p: p.rel_path):
+        out.extend(parse_open_points(page))
+    return out
+
+
+def _op_plain(text: str) -> str:
+    """Flatten a bullet for the catalog: inline links -> their text, footnote markers dropped (the
+    linked host page carries the live citations), whitespace collapsed."""
+    text = _OP_MD_LINK_RE.sub(r"\1", text)
+    text = _OP_FOOTNOTE_RE.sub("", text)
+    return " ".join(text.split())
+
+
+def _render_open_points_catalog(points: list[OpenPoint], title_by_path: dict[str, str]) -> str | None:
+    """Render the body of ``wiki/open-points/index.md`` — the derived "what's still open /
+    timeline per point" view, built mechanically from every ``## Open Points`` section (like the
+    sources catalog). Points are grouped Open-first then Done; each links back to its host page,
+    the source of truth for citations. Returns None when no point is tracked (the caller then
+    removes any stale catalog), like ``index.md``/``log.md`` a generated, frontmatter-free nav
+    file that load() skips and delete_page refuses."""
+    if not points:
+        return None
+    open_pts = [p for p in points if p.status != "done"]
+    done_pts = [p for p in points if p.status == "done"]
+    lines: list[str] = [
+        "# Open Points",
+        "",
+        "Tracked open points and their timelines, generated from every `## Open Points` section in "
+        "the wiki. Grouped open-first; each links to the host page, which carries the citations. "
+        "Generated — do not edit.",
+        "",
+    ]
+
+    def emit(group: list[OpenPoint], heading: str) -> None:
+        lines.append(f"## {heading} ({len(group)})")
+        lines.append("")
+        for pt in group:
+            host_link = okf.rel_path_between(OPEN_POINTS_INDEX_REL, pt.page_rel)
+            host_title = title_by_path.get(pt.page_rel, pt.page_rel)
+            meta = [f"host: [{_md_cell(host_title)}]({host_link})"]
+            if pt.last_date:
+                meta.append(f"updated {pt.last_date}")
+            if pt.point_id:
+                meta.append(f"id: {pt.point_id}")
+            lines.append(f"### {pt.title}")
+            lines.append(" · ".join(meta))
+            for date, text in pt.bullets:
+                lines.append(f"- {date}: {_op_plain(text)}")
+            lines.append("")
+
+    if open_pts:
+        emit(open_pts, "Open")
+    if done_pts:
+        emit(done_pts, "Done")
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
 def rebuild_indexes(pages: list[Page] | None = None) -> None:
     """Regenerate the OKF navigation files from the loaded pages (no LLM).
 
@@ -512,6 +668,18 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
     elif sources_path.exists():
         sources_path.unlink()
 
+    # ----- open-points/index.md: the derived "what's still open / timeline per point" view -----
+    # Built mechanically from every `## Open Points` section (no LLM, no second store) — like the
+    # sources catalog it is written when there is at least one point and removed when there are none.
+    open_points = collect_open_points(pages)
+    open_points_body = _render_open_points_catalog(open_points, title_by_path)
+    open_points_path = config.WIKI_DIR / OPEN_POINTS_INDEX_REL
+    if open_points_body is not None:
+        config.robust_mkdir(open_points_path.parent)
+        open_points_path.write_text(open_points_body, encoding="utf-8")
+    elif open_points_path.exists():
+        open_points_path.unlink()
+
     # ----- top-level wiki/index.md (NO frontmatter — OKF reserved nav file) -----
     by_type: dict[str, list[Page]] = {}
     for page in pages:
@@ -526,6 +694,8 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
     seealso_parts = [f"[{folder}]({folder}/index.md)" for folder in sorted(folders)]
     if sources_body is not None:
         seealso_parts.append(f"[sources]({SOURCES_INDEX_REL})")
+    if open_points_body is not None:
+        seealso_parts.append(f"[open points]({OPEN_POINTS_INDEX_REL})")
     if seealso_parts:
         lines.append(f"See also: {' · '.join(seealso_parts)}")
         lines.append("")
@@ -567,6 +737,19 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
             cited = f"cited by {n} page{'s' if n != 1 else ''}" if n else "uncited"
             src_link = _source_key_to_page_link("index.md", key)
             lines.append(f"- [{_md_cell(key)}]({src_link}) — {cited}")
+        lines.append("")
+
+    # ----- ## Open Points: the by-point timeline axis, surfaced IN index.md so an agent reading
+    # it (e.g. via the wiki_index MCP tool) can discover what is still open without reaching the
+    # skipped open-points/index.md. -----
+    if open_points:
+        n_open = sum(1 for p in open_points if p.status != "done")
+        lines.append("## Open Points")
+        lines.append("")
+        lines.append(
+            f"{len(open_points)} tracked open point(s), {n_open} still open — full timeline in "
+            f"[open-points/index.md]({OPEN_POINTS_INDEX_REL})."
+        )
         lines.append("")
 
     # ----- ## Abbreviations: the glossary, generated from every type: Abbreviation page -----
