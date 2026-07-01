@@ -406,4 +406,4 @@ def view(out=None, open_browser: bool = True, obsidian: bool = False) -> int:
 def _asset(name: str) -> str:
     """Read one of the viewer's package-data files (``template.html``/``app.css``/``app.js``).
     Each asset file ends with a newline and its sentinel is replaced verbatim."""
-    return (resources.files("citadel.viewer") / name).read_text(encoding="utf-8")
+    return (resources.files(__package__) / name).read_text(encoding="utf-8")
