@@ -108,9 +108,11 @@ the non-negotiable `safe_join` path guard — reuse it for any wiki-relative pat
 manifest), and the deterministic link-rewrite safety nets (`rewrite_links`, `rewrite_raw_references`,
 `find_raw_references`, `find_broken_links`). `manifest.py` tracks idempotency in
 `wiki/.citadel_ingested.json` (per source: sha256 or git commit + importing model). `repo.py` builds
-the digest for git-repo sources. `extract.py` pulls text from `.pptx`/`.docx` (stdlib-only).
-`server.py` is the FastMCP stdio server (7 tools; only `wiki_ingest` mutates; tools never raise —
-they return error strings). `viewer.py` builds the self-contained offline HTML viewer. `config.py`
+the digest for git-repo sources. `extract.py` pulls text from Office files (stdlib-only); the legacy
+OLE/CFBF salvage lives in `extract_ole.py`, imported lazily only when a legacy `.ppt`/`.doc`/`.xls`
+is dispatched. `server.py` is the FastMCP stdio server (7 tools; only `wiki_ingest` mutates; tools
+never raise — they return error strings). The `viewer/` subpackage builds the self-contained offline
+HTML viewer (`template.html`/`app.css`/`app.js` are package-data assets loaded via `importlib.resources`). `config.py`
 resolves all paths/settings. `cli.py` mirrors the MCP tools as subcommands.
 
 ## Conventions specific to this codebase
