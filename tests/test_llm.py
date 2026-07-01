@@ -115,7 +115,8 @@ def test_build_instruction_image_tells_agent_to_view_and_cite():
     low = prompt.lower()
     assert "raw/diagram.png" in prompt
     assert "image" in low and ("view" in low or "read" in low)
-    assert "resource: raw/diagram.png" not in low or "raw/diagram.png" in prompt  # cited as source
+    assert "cite" in low  # the agent is told to cite the transcribed facts (to the image source)
+    assert "resource" in low  # step 3 still requires setting the resource verbatim
     assert "extracted to" not in low  # not the office path
 
 

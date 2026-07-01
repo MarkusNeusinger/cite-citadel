@@ -263,7 +263,7 @@ def _col_index(cell_ref: str) -> int:
 
 def _xlsx_cell_text(c: ET.Element, shared: list[str]) -> str:
     """The display text of one ``<c>`` cell: a shared-string lookup (``t="s"``), inline string
-    (``t="inlineStr"``), or the literal ``<v>`` value (numbers/booleans/formulite results)."""
+    (``t="inlineStr"``), or the literal ``<v>`` value (numbers/booleans/formula results)."""
     t = _attr_by_local(c, "t")
     if t == "inlineStr":
         return "".join(x.text for x in c.iter() if _local(x.tag) == "t" and x.text)
