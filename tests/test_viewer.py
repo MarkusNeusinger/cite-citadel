@@ -326,6 +326,62 @@ def test_empty_wiki(tmp_path, monkeypatch):
     assert "<!doctype html>" in html
 
 
+def test_bundle_page_stats_counts_cites_llm_contradictions(tmp_path, monkeypatch):
+    wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
+    body = (
+        "Espresso uses pressure.[^s1] It is strong.[^s2]\n\n"
+        "A model-supplied note.[^llm1]\n\n"
+        "> [!CONTRADICTION]\n"
+        "> raw/a.md says 9 bar [^s1]; raw/b.md says 8 bar [^s2].\n\n"
+        "```\n[^s9]\n```\n\n"
+        "## Sources\n\n"
+        "[^s1]: [raw/a.md](../../raw/a.md) - n\n"
+        "[^s2]: [raw/b.md](../../raw/b.md) - n\n"
+        "[^llm1]: LLM - model knowledge, not from a raw file (added 2026-06-22)\n"
+    )
+    _seed(wiki, "concepts/espresso.md", {"type": "Concept", "title": "Espresso"}, body)
+    page = next(p for p in viewer.build_bundle()["pages"] if p["rel_path"] == "concepts/espresso.md")
+    # 2 raw cites in prose + 2 inside the contradiction callout; the fenced [^s9] and the
+    # trailing ## Sources definitions ([^sN]:) are not counted.
+    assert page["cites"] == 4
+    # Inline [^llm1]; the ## Sources definition is not counted as a use.
+    assert page["llm"] == 1
+    assert page["contradictions"] == 1
+
+
+def test_bundle_page_stats_zero_when_clean(tmp_path, monkeypatch):
+    wiki, _ = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _two_page_wiki(wiki)  # one [^s1] each, no llm, no contradiction
+    by_path = {p["rel_path"]: p for p in viewer.build_bundle()["pages"]}
+    assert by_path["concepts/espresso.md"]["cites"] == 1
+    assert by_path["concepts/espresso.md"]["llm"] == 0
+    assert by_path["concepts/espresso.md"]["contradictions"] == 0
+
+
+def test_build_html_has_fulltext_search_badges_and_facets(tmp_path, monkeypatch):
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    (raw / "a.md").write_text("# A\n\nbody text\n", encoding="utf-8")
+    _two_page_wiki(wiki)
+    html = viewer.build_html()
+    # Full-text search over bodies + result highlighting, the sidebar badge/facet machinery, and
+    # the reader jump-to-contradiction/LLM affordance are all present in the inlined viewer.
+    for marker in (
+        "searchResults",
+        "applyHighlight",
+        "renderResults",
+        "badgesHtml",
+        "renderFacets",
+        "data-facet",
+        "data-jump",
+        "<mark>",
+        'id="facets"',
+    ):
+        assert marker in html, f"missing viewer feature marker: {marker!r}"
+    # Adding full text to the bundle must not break the offline guarantee.
+    for bad in ("http://", "https://", "cdn", " src=", "fetch("):
+        assert bad not in html, f"network reference present: {bad!r}"
+
+
 def test_cli_view_wires_up():
     from citadel import cli
 

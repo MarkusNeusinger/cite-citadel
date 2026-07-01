@@ -11,6 +11,12 @@ clickable link that opens the cited raw file — rendered, in the same reader �
 peeks at it. The raw file content is embedded too, so opening a source stays fully offline. A
 "Sources" axis in the sidebar and an optional source layer in the graph make provenance browsable.
 
+Provenance is also legible at a glance: each page carries counts (``cites`` / ``llm`` /
+``contradictions``) that the viewer renders as sidebar badges, quick-filter chips ("Contradictions",
+"LLM notes"), and a reader summary with jump-to affordances. The sidebar search is a real
+**full-text** search over every page/source body (ranked, with match snippets), and opening a
+result highlights and scrolls to the hit.
+
 The only LLM-free, read-only consumer of the wiki besides search/lint. Reuses
 ``store.load`` / ``store._inbound_map`` / ``store._resolved_md_links`` / ``store.tag_catalog`` /
 ``store.find_raw_references`` so the graph, tags, and provenance always match the rest of the
@@ -45,6 +51,37 @@ _SOURCE_MAX_CHARS = 200_000
 # First markdown ATX heading in a raw source — used as its human title when present.
 _HEADING_RE = re.compile(r"^#[ \t]+(.+?)[ \t]*$", re.MULTILINE)
 
+# Per-page provenance signal surfaced as sidebar badges and as the contradiction / LLM full-text
+# filters. An *inline* footnote marker `[^id]` — NOT a trailing `## Sources` definition (`[^id]:`,
+# excluded by the negative lookahead) — whose id tells a raw citation (`[^sN]`) from a
+# model-supplied fact (`[^llmN]`, mirroring ``lint.LLM_MARKER_RE``).
+_FN_INLINE_RE = re.compile(r"\[\^([\w.-]+)\](?!:)")
+# A contradiction callout header (``lint.CONTRADICTION_MARKER``), tolerant of leading indentation
+# and `>` spacing so an indented/nested callout still counts.
+_CONTRADICTION_RE = re.compile(r"^\s*>\s*\[!CONTRADICTION\]", re.IGNORECASE | re.MULTILINE)
+
+
+def _page_stats(body: str) -> tuple[int, int, int]:
+    """``(raw_citations, llm_facts, contradictions)`` for one page body — the counts the viewer
+    shows as per-page sidebar badges and filters by. Fence-aware for the footnote markers (a
+    citation written as a literal inside a ``` code block is not counted), mirroring the store's
+    link scanners; contradiction callouts are counted by their ``[!CONTRADICTION]`` header."""
+    cites = llm = 0
+    in_fence = False
+    for line in body.splitlines():
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        for match in _FN_INLINE_RE.finditer(line):
+            if match.group(1).lower().startswith("llm"):
+                llm += 1
+            else:
+                cites += 1
+    contradictions = len(_CONTRADICTION_RE.findall(body))
+    return cites, llm, contradictions
+
 
 def build_bundle(pages=None) -> dict:
     """Build the JSON-serializable bundle from the loaded wiki (pure data; no HTML, no I/O
@@ -65,6 +102,7 @@ def build_bundle(pages=None) -> dict:
         for target in outbound:
             edges.append({"source": page.rel_path, "target": target})
         types.setdefault(page.type or "Untyped", []).append(page.rel_path)
+        cites, llm, contradictions = _page_stats(page.body)
         pages_json.append(
             {
                 "rel_path": page.rel_path,
@@ -75,6 +113,10 @@ def build_bundle(pages=None) -> dict:
                 "body": page.body,
                 "outbound": outbound,
                 "inbound": inbound.get(page.rel_path, []),
+                # Per-page provenance counts for the sidebar badges + contradiction/LLM filters.
+                "cites": cites,
+                "llm": llm,
+                "contradictions": contradictions,
             }
         )
 
@@ -359,6 +401,33 @@ body { margin:0; font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-ser
 .tag { background:var(--chip); color:var(--accent); border-radius:999px; padding:1px 9px;
        font-size:12px; cursor:pointer; user-select:none; }
 .tag.active { background:var(--accent); color:#fff; }
+#facets { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:10px; }
+.facet { display:inline-flex; align-items:center; gap:4px; border:1px solid var(--line);
+         background:var(--bg); color:var(--muted); border-radius:999px; padding:1px 9px;
+         font-size:12px; cursor:pointer; user-select:none; }
+.facet:hover { border-color:var(--accent); color:var(--accent); }
+.facet.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+.facet.contra.active { background:#dc2626; border-color:#dc2626; color:#fff; }
+.facet.llm.active { background:#9333ea; border-color:#9333ea; color:#fff; }
+/* Per-page provenance badges shown next to a page in the sidebar / results. */
+.badges { display:inline-flex; gap:4px; margin-left:5px; vertical-align:baseline; }
+.badge { font-size:10px; line-height:1.5; border-radius:999px; padding:0 5px; font-weight:600;
+         white-space:nowrap; }
+.badge-cite { background:var(--chip); color:var(--source); }
+.badge-llm { background:rgba(147,51,234,.16); color:#9333ea; }
+.badge-contra { background:rgba(220,38,38,.16); color:#dc2626; }
+/* Full-text search results. */
+.result-head { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.04em;
+               margin:2px 0 6px; }
+.result { display:block; padding:6px; border-radius:7px; text-decoration:none; color:var(--fg);
+          border:1px solid transparent; margin-bottom:2px; }
+.result:hover { background:var(--card); border-color:var(--line); }
+.result .result-title { font-weight:600; }
+.result.src .result-title::before { content:"\\201C"; color:var(--source); margin-right:3px;
+          font-weight:700; }
+.result .result-snip { display:block; color:var(--muted); font-size:12px; margin-top:2px; }
+mark { background:#fde68a; color:#111; border-radius:2px; padding:0 1px; }
+@media (prefers-color-scheme: dark) { mark { background:#7c5e10; color:#fdecc8; } }
 #page-list details, #source-list details { margin-bottom:8px; }
 #page-list summary, #source-list summary { cursor:pointer; color:var(--muted); font-size:12px;
                      text-transform:uppercase; letter-spacing:.04em; }
@@ -429,6 +498,14 @@ body { margin:0; font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-ser
 .callout-title { font-weight:700; font-size:12px; letter-spacing:.04em; color:var(--accent); }
 .callout-contradiction { border-left-color:#dc2626; }
 .callout-contradiction .callout-title { color:#dc2626; }
+#reader .stats { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+#reader .stat { font-size:12px; border-radius:999px; padding:1px 9px; text-decoration:none;
+                border:1px solid var(--line); color:var(--muted); }
+#reader a.stat { cursor:pointer; }
+#reader a.stat:hover { border-color:var(--accent); }
+#reader .stat-cite { color:var(--source); }
+#reader .stat-llm { color:#9333ea; }
+#reader .stat-contra { color:#dc2626; }
 .fnref a { text-decoration:none; color:var(--accent); }
 .fnref.has-src a { border-bottom:1px dotted var(--source); }
 .fndef { font-size:13px; color:var(--muted); margin:3px 0; }
@@ -469,6 +546,26 @@ _VIEWER_JS = r"""
     typeColor[t] = TYPE_COLORS[i % TYPE_COLORS.length];
   });
   var activeTag = "";
+  var activeFacet = "";  // "" | "contradiction" | "llm" — the sidebar quick filter
+  var query = "";        // current full-text query, lowercased/trimmed
+
+  // Precompute the searchable/snippet forms once: a whitespace-collapsed body ("flat") and a
+  // lowercased mirror of each searched field. Full-text search then scans these in memory — no
+  // index, no network, and snippet offsets line up with the flat text.
+  BUNDLE.pages.forEach(function (p) {
+    p.flat = (p.body || "").replace(/\s+/g, " ").trim();
+    p.lowBody = p.flat.toLowerCase();
+    p.lowTitle = (p.title || "").toLowerCase();
+    p.lowTags = (p.tags || []).join(" ").toLowerCase();
+    p.lowPath = p.rel_path.toLowerCase();
+  });
+  Object.keys(SOURCES).forEach(function (id) {
+    var s = SOURCES[id];
+    s.flat = (s.body || "").replace(/\s+/g, " ").trim();
+    s.lowBody = s.flat.toLowerCase();
+    s.lowTitle = (s.title || "").toLowerCase();
+    s.lowId = id.toLowerCase();
+  });
 
   function esc(s) {
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -628,42 +725,139 @@ _VIEWER_JS = r"""
     box.innerHTML = html;
   }
 
+  // Per-page provenance badges: raw citations (amber), model-supplied facts (purple), and
+  // contradiction callouts (red). Only non-zero counts are shown, so a page's shape is legible at
+  // a glance from the sidebar.
+  function badgesHtml(p) {
+    var out = "";
+    if (p.cites) out += "<span class='badge badge-cite' title='" + p.cites +
+      " citation(s) to raw sources'>&#8220;" + p.cites + "</span>";
+    if (p.llm) out += "<span class='badge badge-llm' title='" + p.llm +
+      " model-supplied (LLM) fact(s)'>LLM " + p.llm + "</span>";
+    if (p.contradictions) out += "<span class='badge badge-contra' title='" + p.contradictions +
+      " contradiction(s)'>&#9888; " + p.contradictions + "</span>";
+    return out ? "<span class='badges'>" + out + "</span>" : "";
+  }
+
+  // A page passes the sidebar filters when it matches the active tag AND the active quick facet
+  // (contradictions / LLM notes). Shared by browse mode and search mode.
+  function passesFilters(p) {
+    if (activeTag && p.tags.indexOf(activeTag) < 0) return false;
+    if (activeFacet === "contradiction" && !p.contradictions) return false;
+    if (activeFacet === "llm" && !p.llm) return false;
+    return true;
+  }
+
+  // A whitespace-collapsed excerpt of `flat` centered on the first occurrence of `q` (already
+  // lowercased) in `low`, with the hit wrapped in <mark> and ellipses where clipped. Falls back to
+  // the head of the text when the match is only in the title/path/tags (not the body).
+  function snippetHtml(flat, low, q) {
+    var radius = 64, i = low.indexOf(q);
+    if (i < 0) return esc(flat.slice(0, 2 * radius)) + (flat.length > 2 * radius ? "…" : "");
+    var start = Math.max(0, i - radius), end = Math.min(flat.length, i + q.length + radius);
+    return (start > 0 ? "…" : "") + esc(flat.slice(start, i)) + "<mark>" +
+      esc(flat.slice(i, i + q.length)) + "</mark>" + esc(flat.slice(i + q.length, end)) +
+      (end < flat.length ? "…" : "");
+  }
+
+  // Full-text ranking: title > tags > path > body, so a title hit sorts above a body-only hit.
+  // Sources join the results only when neither a tag nor a facet is active (they carry no tags and
+  // no contradiction/LLM markers, so a facet/tag filter is page-only).
+  function searchResults(q) {
+    var res = [];
+    BUNDLE.pages.forEach(function (p) {
+      if (!passesFilters(p)) return;
+      var score = 0;
+      if (p.lowTitle.indexOf(q) >= 0) score += 100;
+      if (p.lowTags.indexOf(q) >= 0) score += 20;
+      if (p.lowPath.indexOf(q) >= 0) score += 10;
+      if (p.lowBody.indexOf(q) >= 0) score += 1;
+      if (score) res.push({ kind: "page", id: p.rel_path, title: p.title, p: p, score: score });
+    });
+    if (!activeTag && !activeFacet) {
+      Object.keys(SOURCES).forEach(function (id) {
+        var s = SOURCES[id], score = 0;
+        if (s.lowTitle.indexOf(q) >= 0) score += 80;
+        if (s.lowId.indexOf(q) >= 0) score += 10;
+        if (s.lowBody.indexOf(q) >= 0) score += 1;
+        if (score) res.push({ kind: "source", id: id, title: s.title, s: s, score: score });
+      });
+    }
+    res.sort(function (a, b) { return b.score - a.score || a.title.localeCompare(b.title); });
+    return res;
+  }
+
+  function renderResults(q) {
+    var res = searchResults(q), nav = document.getElementById("page-list");
+    document.getElementById("source-list").innerHTML = "";  // sources appear inline in results
+    if (!res.length) {
+      nav.innerHTML = "<p class='ext'>No matches for “" + esc(q) + "”.</p>";
+      return;
+    }
+    var html = "<div class='result-head'>" + res.length + " result" +
+      (res.length === 1 ? "" : "s") + "</div>";
+    res.forEach(function (r) {
+      if (r.kind === "page") {
+        var p = r.p;
+        html += "<a class='result' href='#" + encodeURIComponent(p.rel_path) + "' data-page='" +
+          esc(p.rel_path) + "'><span class='result-title'>" + esc(p.title) + "</span>" +
+          badgesHtml(p) + "<span class='result-snip'>" +
+          snippetHtml(p.flat, p.lowBody, q) + "</span></a>";
+      } else {
+        var s = r.s;
+        html += "<a class='result src' href='#src:" + encodeURIComponent(r.id) +
+          "' data-source='" + esc(r.id) + "' data-pop='" + esc(r.id) +
+          "'><span class='result-title'>" + esc(s.title) + "</span><span class='result-snip'>" +
+          snippetHtml(s.flat, s.lowBody, q) + "</span></a>";
+      }
+    });
+    nav.innerHTML = html;
+  }
+
   function renderSidebar() {
-    var query = (document.getElementById("search").value || "").toLowerCase();
+    query = (document.getElementById("search").value || "").trim().toLowerCase();
+    renderFacets();
+    if (query) { renderResults(query); return; }  // full-text mode
     var nav = document.getElementById("page-list"), html = "";
     Object.keys(BUNDLE.types).sort().forEach(function (type) {
-      var rels = BUNDLE.types[type].filter(function (rel) {
-        var p = PAGES[rel];
-        if (activeTag && p.tags.indexOf(activeTag) < 0) return false;
-        if (query) {
-          var hay = (p.title + " " + p.rel_path + " " + p.tags.join(" ")).toLowerCase();
-          if (hay.indexOf(query) < 0) return false;
-        }
-        return true;
-      });
+      var rels = BUNDLE.types[type].filter(function (rel) { return passesFilters(PAGES[rel]); });
       if (!rels.length) return;
       html += "<details open><summary>" + esc(type) + " (" + rels.length + ")</summary>";
       rels.forEach(function (rel) {
+        var p = PAGES[rel];
         html += "<a class='navitem' href='#" + encodeURIComponent(rel) + "' data-page='" +
-          esc(rel) + "'>" + esc(PAGES[rel].title) + "</a>";
+          esc(rel) + "'>" + esc(p.title) + badgesHtml(p) + "</a>";
       });
       html += "</details>";
     });
     nav.innerHTML = html || "<p class='ext'>No pages.</p>";
-    renderSources(query);
+    renderSources();
+  }
+
+  // The contradiction / LLM quick-filter chips, each with a live corpus count. Clicking a chip
+  // toggles the facet; only chips with a non-zero count are shown.
+  function renderFacets() {
+    var box = document.getElementById("facets");
+    if (!box) return;
+    var nContra = 0, nLlm = 0;
+    BUNDLE.pages.forEach(function (p) { if (p.contradictions) nContra++; if (p.llm) nLlm++; });
+    var html = "";
+    if (nContra) html += "<span class='facet contra" +
+      (activeFacet === "contradiction" ? " active" : "") +
+      "' data-facet='contradiction'>&#9888; Contradictions " + nContra + "</span>";
+    if (nLlm) html += "<span class='facet llm" + (activeFacet === "llm" ? " active" : "") +
+      "' data-facet='llm'>LLM notes " + nLlm + "</span>";
+    box.innerHTML = html;
   }
 
   // The Sources browse axis: a sidebar group listing every embedded source with its citation
-  // count. Hidden while a tag filter is active (sources carry no tags). Text-filtered by the
-  // shared search box (title + path).
-  function renderSources(query) {
+  // count. Shown only in browse mode with no tag/facet active (sources carry neither); in search
+  // mode they surface inline in the ranked results instead.
+  function renderSources() {
     var box = document.getElementById("source-list");
     if (!box) return;
-    var ids = activeTag ? [] : Object.keys(SOURCES).sort().filter(function (id) {
-      if (!query) return true;
-      var s = SOURCES[id];
-      return (s.title + " " + s.id).toLowerCase().indexOf(query) >= 0;
-    });
+    if (activeTag || activeFacet) { box.innerHTML = ""; return; }
+    var ids = Object.keys(SOURCES).sort();
     if (!ids.length) { box.innerHTML = ""; return; }
     var html = "<details open><summary>Sources (" + ids.length + ")</summary>";
     ids.forEach(function (id) {
@@ -923,6 +1117,64 @@ _VIEWER_JS = r"""
     reader.innerHTML = html;
     reader.scrollTop = 0;
     decorateReader(reader);
+    applyHighlight(reader, true);  // opening a doc scrolls to the first hit
+  }
+
+  // Unwrap any existing <mark> spans so the reader can be re-highlighted for a new query without a
+  // full re-render (which would lose the scroll position while typing).
+  function clearMarks(reader) {
+    var marks = reader.querySelectorAll("mark");
+    Array.prototype.forEach.call(marks, function (m) {
+      m.parentNode.replaceChild(document.createTextNode(m.textContent), m);
+    });
+    if (marks.length) reader.normalize();  // merge split text nodes so future matches span
+  }
+
+  // Reader provenance summary: citations (static), plus jump-to chips for the first model-supplied
+  // fact and the first contradiction — so "find the contradictions in this page" is one click.
+  function statsHtml(p) {
+    var out = "";
+    if (p.cites) out += "<span class='stat stat-cite' title='citations to raw sources'>&#8220;" +
+      p.cites + " citation" + (p.cites === 1 ? "" : "s") + "</span>";
+    if (p.llm) out += "<a class='stat stat-llm' href='#' data-jump='llm' " +
+      "title='jump to the first model-supplied fact'>LLM " + p.llm + " note" +
+      (p.llm === 1 ? "" : "s") + "</a>";
+    if (p.contradictions) out += "<a class='stat stat-contra' href='#' data-jump='contra' " +
+      "title='jump to the first contradiction'>&#9888; " + p.contradictions + " contradiction" +
+      (p.contradictions === 1 ? "" : "s") + "</a>";
+    return out ? "<div class='stats'>" + out + "</div>" : "";
+  }
+
+  // Highlight every occurrence of the active query in the reader by wrapping matching text nodes
+  // in <mark> (DOM-safe — never touches tags/attributes). With `scroll`, the first hit is scrolled
+  // into view (on navigation); live typing passes false so the page doesn't jump. Skips the
+  // table-of-contents so its nav copy isn't marked. No-op when there is no query.
+  function applyHighlight(reader, scroll) {
+    if (!query) return;
+    var walker = document.createTreeWalker(reader, NodeFilter.SHOW_TEXT, null);
+    var targets = [], node;
+    while ((node = walker.nextNode())) {
+      var par = node.parentNode;
+      if (!par || /^(SCRIPT|STYLE|MARK)$/.test(par.nodeName)) continue;
+      if (par.closest && par.closest(".toc")) continue;
+      if (node.nodeValue.toLowerCase().indexOf(query) >= 0) targets.push(node);
+    }
+    var first = null;
+    targets.forEach(function (n) {
+      var text = n.nodeValue, low = text.toLowerCase(), frag = document.createDocumentFragment();
+      var last = 0, i;
+      while ((i = low.indexOf(query, last)) >= 0) {
+        if (i > last) frag.appendChild(document.createTextNode(text.slice(last, i)));
+        var mk = document.createElement("mark");
+        mk.textContent = text.slice(i, i + query.length);
+        frag.appendChild(mk);
+        if (!first) first = mk;
+        last = i + query.length;
+      }
+      if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+      n.parentNode.replaceChild(frag, n);
+    });
+    if (scroll && first) first.scrollIntoView({ block: "center" });
   }
 
   // Add a collapsible table of contents for any page/source with enough headings, giving every
@@ -968,7 +1220,7 @@ _VIEWER_JS = r"""
     var meta = "<div class='meta'><span class='ptype'>" + esc(p.type) + "</span> " +
       p.tags.map(function (t) { return "<span class='tag'>" + esc(t) + "</span>"; }).join(" ") +
       "</div>";
-    renderReader("<h1>" + esc(p.title) + "</h1>" + meta +
+    renderReader("<h1>" + esc(p.title) + "</h1>" + meta + statsHtml(p) +
       (p.description ? "<p class='desc'>" + esc(p.description) + "</p>" : "") +
       backlinkList("Referenced by:", p.inbound) + "<hr>" + mdToHtml(p.body, p.rel_path, fnSrc));
     Graph.setActive(rel);
@@ -1063,10 +1315,44 @@ _VIEWER_JS = r"""
       if (h) h.scrollIntoView();
       return;
     }
+    var jm = ev.target.closest("[data-jump]");
+    if (jm) {
+      ev.preventDefault();
+      var rdr = document.getElementById("reader");
+      var tgt = jm.getAttribute("data-jump") === "contra"
+        ? rdr.querySelector(".callout-contradiction")
+        : rdr.querySelector("[id^='ref-llm'], [id^='fn-llm']");
+      if (tgt) tgt.scrollIntoView({ block: "center" });
+      return;
+    }
+    var fc = ev.target.closest("[data-facet]");
+    if (fc) {
+      var f = fc.getAttribute("data-facet");
+      activeFacet = activeFacet === f ? "" : f;  // toggle
+      renderSidebar();
+      return;
+    }
     var tg = ev.target.closest("[data-tag]");
     if (tg) { activeTag = tg.getAttribute("data-tag"); renderTags(); renderSidebar(); }
   });
-  document.getElementById("search").addEventListener("input", renderSidebar);
+  // Typing updates the sidebar AND re-highlights the open reader in place (no scroll yank), so the
+  // reader's highlight never goes stale relative to the query.
+  document.getElementById("search").addEventListener("input", function () {
+    renderSidebar();
+    var reader = document.getElementById("reader");
+    clearMarks(reader);
+    applyHighlight(reader, false);
+  });
+  // Enter in the search box jumps straight to the top-ranked full-text result.
+  document.getElementById("search").addEventListener("keydown", function (ev) {
+    if (ev.key !== "Enter") return;
+    var q = (this.value || "").trim().toLowerCase();
+    if (!q) return;
+    var res = searchResults(q);
+    if (!res.length) return;
+    ev.preventDefault();
+    if (res[0].kind === "source") openSource(res[0].id); else openPage(res[0].id);
+  });
   document.addEventListener("keydown", function (ev) {
     if (ev.key === "/" && document.activeElement.id !== "search") {
       ev.preventDefault(); document.getElementById("search").focus();
@@ -1155,7 +1441,8 @@ _TEMPLATE = """<!doctype html>
 <body>
 <div id="app">
   <aside id="sidebar">
-    <input id="search" type="search" placeholder="Filter pages…" autocomplete="off">
+    <input id="search" type="search" placeholder="Search full text… (press /)" autocomplete="off">
+    <div id="facets"></div>
     <div id="tag-filter"></div>
     <nav id="page-list"></nav>
     <nav id="source-list"></nav>
