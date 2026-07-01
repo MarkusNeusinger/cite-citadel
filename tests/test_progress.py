@@ -1,10 +1,11 @@
-"""Tests for the ingest progress reporter's spinner line.
+"""Tests for the ingest progress reporter's spinner line and its short source-key display.
 
 A long source path (e.g. one on a mounted network drive) used to wrap the terminal: the spinner
 line is rewritten in place with a leading ``\\r``, but a wrapped line spans several physical rows
 and ``\\r`` only returns to the start of the LAST one — so every 0.1s repaint left the earlier
 rows on screen and the path appeared printed over and over. The fix clips the rewritten spinner
-line to a single terminal row; the full, untruncated path still prints on the completion line.
+line to a single terminal row, AND the source is now shown by its short key (the long prefix before
+the ``raw/`` folder is dropped) so a network path stays on one line and names the in-flight file.
 
 No real TTY is involved — output goes to an in-memory stream and the terminal width is
 monkeypatched, so the tests are deterministic. The example paths below are fictional.
@@ -13,12 +14,17 @@ monkeypatched, so the tests are deterministic. The example paths below are ficti
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
-from citadel import progress
+from citadel import config, progress
 
 
 # A long, fictional out-of-repo source key, of the shape that wrapped the terminal.
 _LONG_KEY = "//fileserver/share/projects/data/wiki/raw/sub/EXAMPLE_LONG_DOCUMENT.md"
+# The raw/ folder that key lives under (a network drive), and the short form the console should show:
+# the long prefix before raw/ is dropped, leaving just the path from the raw folder down.
+_LONG_KEY_RAW_DIR = "//fileserver/share/projects/data/wiki/raw"
+_LONG_KEY_SHORT = "raw/sub/EXAMPLE_LONG_DOCUMENT.md"
 
 
 # --- the spinner line is clipped to one row (the "printed over and over" bug) ------------
@@ -82,13 +88,36 @@ def test_repeated_paint_overwrites_instead_of_stacking(monkeypatch):
         assert len(frame) <= 49  # every frame fits one row, so none can wrap
 
 
-# --- the full path still reaches the console (completion line + report) ------------------
+# --- an out-of-repo source key is shortened for the console (the long network prefix is dropped) --
 
 
-def test_completion_line_prints_full_path():
-    """The per-file completion line shows the FULL source path (it is written once, terminated by a
-    newline — wrapping is fine there, it is never repainted). A StringIO is not a TTY, so no spinner
-    thread runs and the output is deterministic."""
+def test_display_key_drops_prefix_before_raw(monkeypatch):
+    """An absolute out-of-repo key under RAW_DIR collapses to ``raw/<below>`` — the whole
+    network-drive prefix before the raw folder is dropped."""
+    monkeypatch.setattr(config, "RAW_DIR", Path(_LONG_KEY_RAW_DIR))
+    assert config.display_key(_LONG_KEY) == _LONG_KEY_SHORT
+
+
+def test_display_key_leaves_in_repo_key_unchanged(monkeypatch):
+    """A repo-relative key is already short — it is returned verbatim (never resolved against the
+    CWD, and never mistaken for a child of RAW_DIR)."""
+    monkeypatch.setattr(config, "RAW_DIR", Path(_LONG_KEY_RAW_DIR))
+    assert config.display_key("raw/notes.md") == "raw/notes.md"
+
+
+def test_display_key_leaves_unrelated_absolute_key_unchanged(monkeypatch):
+    """An absolute key that is NOT under RAW_DIR/DOCS_DIR is left as-is — we only strip a KNOWN
+    prefix, never guess one."""
+    monkeypatch.setattr(config, "RAW_DIR", Path(_LONG_KEY_RAW_DIR))
+    monkeypatch.setattr(config, "DOCS_DIR", Path("//fileserver/share/projects/data/wiki/docs"))
+    assert config.display_key("//other/place/file.txt") == "//other/place/file.txt"
+
+
+def test_completion_line_shows_short_path(monkeypatch):
+    """The per-file START and completion lines show the SHORT key (prefix before raw/ dropped), not
+    the long network path. A StringIO is not a TTY, so no spinner thread runs — the source is
+    announced up front (so you see which file is in flight) and again on completion."""
+    monkeypatch.setattr(config, "RAW_DIR", Path(_LONG_KEY_RAW_DIR))
     stream = io.StringIO()
     prog = progress.ConsoleProgress(stream=stream)
     assert prog.tty is False
@@ -100,16 +129,20 @@ def test_completion_line_prints_full_path():
     )
 
     out = stream.getvalue()
-    assert _LONG_KEY in out  # full, untruncated path on the completion line
+    assert _LONG_KEY_SHORT in out  # short key on both the start and the completion line
+    assert "//fileserver" not in out  # the long network prefix is gone
+    assert "[3/88] raw/sub/EXAMPLE_LONG_DOCUMENT.md ..." in out  # up-front start line names the file
     assert "[3/88] OK" in out
     assert "1 created" in out
 
 
-def test_error_line_prints_full_path():
-    """An error line likewise carries the full source path and the error text."""
+def test_error_line_shows_short_path(monkeypatch):
+    """An error line likewise carries the SHORT source key and the error text."""
+    monkeypatch.setattr(config, "RAW_DIR", Path(_LONG_KEY_RAW_DIR))
     stream = io.StringIO()
     prog = progress.ConsoleProgress(stream=stream)
     prog("source_error", {"index": 1, "total": 1, "source": _LONG_KEY, "error": "CLI not found", "seconds": 0.2})
     out = stream.getvalue()
-    assert _LONG_KEY in out
+    assert _LONG_KEY_SHORT in out
+    assert "//fileserver" not in out
     assert "CLI not found" in out

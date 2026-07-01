@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import os
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 def _resolve_repo_root() -> Path:
@@ -125,6 +125,40 @@ def source_path_for_key(key: str) -> Path:
     ``REPO_ROOT / key`` joins that silently mis-resolved out-of-repo keys."""
     p = Path(key)
     return p if p.is_absolute() else REPO_ROOT / key
+
+
+def display_key(key: str) -> str:
+    """A short, human-facing rendering of a source key for the ingest CONSOLE output.
+
+    An out-of-repo source on a mounted network drive carries an ABSOLUTE key — e.g.
+    ``//fileserver/share/dept/2026/reports/raw/sub/notes.pdf`` — whose long prefix before the raw
+    folder is noise while a live multi-file ingest scrolls past (and it wrecks the one-line progress
+    display). When the key lies under ``RAW_DIR`` (or ``DOCS_DIR``), collapse it to
+    ``<folder-name>/<path-below>`` — dropping the WHOLE prefix before that folder, so
+    ``//fileserver/.../raw/sub/notes.pdf`` shows as ``raw/sub/notes.pdf``. A repo-relative key
+    (already short, e.g. ``raw/notes.md``) or any key not under those roots is returned unchanged.
+
+    Display-only: the CANONICAL key is still what the manifest, the report, and the citation
+    bookkeeping use. Read ``RAW_DIR`` / ``DOCS_DIR`` at call time so tests can monkeypatch the layout.
+    Never raises — on any oddity it returns the key unchanged."""
+    text = str(key).replace("\\", "/").strip()
+    if not text:
+        return key
+    try:
+        p = Path(text)
+        # Resolve an ABSOLUTE key through the same normalization the roots use, so the two compare in
+        # one space; leave a relative (in-repo) key alone — resolving it would bind it to the CWD.
+        kp = PurePosixPath(_safe_resolve(p).as_posix()) if p.is_absolute() else PurePosixPath(text)
+        for root in (RAW_DIR, DOCS_DIR):
+            base = PurePosixPath(_safe_resolve(root).as_posix())
+            try:
+                rel = kp.relative_to(base)
+            except ValueError:
+                continue
+            return base.name + "/" + "/".join(rel.parts) if rel.parts else base.name
+    except (OSError, ValueError):
+        return key
+    return key
 
 
 def is_outside_repo(path: Path | str) -> bool:
