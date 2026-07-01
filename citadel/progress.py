@@ -6,10 +6,16 @@ so it is safe on any Windows console code page — the same cp1252 boxes that hi
 ``UnicodeDecodeError`` before would choke on braille spinners / box-drawing. On a TTY it
 animates a spinner with elapsed time on one rewritten line — **clipped to the terminal width**
 so a long source path can never wrap onto extra rows (a wrapped line defeats the ``\r`` rewrite
-and stacks a fresh copy of itself on every repaint); on a non-TTY (piped / CI) it degrades to
-one plain line per file. The full, untruncated source path is still printed on the per-file
-completion line and in the final report. The spinner runs on a daemon thread while the blocking
-LLM subprocess call runs on the main thread.
+and stacks a fresh copy of itself on every repaint); on a non-TTY (piped / CI) — and whenever the
+spinner is suppressed (``--verbose``, whose live agent transcript would clobber a rewritten line)
+— it degrades to a plain up-front START line naming the source, then a completion line per file, so
+you can always see WHICH file the session is working on right now.
+
+Every source is shown by its **short** key (``citadel.config.display_key``): the long prefix before
+the ``raw/`` folder that an out-of-repo source on a mounted network drive carries is dropped, so
+``//fileserver/.../raw/sub/notes.pdf`` prints as ``raw/sub/notes.pdf`` and stays on one line. The
+full canonical key is still what the final report and the manifest record. The spinner runs on a
+daemon thread while the blocking LLM subprocess call runs on the main thread.
 
 Wired in only by the CLI (``cmd_ingest``); the MCP server passes no progress, so its stdio
 stays clean. Drive it by calling the instance: ``progress(event, data_dict)``.
@@ -22,6 +28,8 @@ import os
 import sys
 import threading
 import time
+
+from . import config
 
 
 _FRAMES = "|/-\\"
@@ -87,10 +95,16 @@ class ConsoleProgress:
         self._writeln(f"Ingesting {' + '.join(counts)}{extra}...")
 
     def on_source_start(self, index: int, total: int, source: str) -> None:
-        self._label = f"[{index}/{total}] {source}"
+        self._label = f"[{index}/{total}] {config.display_key(source)}"
         self._t0 = time.monotonic()
         if self.tty and self.spinner:
             self._start_spinner()
+        else:
+            # No animated spinner (a non-TTY pipe, or --verbose whose live agent transcript follows):
+            # the spinner is what normally names the in-flight source, so without it print an up-front
+            # START line — otherwise the streamed session (or the eventual completion line) gives no
+            # clue WHICH file is being worked on right now.
+            self._writeln(f"{self._label} ...")
 
     def on_source_done(
         self, index: int, total: int, source: str, created: int, updated: int, deleted: int, seconds: float
@@ -104,11 +118,11 @@ class ConsoleProgress:
         if deleted:
             bits.append(f"{deleted} deleted")
         summary = ", ".join(bits) if bits else "no changes"
-        self._finishln(f"[{index}/{total}] OK  {source}  -  {summary}  ({seconds:.1f}s)")
+        self._finishln(f"[{index}/{total}] OK  {config.display_key(source)}  -  {summary}  ({seconds:.1f}s)")
 
     def on_source_error(self, index: int, total: int, source: str, error: str, seconds: float) -> None:
         self._stop_spinner()
-        self._finishln(f"[{index}/{total}] ERR {source}  -  {error}  ({seconds:.1f}s)")
+        self._finishln(f"[{index}/{total}] ERR {config.display_key(source)}  -  {error}  ({seconds:.1f}s)")
 
     def on_finalize(self) -> None:
         self._writeln("Rebuilding indexes...")
