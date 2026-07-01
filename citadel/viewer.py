@@ -638,6 +638,12 @@ _VIEWER_JS = r"""
       .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
+  // The current location hash as a decoded id, never throwing on a malformed/hand-edited hash
+  // (decodeURIComponent raises URIError on bad percent-encoding) — a bad hash must not break the app.
+  function safeHash() {
+    try { return decodeURIComponent((location.hash || "").slice(1)); } catch (e) { return ""; }
+  }
+
   // Port of okf.resolve_link with the wiki root as a floor (a '..' that would climb above the
   // root is clamped), so a citation like '../../raw/x.md' resolves to 'raw/x.md' — exactly the
   // id under which build_sources keys an embedded source.
@@ -1202,6 +1208,12 @@ _VIEWER_JS = r"""
     return { init: init, zoom: zoom, refit: refit, setActive: setActive,
              setShowSources: setShowSources, showsSources: function () { return showSources; },
              isHidden: function (t) { return !!hiddenTypes[t]; },
+             hiddenList: function () { return Object.keys(hiddenTypes); },
+             // Restore the hidden-category set without rebuilding (call before init()).
+             setHidden: function (arr) {
+               hiddenTypes = {};
+               (arr || []).forEach(function (t) { hiddenTypes[t] = 1; });
+             },
              setHiddenType: function (t, hide) {
                if (hide) hiddenTypes[t] = 1; else delete hiddenTypes[t];
                buildModel(); settle(); refit();
@@ -1324,7 +1336,7 @@ _VIEWER_JS = r"""
   function openPage(rel) {
     var p = PAGES[rel];
     if (!p) return;
-    if (decodeURIComponent((location.hash || "").slice(1)) !== rel) {
+    if (safeHash() !== rel) {
       location.hash = encodeURIComponent(rel);
     }
     // Map each footnote id to the source it cites (parsed from the page's ## Sources defs), so
@@ -1489,7 +1501,7 @@ _VIEWER_JS = r"""
   });
 
   function route() {
-    var h = decodeURIComponent((location.hash || "").slice(1));
+    var h = safeHash();
     if (h.indexOf("src:") === 0) { if (SOURCES[h.slice(4)]) openSource(h.slice(4)); }
     else if (h && PAGES[h]) openPage(h);
   }
@@ -1498,6 +1510,11 @@ _VIEWER_JS = r"""
   document.getElementById("wiki-name").textContent = BUNDLE.wiki_name || "Wiki";
   renderTags();
   renderSidebar();
+  // Restore the hidden-category filter BEFORE the first layout so the initial map matches last session.
+  try {
+    var savedHidden = JSON.parse(localStorage.getItem("okf_hidden_types") || "[]");
+    if (Array.isArray(savedHidden)) Graph.setHidden(savedHidden);
+  } catch (e) {}
   Graph.init();
 
   // Interactive legend: every category (each page type + the Source layer) is a clickable chip
@@ -1506,7 +1523,7 @@ _VIEWER_JS = r"""
     var box = document.getElementById("graph-legend");
     if (!box) return;
     var counts = {};
-    BUNDLE.pages.forEach(function (p) { counts[p.type] = (counts[p.type] || 0) + 1; });
+    BUNDLE.pages.forEach(function (p) { var k = p.type || "Untyped"; counts[k] = (counts[k] || 0) + 1; });
     var html = Object.keys(BUNDLE.types).sort().map(function (t) {
       return "<span class='lg' data-legend='" + esc(t) + "'" + (Graph.isHidden(t) ? " data-off='1'" : "") +
         "><span class='sw' style='background:" + (typeColor[t] || "#888") + "'></span>" + esc(t) +
@@ -1531,7 +1548,7 @@ _VIEWER_JS = r"""
         n.classList.remove("active");
       });
     });
-    var h = decodeURIComponent((location.hash || "").slice(1));
+    var h = safeHash();
     if (!h) return;
     var isSrc = h.indexOf("src:") === 0;
     var val = (isSrc ? h.slice(4) : h).replace(/(['\\])/g, "\\$1");
@@ -1602,7 +1619,11 @@ _VIEWER_JS = r"""
     if (!el) return;
     var t = el.getAttribute("data-legend");
     if (t === "__source__") { setShowSources(!srcBtn.classList.contains("active")); }
-    else { Graph.setHiddenType(t, !Graph.isHidden(t)); renderLegend(); }
+    else {
+      Graph.setHiddenType(t, !Graph.isHidden(t));
+      try { localStorage.setItem("okf_hidden_types", JSON.stringify(Graph.hiddenList())); } catch (e) {}
+      renderLegend();
+    }
   });
 
   // Sidebar collapse (focus/reading mode); the toggle lives in the map bar so it stays reachable.
@@ -1626,6 +1647,7 @@ _VIEWER_JS = r"""
   // Theme cycle (auto -> light -> dark), persisted; "auto" defers to the OS via prefers-color-scheme.
   var THEMES = ["auto", "light", "dark"], themeBtn = document.getElementById("g-theme");
   function setTheme(t) {
+    if (t !== "light" && t !== "dark") t = "auto";  // coerce unknown/corrupt stored values back to auto
     if (t === "auto") document.documentElement.removeAttribute("data-theme");
     else document.documentElement.setAttribute("data-theme", t);
     themeBtn.textContent = t === "light" ? "☀" : (t === "dark" ? "☾" : "◐");
@@ -1672,7 +1694,7 @@ _VIEWER_JS = r"""
     clearTimeout(rt); rt = setTimeout(function () { Graph.refit(); }, 150);
   });
 
-  var initial = decodeURIComponent((location.hash || "").slice(1));
+  var initial = safeHash();
   if (initial.indexOf("src:") === 0 && SOURCES[initial.slice(4)]) openSource(initial.slice(4));
   else if (initial && PAGES[initial]) openPage(initial);
   else if (BUNDLE.pages.length) openPage(BUNDLE.pages[0].rel_path);
