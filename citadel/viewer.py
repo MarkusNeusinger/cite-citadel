@@ -17,6 +17,15 @@ Provenance is also legible at a glance: each page carries counts (``cites`` / ``
 **full-text** search over every page/source body (ranked, with match snippets), and opening a
 result highlights and scrolls to the hit.
 
+Built to be browsed like a real wiki (Obsidian-style): the reader is a centered column with a
+comfortable/wide/full width toggle; the interactive graph legend hides or shows any category (each
+page type and the source layer) with live counts; the map can be collapsed, dragged to any height,
+or expanded to full height for close inspection, and hovering a node dims all but its neighbours;
+tags collapse into a compact counted dropdown; a page shows both its inbound ("Referenced by:") and
+outbound ("Links to:") links; the open page is highlighted in the sidebar; and there is a random-page
+button, a collapsible sidebar (backslash-key shortcut) for a focus/reading mode, and an auto/light/dark theme
+toggle. All of this is client-side state persisted in ``localStorage``; the embedded data is untouched.
+
 The only LLM-free, read-only consumer of the wiki besides search/lint. Reuses
 ``store.load`` / ``store._inbound_map`` / ``store._resolved_md_links`` / ``store.tag_catalog`` /
 ``store.find_raw_references`` so the graph, tags, and provenance always match the rest of the
@@ -400,15 +409,31 @@ _CSS = """
 @media (prefers-color-scheme: dark) {
   :root { --bg:#0f1115; --fg:#e6e6e6; --muted:#9aa0aa; --line:#2a2f3a; --accent:#6ea8fe;
           --chip:#1c2333; --card:#161a22; --source:#f0b366; --srcnode:#9aa0aa; } }
+/* Explicit theme override (the sidebar theme toggle sets data-theme on <html>); with no attribute
+   the viewer follows prefers-color-scheme above. Placed after the @media block so a forced choice
+   wins by both order and specificity. */
+:root[data-theme="light"] { --bg:#fff; --fg:#1a1a1a; --muted:#666; --line:#e2e2e2; --accent:#2563eb;
+        --chip:#eef2ff; --card:#f8f9fb; --source:#b45309; --srcnode:#6b7280; }
+:root[data-theme="dark"] { --bg:#0f1115; --fg:#e6e6e6; --muted:#9aa0aa; --line:#2a2f3a; --accent:#6ea8fe;
+          --chip:#1c2333; --card:#161a22; --source:#f0b366; --srcnode:#9aa0aa; }
 * { box-sizing:border-box; }
 body { margin:0; font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
        color:var(--fg); background:var(--bg); }
 #app { display:flex; height:100vh; }
 #sidebar { width:300px; min-width:300px; border-right:1px solid var(--line); overflow:auto;
            padding:12px; }
+#side-head { display:flex; align-items:center; gap:6px; margin-bottom:10px; }
+#wiki-name { flex:1; font-weight:700; font-size:14px; white-space:nowrap; overflow:hidden;
+             text-overflow:ellipsis; }
+.iconbtn { border:1px solid var(--line); background:var(--bg); color:var(--muted); border-radius:6px;
+           height:24px; min-width:26px; cursor:pointer; font-size:13px; line-height:1; padding:0 6px; }
+.iconbtn:hover { border-color:var(--accent); color:var(--accent); }
+.iconbtn.active { background:var(--accent); border-color:var(--accent); color:#fff; }
 #search { width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:7px;
           background:var(--bg); color:var(--fg); margin-bottom:10px; }
-#tag-filter { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:12px; }
+#tag-filter { margin-bottom:12px; }
+#tag-filter select { width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:7px;
+                     background:var(--bg); color:var(--fg); font:inherit; }
 .tag { background:var(--chip); color:var(--accent); border-radius:999px; padding:1px 9px;
        font-size:12px; cursor:pointer; user-select:none; }
 .tag.active { background:var(--accent); color:#fff; }
@@ -439,6 +464,9 @@ body { margin:0; font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-ser
 .result .result-snip { display:block; color:var(--muted); font-size:12px; margin-top:2px; }
 mark { background:#fde68a; color:#111; border-radius:2px; padding:0 1px; }
 @media (prefers-color-scheme: dark) { mark { background:#7c5e10; color:#fdecc8; } }
+/* Keep search highlights in step with the explicit theme toggle (not just the OS scheme). */
+:root[data-theme="light"] mark { background:#fde68a; color:#111; }
+:root[data-theme="dark"] mark { background:#7c5e10; color:#fdecc8; }
 #page-list details, #source-list details { margin-bottom:8px; }
 #page-list summary, #source-list summary { cursor:pointer; color:var(--muted); font-size:12px;
                      text-transform:uppercase; letter-spacing:.04em; }
@@ -446,13 +474,14 @@ mark { background:#fde68a; color:#111; border-radius:2px; padding:0 1px; }
 .navitem { display:block; padding:3px 6px; border-radius:6px; color:var(--fg);
            text-decoration:none; }
 .navitem:hover { background:var(--card); }
+.navitem.active { background:var(--chip); color:var(--accent); font-weight:600; }
 .navitem .cite-count { color:var(--muted); font-size:11px; }
 .navitem.src::before { content:"\\201C"; color:var(--source); margin-right:3px; font-weight:700; }
 #content { flex:1; display:flex; flex-direction:column; overflow:hidden; }
-#graph-pane { height:44vh; min-height:170px; border-bottom:1px solid var(--line);
+#graph-pane { height:44vh; min-height:120px; border-bottom:1px solid var(--line);
               background:var(--card); display:flex; flex-direction:column; }
 #graph-bar { display:flex; align-items:center; gap:6px; padding:4px 8px; flex:0 0 auto;
-             border-bottom:1px solid var(--line); user-select:none; }
+             flex-wrap:wrap; border-bottom:1px solid var(--line); user-select:none; }
 #graph-title { font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
                color:var(--muted); }
 #graph-bar .spacer { flex:1; }
@@ -473,14 +502,40 @@ mark { background:#fde68a; color:#111; border-radius:2px; padding:0 1px; }
 #graph .node text { font-size:9px; fill:var(--fg); pointer-events:none; }
 #graph line { stroke:var(--line); stroke-width:1; }
 #graph line.src { stroke-dasharray:3 3; }
+/* Hover-highlight: dim everything not adjacent to the hovered node (draw-only, no re-layout). */
+#graph .node.dim { opacity:.22; }
+#graph .node.dim text { opacity:0; }
+#graph line.dim { opacity:.12; }
 #graph-legend { display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; padding:4px 8px;
                 flex:0 0 auto; border-top:1px solid var(--line); font-size:11px; color:var(--muted); }
-#graph-legend .lg { display:inline-flex; align-items:center; gap:4px; }
+#graph-legend .lg { display:inline-flex; align-items:center; gap:4px; cursor:pointer;
+                    user-select:none; border-radius:999px; padding:1px 6px; }
+#graph-legend .lg:hover { background:var(--bg); }
+#graph-legend .lg[data-off] { opacity:.4; text-decoration:line-through; }
+#graph-legend .lg .cnt { color:var(--muted); font-size:10px; }
 #graph-legend .sw { width:9px; height:9px; border-radius:50%; display:inline-block; }
 #graph-legend .sw.src { border-radius:2px; }
-#content.map-collapsed #graph-pane { height:auto; min-height:0; }
+/* height:auto !important beats the inline height the resizer leaves on #graph-pane. */
+#content.map-collapsed #graph-pane { height:auto !important; min-height:0; }
 #content.map-collapsed #graph, #content.map-collapsed #graph-legend { display:none; }
-#reader { flex:1; overflow:auto; padding:20px 28px; max-width:920px; }
+/* Expand map to full height: the map fills the pane and the reader is hidden. */
+#content.map-expanded #graph-pane { flex:1; height:auto !important; }
+#content.map-expanded #reader { display:none; }
+/* Draggable splitter between the map and the reader (hidden when the map is collapsed/expanded). */
+#graph-resizer { height:6px; flex:0 0 auto; cursor:row-resize; background:var(--line); }
+#graph-resizer:hover, #graph-resizer.drag { background:var(--accent); }
+#content.map-collapsed #graph-resizer, #content.map-expanded #graph-resizer { display:none; }
+/* Focus/reading mode: hide the sidebar (toggle lives in the map bar so it stays reachable). */
+#app.sb-collapsed #sidebar { display:none; }
+/* The reader adapts to the pane: a centered column whose width follows the reading-width toggle.
+   Centering via symmetric padding (not margin:auto on children) keeps tables/code left-aligned
+   with the prose instead of floating to the middle. */
+#reader { flex:1; overflow:auto; padding:20px 28px; }
+#content.rw-comfortable #reader { padding-left:max(28px, calc((100% - 900px) / 2));
+                                  padding-right:max(28px, calc((100% - 900px) / 2)); }
+#content.rw-wide #reader { padding-left:max(28px, calc((100% - 1320px) / 2));
+                           padding-right:max(28px, calc((100% - 1320px) / 2)); }
+#content.rw-full #reader { padding-left:28px; padding-right:28px; }
 #reader h1 { margin:.2em 0 .1em; }
 #reader .meta { color:var(--muted); font-size:13px; margin-bottom:6px; }
 #reader .ptype { font-weight:600; color:var(--accent); }
@@ -581,6 +636,12 @@ _VIEWER_JS = r"""
   function esc(s) {
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  // The current location hash as a decoded id, never throwing on a malformed/hand-edited hash
+  // (decodeURIComponent raises URIError on bad percent-encoding) — a bad hash must not break the app.
+  function safeHash() {
+    try { return decodeURIComponent((location.hash || "").slice(1)); } catch (e) { return ""; }
   }
 
   // Port of okf.resolve_link with the wiki root as a floor (a '..' that would climb above the
@@ -726,14 +787,17 @@ _VIEWER_JS = r"""
     return out.join("\n");
   }
 
+  // A compact native <select> of tags with per-tag counts (was a chip cloud that ate vertical
+  // space). The stable #tag-filter container holds it; a delegated change listener does the filter.
   function renderTags() {
     var box = document.getElementById("tag-filter");
-    var html = "<span class='tag" + (activeTag ? "" : " active") + "' data-tag=''>all</span>";
+    var html = "<select id='tag-select'><option value=''>All tags (" + BUNDLE.pages.length +
+      ")</option>";
     Object.keys(BUNDLE.tags).sort().forEach(function (tag) {
-      html += "<span class='tag" + (tag === activeTag ? " active" : "") + "' data-tag='" +
-        esc(tag) + "'>" + esc(tag) + " " + BUNDLE.tags[tag].length + "</span>";
+      html += "<option value='" + esc(tag) + "'" + (tag === activeTag ? " selected" : "") + ">" +
+        esc(tag) + " (" + BUNDLE.tags[tag].length + ")</option>";
     });
-    box.innerHTML = html;
+    box.innerHTML = html + "</select>";
   }
 
   // Per-page provenance badges: raw citations (amber), model-supplied facts (purple), and
@@ -823,6 +887,7 @@ _VIEWER_JS = r"""
       }
     });
     nav.innerHTML = html;
+    markActiveNav();
   }
 
   function renderSidebar() {
@@ -843,6 +908,7 @@ _VIEWER_JS = r"""
     });
     nav.innerHTML = html || "<p class='ext'>No pages.</p>";
     renderSources();
+    markActiveNav();
   }
 
   // The contradiction / LLM quick-filter chips, each with a live corpus count. Clicking a chip
@@ -887,10 +953,12 @@ _VIEWER_JS = r"""
   // the pages that cite them). A node click (no drag) opens the page or source.
   var Graph = (function () {
     var svg, gzoom;
-    var nodes = [], edges = [], idx = {};
+    var nodes = [], edges = [], idx = {}, adj = {};
     var view = { x: 0, y: 0, k: 1 };
     var activeRel = "";
     var showSources = false;
+    var hiddenTypes = {};  // type name -> 1 when that category is toggled off in the legend
+    var hoverIdx = null;   // index of the hovered node (dims non-neighbours), or null
     var raf = null, animating = false;
     var dragNode = null, panning = false, last = null, moved = false;
     var W = 600, H = 420;
@@ -898,7 +966,7 @@ _VIEWER_JS = r"""
     function r2(v) { return Math.round(v * 10) / 10; }
 
     function buildModel() {
-      var pgs = BUNDLE.pages;
+      var pgs = BUNDLE.pages.filter(function (p) { return !hiddenTypes[p.type || "Untyped"]; });
       var srcIds = showSources
         ? Object.keys(SOURCES).filter(function (id) { return SOURCES[id].cited_by.length; })
         : [];
@@ -925,6 +993,12 @@ _VIEWER_JS = r"""
         SOURCES[id].cited_by.forEach(function (rel) {
           if (idx[rel] != null) edges.push({ s: idx[rel], t: sNode, src: true });
         });
+      });
+      // Adjacency (by node index) for the hover-highlight; reset any stale hover on rebuild.
+      adj = {}; hoverIdx = null;
+      edges.forEach(function (e) {
+        (adj[e.s] = adj[e.s] || {})[e.t] = 1;
+        (adj[e.t] = adj[e.t] || {})[e.s] = 1;
       });
     }
 
@@ -996,22 +1070,25 @@ _VIEWER_JS = r"""
     function draw() {
       if (!gzoom) return;
       var s = "", i;
+      var hi = hoverIdx;
       for (i = 0; i < edges.length; i++) {
         var a = nodes[edges[i].s], b = nodes[edges[i].t];
-        s += "<line class='" + (edges[i].src ? "src" : "") + "' x1='" + r2(a.x) + "' y1='" +
+        var edim = hi != null && edges[i].s !== hi && edges[i].t !== hi ? " dim" : "";
+        s += "<line class='" + (edges[i].src ? "src" : "") + edim + "' x1='" + r2(a.x) + "' y1='" +
              r2(a.y) + "' x2='" + r2(b.x) + "' y2='" + r2(b.y) + "'/>";
       }
       for (i = 0; i < nodes.length; i++) {
         var nd = nodes[i];
         var label = nd.title.length > 18 ? nd.title.slice(0, 17) + "…" : nd.title;
         var act = nd.id === activeRel ? " active" : "";
+        var ndim = hi != null && i !== hi && !(adj[hi] && adj[hi][i]) ? " dim" : "";
         if (nd.kind === "source") {
-          s += "<g class='node src" + act + "' data-page='" + esc(nd.id) + "'><rect x='" +
+          s += "<g class='node src" + act + ndim + "' data-page='" + esc(nd.id) + "'><rect x='" +
                r2(nd.x - 6) + "' y='" + r2(nd.y - 6) + "' width='12' height='12' rx='2' fill='" +
                SOURCE_COLOR + "'/><text x='" + r2(nd.x) + "' y='" + r2(nd.y - 11) +
                "' text-anchor='middle'>" + esc(label) + "</text></g>";
         } else {
-          s += "<g class='node" + act + "' data-page='" + esc(nd.id) + "'><circle cx='" +
+          s += "<g class='node" + act + ndim + "' data-page='" + esc(nd.id) + "'><circle cx='" +
                r2(nd.x) + "' cy='" + r2(nd.y) + "' r='7' fill='" +
                (typeColor[nd.type] || "#888") + "'/><text x='" + r2(nd.x) + "' y='" +
                r2(nd.y - 11) + "' text-anchor='middle'>" + esc(label) + "</text></g>";
@@ -1112,13 +1189,35 @@ _VIEWER_JS = r"""
         var sz = size();
         zoomAt(ev.deltaY < 0 ? 1.12 : 1 / 1.12, ev.clientX - sz.left, ev.clientY - sz.top);
       }, { passive: false });
+      // Hover-highlight a node's neighbourhood (skip while dragging/panning; draw-only, no re-layout).
+      svg.addEventListener("mousemove", function (ev) {
+        if (dragNode || panning) return;
+        var g = ev.target.closest ? ev.target.closest(".node") : null;
+        var ni = g ? idx[g.getAttribute("data-page")] : null;
+        if (ni == null) ni = null;
+        if (ni !== hoverIdx) { hoverIdx = ni; draw(); }
+      });
+      svg.addEventListener("mouseleave", function () {
+        if (hoverIdx !== null) { hoverIdx = null; draw(); }
+      });
     }
 
     function setActive(rel) { activeRel = rel; draw(); }
     function setShowSources(on) { showSources = on; buildModel(); settle(); refit(); }
 
     return { init: init, zoom: zoom, refit: refit, setActive: setActive,
-             setShowSources: setShowSources };
+             setShowSources: setShowSources, showsSources: function () { return showSources; },
+             isHidden: function (t) { return !!hiddenTypes[t]; },
+             hiddenList: function () { return Object.keys(hiddenTypes); },
+             // Restore the hidden-category set without rebuilding (call before init()).
+             setHidden: function (arr) {
+               hiddenTypes = {};
+               (arr || []).forEach(function (t) { hiddenTypes[t] = 1; });
+             },
+             setHiddenType: function (t, hide) {
+               if (hide) hiddenTypes[t] = 1; else delete hiddenTypes[t];
+               buildModel(); settle(); refit();
+             } };
   })();
 
   // ---- The reader: render a page or a source into the article pane, then decorate it. ----
@@ -1237,7 +1336,7 @@ _VIEWER_JS = r"""
   function openPage(rel) {
     var p = PAGES[rel];
     if (!p) return;
-    if (decodeURIComponent((location.hash || "").slice(1)) !== rel) {
+    if (safeHash() !== rel) {
       location.hash = encodeURIComponent(rel);
     }
     // Map each footnote id to the source it cites (parsed from the page's ## Sources defs), so
@@ -1252,8 +1351,10 @@ _VIEWER_JS = r"""
       "</div>";
     renderReader("<h1>" + esc(p.title) + "</h1>" + meta + statsHtml(p) +
       (p.description ? "<p class='desc'>" + esc(p.description) + "</p>" : "") +
-      backlinkList("Referenced by:", p.inbound) + "<hr>" + mdToHtml(p.body, p.rel_path, fnSrc));
+      backlinkList("Referenced by:", p.inbound) + backlinkList("Links to:", p.outbound) +
+      "<hr>" + mdToHtml(p.body, p.rel_path, fnSrc));
     Graph.setActive(rel);
+    markActiveNav();
   }
 
   function rawFileLink(s, label) {
@@ -1299,6 +1400,7 @@ _VIEWER_JS = r"""
     renderReader("<h1>" + esc(s.title) + "</h1>" + meta +
       backlinkList("Cited by:", s.cited_by) + "<hr>" + body);
     Graph.setActive("src:" + sid);
+    markActiveNav();
   }
 
   // ---- Source hover preview popover. ----
@@ -1373,6 +1475,10 @@ _VIEWER_JS = r"""
     clearMarks(reader);
     applyHighlight(reader, false);
   });
+  // Delegated on the stable #tag-filter container (renderTags rewrites its innerHTML each call).
+  document.getElementById("tag-filter").addEventListener("change", function (ev) {
+    if (ev.target.id === "tag-select") { activeTag = ev.target.value; renderSidebar(); }
+  });
   // Enter in the search box jumps straight to the top-ranked full-text result.
   document.getElementById("search").addEventListener("keydown", function (ev) {
     if (ev.key !== "Enter") return;
@@ -1386,6 +1492,8 @@ _VIEWER_JS = r"""
   document.addEventListener("keydown", function (ev) {
     if (ev.key === "/" && document.activeElement.id !== "search") {
       ev.preventDefault(); document.getElementById("search").focus();
+    } else if (ev.key === "\\" && document.activeElement.id !== "search") {
+      ev.preventDefault(); toggleSidebar();
     } else if (ev.key === "Escape") {
       hidePop();
       if (document.activeElement.id === "search") document.activeElement.blur();
@@ -1393,66 +1501,200 @@ _VIEWER_JS = r"""
   });
 
   function route() {
-    var h = decodeURIComponent((location.hash || "").slice(1));
+    var h = safeHash();
     if (h.indexOf("src:") === 0) { if (SOURCES[h.slice(4)]) openSource(h.slice(4)); }
     else if (h && PAGES[h]) openPage(h);
   }
   window.addEventListener("hashchange", route);
 
+  document.getElementById("wiki-name").textContent = BUNDLE.wiki_name || "Wiki";
   renderTags();
   renderSidebar();
+  // Restore the hidden-category filter BEFORE the first layout so the initial map matches last session.
+  try {
+    var savedHidden = JSON.parse(localStorage.getItem("okf_hidden_types") || "[]");
+    if (Array.isArray(savedHidden)) Graph.setHidden(savedHidden);
+  } catch (e) {}
   Graph.init();
-  renderLegend();
 
+  // Interactive legend: every category (each page type + the Source layer) is a clickable chip
+  // that toggles its nodes in the map, with a live count; a struck-through chip is hidden.
   function renderLegend() {
     var box = document.getElementById("graph-legend");
     if (!box) return;
+    var counts = {};
+    BUNDLE.pages.forEach(function (p) { var k = p.type || "Untyped"; counts[k] = (counts[k] || 0) + 1; });
     var html = Object.keys(BUNDLE.types).sort().map(function (t) {
-      return "<span class='lg'><span class='sw' style='background:" + (typeColor[t] || "#888") +
-        "'></span>" + esc(t) + "</span>";
+      return "<span class='lg' data-legend='" + esc(t) + "'" + (Graph.isHidden(t) ? " data-off='1'" : "") +
+        "><span class='sw' style='background:" + (typeColor[t] || "#888") + "'></span>" + esc(t) +
+        " <span class='cnt'>" + (counts[t] || 0) + "</span></span>";
     }).join("");
     if (Object.keys(SOURCES).length) {
-      html += "<span class='lg'><span class='sw src' style='background:" + SOURCE_COLOR +
-        "'></span>Source</span>";
+      var nSrc = Object.keys(SOURCES).filter(function (id) { return SOURCES[id].cited_by.length; }).length;
+      html += "<span class='lg' data-legend='__source__'" + (Graph.showsSources() ? "" : " data-off='1'") +
+        "><span class='sw src' style='background:" + SOURCE_COLOR + "'></span>Source <span class='cnt'>" +
+        nSrc + "</span></span>";
     }
     box.innerHTML = html;
   }
 
-  // Map toolbar: collapse (give the reader full height), zoom, fit, toggle the source layer.
+  // Highlight the open page/source in the sidebar so the map, list, and reader read as one surface.
+  // Safe in search mode and when the item is filtered out (querySelector simply finds nothing).
+  function markActiveNav() {
+    ["page-list", "source-list"].forEach(function (id) {
+      var l = document.getElementById(id);
+      if (!l) return;
+      Array.prototype.forEach.call(l.querySelectorAll(".active"), function (n) {
+        n.classList.remove("active");
+      });
+    });
+    var h = safeHash();
+    if (!h) return;
+    var isSrc = h.indexOf("src:") === 0;
+    var val = (isSrc ? h.slice(4) : h).replace(/(['\\])/g, "\\$1");
+    var attr = isSrc ? "data-source" : "data-page";
+    var el = document.querySelector("#page-list [" + attr + "='" + val + "'], #source-list [" +
+      attr + "='" + val + "']");
+    if (el) { el.classList.add("active"); el.scrollIntoView({ block: "nearest" }); }
+  }
+
+  // --- Map + reading toolbar wiring (everything below needs `content`/`app` in scope). ---
   var content = document.getElementById("content");
+  var app = document.getElementById("app");
   var collapseBtn = document.getElementById("g-collapse");
+  var expandBtn = document.getElementById("g-expand");
+  var srcBtn = document.getElementById("g-sources");
+
   function setCollapsed(c) {
     content.classList.toggle("map-collapsed", c);
+    if (c) { content.classList.remove("map-expanded"); expandBtn.classList.remove("active"); }
     collapseBtn.textContent = c ? "▸" : "▾";
     collapseBtn.title = c ? "Show map" : "Collapse map";
-    try { localStorage.setItem("okf_map_collapsed", c ? "1" : "0"); } catch (e) {}
+    try {
+      localStorage.setItem("okf_map_collapsed", c ? "1" : "0");
+      // Collapse and expand are mutually exclusive: persist the cleared state too, so collapsing an
+      // expanded map doesn't restore as expanded on the next load (the restore applies expand last).
+      if (c) localStorage.setItem("okf_map_expanded", "0");
+    } catch (e) {}
     if (!c) Graph.refit();  // pane size changed — re-fit the layout
+  }
+  // Expand the map to full height (mutually exclusive with collapse); restoring re-fits the layout.
+  function setExpanded(x) {
+    if (x) setCollapsed(false);
+    content.classList.toggle("map-expanded", x);
+    expandBtn.classList.toggle("active", x);
+    expandBtn.title = x ? "Restore map height" : "Expand map to full height";
+    try { localStorage.setItem("okf_map_expanded", x ? "1" : "0"); } catch (e) {}
+    Graph.refit();
   }
   collapseBtn.addEventListener("click", function () {
     setCollapsed(!content.classList.contains("map-collapsed"));
   });
+  expandBtn.addEventListener("click", function () {
+    setExpanded(!content.classList.contains("map-expanded"));
+  });
   document.getElementById("g-zoomin").addEventListener("click", function () { Graph.zoom(1.25); });
   document.getElementById("g-zoomout").addEventListener("click", function () { Graph.zoom(0.8); });
   document.getElementById("g-fit").addEventListener("click", function () { Graph.refit(); });
+  document.getElementById("g-random").addEventListener("click", function () {
+    var ps = BUNDLE.pages;
+    if (ps.length) openPage(ps[Math.floor(Math.random() * ps.length)].rel_path);
+  });
 
-  var srcBtn = document.getElementById("g-sources");
   function setShowSources(on) {
     Graph.setShowSources(on);
     srcBtn.classList.toggle("active", on);
     srcBtn.title = on ? "Hide sources in the map" : "Show sources in the map";
     try { localStorage.setItem("okf_show_sources", on ? "1" : "0"); } catch (e) {}
+    renderLegend();  // keep the Source legend chip in sync with the toolbar button
   }
   srcBtn.addEventListener("click", function () {
     setShowSources(!srcBtn.classList.contains("active"));
   });
+
+  // The legend needs its own listener: the global document click handler early-returns inside
+  // #graph-pane, so a data-legend branch there would never fire.
+  document.getElementById("graph-legend").addEventListener("click", function (ev) {
+    var el = ev.target.closest ? ev.target.closest("[data-legend]") : null;
+    if (!el) return;
+    var t = el.getAttribute("data-legend");
+    if (t === "__source__") { setShowSources(!srcBtn.classList.contains("active")); }
+    else {
+      Graph.setHiddenType(t, !Graph.isHidden(t));
+      try { localStorage.setItem("okf_hidden_types", JSON.stringify(Graph.hiddenList())); } catch (e) {}
+      renderLegend();
+    }
+  });
+
+  // Sidebar collapse (focus/reading mode); the toggle lives in the map bar so it stays reachable.
+  function toggleSidebar() {
+    app.classList.toggle("sb-collapsed");
+    try { localStorage.setItem("okf_sb_collapsed", app.classList.contains("sb-collapsed") ? "1" : "0"); } catch (e) {}
+    Graph.refit();
+  }
+  document.getElementById("g-sidebar").addEventListener("click", toggleSidebar);
+
+  // Reading-width cycle (comfortable -> wide -> full), persisted; only the reader column changes.
+  var RW = ["rw-comfortable", "rw-wide", "rw-full"], rwi = 0;
+  function setWidth(i) {
+    rwi = (((i | 0) % 3) + 3) % 3;  // `| 0` coerces NaN/fractional/corrupt values to a valid slot
+    content.classList.remove("rw-comfortable", "rw-wide", "rw-full");
+    content.classList.add(RW[rwi]);
+    try { localStorage.setItem("okf_reader_width", String(rwi)); } catch (e) {}
+  }
+  document.getElementById("g-width").addEventListener("click", function () { setWidth(rwi + 1); });
+
+  // Theme cycle (auto -> light -> dark), persisted; "auto" defers to the OS via prefers-color-scheme.
+  var THEMES = ["auto", "light", "dark"], themeBtn = document.getElementById("g-theme");
+  function setTheme(t) {
+    if (t !== "light" && t !== "dark") t = "auto";  // coerce unknown/corrupt stored values back to auto
+    if (t === "auto") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", t);
+    themeBtn.textContent = t === "light" ? "☀" : (t === "dark" ? "☾" : "◐");
+    themeBtn.title = "Theme: " + t + " (click to change)";
+    try { localStorage.setItem("okf_theme", t); } catch (e) {}
+  }
+  themeBtn.addEventListener("click", function () {
+    var cur = document.documentElement.getAttribute("data-theme") || "auto";
+    setTheme(THEMES[(THEMES.indexOf(cur) + 1) % THEMES.length]);
+  });
+
+  // Draggable splitter to resize the map height (its own drag flag, independent of node drag/pan;
+  // both window handlers early-return unless their own flag is set). Re-fit only on release.
+  var gRez = document.getElementById("graph-resizer"), gPane = document.getElementById("graph-pane");
+  var gDrag = false;
+  gRez.addEventListener("mousedown", function (ev) {
+    gDrag = true; gRez.classList.add("drag"); document.body.style.userSelect = "none"; ev.preventDefault();
+  });
+  window.addEventListener("mousemove", function (ev) {
+    if (!gDrag) return;
+    var top = content.getBoundingClientRect().top;
+    gPane.style.height = Math.max(120, Math.min(content.clientHeight - 120, ev.clientY - top)) + "px";
+  });
+  window.addEventListener("mouseup", function () {
+    if (!gDrag) return;
+    gDrag = false; gRez.classList.remove("drag"); document.body.style.userSelect = "";
+    try { localStorage.setItem("okf_map_h", gPane.style.height); } catch (e) {}
+    Graph.refit();
+  });
+
+  // Restore persisted view state, then re-fit once the pane geometry is final.
+  try { var mh = localStorage.getItem("okf_map_h"); if (mh) gPane.style.height = mh; } catch (e) {}
+  try { setWidth(+(localStorage.getItem("okf_reader_width") || 0)); } catch (e) { setWidth(0); }
+  try { setTheme(localStorage.getItem("okf_theme") || "auto"); } catch (e) { setTheme("auto"); }
   try { if (localStorage.getItem("okf_show_sources") === "1") setShowSources(true); } catch (e) {}
+  try { if (localStorage.getItem("okf_sb_collapsed") === "1") app.classList.add("sb-collapsed"); } catch (e) {}
   try { if (localStorage.getItem("okf_map_collapsed") === "1") setCollapsed(true); } catch (e) {}
+  try { if (localStorage.getItem("okf_map_expanded") === "1") setExpanded(true); } catch (e) {}
+  renderLegend();
+  Graph.refit();
+
   var rt;
   window.addEventListener("resize", function () {
     clearTimeout(rt); rt = setTimeout(function () { Graph.refit(); }, 150);
   });
 
-  var initial = decodeURIComponent((location.hash || "").slice(1));
+  var initial = safeHash();
   if (initial.indexOf("src:") === 0 && SOURCES[initial.slice(4)]) openSource(initial.slice(4));
   else if (initial && PAGES[initial]) openPage(initial);
   else if (BUNDLE.pages.length) openPage(BUNDLE.pages[0].rel_path);
@@ -1471,6 +1713,11 @@ _TEMPLATE = """<!doctype html>
 <body>
 <div id="app">
   <aside id="sidebar">
+    <div id="side-head">
+      <span id="wiki-name"></span>
+      <button class="iconbtn" id="g-theme" title="Theme (auto / light / dark)" type="button">&#9680;</button>
+      <button class="iconbtn" id="g-width" title="Reading width" type="button">&#8596;</button>
+    </div>
     <input id="search" type="search" placeholder="Search full text… (press /)" autocomplete="off">
     <div id="facets"></div>
     <div id="tag-filter"></div>
@@ -1480,17 +1727,21 @@ _TEMPLATE = """<!doctype html>
   <main id="content">
     <section id="graph-pane">
       <div id="graph-bar">
+        <button class="gbtn" id="g-sidebar" title="Toggle sidebar (\\)" type="button">&#9776;</button>
         <span id="graph-title">Map</span>
         <span class="spacer"></span>
         <button class="gbtn" id="g-sources" title="Show sources in the map" type="button">&#9673;</button>
         <button class="gbtn" id="g-zoomout" title="Zoom out" type="button">&#8722;</button>
         <button class="gbtn" id="g-zoomin" title="Zoom in" type="button">+</button>
         <button class="gbtn" id="g-fit" title="Fit to view" type="button">&#10530;</button>
+        <button class="gbtn" id="g-random" title="Open a random page" type="button">&#9860;</button>
+        <button class="gbtn" id="g-expand" title="Expand map to full height" type="button">&#9633;</button>
         <button class="gbtn" id="g-collapse" title="Collapse map" type="button">&#9662;</button>
       </div>
       <svg id="graph"></svg>
       <div id="graph-legend"></div>
     </section>
+    <div id="graph-resizer" title="Drag to resize the map"></div>
     <article id="reader"></article>
   </main>
 </div>
