@@ -111,6 +111,13 @@ place, plus one deliberately-false sourced claim. Run `uv run python -m citadel 
 wiki reorganize itself. The `verify-example` skill (`.claude/skills/verify-example/`) ingests it and
 grades the result against a ground-truth answer key — an end-to-end test of the three guarantees.
 
+**See the result without running anything.** Browse the generated demo wiki on GitHub at
+[`wiki/index.md`](wiki/index.md) — GitHub renders the OKF pages natively, so the `[^sN]` citations,
+cross-links, glossary, and `> [!CONTRADICTION]` callouts all show inline. For the richer, interactive
+view (cross-link graph, tags, and the cited raw sources embedded), open the offline single-file viewer
+[`docs/demo.html`](docs/demo.html) — download it and open it (no server, fully offline), or
+[view it in your browser](https://htmlpreview.github.io/?https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/demo.html).
+
 ## MCP server
 
 `citadel serve` exposes seven tools over stdio: `wiki_search`, `wiki_read`, `wiki_index`,
