@@ -271,20 +271,26 @@ def _build_instruction(
     elif read_path:
         # rel_key is a binary Office file (pptx/docx/xlsx); its text was pre-extracted to read_path.
         # The agent reads THAT for content but must cite the original rel_key as the source of record.
+        # Its embedded images (if any) were extracted to a `media/` folder beside read_path — the
+        # agent should VIEW the informative ones (diagrams/charts the text extractor cannot capture).
         read_step = (
             f"1. The raw source {rel_key} is a binary Office file (PowerPoint/Word/Excel) you cannot "
             f"open directly. Its text has been EXTRACTED to {read_path} — read THAT file for the "
-            f"content. Treat {rel_key} as the source of record: set `resource: {rel_key}` and cite "
-            f"{rel_key} (NOT the extracted file) in `## Sources`. If it holds no usable text, make "
-            "no edits.\n"
+            "content. Any images embedded in it were extracted to a `media/` folder beside that "
+            "file: VIEW the ones that carry information (diagrams, charts, screenshots) and ingest "
+            f"their facts too; ignore decorative icons/logos. Treat {rel_key} as the source of "
+            f"record: set `resource: {rel_key}` and cite {rel_key} (NOT the extracted files) in "
+            "`## Sources`. If it holds no usable content, make no edits.\n"
         )
     else:
         read_step = (
             f"1. Open and read the raw source file: {rel_key}. It may be ANY text-bearing file type "
             "(markdown, plain text, code such as .py/.sql, JSON/CSV, PDF, ...) — extract its text "
-            "and ingest the facts. For CODE/config/data, capture its PURPOSE, BEHAVIOR and the "
-            "external systems it touches (which database and HOW), NOT its structure — see 'Code & "
-            "structured sources' in SCHEMA.md. If it holds no usable text, make no edits.\n"
+            "and ingest the facts. For a PDF, also LOOK AT the pages' figures, diagrams, and charts "
+            "(not just the body text) and capture what they show. For CODE/config/data, capture its "
+            "PURPOSE, BEHAVIOR and the external systems it touches (which database and HOW), NOT its "
+            "structure — see 'Code & structured sources' in SCHEMA.md. If it holds no usable text, "
+            "make no edits.\n"
         )
 
     return (

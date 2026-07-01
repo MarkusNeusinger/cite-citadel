@@ -12,9 +12,10 @@
    (any text-bearing file type — markdown, plain text, code such as `.py`/`.sql`, JSON/CSV,
    PDF, … — in any sub-folder) and the seed docs in `docs/`. **Office documents** are supported
    too: PowerPoint/Word/Excel (`.pptx`/`.docx`/`.xlsx` and the legacy `.ppt`/`.doc`/`.xls`) have
-   their text extracted automatically (the wiki still cites the original file). **Images**
-   (`.png`/`.jpg`/…) are read *visually* by the agent — a diagram, chart, scan, or screenshot is
-   transcribed into cited facts. Ingest tries to extract text from **every** file; one with no
+   their text extracted automatically, and the **images embedded in them** are pulled out for the
+   agent to view (the wiki still cites the original file). **Images** (`.png`/`.jpg`/…) are read
+   *visually* by the agent — a diagram, chart, scan, or screenshot is transcribed into cited facts,
+   and a PDF's figures are looked at alongside its text. Ingest tries to extract text from **every** file; one with no
    readable text (a binary blob, or an all-image slide deck) is skipped and logged as unreadable.
    A source too large for one context window is folded in over **several sequential passes** (each
    pass reads one segment and merges into the pages the earlier passes created). When the same

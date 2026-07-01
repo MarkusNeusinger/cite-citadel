@@ -246,8 +246,10 @@ DEDUP_BY_BASENAME: bool = os.environ.get("CITADEL_DEDUP_BY_BASENAME", "1").strip
 # boundaries), so a file too big for one context window still folds in fully — each pass MERGES
 # into the pages the earlier passes created. 0 disables chunking (every source is one pass, the old
 # behavior). PDFs and images are never chunked (their text isn't extracted here — the agent reads
-# them whole). The default is generous so only genuinely large sources are split.
-MAX_SOURCE_CHARS: int = int(os.environ.get("CITADEL_MAX_SOURCE_CHARS", "48000"))
+# them whole). The default (~75k tokens) is generous — modern models rarely have less context — so
+# only genuinely large sources are split; lower it for a small-context backend, raise it (or set 0
+# to disable) for a very large one.
+MAX_SOURCE_CHARS: int = int(os.environ.get("CITADEL_MAX_SOURCE_CHARS", "300000"))
 
 
 # Where each non-claude backend keeps its OWN model id in the environment. A copilot user on a

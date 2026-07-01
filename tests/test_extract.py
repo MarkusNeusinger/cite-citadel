@@ -319,3 +319,43 @@ def test_is_office_source_true_for_legacy_ole(tmp_path):
     other = tmp_path / "thing.bin"
     other.write_bytes(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1")
     assert not extract.is_office_source(other)
+
+
+# --- embedded media (images inside Office files) ----------------------------------------
+
+
+def test_extract_media_returns_large_images_skips_icons_and_nonimages(tmp_path):
+    big = b"\x89PNG\r\n\x1a\n" + b"\x00" * 5000  # >= 4096: a real diagram/screenshot
+    tiny = b"\x89PNG\r\n\x1a\n" + b"\x00" * 10  # < 4096: an icon/bullet -> skipped
+    path = tmp_path / "deck.pptx"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("ppt/slides/slide1.xml", _slide(["hi"]))
+        z.writestr("ppt/media/image1.png", big)
+        z.writestr("ppt/media/image2.png", tiny)
+        z.writestr("ppt/media/data.xml", b"<x/>" * 4000)  # non-image media -> skipped
+    media = extract.extract_media(path)
+    assert [name for name, _ in media] == ["image1.png"]  # only the sizeable image
+    assert media[0][1] == big
+
+
+def test_extract_media_caps_count_largest_first(tmp_path):
+    path = tmp_path / "deck.pptx"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("ppt/slides/slide1.xml", _slide(["hi"]))
+        for i in range(30):  # 30 sizeable images; the cap keeps the largest max_count
+            z.writestr(f"ppt/media/image{i}.png", b"\x89PNG\r\n\x1a\n" + b"\x00" * (4096 + i))
+    media = extract.extract_media(path, max_count=5)
+    assert len(media) == 5
+
+
+def test_extract_media_empty_for_non_ooxml(tmp_path):
+    legacy = tmp_path / "old.ppt"
+    legacy.write_bytes(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 100)
+    assert extract.extract_media(legacy) == []
+    txt = tmp_path / "notes.txt"
+    txt.write_text("hi\n", encoding="utf-8")
+    assert extract.extract_media(txt) == []
+    # A corrupt .pptx (not a zip) degrades to [] without raising.
+    bad = tmp_path / "bad.pptx"
+    bad.write_text("not a zip\n", encoding="utf-8")
+    assert extract.extract_media(bad) == []

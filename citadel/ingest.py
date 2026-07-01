@@ -1049,20 +1049,26 @@ def _run_one_agent_session(session_fn, rel_key: str, extra_check=None, allow_emp
             _robust_rmtree(staging)
 
 
-def _office_write_temp(text: str, name: str) -> tuple[str, str]:
+def _office_write_temp(text: str, name: str, media: list[tuple[str, bytes]] | None = None) -> tuple[str, str]:
     """Materialize already-extracted Office ``text`` as a fresh temp ``.md`` (named after the
     source's ``name``) for the agent to READ, and return ``(read_key, tmpdir)``: ``read_key`` is the
     path the agent reads (it still cites the ORIGINAL source), and ``tmpdir`` is the temp directory
     the caller MUST remove after the session. Raises ``OSError`` only if the temp file cannot be
     written — handled per-source by the caller, never aborting the whole run.
 
-    The extraction already happened once in :func:`_partition_sources` (which is how the source was
-    classified pending); this only writes that text out, so the ``.pptx``/``.docx`` is never parsed
-    a second time."""
+    ``media`` is the source's embedded raster images (from :func:`extract.extract_media`): each is
+    written into a ``media/`` subfolder beside the text file so the agent can VIEW the diagrams and
+    charts the text extractor cannot capture. The extraction already happened once in
+    :func:`_partition_sources` / here, so the ``.pptx``/``.docx`` is never parsed for text twice."""
     tmpdir = tempfile.mkdtemp(prefix="okf_extract_")
     try:
         out = Path(tmpdir) / (Path(name).stem + ".md")
         out.write_text(text, encoding="utf-8")
+        if media:
+            media_dir = Path(tmpdir) / "media"
+            media_dir.mkdir(exist_ok=True)
+            for fname, data in media:
+                (media_dir / Path(fname).name).write_bytes(data)
     except OSError:
         # Don't leak the temp dir if the write fails — the caller never sees it to clean up.
         shutil.rmtree(tmpdir, ignore_errors=True)
@@ -1160,8 +1166,11 @@ def _prepare_passes(
             raise
         return passes, tmpdirs
     if office is not None:
-        # Small Office file: one pass reading the extracted text, exactly as before chunking existed.
-        read_key, tmp = _office_write_temp(office, src.name)
+        # Small Office file: one pass reading the extracted text — plus its embedded images (decks
+        # and docs often carry diagrams/charts/screenshots the text extractor can't see), written
+        # beside the text for the agent to VIEW. Skipped when image support is off.
+        media = extract.extract_media(src) if config.IMAGE_SUPPORT else []
+        read_key, tmp = _office_write_temp(office, src.name, media)
         return [(read_key, None)], [tmp]
     # Small plain text, a PDF, or any other agent-readable source: read the file directly.
     return [(None, None)], []

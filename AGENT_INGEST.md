@@ -19,11 +19,14 @@
 - Some sources need special handling; your run instruction tells you which applies:
   - **Office files** — PowerPoint/Word/Excel (`.pptx`/`.docx`/`.xlsx` and the legacy
     `.ppt`/`.doc`/`.xls`) are binary, so the system extracts their text to a temporary file first
-    and points you at that **extracted** file to READ. You still cite the **original** Office file
-    as the source (`resource:` and `## Sources`), never the temp file.
+    and points you at that **extracted** file to READ. Any **images embedded in the file** are
+    extracted to a `media/` folder beside it — **view** the informative ones (diagrams, charts,
+    screenshots) and ingest their facts too; ignore decorative icons/logos. You still cite the
+    **original** Office file as the source (`resource:` and `## Sources`), never the temp files.
   - **Images** — a screenshot/scan/diagram/chart/photo. **View it** with your reader and transcribe
     the FACTS it shows (text, labels, table cells, chart values/axes, what it depicts) — do not
-    describe pixels or styling. Cite the image file as the source.
+    describe pixels or styling. Cite the image file as the source. (A **PDF** is read directly —
+    look at its figures/diagrams/charts too, not just the body text.)
   - **A large source split into segments** — when a file is too big for one pass, the system feeds
     it to you in several sequential passes, each reading ONE segment (a slice written to a temp
     file) but citing the whole original source. Your instruction says which segment this is; on a

@@ -658,6 +658,60 @@ def test_office_pptx_extracted_to_temp_and_ingested(tmp_path, monkeypatch):
     assert _CALLS["n"] == 1
 
 
+def _make_pptx_with_image(path: Path, paras: list[str], image_bytes: bytes) -> None:
+    """A minimal .pptx with one text slide AND an embedded image under ppt/media/."""
+    import zipfile
+
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    p = "http://schemas.openxmlformats.org/presentationml/2006/main"
+    runs = "".join(f"<a:p><a:r><a:t>{t}</a:t></a:r></a:p>" for t in paras)
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr(
+            "ppt/slides/slide1.xml",
+            f'<?xml version="1.0"?><p:sld xmlns:p="{p}" xmlns:a="{a}"><p:cSld><p:spTree>'
+            f"<p:sp><p:txBody>{runs}</p:txBody></p:sp></p:spTree></p:cSld></p:sld>",
+        )
+        z.writestr("ppt/media/image1.png", image_bytes)
+
+
+def test_office_embedded_images_are_extracted_for_the_agent(tmp_path, monkeypatch):
+    """A deck's embedded images (which the text extractor can't see) are written to a media/ folder
+    beside the extracted text so the agent can VIEW them."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    _make_pptx_with_image(raw / "deck.pptx", ["Deck text."], b"\x89PNG\r\n\x1a\n" + b"\x00" * 5000)
+
+    seen: dict[str, object] = {}
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+        _CALLS["n"] += 1
+        media_dir = Path(read_path).parent / "media"
+        seen["images"] = sorted(m.name for m in media_dir.iterdir()) if media_dir.is_dir() else []
+        _cite_page("misc/deck.md", rel_key, "A deck fact.")
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    report = ingest.ingest()
+    assert report.processed == ["raw/deck.pptx"]
+    assert seen["images"] == ["image1.png"]  # the embedded image reached the agent
+
+
+def test_office_embedded_images_skipped_when_image_support_off(tmp_path, monkeypatch):
+    """With image support disabled, Office text is still ingested but no media/ folder is created."""
+    wiki, raw = _wire_tmp_wiki(tmp_path, monkeypatch)
+    monkeypatch.setattr(config, "IMAGE_SUPPORT", False)
+    _make_pptx_with_image(raw / "deck.pptx", ["Deck text."], b"\x89PNG\r\n\x1a\n" + b"\x00" * 5000)
+
+    seen: dict[str, object] = {}
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+        _CALLS["n"] += 1
+        seen["has_media"] = (Path(read_path).parent / "media").is_dir()
+        _cite_page("misc/deck.md", rel_key, "A deck fact.")
+
+    monkeypatch.setattr(ingest.llm, "run_ingest_session", fake)
+    report = ingest.ingest()
+    assert report.processed == ["raw/deck.pptx"] and seen["has_media"] is False
+
+
 def test_office_deck_without_text_is_unreadable(tmp_path, monkeypatch):
     """An all-images .pptx (no extractable text) is logged unreadable and never fed to the agent —
     no wasted session, marked done so a re-run does not re-check it."""

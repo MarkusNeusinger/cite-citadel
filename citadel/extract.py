@@ -56,6 +56,11 @@ _OLE_EXTS = {".doc", ".ppt", ".xls"}
 # we extract text from?" without caring whether it is OOXML or legacy OLE).
 _OFFICE_EXTS = _OOXML_EXTS | _OLE_EXTS
 
+# Embedded raster images live under these ZIP paths in an OOXML package; these extensions are the
+# ones a vision-capable agent reader can display (vector EMF/WMF are skipped — not renderable).
+_MEDIA_DIRS = ("ppt/media/", "word/media/", "xl/media/")
+_MEDIA_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp"}
+
 
 def is_office_source(path: Path | str) -> bool:
     """True if ``path`` is a PowerPoint/Word/Excel file we can extract text from: a supported
@@ -92,6 +97,33 @@ def extract_text(path: Path | str) -> str:
         # (BaseException like Ctrl+C still propagates).
         return ""
     return ""
+
+
+def extract_media(path: Path | str, min_bytes: int = 4096, max_count: int = 24) -> list[tuple[str, bytes]]:
+    """Embedded raster images from an OOXML Office file (``ppt``/``word``/``xl`` ``media/``), as
+    ``(filename, bytes)`` for the agent to VIEW — decks and docs often carry diagrams, charts, and
+    screenshots as images the *text* extractor cannot see. Skips tiny assets (``< min_bytes``:
+    bullets/icons/logos) and vector EMF/WMF the reader can't render, and caps at ``max_count``
+    (largest first) to bound cost. Returns ``[]`` for a non-OOXML/legacy file or on ANY error —
+    never raises (mirrors :func:`extract_text`)."""
+    p = Path(path)
+    if p.suffix.lower() not in _OOXML_EXTS:
+        return []
+    try:
+        with zipfile.ZipFile(p) as z:
+            picked = [
+                info
+                for info in z.infolist()
+                if any(info.filename.startswith(d) for d in _MEDIA_DIRS)
+                and Path(info.filename).suffix.lower() in _MEDIA_IMAGE_EXTS
+                and info.file_size >= min_bytes
+            ]
+            picked.sort(key=lambda i: (-i.file_size, i.filename))  # keep the largest (most content)
+            out = [(Path(info.filename).name, z.read(info.filename)) for info in picked[:max_count]]
+        out.sort(key=lambda t: t[0])  # deterministic order for the agent
+        return out
+    except Exception:  # noqa: BLE001 - same "never raises" contract as extract_text
+        return []
 
 
 # --- internals: shared -------------------------------------------------------------------
