@@ -226,6 +226,9 @@ wiki/.citadel_viewer.html
 # are inert scratch copies and must never be committed.
 .*.staging.*/
 
+# GitHub Pages build output (the pages workflow runs `citadel view --out _site/index.html`)
+_site/
+
 # citadel ingest LLM transcripts (CITADEL_LLM_LOG_DIR / `citadel ingest --log-dir`).
 # Individual *.log files are already ignored above; this covers the suggested default dir.
 .citadel_llm_logs/
