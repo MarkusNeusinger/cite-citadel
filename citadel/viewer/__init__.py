@@ -142,16 +142,6 @@ def build_bundle(pages=None) -> dict:
 # --------------------------------------------------------------------------------------
 
 
-def _load_manifest() -> dict:
-    """The ingest manifest (source key -> {sha256, model, ...}) read from the LIVE wiki dir, so it
-    follows a monkeypatched ``config.WIKI_DIR`` in tests rather than the import-time MANIFEST_PATH.
-    Returns {} when absent/empty/corrupt — provenance is optional decoration, never required."""
-    path = config.WIKI_DIR / ".citadel_ingested.json"
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
 
 
 def _viewer_resolve(from_rel: str, target: str) -> str:
@@ -262,8 +252,11 @@ def _build_sources(pages) -> dict:
     the manifest), the wiki pages that cite it (the live link graph), a kind (text/office/binary),
     an "open the original" href, and a missing flag when the file isn't on disk. Includes file
     sources tracked in the manifest even if currently uncited, so the Sources axis is complete;
-    skips git-repository manifest entries (a folder, not a readable file)."""
-    manifest = _load_manifest()
+    skips git-repository manifest entries (a folder, not a readable file). The manifest is read
+    through ``manifest.load()`` — the one reader that understands both the stamped format-2 file
+    and a legacy flat mapping — and provenance stays optional decoration: a missing/corrupt
+    manifest simply reads as {}."""
+    manifest = manifest_mod.load()
     manifest_files = {key for key, entry in manifest.items() if not manifest_mod.is_repo_entry(entry)}
     # Cited sources keyed by the browser identity, then tracked-but-uncited files under a fallback
     # id so the Sources axis is complete (a git-repository entry is a folder, not a file — skipped).

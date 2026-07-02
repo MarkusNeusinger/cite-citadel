@@ -25,15 +25,17 @@ generated `citadel.exe`):
 uv run python -m citadel <subcommand>
 ```
 
-Subcommands: `ingest [paths…]` (fold raw/ into the wiki; `--verbose`/`-v` streams the agent
+Subcommands: `init [DIR]` (scaffold a workspace: `citadel.toml` marker, `.env`, `raw/`, `wiki/`;
+idempotent), `ingest [paths…]` (fold raw/ into the wiki; `--verbose`/`-v` streams the agent
 session, `--log-dir DIR` writes a transcript per source, `--quiet` drops the progress spinner),
 `serve` (MCP stdio server), `search <query> [--tag T] [--limit N]`, `tags [tag]`,
 `lint [--stale-days N]`, `check [paths…]`, `view [--out PATH] [--no-open] [--obsidian]`.
+`citadel --version` prints the version and (like `--help`) needs no workspace.
 
 Tests (pytest, all offline — no CLI/network is ever spawned):
 
 ```bash
-uv run pytest -q                                    # whole suite (~370 tests, ~3s)
+uv run pytest -q                                    # whole suite (~420 tests, ~3s)
 uv run pytest tests/test_ingest_core.py -q          # one file
 uv run pytest tests/test_ingest_core.py::test_ingest_creates_pages   # one test
 ```
@@ -60,15 +62,25 @@ Python 3.12+ is required. There is no separate build step — `pytest` and `ruff
 Pages are markdown files with YAML frontmatter; everything (search, index, graph, provenance) is
 recomputed from them in memory.
 
-**Three layers** (the README and `SCHEMA.md` are authoritative):
+**Three layers** (the README and `citadel/rules/SCHEMA.md` are authoritative):
 1. `raw/` — immutable sources the agent reads but never edits.
 2. `wiki/` — the LLM-owned OKF bundle: pages routed *by kind* into `concepts/`, `objects/`,
    `systems/`, `persons/`, `organizations/`, `projects/`, `abbreviations/`, `misc/` (see
    `okf.folder_for_type`), cross-linked with relative markdown links, each fact carrying a footnote
    citation.
-3. `SCHEMA.md` + `AGENT_INGEST.md` — the schema/rules layer. These are **read by the ingest agent
-   at run time** (referenced by path in the prompt), so editing them changes how the wiki is built
+3. `citadel/rules/SCHEMA.md` + `citadel/rules/AGENT_INGEST.md` — the schema/rules layer,
+   packaged with the wheel (the repo-root `SCHEMA.md`/`AGENT_INGEST.md` are thin pointers). These
+   are **read by the ingest agent at run time** (referenced by absolute path via
+   `config.SCHEMA_PATH`/`config.AGENT_RULES_PATH`), so editing them changes how the wiki is built
    with **no code change**. Treat them as part of the program.
+
+**Everything operates on a WORKSPACE**, not the repo checkout: a directory holding a
+`citadel.toml` marker (a pure marker, never config — scaffold one with `citadel init [DIR]`).
+Discovery order: `CITADEL_WORKSPACE` env var > nearest marker walking up from the CWD (nested
+markers shadow outer ones) > an env-dirs workspace (`CITADEL_WIKI_DIR`+`CITADEL_RAW_DIR` both
+set) > otherwise none: `config.WORKSPACE_FOUND` is False, `WORKSPACE_ROOT` falls back to the
+bare CWD, and every subcommand except `init` fails loud. The dev checkout carries a marker, so
+it is itself a workspace.
 
 **Ingest is the heart of the system** (`ingest.py` → `llm.py`). The flow per source:
 - `ingest.ingest()` partitions candidates into pending / already-ingested (sha match) / reorganized
@@ -85,7 +97,7 @@ recomputed from them in memory.
   — don't simplify it away.
 
 **`llm.py` is the ONLY place that talks to an LLM**, and it does so by shelling out to a CLI in
-agentic mode (`cwd` = repo root, autonomous file tools). The prompt is **paths-only** — it references
+agentic mode (`cwd` = workspace root, autonomous file tools). The prompt is **paths-only** — it references
 the source and rules by path, never embeds file content — which keeps argv tiny (the Windows
 `WinError 206` fix). `kind` selects the propagation: `ingest` (new), `reconcile` (changed source —
 update/remove stale facts, don't just append), `delete` (source removed — strip its provenance),
@@ -124,21 +136,23 @@ resolves all paths/settings. `cli.py` mirrors the MCP tools as subcommands.
 
 - **`config.*` is read at call time** (`from . import config` then `config.WIKI_DIR`), never imported
   by value — so tests can monkeypatch the whole filesystem layout. Honor this when adding code.
-- **Tests redirect everything to `tmp_path`** by monkeypatching `config.*` (including `REPO_ROOT`,
-  which the agent's `cwd` reads) and replace `llm.run_ingest_session` with a fake that writes files
-  into the temp wiki. No test spawns a real CLI. Follow that pattern; keep tests offline.
+- **Tests redirect everything to `tmp_path`** by monkeypatching `config.*` (including
+  `WORKSPACE_ROOT`, which the agent's `cwd` reads) and replace `llm.run_ingest_session` with a fake
+  that writes files into the temp wiki. No test spawns a real CLI. Follow that pattern; keep tests
+  offline.
 - **Never hand-edit generated files** — `index.md`, `log.md`, any `*/index.md`, `sources/index.md`,
   `.citadel_viewer.html`, and `.citadel_ingested.json` are regenerated. The ingest agent prompt and
   `store.delete_page` both refuse to touch them.
 - **Provenance grammar is load-bearing:** raw facts cite `[^sN]` → a real `raw/` file; model-supplied
   facts use `[^llmN]` (source: `LLM`) and must never be disguised as raw citations. A `[^sN]` to a
   missing file fails lint/check.
-- **`wiki/`, `raw/`, `docs/` can live outside the repo** (e.g. a mounted network drive) via
-  `CITADEL_*_DIR`. Path handling distinguishes repo-relative keys from absolute out-of-repo keys
-  (`config.rel_or_abs_posix` / `source_path_for_key`) — preserve that when touching path logic.
+- **`wiki/`, `raw/`, `docs/` can live outside the workspace** (e.g. a mounted network drive) via
+  `CITADEL_*_DIR`. Path handling distinguishes workspace-relative keys from absolute out-of-workspace
+  keys (`config.rel_or_abs_posix` / `source_path_for_key`) — preserve that when touching path logic.
 - **Cross-platform robustness is intentional**, not over-engineering: UTF-8 forcing, BOM stripping,
   ASCII-only progress output, read-only-bit clearing, and network-share retry loops all fix real
   Windows/SMB failures.
-- Config knobs live in `.env` (auto-loaded, gitignored; see `.env.example`): `CITADEL_LLM_CLI`,
+- Config knobs live in the workspace-root `.env` (auto-loaded, gitignored; template:
+  `citadel/templates/env.example`): `CITADEL_LLM_CLI`,
   `CITADEL_INGEST_MODEL`, `CITADEL_LLM_TIMEOUT`, `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,
   `CITADEL_REPO_SUPPORT`, the `CITADEL_*_DIR` path overrides, and `*_CLI_PATH` binary overrides.

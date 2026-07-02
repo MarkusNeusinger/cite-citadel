@@ -1,9 +1,9 @@
 """The ONLY place that talks to an LLM — through a coding-agent CLI, not an API key.
 
 Ingest shells out to a CLI (``claude``, ``copilot``, or ``gemini``) in **agentic** mode:
-the CLI is pointed at the repo (``cwd`` = repo root) with autonomous file tools, reads the
-raw source and the existing wiki itself, and **edits the wiki page files directly**. We pass
-only a short instruction that references files BY PATH — never file content — so the argv
+the CLI is pointed at the workspace (``cwd`` = the workspace root) with autonomous file tools,
+reads the raw source and the existing wiki itself, and **edits the wiki page files directly**. We
+pass only a short instruction that references files BY PATH — never file content — so the argv
 stays tiny (this is what kills the old Windows ``WinError 206`` argv-length limit) and the
 agent can handle an arbitrarily large raw file.
 
@@ -15,7 +15,7 @@ agent can handle an arbitrarily large raw file.
   their own default model.
 
 One function does real work: ``run_ingest_session(rel_key)`` runs the chosen CLI once against
-the repo. It has no return value — the result is whatever the agent wrote under ``wiki/``,
+the workspace. It has no return value — the result is whatever the agent wrote under ``wiki/``,
 which ``ingest`` discovers via a filesystem diff. It raises ``RuntimeError`` on a missing/
 unusable CLI, a non-zero exit, a claude ``is_error`` envelope, or a timeout (the failure
 surface ``ingest``'s per-source ``try/except`` already expects).
@@ -60,30 +60,41 @@ def _resolve_cli(cli: str) -> str:
 
 def _agent_path(path: Path) -> str:
     """The path string to name a configured directory (wiki/raw) in the agent prompt. The agentic
-    CLI runs with ``cwd`` = ``config.REPO_ROOT``, so a directory UNDER the repo is named relative
-    to it (short, cwd-relative), while one OUTSIDE the repo — e.g. a wiki/raw tree on a mounted
+    CLI runs with ``cwd`` = ``config.WORKSPACE_ROOT``, so a directory UNDER the workspace is named relative
+    to it (short, cwd-relative), while one OUTSIDE the workspace — e.g. a wiki/raw tree on a mounted
     network drive — is named by its ABSOLUTE path so the agent (granted access via ``--add-dir``)
-    can find it. Honors ``CITADEL_WIKI_DIR`` / ``CITADEL_RAW_DIR`` and never collapses an out-of-repo dir
-    to a bare name (the old bug that made the agent edit a non-existent ``./wiki``). Single source
-    of truth: ``config.rel_or_abs_posix``."""
+    can find it. Honors ``CITADEL_WIKI_DIR`` / ``CITADEL_RAW_DIR`` and never collapses an
+    out-of-workspace dir to a bare name (the old bug that made the agent edit a non-existent
+    ``./wiki``). Single source of truth: ``config.rel_or_abs_posix``."""
     return config.rel_or_abs_posix(path)
 
 
 def _external_dirs(rel_key: str, read_path: str | None = None) -> list[str]:
-    """OS-native paths of the directories the agent must read/write that live OUTSIDE the repo, so
-    the CLI can be granted access to them. The agent's ``cwd`` is the repo root (which already
-    covers SCHEMA.md / AGENT_INGEST.md / the ``citadel`` command), so this returns — de-duplicated
-    and sorted — only the out-of-repo members of {wiki dir (written), raw dir, docs dir, the source
-    file's own parent, and — for an Office source — the temp dir holding its extracted text}. Empty
-    for the default in-repo layout, so the in-repo invocation is byte-for-byte unchanged."""
-    candidates = [config.WIKI_DIR, config.RAW_DIR, config.DOCS_DIR, config.source_path_for_key(rel_key).parent]
+    """OS-native paths of the directories the agent must read/write that live OUTSIDE the
+    workspace, so the CLI can be granted access to them (claude ``--add-dir``, gemini
+    ``--include-directories``; copilot needs nothing — it runs with ``--allow-all-paths``). The
+    agent's ``cwd`` is the workspace root, so this returns — de-duplicated and sorted — only the
+    out-of-workspace members of {wiki dir (written), raw dir, docs dir, the packaged rules dirs the
+    prompt references (``config.SCHEMA_PATH`` / ``config.AGENT_RULES_PATH`` — under site-packages
+    for a pip install, hence never inside a user workspace and ALWAYS granted there), the source
+    file's own parent, and — for an Office source — the temp dir holding its extracted text}.
+    Empty for the all-under-workspace dev-checkout layout (cwd already covers the rules), so that
+    invocation is byte-for-byte unchanged."""
+    candidates = [
+        config.WIKI_DIR,
+        config.RAW_DIR,
+        config.DOCS_DIR,
+        Path(config.SCHEMA_PATH).parent,
+        Path(config.AGENT_RULES_PATH).parent,
+        config.source_path_for_key(rel_key).parent,
+    ]
     if read_path:
-        # The extracted-text file lives in a system temp dir (outside the repo); the agent must be
-        # granted access so it can read what to ingest.
+        # The extracted-text file lives in a system temp dir (outside the workspace); the agent
+        # must be granted access so it can read what to ingest.
         candidates.append(Path(read_path).parent)
     out: dict[str, None] = {}
     for d in candidates:
-        if config.is_outside_repo(d):
+        if config.is_outside_workspace(d):
             out[str(Path(d).resolve())] = None
     return sorted(out)
 
@@ -93,12 +104,16 @@ def _build_instruction(
 ) -> str:
     """The short, paths-only agent prompt. References the rules and the raw source BY PATH
     (the agent opens them with its own tools), so it never embeds file content and stays paths-only
-    — at most a couple thousand chars regardless of raw-file size, the WinError 206 fix. ``rel_key``
-    is the source key (a repo-relative posix path like ``raw/notes.md`` for an in-repo source, or an
-    ABSOLUTE posix path for an out-of-repo source on a mounted drive); ``cwd`` is the repo root, so
-    an in-repo path is named relative to it and an out-of-repo path absolutely. The wiki/raw
+    — at most a couple thousand chars regardless of raw-file size, the WinError 206 fix. The rules
+    are named by their RESOLVED locations (``config.SCHEMA_PATH`` / ``config.AGENT_RULES_PATH``,
+    rendered through the same :func:`config.rel_or_abs_posix` discipline as every other path):
+    workspace-relative in the dev checkout, ABSOLUTE site-packages paths for a pip install (which
+    :func:`_external_dirs` grants to the CLI). ``rel_key`` is the source key (a workspace-relative
+    posix path like ``raw/notes.md`` for an in-workspace source, or an ABSOLUTE posix path for an
+    out-of-workspace source on a mounted drive); ``cwd`` is the workspace root, so an in-workspace
+    path is named relative to it and an out-of-workspace path absolutely. The wiki/raw
     directory names are read from config (``CITADEL_WIKI_DIR`` / ``CITADEL_RAW_DIR``) at CALL time via
-    :func:`_agent_path`, so a custom layout — a renamed in-repo dir (``CITADEL_WIKI_DIR=wikiET``) or a
+    :func:`_agent_path`, so a custom layout — a renamed in-workspace dir (``CITADEL_WIKI_DIR=wikiET``) or a
     network-drive path (``CITADEL_WIKI_DIR=T:\\team-wiki\\wiki``) — is searched and written correctly
     instead of a hardcoded ``wiki/``.
 
@@ -122,9 +137,13 @@ def _build_instruction(
     """
     wiki_rel = _agent_path(config.WIKI_DIR)
     raw_rel = _agent_path(config.RAW_DIR)
+    # The rules ship as package data (citadel/rules/), so they are named by their RESOLVED paths —
+    # NOT assumed to sit in the current directory (they don't, for a pip install).
+    schema_ref = config.rel_or_abs_posix(config.SCHEMA_PATH)
+    rules_ref = config.rel_or_abs_posix(config.AGENT_RULES_PATH)
     header = (
         "You are the ingest engine for a self-structuring wiki in Google's Open Knowledge "
-        "Format. Read the rules in SCHEMA.md and AGENT_INGEST.md (current directory) and "
+        f"Format. Read the rules in {schema_ref} and {rules_ref} and "
         "follow them exactly.\n\n"
     )
 
@@ -341,18 +360,20 @@ def _build_invocation(
 ) -> tuple[list[str], str | None]:
     """Return ``(argv, stdin_text)`` for the chosen CLI in agentic, non-interactive mode.
 
-    Each CLI runs with autonomous file tools and ``cwd`` = the repo root (set by ``_run_session``).
-    ``extra_dirs`` are directories the agent must reach that live OUTSIDE the repo (an out-of-repo
-    wiki/raw on a mounted network drive, computed by :func:`_external_dirs`) — empty for the default
-    in-repo layout. For **claude** the prompt goes on STDIN (argv carries only flags); for
+    Each CLI runs with autonomous file tools and ``cwd`` = the workspace root (set by
+    ``_run_session``). ``extra_dirs`` are directories the agent must reach that live OUTSIDE the
+    workspace (an out-of-workspace wiki/raw on a mounted network drive, and the packaged rules dir
+    for a pip install — computed by :func:`_external_dirs`) — empty for the all-under-workspace
+    dev-checkout layout. For **claude** the prompt goes on STDIN (argv carries only flags); for
     copilot/gemini it is a ``-p`` argument — now safe because the prompt is tiny."""
     extra_dirs = extra_dirs or []
     if cli == "claude":
         # acceptEdits auto-applies file edits; the allowlist scopes tools (Read/Edit/Write to
         # author pages, Grep/Glob to search the wiki, Bash so the agent can run `citadel check`).
-        # cwd=repo root covers SCHEMA.md/AGENT_INGEST.md/citadel; --add-dir grants access to an
-        # out-of-repo wiki/raw (network drive), since claude's file tools are otherwise scoped to
-        # cwd. No extra_dirs in the default in-repo layout, so the argv is then unchanged.
+        # cwd=workspace root covers everything under it; --add-dir grants access to what is not —
+        # an out-of-workspace wiki/raw (network drive) and the packaged rules under site-packages —
+        # since claude's file tools are otherwise scoped to cwd. No extra_dirs in the
+        # all-under-workspace dev layout, so the argv is then unchanged.
         argv = [
             cli_path,
             "-p",
@@ -370,13 +391,15 @@ def _build_invocation(
         return argv, prompt
     if cli == "copilot":
         # --allow-all-tools is required for non-interactive editing; --allow-all-paths lets it
-        # reach the wiki/raw whether they are under cwd or on a mounted drive (so an out-of-repo
-        # layout needs no extra flag); --no-ask-user keeps it autonomous; -s trims stats.
+        # reach the wiki/raw AND the packaged rules whether they are under cwd, on a mounted drive,
+        # or in site-packages (copilot has no per-directory grant mechanism, and needs none —
+        # extra_dirs is deliberately unused here); --no-ask-user keeps it autonomous; -s trims stats.
         return [cli_path, "-p", prompt, "--allow-all-tools", "--allow-all-paths", "--no-ask-user", "-s"], None
     if cli == "gemini":
         # yolo auto-approves all tool calls (auto_edit still prompts for read/search tools,
-        # which would hang with no TTY). --include-directories adds an out-of-repo wiki/raw to the
-        # workspace (best-effort; only when needed, so the default in-repo argv is unchanged).
+        # which would hang with no TTY). --include-directories adds the out-of-workspace dirs — a
+        # wiki/raw on a mounted drive, the packaged rules under site-packages — to the agent's
+        # workspace (best-effort; only when needed, so the all-under-workspace argv is unchanged).
         argv = [cli_path, "-p", prompt, "--approval-mode", "yolo"]
         if extra_dirs:
             argv += ["--include-directories", ",".join(extra_dirs)]
@@ -446,7 +469,7 @@ def _stream_subprocess(cli: str, argv: list[str], stdin_text: str | None) -> tup
         encoding="utf-8",
         errors="replace",
         bufsize=1,
-        cwd=str(config.REPO_ROOT),
+        cwd=str(config.WORKSPACE_ROOT),
     )
     if stdin_text is not None and proc.stdin is not None:
         try:
@@ -508,7 +531,7 @@ def _write_transcript(
         _LOG_SEQ += 1
         directory = Path(log_dir)
         if not directory.is_absolute():
-            directory = config.REPO_ROOT / directory
+            directory = config.WORKSPACE_ROOT / directory
         config.robust_mkdir(directory)
         stamp = time.strftime("%Y%m%d-%H%M%S")
         safe = "".join(c if (c.isalnum() or c in "-._") else "_" for c in (label or "session"))[:80]
@@ -535,7 +558,7 @@ def _write_transcript(
 
 
 def _run_session(cli: str, argv: list[str], stdin_text: str | None, *, log_label: str | None = None) -> None:
-    """Run the agentic CLI once in ``config.REPO_ROOT``. Success = the session completed
+    """Run the agentic CLI once in ``config.WORKSPACE_ROOT``. Success = the session completed
     without error; the agent's edits are on disk. Raises ``RuntimeError`` on timeout, a
     spawn error, a non-zero exit, or (for claude) an ``is_error`` result envelope.
 
@@ -564,7 +587,7 @@ def _run_session(cli: str, argv: list[str], stdin_text: str | None, *, log_label
                 encoding="utf-8",
                 errors="replace",
                 timeout=config.LLM_TIMEOUT,
-                cwd=str(config.REPO_ROOT),
+                cwd=str(config.WORKSPACE_ROOT),
             )
             returncode, out_raw, err_raw = proc.returncode, proc.stdout, proc.stderr
     except subprocess.TimeoutExpired as exc:
@@ -634,7 +657,7 @@ def run_ingest_session(
     ``read_path`` (ingest/reconcile only) is the path to the pre-extracted text of a binary Office
     source — or, when ``segment`` is set, this segment's slice of a large source: when set, the
     agent is told to READ it for content while still citing ``rel_key``, and its directory is
-    granted to the CLI alongside any out-of-repo wiki/raw. ``segment`` is ``(part, total)`` for a
+    granted to the CLI alongside any out-of-workspace wiki/raw. ``segment`` is ``(part, total)`` for a
     large source split across passes.
 
     Side-effecting only: the agent edits files under ``config.WIKI_DIR``. Returns None;

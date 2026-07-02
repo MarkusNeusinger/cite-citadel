@@ -14,17 +14,31 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: test (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        # 3.12 is the declared minimum (pyproject `requires-python`); 3.13 guards forward-compat.
-        python-version: ["3.12", "3.13"]
+        # 3.12 is the declared minimum (pyproject `requires-python`); 3.13/3.14 guard forward-compat.
+        # Full Python spread on ubuntu; windows/macos run only the edges (3.12 + 3.14) to keep the
+        # job count sane. Windows in particular is load-bearing: the SMB/network-share hardening
+        # (_robust_*, read-only-bit clearing, UTF-8 forcing) is exercised nowhere else in CI.
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.12", "3.13", "3.14"]
+        exclude:
+          - os: windows-latest
+            python-version: "3.13"
+          - os: macos-latest
+            python-version: "3.13"
+    defaults:
+      run:
+        # One shell on every OS (git-bash on Windows) so steps stay byte-identical across the matrix.
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
@@ -36,6 +50,7 @@ jobs:
         run: uv run pytest -q
 
       - name: Lint the bundled wiki (structural health check)
+        # The checkout root carries a citadel.toml marker, so the repo itself is a valid workspace.
         run: uv run python -m citadel lint
 
   lint:
@@ -44,7 +59,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
           enable-cache: true
@@ -57,3 +72,98 @@ jobs:
 
       - name: Ruff format check
         run: uv run ruff format --check .
+
+  # Regression gate for the phantom-workspace bug class: prove the WHEEL ALONE works — installed
+  # into a clean venv (no checkout on sys.path, no dev deps) and driven from a temp CWD outside
+  # the checkout (no citadel.toml above it, no CITADEL_* env). Each step checks exactly one layer,
+  # so the first red step names what broke:
+  #   uv build             -> build backend / project metadata
+  #   twine check          -> distribution metadata (PyPI would reject it)
+  #   venv + pip install   -> wheel installability (runtime deps mcp + pyyaml only)
+  #   packaged data        -> rules/ + templates/ actually shipped INSIDE the wheel
+  #   citadel --version    -> console entry point + version wiring
+  #   fail-loud guard      -> workspace discovery must NOT invent a phantom workspace
+  #   init / check / search -> workspace scaffold + read paths of the installed package
+  wheel-smoke:
+    name: wheel-smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        # git-bash on Windows: globs, mktemp and `source` behave the same as on ubuntu.
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Build sdist + wheel
+        run: uv build
+
+      - name: Check distribution metadata (twine)
+        run: uvx twine check dist/*
+
+      - name: Install ONLY the wheel into a clean venv
+        # --seed puts pip into the venv; the activate glob resolves bin/ (POSIX) or Scripts/ (Windows).
+        # The venv's script dir goes onto $GITHUB_PATH once (pwd -W yields the native Windows path
+        # under git-bash; plain pwd elsewhere), so every later step runs citadel/python directly —
+        # from a smoke dir OUTSIDE the checkout, via per-step working-directory.
+        run: |
+          uv venv --seed smoke-venv
+          source smoke-venv/*/activate
+          python -m pip install --no-cache-dir dist/*.whl
+          echo "$(cd "$(dirname smoke-venv/*/activate)" && { pwd -W 2>/dev/null || pwd; })" >> "$GITHUB_PATH"
+          mkdir -p "${{ runner.temp }}/smoke"
+
+      - name: Wheel completeness — packaged rules + templates
+        # From a CWD with no ./citadel directory, imports MUST resolve to site-packages; the agent
+        # rules and the .env template are package data and must travel inside the wheel.
+        working-directory: ${{ runner.temp }}/smoke
+        run: |
+          python - <<'EOF'
+          from importlib import resources
+          import citadel
+          print("citadel imported from:", citadel.__file__)
+          missing = [p for p in ("rules/SCHEMA.md", "rules/AGENT_INGEST.md", "templates/env.example")
+                     if not resources.files("citadel").joinpath(p).is_file()]
+          if missing:
+              raise SystemExit(f"wheel is missing packaged data: {missing} — check the hatchling wheel config / package layout")
+          print("packaged rules + templates present in the installed wheel")
+          EOF
+
+      - name: Smoke — citadel --version (console entry point)
+        working-directory: ${{ runner.temp }}/smoke
+        run: citadel --version
+
+      - name: Smoke — fail loud outside any workspace (no phantom workspace)
+        working-directory: ${{ runner.temp }}/smoke
+        run: |
+          if citadel check; then
+            echo "::error::'citadel check' succeeded in a CWD with no citadel.toml marker and no CITADEL_* dirs — workspace discovery invented a phantom workspace"
+            exit 1
+          fi
+          echo "OK: workspace-less 'citadel check' failed loud, as designed"
+
+      - name: Smoke — citadel init demo (workspace scaffold)
+        working-directory: ${{ runner.temp }}/smoke
+        run: |
+          citadel init demo
+          test -f demo/citadel.toml
+          test -f demo/.env
+          test -d demo/raw
+          test -d demo/wiki
+
+      - name: Smoke — citadel check on the fresh workspace (must be clean)
+        working-directory: ${{ runner.temp }}/smoke/demo
+        run: citadel check
+
+      - name: Smoke — citadel search on the empty wiki (must exit 0, no matches)
+        working-directory: ${{ runner.temp }}/smoke/demo
+        run: citadel search x

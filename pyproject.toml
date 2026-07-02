@@ -1,14 +1,17 @@
 [build-system]
-requires = ["hatchling"]
+# hatchling >= 1.27 for PEP 639 license metadata (SPDX `license` string + `license-files`).
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
 name = "cite-citadel"
-version = "0.1.0"
+# Single-sourced: __version__ in citadel/__init__.py (see [tool.hatch.version]).
+dynamic = ["version"]
 description = "cite-citadel — an LLM-maintained, fully-cited personal wiki in Google OKF, fed by a coding-agent CLI (claude/copilot/gemini), with an MCP search server. Every fact is cited to its source; nothing is invented."
 readme = "README.md"
 requires-python = ">=3.12"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Markus Neusinger" }]
 keywords = [
     "wiki",
@@ -25,11 +28,11 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Documentation",
     "Topic :: Text Processing :: Markup :: Markdown",
 ]
@@ -42,17 +45,19 @@ Homepage = "https://github.com/MarkusNeusinger/cite-citadel"
 Repository = "https://github.com/MarkusNeusinger/cite-citadel"
 Issues = "https://github.com/MarkusNeusinger/cite-citadel/issues"
 
-[project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.15"]
-
-# uv installs the `dev` group by default on `uv sync` (PEP 735).
+# uv installs the `dev` group by default on `uv sync` (PEP 735) — the ONLY place dev deps live.
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.15"]
 
 [project.scripts]
 citadel = "citadel.cli:main"
 
+[tool.hatch.version]
+path = "citadel/__init__.py"
+
 [tool.hatch.build.targets.wheel]
+# Non-Python package data (citadel/rules/*.md, citadel/templates/*) ships automatically:
+# hatchling includes every file under a listed package directory.
 packages = ["citadel"]
 
 [tool.ruff]

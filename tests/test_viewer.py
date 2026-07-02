@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import re
 
-from citadel import store, viewer
+from citadel import manifest, store, viewer
 
 
 def _two_page_wiki(seed_page) -> None:
@@ -156,6 +156,28 @@ def test_manifest_model_and_repo_and_uncited(tmp_citadel, seed_page):
     # A git-repository entry is a folder, not a file — it is never embedded as a source.
     assert "raw/somerepo" not in sources
     assert all(s["key"] != "raw/somerepo" for s in sources.values())
+
+
+def test_format2_manifest_provenance_decorates_sources(tmp_citadel, seed_page):
+    """Regression: the bundle reads the manifest through ``manifest.load()``, which unwraps the
+    stamped format-2 file (``{"meta", "sources"}``) that ``manifest.save`` writes. The old
+    private viewer reader returned that RAW dict, so on a format-2 manifest the model
+    attribution silently vanished and the tracked-but-uncited source never surfaced."""
+    (tmp_citadel.raw / "a.md").write_text("# A\n\ncited\n", encoding="utf-8")
+    (tmp_citadel.raw / "lonely.md").write_text("# Lonely\n\nuncited\n", encoding="utf-8")
+    manifest.save(
+        {
+            "raw/a.md": {"sha256": "h1", "model": "claude:sonnet"},
+            "raw/lonely.md": {"sha256": "h2", "model": "copilot:gpt"},
+        }
+    )
+    _two_page_wiki(seed_page)
+    sources = viewer.build_bundle()["sources"]
+    assert sources["raw/a.md"]["model"] == "claude:sonnet"  # provenance decoration from the wrapped file
+    assert "raw/lonely.md" in sources  # tracked-but-uncited still surfaces
+    assert sources["raw/lonely.md"]["model"] == "copilot:gpt"
+    # The envelope keys themselves must never leak in as phantom sources.
+    assert all(s["key"] not in ("meta", "sources") for s in sources.values())
 
 
 def test_citation_inside_code_fence_is_not_a_source(tmp_citadel, seed_page):

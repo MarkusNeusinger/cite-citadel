@@ -56,9 +56,7 @@ def test_deleted_source_citations_reconciled_out(tmp_citadel, fake_agent, seed_p
     assert not (wiki / "concepts" / "topic.md").exists()
     assert not report.errors
 
-    import json
-
-    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    data = tmp_citadel.read_manifest()
     assert "raw/gone.md" not in data  # manifest key dropped
     rep = lint.lint()
     assert rep.ok() and rep.bad_sources == []
@@ -126,9 +124,7 @@ def test_deleted_source_with_no_references_just_dropped(tmp_citadel, fake_agent,
     assert report.processed == [] and not report.errors
     assert (wiki / "concepts" / "keep.md").exists()  # unrelated page untouched
 
-    import json
-
-    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    data = tmp_citadel.read_manifest()
     assert "raw/gone.md" not in data and "raw/keep.md" in data
 
 
@@ -152,9 +148,7 @@ def test_deleted_cleanup_incomplete_rolls_back_and_retries(tmp_citadel, fake_age
     assert any("still cited" in e for e in report.errors)
     assert (wiki / "concepts" / "topic.md").exists()  # rolled back, page intact
 
-    import json
-
-    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    data = tmp_citadel.read_manifest()
     assert "raw/gone.md" in data  # key kept -> retried next run
 
 
@@ -185,9 +179,7 @@ def test_deletion_swept_only_on_full_run_not_path_scoped(tmp_citadel, fake_agent
     assert report.sources_deleted == []
     assert (wiki / "concepts" / "topic.md").exists()  # the deleted source's page is untouched
 
-    import json
-
-    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    data = tmp_citadel.read_manifest()
     assert "raw/gone.md" in data  # still tracked; not pruned by a scoped run
 
 

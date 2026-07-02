@@ -18,7 +18,7 @@ def wiki(tmp_path, monkeypatch):
     raw_dir = repo / "raw"
     for d in (wiki_dir, raw_dir):
         d.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr(config, "REPO_ROOT", repo, raising=False)
+    monkeypatch.setattr(config, "WORKSPACE_ROOT", repo, raising=False)
     monkeypatch.setattr(config, "WIKI_DIR", wiki_dir, raising=False)
     monkeypatch.setattr(config, "RAW_DIR", raw_dir, raising=False)
     (raw_dir / "notes.md").write_text("source\n", encoding="utf-8")
