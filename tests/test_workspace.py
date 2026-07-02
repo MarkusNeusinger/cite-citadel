@@ -130,13 +130,14 @@ def test_init_scaffolds_a_complete_workspace(tmp_path, capsys):
     assert cli.main(["init", str(ws)]) == 0
 
     out = capsys.readouterr().out
-    for name in ("citadel.toml", ".env", "rules/local.md", "raw/", "wiki/"):
+    for name in ("citadel.toml", ".env", "raw/", "wiki/"):
         assert f"created {name}" in out
     assert (ws / "citadel.toml").read_text(encoding="utf-8") == workspace.MARKER_CONTENT
     assert "CITADEL_LLM_CLI" in (ws / ".env").read_text(encoding="utf-8")  # the packaged template
     assert (ws / "raw").is_dir() and (ws / "wiki").is_dir()
-    # The editable rules overlay: an otherwise-empty rules/ with the commented local.md stub.
-    assert (ws / "rules" / "local.md").read_text(encoding="utf-8") == workspace.LOCAL_RULES_STUB
+    # No rules/ overlay is scaffolded — house rules are opt-in (a hand-written rules/local.md or
+    # `citadel rules eject`); a stub would only add a no-op file read to every agent session.
+    assert not (ws / "rules").exists()
     # The scaffolded dir now discovers as a marker workspace.
     assert config._resolve_workspace(cwd=ws) == ws.resolve()
 
@@ -150,7 +151,7 @@ def test_init_is_idempotent_and_never_overwrites(tmp_path, capsys):
     assert cli.main(["init", str(ws)]) == 0  # re-running an initialized workspace is fine
 
     out = capsys.readouterr().out
-    for name in ("citadel.toml", ".env", "rules/local.md", "raw/", "wiki/"):
+    for name in ("citadel.toml", ".env", "raw/", "wiki/"):
         assert f"skipped {name}" in out
     assert "created" not in out
     assert "already initialized" in out

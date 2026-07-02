@@ -203,7 +203,9 @@ citadel/rules/
 - Config knobs select *which* rule file/section is referenced, never templating:
   - `CITADEL_PDF_MODE=text|images` (images degrades to text with a logged warning on CLIs without
     PDF vision). PDFs remain unchunked by design — agent-side reading; document the practical size
-    ceiling in formats/pdf.md.
+    ceiling in formats/pdf.md. *(PR3 deviation: the degrade-warning is deliberately not implemented —
+    there is no reliable capability probe for a CLI's PDF vision; formats/pdf.md and env.example
+    document the caveat instead, and a doctor advisory lands in PR9.)*
   - `CITADEL_REPO_MODE=summary|full` — **full mode is deferred** (post-roadmap). Design sketch when
     it comes: digest without the scoring cutoff, mandatory multi-segment folding via the existing
     segment machinery, same repo-reconcile diff behavior. Summary stays the default; repo.py's

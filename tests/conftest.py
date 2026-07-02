@@ -27,6 +27,11 @@ from citadel import config, llm, okf, repo
 # runner tmp paths and the absolute packaged-rules paths.
 PROMPT_CHAR_BUDGET = 8000
 
+# The REAL packaged rules tree (citadel/rules/ in this checkout / site-packages), captured at
+# import time — BEFORE any fixture monkeypatches config.PACKAGED_RULES_DIR onto a stub tree.
+# Content tests (what the rulebook must keep teaching) read from here.
+REAL_RULES_DIR = config.PACKAGED_RULES_DIR
+
 
 @pytest.fixture(autouse=True)
 def _stable_workspace_found(monkeypatch):

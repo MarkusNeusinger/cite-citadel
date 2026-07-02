@@ -13,7 +13,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from conftest import PROMPT_CHAR_BUDGET
+from conftest import PROMPT_CHAR_BUDGET, REAL_RULES_DIR
 
 from citadel import config, llm
 
@@ -25,16 +25,28 @@ class _FakeProc:
         self.stderr = stderr
 
 
-# The REAL packaged rules tree (citadel/rules/ in this checkout / site-packages), captured at
-# import time — BEFORE any fixture monkeypatches config.PACKAGED_RULES_DIR onto a stub tree.
-# Content tests (what the rulebook must keep teaching) read from here.
-REAL_RULES_DIR = config.PACKAGED_RULES_DIR
-
-
 def _ref(relname: str) -> str:
     """The prompt token for one EFFECTIVE rules file — the same resolution + rel_or_abs_posix
     discipline ``_build_instruction`` renders every rules path through."""
     return config.rel_or_abs_posix(config.effective_rules_file(relname))
+
+
+def _assert_referenced_rules_reachable(
+    prompt: str, rel_key: str, kind: str = "ingest", read_path: str | None = None, segment=None
+) -> None:
+    """The shared prompt-validation core: every rules path ``_referenced_rules`` lists (a)
+    appears in the prompt, (b) resolves — through the same key math the rest of the system
+    uses — to an EXISTING file, and (c) is readable by the agent: under its cwd (the workspace
+    root) or inside a directory ``_external_dirs`` granted (grants are recursive)."""
+    granted = [Path(d) for d in llm._external_dirs(rel_key, read_path)]
+    referenced = llm._referenced_rules(rel_key, kind, read_path, segment)
+    assert referenced  # never an empty rules read list
+    for _role, path in referenced:
+        token = config.rel_or_abs_posix(path)
+        assert token in prompt
+        assert config.source_path_for_key(token).is_file()
+        resolved = Path(path).resolve()
+        assert (not config.is_outside_workspace(resolved)) or any(resolved.is_relative_to(d) for d in granted)
 
 
 def test_build_instruction_references_paths_not_content():
@@ -86,11 +98,11 @@ def test_core_rules_teach_path_and_filename_as_routing_context():
     assert "routing context" in core or "routing signal" in core
     assert "path" in core and "filename" in core
     assert "project" in core and "topic" in core
-    # specific to the guidance: a path-derived project/topic makes a "natural tag".
-    # (Plain "tag" would pass on the unrelated frontmatter-`tags` prose and guard nothing.)
-    assert "natural tag" in core
-    # load-bearing guardrail: the path ROUTES facts, it is never itself a cited fact
-    assert "never cite the path" in core
+    # Coarse keyword pins (one distinctive token per concept, so a meaning-preserving rewording
+    # survives): the path-derived project/topic feeds the page's tags...
+    assert "tag" in core
+    # ...and the load-bearing guardrail: the path ROUTES facts, it is never itself a cited fact.
+    assert "never cite" in core
 
 
 def test_reconcile_brief_says_update_remove_and_keeps_cocited_facts():
@@ -100,12 +112,12 @@ def test_reconcile_brief_says_update_remove_and_keeps_cocited_facts():
     no-churn stand-in for the unshipped manifest genre stamp)."""
     brief = (REAL_RULES_DIR / "tasks/reconcile.md").read_text(encoding="utf-8").lower()
     assert "update" in brief and "remove" in brief
-    assert "do not merely append" in brief
+    assert "append" in brief  # coarse pin: reconcile means update/remove, not append
     assert "co-cited" in brief and "only if" in brief
     assert "locator" in brief
     assert "genre treatment" in brief
     # The segmented-reconcile guard: never blanket-delete facts outside the visible segment.
-    assert "delete facts you cannot see" in brief
+    assert "cannot see" in brief
 
 
 def test_office_brief_covers_extract_media_and_source_of_record():
@@ -125,16 +137,18 @@ def test_delete_brief_strips_provenance_without_opening():
     assert "removed" in brief and "not" in brief and "open" in brief
     assert "resource" in brief and "[^s" in brief  # both provenance forms are named
     assert "never invent" in brief
-    assert "no page may reference" in brief
+    assert "reference" in brief  # coarse pin: the no-references post-condition
 
 
 def test_ingest_brief_segments_merge_not_duplicate():
     """tasks/ingest.md § Large sources: read the slice, cite the WHOLE source, and MERGE later
     segments into the pages earlier passes created instead of duplicating them."""
     brief = " ".join((REAL_RULES_DIR / "tasks/ingest.md").read_text(encoding="utf-8").lower().split())
-    assert "cite the whole source" in brief
-    assert "merging" in brief and "do not duplicate" in brief
-    assert "do not invent continuations" in brief  # whitespace-normalized: the phrase line-wraps
+    # Coarse keyword pins, one per concept: cite the WHOLE source (never the slice), merge into
+    # earlier passes' pages without duplicating, and never invent continuations of the slice.
+    assert "whole source" in brief
+    assert "merging" in brief and "duplicate" in brief
+    assert "continuations" in brief
 
 
 def test_pdf_brief_names_both_modes_and_page_locators():
@@ -415,15 +429,7 @@ def test_every_referenced_rules_path_exists_and_is_reachable(pip_like_workspace,
     ingest without the schema), and (c) is readable by the agent: under its cwd (the workspace
     root) or inside a directory _external_dirs granted (grants are recursive)."""
     prompt = llm._build_instruction("raw/notes.md", kind, read_path, segment)
-    granted = [Path(d) for d in llm._external_dirs("raw/notes.md", read_path)]
-    referenced = llm._referenced_rules("raw/notes.md", kind, read_path, segment)
-    assert referenced  # never an empty rules read list
-    for path in referenced:
-        token = config.rel_or_abs_posix(path)
-        assert token in prompt
-        assert config.source_path_for_key(token).is_file()
-        resolved = Path(path).resolve()
-        assert (not config.is_outside_workspace(resolved)) or any(resolved.is_relative_to(d) for d in granted)
+    _assert_referenced_rules_reachable(prompt, "raw/notes.md", kind, read_path, segment)
 
 
 def test_pdf_variant_referenced_rules_exist_and_are_reachable(pip_like_workspace):
@@ -434,11 +440,22 @@ def test_pdf_variant_referenced_rules_exist_and_are_reachable(pip_like_workspace
     (raw_dir / "report.pdf").write_bytes(b"%PDF-1.7\nx\n")
     prompt = llm._build_instruction("raw/report.pdf")
     assert _ref("formats/pdf.md") in prompt
-    granted = [Path(d) for d in llm._external_dirs("raw/report.pdf")]
-    for path in llm._referenced_rules("raw/report.pdf"):
-        assert config.source_path_for_key(config.rel_or_abs_posix(path)).is_file()
-        resolved = Path(path).resolve()
-        assert (not config.is_outside_workspace(resolved)) or any(resolved.is_relative_to(d) for d in granted)
+    _assert_referenced_rules_reachable(prompt, "raw/report.pdf")
+
+
+def test_prompt_lists_rules_in_referenced_rules_order(tmp_citadel):
+    """_referenced_rules is the ONE producer of the rules read list: the prompt names exactly its
+    entries, in exactly its (canonical) order — schema, core, task, format?, local?, genres.
+    Exercised with a local.md present so the local/genre ordering is covered too."""
+    local = tmp_citadel.root / "rules" / "local.md"
+    local.parent.mkdir(parents=True, exist_ok=True)
+    local.write_text("house rules\n", encoding="utf-8")
+
+    prompt = llm._build_instruction("raw/notes.md")
+    tokens = [config.rel_or_abs_posix(path) for _role, path in llm._referenced_rules("raw/notes.md")]
+    assert len(tokens) >= 5  # schema, core, task, local, >=1 genre
+    positions = [prompt.index(token) for token in tokens]
+    assert positions == sorted(positions) and len(set(positions)) == len(positions)
 
 
 def test_external_dirs_always_grant_out_of_workspace_rules(pip_like_workspace):

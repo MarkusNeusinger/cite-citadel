@@ -11,5 +11,5 @@ article, blog post, book chapter, report narrative, or documentation page.
   about the study — cite it as such. "I believe X will fail" is the author's position — write it
   attributed per `schema.md` § Opinions & style ("X argues …"[^sN]), never as unattributed world
   fact.
-- For prose beyond ~200 lines, cite with a locator — lines or a `§ Heading` anchor
-  (`schema.md` § Locators).
+- Locators are required here for longer prose — see `schema.md` § Locators for the forms and
+  the length threshold.

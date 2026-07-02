@@ -124,23 +124,29 @@ jobs:
 
       - name: Wheel completeness — packaged rules + templates
         # From a CWD with no ./citadel directory, imports MUST resolve to site-packages; the agent
-        # rules and the .env template are package data and must travel inside the wheel.
+        # rules and the .env template are package data and must travel inside the wheel. The
+        # expected set is enumerated from the CHECKOUT (citadel/rules/**/*.md) — self-maintaining,
+        # so a newly added rules file that fails to ship in the wheel turns this step red.
         working-directory: ${{ runner.temp }}/smoke
+        env:
+          CHECKOUT: ${{ github.workspace }}
         run: |
           python - <<'EOF'
+          import os
           from importlib import resources
+          from pathlib import Path
           import citadel
           print("citadel imported from:", citadel.__file__)
-          missing = [p for p in ("rules/schema.md", "rules/core.md", "rules/README.md",
-                                 "rules/tasks/ingest.md", "rules/tasks/reconcile.md", "rules/tasks/delete.md",
-                                 "rules/formats/repo.md", "rules/formats/image.md", "rules/formats/pdf.md",
-                                 "rules/formats/office.md", "rules/genres/prose.md",
-                                 "rules/genres/meeting-minutes.md", "rules/genres/email.md",
-                                 "rules/genres/first-person.md", "templates/env.example")
-                     if not resources.files("citadel").joinpath(p).is_file()]
+          src = Path(os.environ["CHECKOUT"]) / "citadel"
+          expected = sorted(p.relative_to(src).as_posix() for p in (src / "rules").rglob("*.md") if p.is_file())
+          if not expected:
+              raise SystemExit(f"no rules files found under {src / 'rules'} — wrong CHECKOUT path?")
+          expected.append("templates/env.example")
+          pkg = resources.files("citadel")
+          missing = [rel for rel in expected if not pkg.joinpath(rel).is_file()]
           if missing:
               raise SystemExit(f"wheel is missing packaged data: {missing} — check the hatchling wheel config / package layout")
-          print("packaged rules + templates present in the installed wheel")
+          print(f"packaged rules + templates present in the installed wheel ({len(expected)} files)")
           EOF
 
       - name: Smoke — citadel --version (console entry point)

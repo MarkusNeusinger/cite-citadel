@@ -15,5 +15,8 @@ Your run instruction names the active **PDF mode**:
 - **images** — additionally **LOOK AT** the pages' figures, diagrams, and charts (not just the
   body text) and capture what they show, cited like any fact.
 
-Every citation into a PDF **requires a page locator** — `, p. 12` / `, pp. 3-5` in the footnote
-definition (`schema.md` § Locators).
+Images mode requires a backend whose file reader renders PDF pages visually (e.g. the claude
+CLI); other backends may silently ingest text only.
+
+Locators are required here — every PDF citation carries a **page locator**; see `schema.md`
+§ Locators for the forms.

@@ -11,12 +11,9 @@ tree and is stamped per source into the manifest at mark-done time — what a la
 from __future__ import annotations
 
 import pytest
+from conftest import REAL_RULES_DIR
 
-from citadel import cli, config, ingest, manifest
-
-
-# The REAL packaged tree, captured before any fixture repoints config.PACKAGED_RULES_DIR.
-REAL_RULES_DIR = config.PACKAGED_RULES_DIR
+from citadel import cli, config, ingest, manifest, okf
 
 
 # --- resolution: workspace > packaged, per filename ----------------------------------------
@@ -169,6 +166,25 @@ def test_rules_show_rejects_path_escapes(tmp_citadel, capsys):
     for evil in ("../secrets.md", "/etc/passwd", "tasks/../../x.md"):
         assert cli.main(["rules", "show", evil]) == 1
         assert "invalid rules file name" in capsys.readouterr().err
+
+
+def test_rules_eject_rejects_drive_letter_and_escapes(tmp_citadel, capsys):
+    """The eject join points are guarded too (okf.safe_join via config.rules_join): a Windows
+    drive-letter path — even on POSIX, where plain path math reads it as a relative segment —
+    and any traversal name are rejected before anything touches the filesystem."""
+    for evil in ("C:\\evil.md", "C:/evil.md", "../escape.md"):
+        assert cli.main(["rules", "eject", evil]) == 1
+        assert "invalid rules file name" in capsys.readouterr().err
+    assert not (tmp_citadel.root / "rules").exists()  # nothing was created
+
+
+def test_effective_rules_file_rejects_traversal(tmp_citadel):
+    """The resolver itself is guarded at the join points — a traversal name raises instead of
+    resolving outside the rules trees (the packaged fallback join included)."""
+    with pytest.raises(okf.OKFError):
+        config.effective_rules_file("../../etc/passwd")
+    with pytest.raises(okf.OKFError):
+        config.effective_rules_file("C:\\evil.md")  # drive letter, backslash-normalized then rejected
 
 
 def test_rules_eject_copies_once_then_refuses(tmp_citadel, capsys):

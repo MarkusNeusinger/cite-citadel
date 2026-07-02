@@ -36,6 +36,8 @@ import os
 import time
 from pathlib import Path, PurePosixPath
 
+from . import okf
+
 
 def _safe_resolve(path: Path) -> Path:
     """``path.resolve()`` that never raises (falls back to an absolute, un-resolved path on a
@@ -279,36 +281,51 @@ def workspace_rules_dir() -> Path | None:
     return Path(WORKSPACE_ROOT) / "rules"
 
 
+def rules_relname(name: str) -> str:
+    """Normalize a (possibly user-supplied) tree-relative rules name: backslashes (Windows input)
+    become forward slashes, surrounding whitespace is stripped. Normalization ONLY — validation
+    lives at the join points (:func:`rules_join`)."""
+    return str(name).replace("\\", "/").strip()
+
+
+def rules_join(base: Path, relname: str) -> Path:
+    """Join a tree-relative rules name under ``base`` through ``okf.safe_join`` — the
+    non-negotiable path guard — so ``rules show``/``rules eject``/prompt composition can never
+    reach outside a rules tree. Additionally rejects a Windows drive-letter name
+    (``C:/evil.md``), which POSIX path math would otherwise read as a harmless relative
+    segment. Raises :class:`okf.OKFError` on any unsafe name; returns the resolved Path."""
+    if ":" in relname:
+        raise okf.OKFError(f"unsafe path: {relname!r}")
+    return okf.safe_join(Path(base), relname)
+
+
 def effective_rules_file(relname: str) -> Path:
     """Resolve ONE rules file by its tree-relative name (``core.md``, ``tasks/ingest.md``, …),
     first-hit-wins per filename: a workspace ``rules/<relname>`` shadows the packaged
     ``citadel/rules/<relname>``. Falls back to the packaged path (which may not exist for a bogus
-    name — callers that need existence check it). Read at call time."""
+    name — callers that need existence check it). Both joins go through :func:`rules_join`
+    (``okf.safe_join``), so a traversal/absolute/drive-letter name raises ``okf.OKFError``
+    instead of resolving outside the rules trees. Read at call time."""
+    relname = rules_relname(relname)
     ws = workspace_rules_dir()
     if ws is not None:
-        candidate = ws / relname
+        candidate = rules_join(ws, relname)
         try:
             if candidate.is_file():
-                return _safe_resolve(candidate)
+                return candidate
         except OSError:
             pass
-    return PACKAGED_RULES_DIR / relname
+    return rules_join(PACKAGED_RULES_DIR, relname)
 
 
 def effective_genres() -> list[Path]:
-    """Every effective genre brief, sorted by filename: the UNION of ``*.md`` names across the
-    packaged ``genres/`` (a starter set, not a taxonomy) and the workspace ``rules/genres/`` (a
-    workspace file shadows the packaged same-name). The ingest prompt enumerates exactly this
-    list, so a genre file dropped into the workspace participates with no code change."""
-    names: set[str] = set()
-    ws = workspace_rules_dir()
-    layers = [PACKAGED_RULES_DIR / "genres"] + ([ws / "genres"] if ws is not None else [])
-    for layer in layers:
-        try:
-            names.update(p.name for p in layer.iterdir() if p.suffix == ".md" and p.is_file())
-        except OSError:
-            continue
-    return [effective_rules_file(f"genres/{name}") for name in sorted(names)]
+    """Every effective genre brief, sorted by filename: the ``genres/<name>.md`` DIRECT children
+    (no deeper nesting) of :func:`rules_relnames` — the one union walk over the packaged
+    ``genres/`` starter set and the workspace ``rules/genres/`` overlay (a workspace file shadows
+    the packaged same-name via :func:`effective_rules_file`). The ingest prompt enumerates
+    exactly this list, so a genre file dropped into the workspace participates with no code
+    change."""
+    return [effective_rules_file(rel) for rel in rules_relnames() if rel.startswith("genres/") and rel.count("/") == 1]
 
 
 def local_rules_file() -> Path | None:

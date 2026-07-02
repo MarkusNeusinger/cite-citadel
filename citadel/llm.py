@@ -159,26 +159,39 @@ def _format_brief(rel_key: str, kind: str, read_path: str | None, segment: tuple
 
 def _referenced_rules(
     rel_key: str, kind: str = "ingest", read_path: str | None = None, segment: tuple[int, int] | None = None
-) -> list[Path]:
-    """Every RESOLVED rules file the prompt for this session references, in read order: schema.md
-    and core.md (every session), the task brief for ``kind``, the format brief when one applies,
-    the effective genre briefs (agent-judged; skipped for ``delete`` — there is no source content
-    to judge), and the workspace ``rules/local.md`` when present. The single source of truth the
+) -> list[tuple[str, Path]]:
+    """Every RESOLVED rules file the prompt for this session references, as ``(role, path)``
+    entries in the prompt's TRUE READ ORDER — the CANONICAL order, which
+    :func:`_build_instruction` renders its rules lines from (single composition owner, so the
+    two can never drift): ``schema`` and ``core`` (every session), the ``task`` brief for
+    ``kind``, the ``format`` brief when one applies, the workspace ``local`` house rules when
+    present, and finally one ``genre`` entry per effective genre brief (agent-judged; skipped
+    for ``delete`` — there is no source content to judge). The single source of truth the
     prompt-validation tests check against (every path must exist and be reachable)."""
-    files = [
-        config.effective_rules_file("schema.md"),
-        config.effective_rules_file("core.md"),
-        config.effective_rules_file(_TASK_FOR_KIND.get(kind, "tasks/ingest.md")),
+    files: list[tuple[str, Path]] = [
+        ("schema", config.effective_rules_file("schema.md")),
+        ("core", config.effective_rules_file("core.md")),
+        ("task", config.effective_rules_file(_TASK_FOR_KIND.get(kind, "tasks/ingest.md"))),
     ]
     fmt = _format_brief(rel_key, kind, read_path, segment)
     if fmt:
-        files.append(config.effective_rules_file(fmt))
-    if kind != "delete":
-        files.extend(config.effective_genres())
+        files.append(("format", config.effective_rules_file(fmt)))
     local = config.local_rules_file()
     if local is not None:
-        files.append(local)
+        files.append(("local", local))
+    if kind != "delete":
+        files.extend(("genre", g) for g in config.effective_genres())
     return files
+
+
+# role -> prompt line for the non-genre rules entries; genres render as ONE enumerating line.
+_RULES_LINE = {
+    "schema": "- Format contract: {}",
+    "core": "- How you work: {}",
+    "task": "- Task brief (what THIS session does): {}",
+    "format": "- Format brief (how to read THIS source): {}",
+    "local": "- Workspace house rules: {}",
+}
 
 
 def _build_instruction(
@@ -189,11 +202,11 @@ def _build_instruction(
     PATH — the prompt never embeds file content, so it stays at most a couple thousand chars
     regardless of raw-file size (the WinError 206 fix). The frame is:
 
-    1. the rules read list — schema.md + core.md (every session), the task brief ``kind`` maps to
-       (:data:`_TASK_FOR_KIND`), the format brief when one applies (:func:`_format_brief`), the
-       workspace ``rules/local.md`` when present, and ONE line enumerating the effective genre
-       briefs for the agent to judge from the source's CONTENT (none for ``delete`` — it never
-       reads the source);
+    1. the rules read list — rendered from :func:`_referenced_rules` (the single composition
+       owner) in its canonical order: schema.md + core.md (every session), the task brief
+       ``kind`` maps to, the format brief when one applies, the workspace ``rules/local.md``
+       when present, and ONE line enumerating the effective genre briefs for the agent to judge
+       from the source's CONTENT (none for ``delete`` — it never reads the source);
     2. the session VARIABLES as bullets — the source key (verbatim), the configured wiki/raw
        directories, the prepared read path (an Office extract / segment slice / repo digest),
        the segment position, the source file's own date as the content-date fallback, the target
@@ -219,32 +232,23 @@ def _build_instruction(
     record (per the task/format briefs)."""
     wiki_rel = _agent_path(config.WIKI_DIR)
     raw_rel = _agent_path(config.RAW_DIR)
-
-    def ref(path: Path) -> str:
-        return config.rel_or_abs_posix(path)
-
-    task = _TASK_FOR_KIND.get(kind, "tasks/ingest.md")
-    fmt = _format_brief(rel_key, kind, read_path, segment)
+    fmt = _format_brief(rel_key, kind, read_path, segment)  # for the PDF-mode bullet below
 
     lines = [
         "You are the ingest engine for a self-structuring wiki in Google's Open Knowledge Format.",
         "Read these rules files FIRST and follow them exactly:",
-        f"- Format contract: {ref(config.effective_rules_file('schema.md'))}",
-        f"- How you work: {ref(config.effective_rules_file('core.md'))}",
-        f"- Task brief (what THIS session does): {ref(config.effective_rules_file(task))}",
     ]
-    if fmt:
-        lines.append(f"- Format brief (how to read THIS source): {ref(config.effective_rules_file(fmt))}")
-    local = config.local_rules_file()
-    if local is not None:
-        lines.append(f"- Workspace house rules: {ref(local)}")
-    if kind != "delete":
-        genres = config.effective_genres()
-        if genres:
-            lines.append(
-                "Judge the source's genre from its CONTENT; if it reads like one of these, ALSO read "
-                "and follow the matching file: " + ", ".join(ref(g) for g in genres) + "."
-            )
+    genres: list[Path] = []
+    for role, path in _referenced_rules(rel_key, kind, read_path, segment):
+        if role == "genre":
+            genres.append(path)  # last in the canonical order — collected onto one line below
+        else:
+            lines.append(_RULES_LINE[role].format(_agent_path(path)))
+    if genres:
+        lines.append(
+            "Judge the source's genre from its CONTENT; if it reads like one of these, ALSO read "
+            "and follow the matching file: " + ", ".join(_agent_path(g) for g in genres) + "."
+        )
 
     lines += ["", "Session variables (use these paths verbatim):"]
     if kind == "delete":

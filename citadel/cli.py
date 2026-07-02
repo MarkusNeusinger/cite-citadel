@@ -291,27 +291,18 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 1 if validate.has_errors(issues) else 0
 
 
-def _rules_relname(arg: str) -> str:
-    """Normalize a user-supplied tree-relative rules name to forward slashes and validate it:
-    absolute paths, drive letters, and any ``..``/``.`` step are rejected, so ``rules show`` /
-    ``rules eject`` can never reach outside the rules trees."""
-    text = arg.replace("\\", "/").strip()
-    parts = [p for p in text.split("/") if p]
-    if not parts or text.startswith("/") or any(p in ("..", ".") for p in parts) or ":" in text:
-        raise RuntimeError(f"invalid rules file name: {arg!r} (expected e.g. core.md or genres/email.md)")
-    return "/".join(parts)
+def _invalid_rules_name(arg: str) -> RuntimeError:
+    """The user-facing error for a rules name the path guard rejected (``okf.safe_join`` via
+    ``config.rules_join`` at the join points — absolute paths, drive letters, any ``..`` step)."""
+    return RuntimeError(f"invalid rules file name: {arg!r} (expected e.g. core.md or genres/email.md)")
 
 
 def _rules_layer(path, workspace_rules) -> str:
     """Which layer an effective rules path resolved from: ``workspace`` or ``packaged``."""
-    from . import config
+    from pathlib import Path
 
-    if workspace_rules is not None:
-        try:
-            config._safe_resolve(path).relative_to(config._safe_resolve(workspace_rules))
-            return "workspace"
-        except ValueError:
-            pass
+    if workspace_rules is not None and Path(path).resolve().is_relative_to(Path(workspace_rules).resolve()):
+        return "workspace"
     return "packaged"
 
 
@@ -339,10 +330,13 @@ def cmd_rules_list(args: argparse.Namespace) -> int:
 def cmd_rules_show(args: argparse.Namespace) -> int:
     """Print ONE effective rules file's content (workspace override when present, else the
     packaged default). Works without a workspace (packaged defaults)."""
-    from . import config
+    from . import config, okf
 
-    rel = _rules_relname(args.relname)
-    path = config.effective_rules_file(rel)
+    rel = config.rules_relname(args.relname)
+    try:
+        path = config.effective_rules_file(rel)
+    except okf.OKFError:
+        raise _invalid_rules_name(args.relname) from None
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
@@ -355,19 +349,22 @@ def cmd_rules_eject(args: argparse.Namespace) -> int:
     """Copy a PACKAGED rules file into the workspace ``rules/`` so it can be edited — the copy
     then shadows the packaged file (first-hit-wins) and is owned by the user (it no longer
     updates with pip). Never overwrites an existing workspace file."""
-    from . import config
+    from . import config, okf
 
-    rel = _rules_relname(args.relname)
+    rel = config.rules_relname(args.relname)
     ws = config.workspace_rules_dir()
     if ws is None:
         raise RuntimeError(
             "`citadel rules eject` needs a workspace (the copy lands in <workspace>/rules/) — "
             "run `citadel init [DIR]` or set CITADEL_WORKSPACE first."
         )
-    src = config.PACKAGED_RULES_DIR / rel
+    try:
+        src = config.rules_join(config.PACKAGED_RULES_DIR, rel)
+        dest = config.rules_join(ws, rel)
+    except okf.OKFError:
+        raise _invalid_rules_name(args.relname) from None
     if not src.is_file():
         raise RuntimeError(f"no packaged rules file named {rel!r} (see `citadel rules list`)")
-    dest = ws / rel
     if dest.exists():
         raise RuntimeError(f"refusing to overwrite {dest} - it is already ejected; edit or remove it")
     config.robust_mkdir(dest.parent)

@@ -119,10 +119,8 @@ translated).
 
 ## Off-limits — generated files and everything outside the wiki
 
-Never create or edit `index.md`, `log.md`, any `*/index.md` (including the generated
-`sources/index.md` and `open-points/index.md` catalogs), or any dotfile (including
-`.citadel_ingested.json`, `.citadel_failures.json`, and `.citadel_viewer.html`) — the system
-regenerates them all (`schema.md` § Generated layer). Make no changes outside the wiki directory.
+The generated navigation/provenance files are catalogued in `schema.md` § Generated layer — never
+create or edit the files it lists (nor any `*/index.md` or dotfile). No changes outside the wiki.
 
 ## Self-check — before you stop
 
