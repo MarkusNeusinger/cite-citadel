@@ -33,9 +33,6 @@ from . import grammar, okf, store, validate
 from .okf import Page
 
 
-# The link / footnote / callout grammar is shared (citadel.grammar) — re-exported names kept
-# for the marker constant this module historically defined.
-
 # An abbreviation/acronym candidate: 2–6 chars, all caps, starting with a letter (TCO, API,
 # SLA, KPI, V60, B2B). Used to surface domain abbreviations that recur across the wiki but are
 # never defined — neither given an `Abbreviation` page nor spelled out in parentheses anywhere.

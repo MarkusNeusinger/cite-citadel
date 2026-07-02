@@ -76,7 +76,7 @@ def _page_stats(body: str) -> tuple[int, int, int]:
     guarded ``grammar.USED_MARKER_RE`` matches (a use, not a stray definition)."""
     cites = llm = contradictions = 0
     for line in grammar.prose_lines(body, skip_sources=True):
-        if line.lstrip().startswith("#"):  # headings are counted separately above
+        if line.lstrip().startswith("#"):  # headings carry no citation markers to count
             continue
         for match in grammar.USED_MARKER_RE.finditer(line):
             if grammar.is_llm_marker(match.group(1)):
