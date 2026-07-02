@@ -1,3 +1,6 @@
 # AGENT_INGEST.md — moved
 
-Moved to [citadel/rules/AGENT_INGEST.md](citadel/rules/AGENT_INGEST.md) — packaged with the wheel; edit there.
+The agent rulebook was split into the packaged rules tree: see
+[citadel/rules/README.md](citadel/rules/README.md) for the index (generic behavior:
+[citadel/rules/core.md](citadel/rules/core.md); per-lifecycle briefs under
+[citadel/rules/tasks/](citadel/rules/tasks)). Edit there.

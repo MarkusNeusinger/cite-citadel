@@ -66,5 +66,5 @@ links form a graph richer than the directory tree alone.
 
 The `wiki/` directory is an OKF bundle. Beyond the standard fields, each page records the
 `raw/` source files it was derived from, and **every individual fact carries an inline
-citation back to the exact raw source** (see [`SCHEMA.md`](../citadel/rules/SCHEMA.md) for the precise
+citation back to the exact raw source** (see [`schema.md`](../citadel/rules/schema.md) for the precise
 convention). This satisfies the project goal: *a source reference for every fact*.

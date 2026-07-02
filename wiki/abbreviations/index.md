@@ -1,4 +1,4 @@
 # abbreviations
 
-- [EY — Extraction Yield](ey-extraction-yield.md) — The percentage of the ground coffee's dry mass dissolved into the brewed cup, used alongside TDS to evaluate brewing recipes.
-- [TDS — Total Dissolved Solids](tds-total-dissolved-solids.md) — A measure of brew strength — the proportion of dissolved coffee solids in a finished cup.
+- [EY — Extraction Yield](ey-extraction-yield.md) — Brew-strength measure — the percentage of the ground coffee's mass that dissolved into the brewed cup.
+- [TDS — Total Dissolved Solids](tds-total-dissolved-solids.md) — Brew-strength measure — the percentage of dissolved coffee solids in a brewed cup.

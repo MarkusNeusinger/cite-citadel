@@ -27,7 +27,9 @@ sources are the ground truth it is built from.
    synthesis, cross-linked into a graph. In this repo: the `wiki/` directory, written in
    [OKF](./okf-reference.md).
 3. **The schema** — a configuration document defining the wiki's structure and the
-   workflows that maintain it. In this repo: [`SCHEMA.md`](../citadel/rules/SCHEMA.md).
+   workflows that maintain it. In this repo: the
+   [`citadel/rules/`](../citadel/rules/README.md) tree, led by
+   [`schema.md`](../citadel/rules/schema.md).
 
 ## Main operations
 
@@ -66,7 +68,7 @@ human team would give up.
 | ------------------------- | ----------------------------------------------------------- |
 | Raw sources (immutable)   | `raw/*.md` — drop arbitrary markdown here                   |
 | The wiki (LLM-generated)  | `wiki/` as an [OKF](./okf-reference.md) bundle              |
-| The schema/config         | [`SCHEMA.md`](../citadel/rules/SCHEMA.md)                                  |
+| The schema/config         | the [`citadel/rules/`](../citadel/rules/README.md) tree     |
 | Ingest / Query / Lint     | the `citadel` CLI (`ingest`, `lint`) + the MCP server      |
 | Per-fact source reference | every fact in a wiki page cites the `raw/` file it came from |
 | Querying the wiki         | an **MCP server** an AI can use to search and read the wiki |

@@ -3,10 +3,12 @@
 A citadel workspace is any directory holding a ``citadel.toml`` marker file (see ``config``'s
 workspace discovery). ``init_workspace`` creates the minimal skeleton — the marker (a PURE
 marker, never configuration), a ``.env`` from the packaged template, and empty ``raw/`` +
-``wiki/`` directories. IDEMPOTENT: an existing file or directory is never overwritten, only
-reported as skipped, so re-running init on a live workspace is always safe. The editable
-``rules/`` overlay is deliberately NOT scaffolded here — that lands with the rules split
-(docs/refactor-plan.md, Z1/PR3).
+``wiki/`` directories. No ``rules/`` overlay is scaffolded: house rules are opt-in — a user
+creates ``rules/local.md`` (appended to every agent session once present) or forks a packaged
+file with ``citadel rules eject <name>`` (a file dropped in ``rules/`` shadows the packaged
+same-name rules file — see ``config.effective_rules_file`` and the rules README's *Workspace
+overrides & local.md*). IDEMPOTENT: an existing file or directory is never overwritten, only
+reported as skipped, so re-running init on a live workspace is always safe.
 """
 
 from __future__ import annotations
@@ -45,12 +47,13 @@ def init_workspace(target: Path | str) -> tuple[Path, list[tuple[str, str]]]:
 
     results: list[tuple[str, str]] = []
     for name, content in ((config.WORKSPACE_MARKER, MARKER_CONTENT), (".env", _env_template())):
-        path = root / name
+        path = root / Path(name)
         if path.is_dir():
             raise RuntimeError(f"cannot initialize workspace: '{name}' exists but is a directory - rename or remove it")
         if path.exists():
             results.append(("skipped", name))
         else:
+            config.robust_mkdir(path.parent)
             path.write_text(content, encoding="utf-8")
             results.append(("created", name))
     for name in ("raw", "wiki"):

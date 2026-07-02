@@ -27,6 +27,11 @@ from citadel import config, llm, okf, repo
 # runner tmp paths and the absolute packaged-rules paths.
 PROMPT_CHAR_BUDGET = 8000
 
+# The REAL packaged rules tree (citadel/rules/ in this checkout / site-packages), captured at
+# import time — BEFORE any fixture monkeypatches config.PACKAGED_RULES_DIR onto a stub tree.
+# Content tests (what the rulebook must keep teaching) read from here.
+REAL_RULES_DIR = config.PACKAGED_RULES_DIR
+
 
 @pytest.fixture(autouse=True)
 def _stable_workspace_found(monkeypatch):
@@ -57,6 +62,7 @@ class CitadelTmp:
     log_path: Path  # config.LOG_PATH
     manifest_path: Path  # config.MANIFEST_PATH
     failures_path: Path  # config.FAILURES_PATH
+    packaged_rules: Path  # config.PACKAGED_RULES_DIR (a stub tree at <root>/citadel/rules)
 
     def read_manifest(self) -> dict:
         """The manifest's flat ``{source key: entry}`` dict, read from THIS layout's live
@@ -92,10 +98,28 @@ def make_citadel(tmp_path: Path, monkeypatch) -> Callable[..., CitadelTmp]:
         for d in (root, wiki, raw, docs):
             d.mkdir(parents=True, exist_ok=True)
 
-        # A SCHEMA.md so anything reading config.SCHEMA_PATH works (llm is faked, but be safe).
-        schema_path = root / "SCHEMA.md"
-        schema_path.write_text("# SCHEMA\n\ntest schema\n", encoding="utf-8")
-        rules_path = root / "AGENT_INGEST.md"  # not written — llm is always faked
+        # A minimal STUB packaged-rules tree at <root>/citadel/rules — mirroring the dev-checkout
+        # shape — so prompt builders resolve short, workspace-relative rule paths, _external_dirs
+        # stays empty for the default layout, and nothing depends on where the REAL checkout lives
+        # on disk. llm is always faked in ingest tests; these files only need to exist (and hash
+        # stably for config.rules_version). Tests about the real rulebook's CONTENT read the real
+        # packaged tree explicitly (it is captured before this patch, e.g. in test_llm.py).
+        packaged_rules = root / "citadel" / "rules"
+        for rel in (
+            "schema.md",
+            "core.md",
+            "tasks/ingest.md",
+            "tasks/reconcile.md",
+            "tasks/delete.md",
+            "formats/repo.md",
+            "formats/image.md",
+            "formats/pdf.md",
+            "formats/office.md",
+            "genres/prose.md",
+        ):
+            stub = packaged_rules / rel
+            stub.parent.mkdir(parents=True, exist_ok=True)
+            stub.write_text(f"# {rel} (test stub)\n", encoding="utf-8")
 
         cit = CitadelTmp(
             root=root,
@@ -106,6 +130,7 @@ def make_citadel(tmp_path: Path, monkeypatch) -> Callable[..., CitadelTmp]:
             log_path=wiki / "log.md",
             manifest_path=wiki / ".citadel_ingested.json",
             failures_path=wiki / ".citadel_failures.json",
+            packaged_rules=packaged_rules,
         )
         # raising=True (the default): every one of these attributes exists in config today, so
         # a PR that renames the config internals makes this seam fail LOUD instead of silently
@@ -114,8 +139,7 @@ def make_citadel(tmp_path: Path, monkeypatch) -> Callable[..., CitadelTmp]:
         monkeypatch.setattr(config, "WIKI_DIR", cit.wiki)
         monkeypatch.setattr(config, "RAW_DIR", cit.raw)
         monkeypatch.setattr(config, "DOCS_DIR", cit.docs)
-        monkeypatch.setattr(config, "SCHEMA_PATH", schema_path)
-        monkeypatch.setattr(config, "AGENT_RULES_PATH", rules_path)
+        monkeypatch.setattr(config, "PACKAGED_RULES_DIR", cit.packaged_rules)
         monkeypatch.setattr(config, "INDEX_PATH", cit.index_path)
         monkeypatch.setattr(config, "LOG_PATH", cit.log_path)
         monkeypatch.setattr(config, "MANIFEST_PATH", cit.manifest_path)

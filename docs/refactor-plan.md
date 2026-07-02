@@ -160,6 +160,9 @@ citadel/rules/
     (today's "judged from CONTENT, not name" rule, generalized). No applies-to glob engine, no
     per-path override table. The chosen genre is **stamped into the manifest at first ingest and
     reused on reconcile/force**, so later sessions can't silently reclassify and churn pages.
+    *(PR3 deviation: no manifest genre stamp shipped — the agent has no return channel to report
+    its judgment; instead `tasks/reconcile.md` instructs keeping the genre treatment already
+    visible in the wiki, which serves the same no-churn goal.)*
   - **The shipped genre files are examples, not a fixed taxonomy** (owner clarification): the
     prompt enumerates whatever the *effective* `genres/` directory contains at prompt-build time —
     a genre file dropped into the workspace `rules/genres/` participates automatically, no code
@@ -200,7 +203,9 @@ citadel/rules/
 - Config knobs select *which* rule file/section is referenced, never templating:
   - `CITADEL_PDF_MODE=text|images` (images degrades to text with a logged warning on CLIs without
     PDF vision). PDFs remain unchunked by design — agent-side reading; document the practical size
-    ceiling in formats/pdf.md.
+    ceiling in formats/pdf.md. *(PR3 deviation: the degrade-warning is deliberately not implemented —
+    there is no reliable capability probe for a CLI's PDF vision; formats/pdf.md and env.example
+    document the caveat instead, and a doctor advisory lands in PR9.)*
   - `CITADEL_REPO_MODE=summary|full` — **full mode is deferred** (post-roadmap). Design sketch when
     it comes: digest without the scoring cutoff, mandatory multi-segment folding via the existing
     segment machinery, same repo-reconcile diff behavior. Summary stays the default; repo.py's

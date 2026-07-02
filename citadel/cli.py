@@ -10,10 +10,13 @@
     citadel lint [--stale-days N]
     citadel check [paths ...]    # validate links/format/required-fields (the ingest gate)
     citadel view [--out PATH] [--no-open] [--obsidian]   # offline single-file HTML viewer
+    citadel rules list|show|eject   # inspect / fork the rules files the ingest agent reads
 
-Every subcommand except ``init`` needs a resolved WORKSPACE (see config's discovery order);
-``main`` fails loud with exit 2 — pointing at ``citadel init`` and ``CITADEL_WORKSPACE`` —
-when none was found, instead of silently operating on a random CWD.
+Every subcommand except ``init`` and ``rules`` needs a resolved WORKSPACE (see config's discovery
+order); ``main`` fails loud with exit 2 — pointing at ``citadel init`` and ``CITADEL_WORKSPACE``
+— when none was found, instead of silently operating on a random CWD. ``rules list``/``show``
+work workspace-less over the packaged defaults (handy for a pip user before ``init``); ``rules
+eject`` checks for a workspace itself (the copy has nowhere to land without one).
 
 Exit codes are CI-friendly: ingest returns 1 if any source errored OR a structural
 problem remains (a broken cross-link or a page that failed validation — a missing or
@@ -121,6 +124,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Open the wiki folder as an Obsidian vault instead (best-effort deep link).",
     )
     p_view.set_defaults(func=cmd_view, open_browser=True)
+
+    p_rules = sub.add_parser("rules", help="Inspect and customize the rules files the ingest agent reads.")
+    rules_sub = p_rules.add_subparsers(dest="rules_command", required=True)
+    p_rules_list = rules_sub.add_parser(
+        "list", help="List every effective rules file (a workspace rules/ override shadows the packaged one)."
+    )
+    p_rules_list.set_defaults(func=cmd_rules_list, needs_workspace=False)
+    p_rules_show = rules_sub.add_parser("show", help="Print one effective rules file.")
+    p_rules_show.add_argument("relname", help="Tree-relative rules file name, e.g. core.md or genres/email.md.")
+    p_rules_show.set_defaults(func=cmd_rules_show, needs_workspace=False)
+    p_rules_eject = rules_sub.add_parser(
+        "eject",
+        help="Copy a packaged rules file into the workspace rules/ for editing (the copy shadows the "
+        "packaged file and is yours; it no longer updates with pip). Refuses to overwrite.",
+    )
+    p_rules_eject.add_argument("relname", help="Tree-relative rules file name, e.g. core.md or genres/email.md.")
+    p_rules_eject.set_defaults(func=cmd_rules_eject, needs_workspace=False)
 
     return parser
 
@@ -269,6 +289,89 @@ def cmd_check(args: argparse.Namespace) -> int:
         issues = [i for i in issues if i.rel_path in wanted]
     print(validate.render_issues(issues))
     return 1 if validate.has_errors(issues) else 0
+
+
+def _invalid_rules_name(arg: str) -> RuntimeError:
+    """The user-facing error for a rules name the path guard rejected (``okf.safe_join`` via
+    ``config.rules_join`` at the join points — absolute paths, drive letters, any ``..`` step)."""
+    return RuntimeError(f"invalid rules file name: {arg!r} (expected e.g. core.md or genres/email.md)")
+
+
+def _rules_layer(path, workspace_rules) -> str:
+    """Which layer an effective rules path resolved from: ``workspace`` or ``packaged``."""
+    from pathlib import Path
+
+    if workspace_rules is not None and Path(path).resolve().is_relative_to(Path(workspace_rules).resolve()):
+        return "workspace"
+    return "packaged"
+
+
+def cmd_rules_list(args: argparse.Namespace) -> int:
+    """One line per EFFECTIVE rules file — tree-relative name, origin layer (packaged|workspace),
+    and its first (description) line. Works without a workspace: it then lists the packaged
+    defaults only."""
+    from . import config
+
+    ws = config.workspace_rules_dir()
+    names = config.rules_relnames()
+    if not names:
+        print("No rules files found.")
+        return 0
+    for rel in names:
+        path = config.effective_rules_file(rel)
+        try:
+            first = next((line.lstrip("#").strip() for line in path.read_text(encoding="utf-8").splitlines()), "")
+        except OSError:
+            first = ""
+        print(f"{rel}\t{_rules_layer(path, ws)}\t{first}")
+    return 0
+
+
+def cmd_rules_show(args: argparse.Namespace) -> int:
+    """Print ONE effective rules file's content (workspace override when present, else the
+    packaged default). Works without a workspace (packaged defaults)."""
+    from . import config, okf
+
+    rel = config.rules_relname(args.relname)
+    try:
+        path = config.effective_rules_file(rel)
+    except okf.OKFError:
+        raise _invalid_rules_name(args.relname) from None
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        raise RuntimeError(f"no rules file named {rel!r} (see `citadel rules list`)") from None
+    print(text, end="" if text.endswith("\n") else "\n")
+    return 0
+
+
+def cmd_rules_eject(args: argparse.Namespace) -> int:
+    """Copy a PACKAGED rules file into the workspace ``rules/`` so it can be edited — the copy
+    then shadows the packaged file (first-hit-wins) and is owned by the user (it no longer
+    updates with pip). Never overwrites an existing workspace file."""
+    from . import config, okf
+
+    rel = config.rules_relname(args.relname)
+    ws = config.workspace_rules_dir()
+    if ws is None:
+        raise RuntimeError(
+            "`citadel rules eject` needs a workspace (the copy lands in <workspace>/rules/) — "
+            "run `citadel init [DIR]` or set CITADEL_WORKSPACE first."
+        )
+    try:
+        src = config.rules_join(config.PACKAGED_RULES_DIR, rel)
+        dest = config.rules_join(ws, rel)
+    except okf.OKFError:
+        raise _invalid_rules_name(args.relname) from None
+    if not src.is_file():
+        raise RuntimeError(f"no packaged rules file named {rel!r} (see `citadel rules list`)")
+    if dest.exists():
+        raise RuntimeError(f"refusing to overwrite {dest} - it is already ejected; edit or remove it")
+    config.robust_mkdir(dest.parent)
+    dest.write_bytes(src.read_bytes())
+    print(f"ejected {rel} -> {dest}")
+    print("This copy now shadows the packaged file and is yours to edit; it no longer updates with pip.")
+    return 0
 
 
 def cmd_view(args: argparse.Namespace) -> int:

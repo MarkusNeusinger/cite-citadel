@@ -62,17 +62,19 @@ Python 3.12+ is required. There is no separate build step — `pytest` and `ruff
 Pages are markdown files with YAML frontmatter; everything (search, index, graph, provenance) is
 recomputed from them in memory.
 
-**Three layers** (the README and `citadel/rules/SCHEMA.md` are authoritative):
+**Three layers** (the README and `citadel/rules/schema.md` are authoritative):
 1. `raw/` — immutable sources the agent reads but never edits.
 2. `wiki/` — the LLM-owned OKF bundle: pages routed *by kind* into `concepts/`, `objects/`,
    `systems/`, `persons/`, `organizations/`, `projects/`, `abbreviations/`, `misc/` (see
    `okf.folder_for_type`), cross-linked with relative markdown links, each fact carrying a footnote
    citation.
-3. `citadel/rules/SCHEMA.md` + `citadel/rules/AGENT_INGEST.md` — the schema/rules layer,
-   packaged with the wheel (the repo-root `SCHEMA.md`/`AGENT_INGEST.md` are thin pointers). These
-   are **read by the ingest agent at run time** (referenced by absolute path via
-   `config.SCHEMA_PATH`/`config.AGENT_RULES_PATH`), so editing them changes how the wiki is built
-   with **no code change**. Treat them as part of the program.
+3. `citadel/rules/` — the schema/rules tree, packaged with the wheel (index:
+   `citadel/rules/README.md`; the repo-root `SCHEMA.md`/`AGENT_INGEST.md` are thin pointers):
+   `schema.md` (format contract) + `core.md` (agent behavior) are read every session, plus one
+   lifecycle brief from `tasks/`, any file-type brief from `formats/`, and the agent-judged
+   `genres/` briefs. These are **read by the ingest agent at run time** (referenced by path in the
+   prompt), so editing them changes how the wiki is built with **no code change**. Treat them as
+   part of the program.
 
 **Everything operates on a WORKSPACE**, not the repo checkout: a directory holding a
 `citadel.toml` marker (a pure marker, never config — scaffold one with `citadel init [DIR]`).
@@ -155,4 +157,6 @@ resolves all paths/settings. `cli.py` mirrors the MCP tools as subcommands.
 - Config knobs live in the workspace-root `.env` (auto-loaded, gitignored; template:
   `citadel/templates/env.example`): `CITADEL_LLM_CLI`,
   `CITADEL_INGEST_MODEL`, `CITADEL_LLM_TIMEOUT`, `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,
-  `CITADEL_REPO_SUPPORT`, the `CITADEL_*_DIR` path overrides, and `*_CLI_PATH` binary overrides.
+  `CITADEL_REPO_SUPPORT`, `CITADEL_WIKI_LANG` (target language of all wiki prose, default `en`),
+  `CITADEL_PDF_MODE` (`text` | `images`), `CITADEL_STYLE_PROFILES` (opt-in style capture, default
+  `0`), the `CITADEL_*_DIR` path overrides, and `*_CLI_PATH` binary overrides.
