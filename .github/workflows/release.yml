@@ -65,7 +65,9 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
 
   github-release:
-    needs: publish-pypi
+    # Deliberately independent of publish-pypi: a tag always produces a GitHub Release with the
+    # built artifacts, even while the PyPI Trusted Publisher is not configured yet.
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the Release and upload the dist assets
