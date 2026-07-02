@@ -338,6 +338,9 @@ def test_packaged_rules_resolve_to_real_absolute_files():
         path = config.PACKAGED_RULES_DIR / relname
         assert path.is_file(), f"missing packaged rules file: {relname}"
     assert list((config.PACKAGED_RULES_DIR / "genres").glob("*.md")), "the genres/ starter set must not be empty"
-    # The old two-file rulebooks are GONE — greenfield, nothing may resurrect them.
-    assert not (config.PACKAGED_RULES_DIR / "SCHEMA.md").exists()
-    assert not (config.PACKAGED_RULES_DIR / "AGENT_INGEST.md").exists()
+    # The old two-file rulebooks are GONE — greenfield, nothing may resurrect them. Checked
+    # against the case-EXACT directory listing: on Windows/macOS a plain .exists() for
+    # "SCHEMA.md" would match the new lowercase schema.md and false-fail.
+    actual_names = {p.name for p in config.PACKAGED_RULES_DIR.iterdir()}
+    assert "SCHEMA.md" not in actual_names
+    assert "AGENT_INGEST.md" not in actual_names
