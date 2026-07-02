@@ -131,7 +131,12 @@ jobs:
           from importlib import resources
           import citadel
           print("citadel imported from:", citadel.__file__)
-          missing = [p for p in ("rules/SCHEMA.md", "rules/AGENT_INGEST.md", "templates/env.example")
+          missing = [p for p in ("rules/schema.md", "rules/core.md", "rules/README.md",
+                                 "rules/tasks/ingest.md", "rules/tasks/reconcile.md", "rules/tasks/delete.md",
+                                 "rules/formats/repo.md", "rules/formats/image.md", "rules/formats/pdf.md",
+                                 "rules/formats/office.md", "rules/genres/prose.md",
+                                 "rules/genres/meeting-minutes.md", "rules/genres/email.md",
+                                 "rules/genres/first-person.md", "templates/env.example")
                      if not resources.files("citadel").joinpath(p).is_file()]
           if missing:
               raise SystemExit(f"wheel is missing packaged data: {missing} — check the hatchling wheel config / package layout")

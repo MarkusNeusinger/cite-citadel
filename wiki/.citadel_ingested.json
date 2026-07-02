@@ -1,42 +1,58 @@
 {
-  "raw/aurora-coffee-blog.md": {
-    "model": "claude:sonnet",
-    "sha256": "fb5ef3ac8ea5cdd0a2035e7fee1ef640b8e7cc64df32ab7da82f95db03ef16ac"
+  "meta": {
+    "format": 2,
+    "workspace": "/home/tirao/cite-citadel-pr3"
   },
-  "raw/coffee-guide.md": {
-    "model": "claude:sonnet",
-    "sha256": "a5ce5b7cbe8932d04d0f6221e69e68fadb7a16c5b15525a991644617c45562df"
-  },
-  "raw/coffee-health-faq.md": {
-    "model": "claude:sonnet",
-    "sha256": "713966806e572fb1b15df69c07a4d4ac8855466647976768a7d1165ba3bdffe3"
-  },
-  "raw/cold-brew-notes.md": {
-    "model": "claude:sonnet",
-    "sha256": "e450b5e377779b0af54538a448c9fb3d62523b01a1bfc1062d3582f4f03dd539"
-  },
-  "raw/espresso-and-cafe-culture.md": {
-    "model": "claude:sonnet",
-    "sha256": "1a651be2a1f6dca0b6d094dedecfb03fe8793a5133e5b491d6f0f39a413bccbf"
-  },
-  "raw/matcha-and-preparation.md": {
-    "model": "claude:sonnet",
-    "sha256": "35caf248497d59c8bac1cfecb2e7e3754d68c2512cc341b887831eea0a31a464"
-  },
-  "raw/tea-guide.md": {
-    "model": "claude:sonnet",
-    "sha256": "6fd78450d2f374dab18374796fe79849f8a197107183d3ee763bc5982757dc4b"
-  },
-  "raw/tea-health-faq.md": {
-    "model": "claude:sonnet",
-    "sha256": "3a5f36e46afb2d6953f9fa9430acfb8c07d4d5e9db228ed04e4607bc8d35944f"
-  },
-  "raw/tea-history-and-trade.md": {
-    "model": "claude:sonnet",
-    "sha256": "65c1d45687742f6c3de6e2423ca52f6a5a404eb03a8c31bb5a430675d41b37ac"
-  },
-  "raw/thornbury-tea-blog.md": {
-    "model": "claude:sonnet",
-    "sha256": "16e327b4ad25c1c0426c3943170c62fe6a882dc17a36a90822859ded65002ff6"
+  "sources": {
+    "raw/aurora-coffee-blog.md": {
+      "model": "claude:sonnet",
+      "rules_version": "46fbce3e3663",
+      "sha256": "53e523466b4f445df3fc7e8b2abac5b3dcdeacca384e6f00a3de4e946f6c72cb"
+    },
+    "raw/coffee-guide.md": {
+      "model": "claude:sonnet",
+      "rules_version": "46fbce3e3663",
+      "sha256": "6c8d8f7a15dd7475dc723cb99a41305bb1e36d153a827fec5113db04352d2dd0"
+    },
+    "raw/coffee-health-faq.md": {
+      "model": "claude:sonnet",
+      "rules_version": "46fbce3e3663",
+      "sha256": "cdace4f8ef9d87191afafb4237e8f11ad81bbe37d0384a1db1fa3d49a36c44f1"
+    },
+    "raw/cold-brew-notes.md": {
+      "model": "claude:sonnet",
+      "rules_version": "46fbce3e3663",
+      "sha256": "3038c0ff0b8573d79cdc99cfc9d77a63a8622c55d6e98323a2c2392efa608742"
+    },
+    "raw/espresso-and-cafe-culture.md": {
+      "model": "claude:sonnet",
+      "rules_version": "46fbce3e3663",
+      "sha256": "4f2a66c5c6c0a3f68bcd2e79aa9d704ead9fc9fa6aa91b9b06a046f6a25cebd0"
+    },
+    "raw/matcha-and-preparation.md": {
+      "model": "claude:sonnet",
+      "rules_version": "46fbce3e3663",
+      "sha256": "d48ea4d12ee3af5bafa8f675f67d71547cd1d4a04f9d43133e1b2818d1b6650f"
+    },
+    "raw/tea-guide.md": {
+      "model": "claude:sonnet",
+      "rules_version": "46fbce3e3663",
+      "sha256": "8b4feafd5827e38f4538ad95d3fa755fe4bdb686033b279acf9a77763a0dc050"
+    },
+    "raw/tea-health-faq.md": {
+      "model": "claude:sonnet",
+      "rules_version": "46fbce3e3663",
+      "sha256": "4644f628c919c382f8a8871e24b048647fc2bea92023b68f06ac3b0a8fe0b1f1"
+    },
+    "raw/tea-history-and-trade.md": {
+      "model": "claude:sonnet",
+      "rules_version": "46fbce3e3663",
+      "sha256": "c8f06d051f5743ae5499d6763dd8b820a551b8842255a45743c9d17be4aff9bb"
+    },
+    "raw/thornbury-tea-blog.md": {
+      "model": "claude:sonnet",
+      "rules_version": "46fbce3e3663",
+      "sha256": "110024a95338fb600ddebb1562d037126237a56609677b51278c3f90be6fbfc3"
+    }
   }
 }

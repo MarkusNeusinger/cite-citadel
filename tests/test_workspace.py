@@ -130,12 +130,13 @@ def test_init_scaffolds_a_complete_workspace(tmp_path, capsys):
     assert cli.main(["init", str(ws)]) == 0
 
     out = capsys.readouterr().out
-    for name in ("citadel.toml", ".env", "raw/", "wiki/"):
+    for name in ("citadel.toml", ".env", "rules/local.md", "raw/", "wiki/"):
         assert f"created {name}" in out
     assert (ws / "citadel.toml").read_text(encoding="utf-8") == workspace.MARKER_CONTENT
     assert "CITADEL_LLM_CLI" in (ws / ".env").read_text(encoding="utf-8")  # the packaged template
     assert (ws / "raw").is_dir() and (ws / "wiki").is_dir()
-    assert not (ws / "rules").exists()  # the editable rules overlay is PR3, not init's job
+    # The editable rules overlay: an otherwise-empty rules/ with the commented local.md stub.
+    assert (ws / "rules" / "local.md").read_text(encoding="utf-8") == workspace.LOCAL_RULES_STUB
     # The scaffolded dir now discovers as a marker workspace.
     assert config._resolve_workspace(cwd=ws) == ws.resolve()
 
@@ -149,7 +150,7 @@ def test_init_is_idempotent_and_never_overwrites(tmp_path, capsys):
     assert cli.main(["init", str(ws)]) == 0  # re-running an initialized workspace is fine
 
     out = capsys.readouterr().out
-    for name in ("citadel.toml", ".env", "raw/", "wiki/"):
+    for name in ("citadel.toml", ".env", "rules/local.md", "raw/", "wiki/"):
         assert f"skipped {name}" in out
     assert "created" not in out
     assert "already initialized" in out
@@ -316,8 +317,26 @@ def test_dotenv_missing_file_is_a_noop(tmp_path):
 
 
 def test_packaged_rules_resolve_to_real_absolute_files():
-    """SCHEMA_PATH / AGENT_RULES_PATH point INTO the package (citadel/rules/) as absolute real
-    paths — resolvable from any CWD, in a checkout and in site-packages alike."""
-    assert config.SCHEMA_PATH.is_absolute() and config.SCHEMA_PATH.is_file()
-    assert config.AGENT_RULES_PATH.is_absolute() and config.AGENT_RULES_PATH.is_file()
-    assert config.SCHEMA_PATH.parent == config.PACKAGED_RULES_DIR
+    """The packaged rules TREE (citadel/rules/) resolves as absolute real files — readable from
+    any CWD, in a checkout and in site-packages alike. Every file the prompt composition can
+    reference must ship: schema.md + core.md (every session), one task brief per lifecycle, one
+    format brief per Python-detectable format, and a non-empty genres/ starter set."""
+    assert config.PACKAGED_RULES_DIR.is_absolute()
+    for relname in (
+        "README.md",
+        "schema.md",
+        "core.md",
+        "tasks/ingest.md",
+        "tasks/reconcile.md",
+        "tasks/delete.md",
+        "formats/repo.md",
+        "formats/image.md",
+        "formats/pdf.md",
+        "formats/office.md",
+    ):
+        path = config.PACKAGED_RULES_DIR / relname
+        assert path.is_file(), f"missing packaged rules file: {relname}"
+    assert list((config.PACKAGED_RULES_DIR / "genres").glob("*.md")), "the genres/ starter set must not be empty"
+    # The old two-file rulebooks are GONE — greenfield, nothing may resurrect them.
+    assert not (config.PACKAGED_RULES_DIR / "SCHEMA.md").exists()
+    assert not (config.PACKAGED_RULES_DIR / "AGENT_INGEST.md").exists()

@@ -21,7 +21,8 @@ workspace actually resolved (``WORKSPACE_FOUND``) and the var is unset.
 Ingest runs through a coding-agent CLI (claude/copilot/gemini), so there is no
 API key to manage — the CLI uses whatever subscription it is logged into.
 
-No logic beyond path/setting resolution.
+No logic beyond path/setting/rules resolution (plus the tiny content hash over the effective
+rules tree, :func:`rules_version`, which is pure derivation over that resolution).
 
 NOTE: other modules reference ``config.WIKI_DIR`` / ``config.INGEST_MODEL`` /
 ``config.LLM_CLI`` / etc. at call-time (``from . import config`` then
@@ -30,6 +31,7 @@ NOTE: other modules reference ``config.WIKI_DIR`` / ``config.INGEST_MODEL`` /
 
 from __future__ import annotations
 
+import hashlib
 import os
 import time
 from pathlib import Path, PurePosixPath
@@ -256,13 +258,109 @@ def robust_mkdir(path: Path | str, attempts: int = 5) -> None:
             time.sleep(0.2 * (attempt + 1))
 
 
-# The rules layer the agentic CLI reads (by path) each run — packaged with the wheel so a
-# pip-installed citadel carries its own rules. Python does not read these files; they MUST be
-# real files on disk (the agent opens them by path), so they resolve directly off this module's
-# location — absolute, readable from ANY CWD, in a checkout and in site-packages alike.
+# The rules layer the agentic CLI reads (by path) each run — a TREE of markdown files packaged
+# with the wheel (citadel/rules/: schema.md + core.md read every session, tasks/ per lifecycle,
+# formats/ per Python-detectable source format, genres/ applied by the agent's own content
+# judgment; see citadel/rules/README.md) so a pip-installed citadel carries its own rules. Python
+# never reads them to build prompts; they MUST be real files on disk (the agent opens them by
+# path), so they resolve directly off this module's location — absolute, readable from ANY CWD,
+# in a checkout and in site-packages alike. A workspace may OVERRIDE any file with
+# rules/<same tree-relative name> (first-hit-wins per filename; see :func:`effective_rules_file`)
+# and APPEND house rules as rules/local.md (:func:`local_rules_file`).
 PACKAGED_RULES_DIR: Path = Path(__file__).resolve().parent / "rules"
-SCHEMA_PATH: Path = PACKAGED_RULES_DIR / "SCHEMA.md"
-AGENT_RULES_PATH: Path = PACKAGED_RULES_DIR / "AGENT_INGEST.md"
+
+
+def workspace_rules_dir() -> Path | None:
+    """The workspace rules overlay directory (``WORKSPACE_ROOT/rules``), or None when no workspace
+    resolved — the bare-CWD fallback is NOT a workspace, so a stray ``./rules`` in some random
+    directory is never consulted. Read at call time so tests can monkeypatch the layout."""
+    if not WORKSPACE_FOUND:
+        return None
+    return Path(WORKSPACE_ROOT) / "rules"
+
+
+def effective_rules_file(relname: str) -> Path:
+    """Resolve ONE rules file by its tree-relative name (``core.md``, ``tasks/ingest.md``, …),
+    first-hit-wins per filename: a workspace ``rules/<relname>`` shadows the packaged
+    ``citadel/rules/<relname>``. Falls back to the packaged path (which may not exist for a bogus
+    name — callers that need existence check it). Read at call time."""
+    ws = workspace_rules_dir()
+    if ws is not None:
+        candidate = ws / relname
+        try:
+            if candidate.is_file():
+                return _safe_resolve(candidate)
+        except OSError:
+            pass
+    return PACKAGED_RULES_DIR / relname
+
+
+def effective_genres() -> list[Path]:
+    """Every effective genre brief, sorted by filename: the UNION of ``*.md`` names across the
+    packaged ``genres/`` (a starter set, not a taxonomy) and the workspace ``rules/genres/`` (a
+    workspace file shadows the packaged same-name). The ingest prompt enumerates exactly this
+    list, so a genre file dropped into the workspace participates with no code change."""
+    names: set[str] = set()
+    ws = workspace_rules_dir()
+    layers = [PACKAGED_RULES_DIR / "genres"] + ([ws / "genres"] if ws is not None else [])
+    for layer in layers:
+        try:
+            names.update(p.name for p in layer.iterdir() if p.suffix == ".md" and p.is_file())
+        except OSError:
+            continue
+    return [effective_rules_file(f"genres/{name}") for name in sorted(names)]
+
+
+def local_rules_file() -> Path | None:
+    """The workspace ``rules/local.md`` when present, else None. Always APPENDED as one more path
+    to every session's rules list — the additive, upgrade-safe home for house rules (a forked
+    default goes through ``citadel rules eject`` instead)."""
+    ws = workspace_rules_dir()
+    if ws is None:
+        return None
+    candidate = ws / "local.md"
+    try:
+        return _safe_resolve(candidate) if candidate.is_file() else None
+    except OSError:
+        return None
+
+
+def rules_relnames() -> list[str]:
+    """Sorted tree-relative names of every EFFECTIVE rules file: the union of ``*.md`` files under
+    the packaged tree and the workspace ``rules/`` overlay (each name resolves through
+    :func:`effective_rules_file`). Drives :func:`rules_version` and ``citadel rules list``."""
+    names: set[str] = set()
+    ws = workspace_rules_dir()
+    roots = [PACKAGED_RULES_DIR] + ([ws] if ws is not None else [])
+    for root in roots:
+        try:
+            names.update(p.relative_to(root).as_posix() for p in root.rglob("*.md") if p.is_file())
+        except OSError:
+            continue
+    return sorted(names)
+
+
+def rules_version() -> str:
+    """A short content hash of the effective rules tree: sha256 over the sorted
+    (tree-relative name, bytes) of every effective rules file, truncated to 12 hex chars.
+    Stamped per source into the ingest manifest (``rules_version``) so a later
+    ``curate --stale-rules`` can find sources ingested under older rules. Zero manual
+    maintenance — editing ANY effective file (packaged, workspace override, an added genre,
+    ``rules/local.md``) changes it. Cheap (the tree is a few KB): compute once per ingest run,
+    not per source."""
+    h = hashlib.sha256()
+    for rel in rules_relnames():
+        try:
+            data = effective_rules_file(rel).read_bytes()
+        except OSError:
+            continue
+        h.update(rel.encode("utf-8"))
+        h.update(b"\x00")
+        h.update(data)
+        h.update(b"\x00")
+    return h.hexdigest()[:12]
+
+
 INDEX_PATH: Path = WIKI_DIR / "index.md"
 LOG_PATH: Path = WIKI_DIR / "log.md"
 MANIFEST_PATH: Path = WIKI_DIR / ".citadel_ingested.json"
@@ -317,6 +415,28 @@ IMAGE_SUPPORT: bool = os.environ.get("CITADEL_IMAGE_SUPPORT", "1").strip().lower
     "off",
     "",
 )
+
+# The wiki's TARGET LANGUAGE (BCP 47-ish code, default "en"): all wiki prose, titles, headings,
+# descriptions, and tags are written in it REGARDLESS of the raw sources' languages (including a
+# mixed-language corpus). Two provenance-honoring exceptions live in the rules (schema.md § Wiki
+# language): verbatim quotes stay in their original language, and proper nouns are never
+# translated. Passed to the agent as a run-instruction bullet; purely advisory to lint (no
+# offline language detection).
+WIKI_LANG: str = os.environ.get("CITADEL_WIKI_LANG", "").strip() or "en"
+
+# PDF reading mode (formats/pdf.md): "text" (default) ingests the body text only; "images"
+# additionally has the agent LOOK AT the pages' figures/diagrams/charts and capture what they
+# show. Anything unrecognized falls back to text. The knob only selects which mode the run
+# instruction names — the behavior itself lives in the rules file.
+PDF_MODE: str = "images" if os.environ.get("CITADEL_PDF_MODE", "").strip().lower() == "images" else "text"
+
+# Persona/style capture (genres/first-person.md) — OPT-IN, default OFF. When on, first-person
+# sources (interviews, memos, letters, diaries) additionally yield the person's opinions/
+# preferences as attributed, dated, cited statements and a per-person style profile backed by
+# verbatim cited examples. Off (the default), such sources still yield facts and load-bearing
+# attributed positions, but no style profiling — in a many-person corpus every second document
+# has a different, irrelevant style. Truthy: 1/true/yes/on.
+STYLE_PROFILES: bool = os.environ.get("CITADEL_STYLE_PROFILES", "").strip().lower() in ("1", "true", "yes", "on")
 
 # Same-basename document dedup. When on (default), if two or more raw files in the SAME folder
 # share a basename and are all document-export formats (a deck saved as both report.pptx AND

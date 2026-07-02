@@ -1272,8 +1272,12 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
         failures.save(failures_dict)
     # The model/backend that will import this run's sources — recorded per-source in the manifest
     # so you can see which raw file was imported by which model. Resolved once (it does not change
-    # mid-run) and read at call time so tests can monkeypatch the backend/model.
+    # mid-run) and read at call time so tests can monkeypatch the backend/model. Likewise the
+    # content hash of the effective rules tree the sessions run under — stamped per source so a
+    # later `curate --stale-rules` can find sources ingested under older rules; computed ONCE (the
+    # rules do not change mid-run and hashing them per source would re-read the tree needlessly).
     model = config.ingest_model_label()
+    rules_ver = config.rules_version()
     report = IngestReport([], [], [], [], model=model)
 
     pending, skipped, moved, unreadable, deleted_sources, office_text, images, duplicates = _partition_sources(
@@ -1296,9 +1300,11 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
     # stale manifest key. Either way, record the new key so future runs skip it immediately. ---
     repointed = False
     for old_key, new_key, sha, old_gone in moved:
-        # A move/duplicate is NOT a re-ingest: carry over the model that originally imported this
-        # content (recorded under the old key) rather than stamping it with this run's model.
+        # A move/duplicate is NOT a re-ingest: carry over the model (and rules_version) that
+        # originally imported this content (recorded under the old key) rather than stamping it
+        # with this run's values.
         carried_model = manifest.model_of(manifest_dict, old_key)
+        carried_rules = manifest.entry_rules_version(manifest_dict.get(old_key))
         if old_gone and old_key != new_key:
             try:
                 if store.rewrite_raw_references(old_key, new_key):
@@ -1309,7 +1315,7 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 report.errors.append(f"{new_key}: repoint refs from {old_key}: {exc}")
                 continue
             manifest_dict.pop(old_key, None)
-        manifest_dict[new_key] = manifest.make_entry(sha, carried_model)
+        manifest_dict[new_key] = manifest.make_entry(sha, carried_model, carried_rules)
         failures.clear(failures_dict, old_key)
         failures.clear(failures_dict, new_key)
         report.moved.append((old_key, new_key))
@@ -1319,6 +1325,7 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
         carried_model = manifest.model_of(manifest_dict, old_key)
         old_entry = manifest_dict.get(old_key)
         carried_remote = manifest.entry_remote(old_entry) if old_entry is not None else None
+        carried_rules = manifest.entry_rules_version(old_entry)
         if old_key != new_key:
             try:
                 if store.rewrite_raw_references(old_key, new_key):
@@ -1327,7 +1334,7 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 report.errors.append(f"{new_key}: repoint refs from {old_key}: {exc}")
                 continue
             manifest_dict.pop(old_key, None)
-        manifest_dict[new_key] = manifest.make_repo_entry(ident, carried_model, carried_remote)
+        manifest_dict[new_key] = manifest.make_repo_entry(ident, carried_model, carried_remote, carried_rules)
         report.moved.append((old_key, new_key))
     if report.moved:
         manifest.save(manifest_dict)
@@ -1456,7 +1463,7 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
         if not source_ok:
             continue
 
-        manifest.mark_done(manifest_dict, src, model)
+        manifest.mark_done(manifest_dict, src, model, rules_ver)
         # A source that had failed before now succeeded: drop its persisted failure.
         failures.clear(failures_dict, rel_key)
         # Persist progress immediately after each completed source: a later Ctrl+C (or a crash)
@@ -1541,7 +1548,7 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
             report.pages_written.extend(outcome.created + outcome.updated)
             report.pages_deleted.extend(outcome.deleted)
             manifest_dict[repo_key] = manifest.make_repo_entry(
-                repo.identity(job.path), model, repo.remote_url(job.path)
+                repo.identity(job.path), model, repo.remote_url(job.path), rules_ver
             )
             # A repo that had failed before now succeeded: drop its persisted failure.
             failures.clear(failures_dict, repo_key)

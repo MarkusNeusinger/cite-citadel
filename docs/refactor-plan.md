@@ -160,6 +160,9 @@ citadel/rules/
     (today's "judged from CONTENT, not name" rule, generalized). No applies-to glob engine, no
     per-path override table. The chosen genre is **stamped into the manifest at first ingest and
     reused on reconcile/force**, so later sessions can't silently reclassify and churn pages.
+    *(PR3 deviation: no manifest genre stamp shipped — the agent has no return channel to report
+    its judgment; instead `tasks/reconcile.md` instructs keeping the genre treatment already
+    visible in the wiki, which serves the same no-churn goal.)*
   - **The shipped genre files are examples, not a fixed taxonomy** (owner clarification): the
     prompt enumerates whatever the *effective* `genres/` directory contains at prompt-build time —
     a genre file dropped into the workspace `rules/genres/` participates automatically, no code

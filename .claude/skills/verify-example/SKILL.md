@@ -1,6 +1,6 @@
 ---
 name: verify-example
-description: End-to-end test of the whole citadel ingest pipeline on the bundled coffee+tea example corpus — ingest raw/ into a fresh wiki, run the structural gates (citadel check + lint), then grade the result against the ground-truth answer key (planted contradictions, repetitions, single-source facts, the one deliberately-false fact, cross-topic links). Use this whenever the user wants to run the e2e or example test, verify or grade the example corpus, (re)build the demo wiki, prove that citations and contradictions still surface, or check that a change to ingest, SCHEMA.md, the ingest prompts, or the store still folds the corpus correctly — even if they do not say the word "skill".
+description: End-to-end test of the whole citadel ingest pipeline on the bundled coffee+tea example corpus — ingest raw/ into a fresh wiki, run the structural gates (citadel check + lint), then grade the result against the ground-truth answer key (planted contradictions, repetitions, single-source facts, the one deliberately-false fact, cross-topic links). Use this whenever the user wants to run the e2e or example test, verify or grade the example corpus, (re)build the demo wiki, prove that citations and contradictions still surface, or check that a change to ingest, the rules tree (citadel/rules/), the ingest prompts, or the store still folds the corpus correctly — even if they do not say the word "skill".
 ---
 
 # Verify the example corpus end-to-end

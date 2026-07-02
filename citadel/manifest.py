@@ -4,15 +4,20 @@ A tiny committed JSON file wiki/.citadel_ingested.json:
 
     {
       "meta": {"format": 2, "workspace": "<abs posix workspace root>"},
-      "sources": {"raw/notes.md": {"sha256": "<hex>", "model": "claude:sonnet"}, ...}
+      "sources": {
+        "raw/notes.md": {"sha256": "<hex>", "model": "claude:sonnet", "rules_version": "<hex>"},
+        ...
+      }
     }
 
 ``sources`` maps the source's workspace-relative (or absolute, for an out-of-workspace source)
 posix key to how it was last ingested: ``sha256`` is the hash of the source's content (a file is
 (re)ingested only if absent or its hash changed); ``model`` is the model/backend that imported it
-(``config.ingest_model_label``), so you can see WHICH raw file was imported by WHICH model.
-``model`` is omitted for a source that no model imported (a binary/unreadable file that was only
-seen and skipped).
+(``config.ingest_model_label``), so you can see WHICH raw file was imported by WHICH model;
+``rules_version`` is the content hash of the effective rules tree the importing session ran under
+(``config.rules_version``) — what a later ``curate --stale-rules`` compares to find sources
+ingested under older rules. ``model``/``rules_version`` are omitted for a source that no model
+imported (a binary/unreadable file that was only seen and skipped).
 
 :func:`load` returns the FLAT sources dict — callers never see ``meta`` — and :func:`save` stamps
 ``meta`` with the CURRENT workspace root. A legacy flat manifest (pre-workspace, no meta) is read
@@ -61,12 +66,16 @@ def rel_key(src: Path) -> str:
     return config.rel_or_abs_posix(src)
 
 
-def make_entry(sha: str, model: str | None = None) -> Entry:
-    """Build a manifest value from a content hash and the importing model. ``model`` is included
-    only when set, so a source no model imported (binary/unreadable) records just its sha."""
+def make_entry(sha: str, model: str | None = None, rules_version: str | None = None) -> Entry:
+    """Build a manifest value from a content hash, the importing model, and the rules-tree hash
+    the importing session ran under (``config.rules_version``). ``model``/``rules_version`` are
+    included only when set, so a source no model imported (binary/unreadable) records just its
+    sha."""
     entry: dict = {"sha256": sha}
     if model:
         entry["model"] = model
+    if rules_version:
+        entry["rules_version"] = rules_version
     return entry
 
 
@@ -79,16 +88,21 @@ def entry_sha(entry: Entry) -> str:
     return str(entry or "")
 
 
-def make_repo_entry(commit: str, model: str | None = None, remote: str | None = None) -> dict:
+def make_repo_entry(
+    commit: str, model: str | None = None, remote: str | None = None, rules_version: str | None = None
+) -> dict:
     """Build a manifest value for a GIT-REPOSITORY source: ``{"kind": "git", "commit": ...}``
-    plus the importing ``model`` and the repo's ``remote`` URL when known. ``commit`` is the repo's
-    version identity (a HEAD commit, possibly with a ``+dirty.<hash>`` suffix, or a ``snap.<hash>``
-    aggregate for a git-less snapshot) — the source is re-ingested when it changes."""
+    plus the importing ``model``, the repo's ``remote`` URL when known, and the ``rules_version``
+    hash the importing session ran under. ``commit`` is the repo's version identity (a HEAD
+    commit, possibly with a ``+dirty.<hash>`` suffix, or a ``snap.<hash>`` aggregate for a
+    git-less snapshot) — the source is re-ingested when it changes."""
     entry: dict = {"kind": "git", "commit": commit}
     if model:
         entry["model"] = model
     if remote:
         entry["remote"] = remote
+    if rules_version:
+        entry["rules_version"] = rules_version
     return entry
 
 
@@ -119,6 +133,15 @@ def entry_model(entry: Entry) -> str | None:
     if isinstance(entry, dict):
         model = entry.get("model")
         return str(model) if model else None
+    return None
+
+
+def entry_rules_version(entry: Entry | None) -> str | None:
+    """The rules-tree content hash recorded for a manifest value, or None when unknown (a
+    bare-string entry, a source no model imported, or a pre-rules-split entry)."""
+    if isinstance(entry, dict):
+        version = entry.get("rules_version")
+        return str(version) if version else None
     return None
 
 
@@ -209,8 +232,12 @@ def is_pending(manifest: dict[str, Entry], src: Path) -> bool:
     return entry_sha(manifest[key]) != file_sha256(src)
 
 
-def mark_done(manifest: dict[str, Entry], src: Path, model: str | None = None) -> None:
-    """Record ``src`` as ingested: manifest[rel_key(src)] = {sha256, model} (mutates in place;
-    caller saves). ``model`` is the model/backend that imported it (config.ingest_model_label);
-    pass None for a source no model imported."""
-    manifest[rel_key(src)] = make_entry(file_sha256(src), model)
+def mark_done(
+    manifest: dict[str, Entry], src: Path, model: str | None = None, rules_version: str | None = None
+) -> None:
+    """Record ``src`` as ingested: manifest[rel_key(src)] = {sha256, model, rules_version}
+    (mutates in place; caller saves). ``model`` is the model/backend that imported it
+    (config.ingest_model_label) and ``rules_version`` the effective-rules hash it ran under
+    (config.rules_version — compute once per run, not per source); pass None for a source no
+    model imported."""
+    manifest[rel_key(src)] = make_entry(file_sha256(src), model, rules_version)

@@ -1,4 +1,4 @@
 # organizations
 
-- [Caffe Aurora](caffe-aurora.md) — Italian coffee roaster founded in Trieste in 1985, known for direct-trade sourcing, the Aurora Ritual, and its Aurora Midnight dark roast.
-- [Thornbury & Lin](thornbury-and-lin.md) — A London–Canton merchant house, still trading today, known for its tea blends and for selling coffee alongside tea; its own account says it first brought tea to England in 1650, though another source puts the date at 1657.
+- [Caffe Aurora](caffe-aurora.md) — A coffee roasting company and café chain founded in 1985 in Trieste by Lina Marchetti, known for direct-trade sourcing and its Aurora Ritual tasting ceremony.
+- [Thornbury and Lin](thornbury-and-lin.md) — A London-and-Canton merchant house founded in 1657 that first brought tea to England and traded it alongside coffee from the very beginning.
