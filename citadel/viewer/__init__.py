@@ -142,8 +142,6 @@ def build_bundle(pages=None) -> dict:
 # --------------------------------------------------------------------------------------
 
 
-
-
 def _viewer_resolve(from_rel: str, target: str) -> str:
     """Python port of the viewer's in-browser ``resolveLink``: resolve a citation ``target`` written
     in page ``from_rel`` to a wiki-root-relative posix id, CLAMPING any ``..`` that would climb above
