@@ -1,11 +1,22 @@
 """Single source of truth for filesystem layout and the ingest backend.
 
-Resolves every path to an absolute Path relative to the repo root (found by
-walking up from this file until a dir containing both ``pyproject.toml`` and
-``SCHEMA.md``, falling back to three parents up). Reads env with sane defaults
-so a fresh clone works out of the box. Includes a tiny optional ``.env`` loader
-(no dependency) that populates ``os.environ`` from a repo-root ``.env`` if
-present and the var is unset.
+Resolves every path to an absolute Path under the WORKSPACE root. A workspace is any directory
+holding a ``citadel.toml`` marker file (a PURE marker — a comment plus a format-version line,
+never configuration; scaffold one with ``citadel init``). Discovery order at import time (must
+never raise on import):
+
+1. ``$CITADEL_WORKSPACE`` — the explicit override an MCP-host config sets so ``citadel serve``
+   works from any CWD;
+2. the nearest ``citadel.toml`` walking UP from the CWD (a nested marker shadows an outer one);
+3. no marker, but BOTH ``CITADEL_WIKI_DIR`` and ``CITADEL_RAW_DIR`` are set: an env-dirs
+   workspace — the CWD is only the nominal root (those dirs carry absolute keys anyway);
+4. otherwise NO workspace resolved: ``WORKSPACE_FOUND`` is False and ``WORKSPACE_ROOT`` falls
+   back to the bare CWD — ``cli.main`` fails loud on every workspace-needing subcommand instead
+   of silently building a wiki in a random directory.
+
+Reads env with sane defaults so a fresh workspace works out of the box. Includes a tiny optional
+``.env`` loader (no dependency) that populates ``os.environ`` from ``WORKSPACE_ROOT/.env`` when a
+workspace actually resolved (``WORKSPACE_FOUND``) and the var is unset.
 
 Ingest runs through a coding-agent CLI (claude/copilot/gemini), so there is no
 API key to manage — the CLI uses whatever subscription it is logged into.
@@ -24,22 +35,56 @@ import time
 from pathlib import Path, PurePosixPath
 
 
-def _resolve_repo_root() -> Path:
-    """Walk up from this file until a dir containing BOTH pyproject.toml and
-    SCHEMA.md. Fall back to ``parents[2]`` (the src-layout repo root) if no such
-    dir is found."""
-    here = Path(__file__).resolve()
-    for parent in here.parents:
-        if (parent / "pyproject.toml").is_file() and (parent / "SCHEMA.md").is_file():
-            return parent
-    return here.parents[2]
+def _safe_resolve(path: Path) -> Path:
+    """``path.resolve()`` that never raises (falls back to an absolute, un-resolved path on a
+    rare OS error), so path-identity math works even on a not-yet-existing target."""
+    try:
+        return path.resolve()
+    except OSError:
+        return path if path.is_absolute() else path.absolute()
 
 
-def _load_dotenv() -> None:
-    """If REPO_ROOT/.env exists, set any ``KEY=VALUE`` whose KEY is not already
+WORKSPACE_MARKER: str = "citadel.toml"
+
+
+def _find_marker_root(start: Path) -> Path | None:
+    """The nearest directory at/above ``start`` holding a :data:`WORKSPACE_MARKER`, or None.
+    Nearest wins: a nested workspace's marker shadows an outer one, so running from inside the
+    inner workspace never touches the outer one's wiki/manifest."""
+    cur = _safe_resolve(start)
+    for candidate in (cur, *cur.parents):
+        try:
+            if (candidate / WORKSPACE_MARKER).is_file():
+                return candidate
+        except OSError:
+            return None
+    return None
+
+
+def _resolve_workspace(cwd: Path | None = None) -> Path | None:
+    """Resolve the workspace root per the module-docstring order (env override > nearest marker >
+    env-dirs pair), or None when NO workspace resolved. Pure and never raises — callers (and
+    tests) may pass an explicit ``cwd``; the import-time call uses the process CWD."""
+    try:
+        cwd = cwd if cwd is not None else Path.cwd()
+        env = os.environ.get("CITADEL_WORKSPACE", "").strip()
+        if env:
+            return _safe_resolve(Path(env).expanduser())
+        marker_root = _find_marker_root(cwd)
+        if marker_root is not None:
+            return marker_root
+        if os.environ.get("CITADEL_WIKI_DIR", "").strip() and os.environ.get("CITADEL_RAW_DIR", "").strip():
+            return _safe_resolve(cwd)
+        return None
+    except OSError:  # e.g. the CWD vanished — nothing can resolve; fail loud later, not here
+        return None
+
+
+def _load_dotenv(root: Path) -> None:
+    """If ``root/.env`` exists, set any ``KEY=VALUE`` whose KEY is not already
     in ``os.environ``. Ignores blank / ``#`` lines, strips surrounding quotes.
     Best-effort; never raises."""
-    env_path = REPO_ROOT / ".env"
+    env_path = root / ".env"
     try:
         text = env_path.read_text(encoding="utf-8")
     except (OSError, ValueError):
@@ -62,20 +107,26 @@ def _load_dotenv() -> None:
         os.environ[key] = value
 
 
-REPO_ROOT: Path = _resolve_repo_root()
-
-# Load the optional .env BEFORE reading the env settings below, so a bare .env
-# (no exported vars) also works.
-_load_dotenv()
-
-
-def _safe_resolve(path: Path) -> Path:
-    """``path.resolve()`` that never raises (falls back to an absolute, un-resolved path on a
-    rare OS error), so path-identity math works even on a not-yet-existing target."""
+def _cwd_fallback() -> Path:
+    """The bare process CWD as the nominal (non-)workspace root; never raises on import."""
     try:
-        return path.resolve()
-    except OSError:
-        return path if path.is_absolute() else path.absolute()
+        return _safe_resolve(Path.cwd())
+    except OSError:  # the CWD vanished — nothing can resolve; fail loud later, not here
+        return Path(".")
+
+
+_resolved_root = _resolve_workspace()
+# Whether discovery actually found a workspace. False means WORKSPACE_ROOT is only the bare CWD
+# fallback — cli.main fails loud on every workspace-needing subcommand.
+WORKSPACE_FOUND: bool = _resolved_root is not None
+WORKSPACE_ROOT: Path = _resolved_root if _resolved_root is not None else _cwd_fallback()
+del _resolved_root
+
+# Load the optional workspace .env BEFORE reading the env settings below, so a bare .env
+# (no exported vars) also works. Only when a workspace actually resolved — the fallback
+# CWD is NOT a workspace, so a stray .env in some random directory is never slurped.
+if WORKSPACE_FOUND:
+    _load_dotenv(WORKSPACE_ROOT)
 
 
 def _dir_setting(env_key: str, default: Path) -> Path:
@@ -83,48 +134,48 @@ def _dir_setting(env_key: str, default: Path) -> Path:
 
     With no override, use ``default``. With ``CITADEL_*_DIR`` set: expand a leading ``~``, take an
     ABSOLUTE override AS-IS — including a Windows mapped-drive path (``T:\\team-wiki\\wiki``) or a
-    POSIX mount (``/mnt/share/wiki``) — so the wiki/raw can live OUTSIDE the repo, e.g. on a
-    mounted network drive; and resolve a RELATIVE override against the REPO ROOT (not the process
-    CWD), so ``CITADEL_WIKI_DIR=wiki`` means ``REPO_ROOT/wiki`` regardless of where ``citadel`` is
-    launched from. Always returns a ``resolve()``-d absolute path."""
+    POSIX mount (``/mnt/share/wiki``) — so the wiki/raw can live OUTSIDE the workspace, e.g. on a
+    mounted network drive; and resolve a RELATIVE override against the WORKSPACE ROOT (not the
+    process CWD), so ``CITADEL_WIKI_DIR=wiki`` means ``WORKSPACE_ROOT/wiki`` regardless of where
+    ``citadel`` is launched from. Always returns a ``resolve()``-d absolute path."""
     raw = os.environ.get(env_key, "").strip()
     if not raw:
         return default.resolve()
     path = Path(raw).expanduser()
     if not path.is_absolute():
-        path = REPO_ROOT / path
+        path = WORKSPACE_ROOT / path
     return _safe_resolve(path)
 
 
-WIKI_DIR: Path = _dir_setting("CITADEL_WIKI_DIR", REPO_ROOT / "wiki")
-RAW_DIR: Path = _dir_setting("CITADEL_RAW_DIR", REPO_ROOT / "raw")
-DOCS_DIR: Path = _dir_setting("CITADEL_DOCS_DIR", REPO_ROOT / "docs")
+WIKI_DIR: Path = _dir_setting("CITADEL_WIKI_DIR", WORKSPACE_ROOT / "wiki")
+RAW_DIR: Path = _dir_setting("CITADEL_RAW_DIR", WORKSPACE_ROOT / "raw")
+DOCS_DIR: Path = _dir_setting("CITADEL_DOCS_DIR", WORKSPACE_ROOT / "docs")
 
 
 def rel_or_abs_posix(path: Path | str) -> str:
     """The canonical identity key / agent-facing path for a raw source or a configured directory:
-    its POSIX path **relative to** ``REPO_ROOT`` when it lives under the repo (short, and
-    resolvable from the agent's repo-root CWD), or its **absolute** POSIX path when it does not —
-    e.g. a wiki/raw tree on a mounted network drive (``T:/team-wiki/raw/notes.md``).
+    its POSIX path **relative to** ``WORKSPACE_ROOT`` when it lives under the workspace (short, and
+    resolvable from the agent's workspace-root CWD), or its **absolute** POSIX path when it does
+    not — e.g. a wiki/raw tree on a mounted network drive (``T:/team-wiki/raw/notes.md``).
 
     This is the single source of truth for turning a path into a key, used by the manifest, the
     agent prompt, and the citation/resource bookkeeping. It replaces the old basename fallback,
-    which collided distinct out-of-repo files onto the same key and was unresolvable from the repo
-    root. Read ``REPO_ROOT`` at call time so tests can monkeypatch the layout."""
+    which collided distinct out-of-workspace files onto the same key and was unresolvable from the
+    workspace root. Read ``WORKSPACE_ROOT`` at call time so tests can monkeypatch the layout."""
     rp = _safe_resolve(Path(path))
     try:
-        return rp.relative_to(_safe_resolve(REPO_ROOT)).as_posix()
+        return rp.relative_to(_safe_resolve(WORKSPACE_ROOT)).as_posix()
     except ValueError:
         return rp.as_posix()
 
 
 def source_path_for_key(key: str) -> Path:
     """Inverse of :func:`rel_or_abs_posix`: the absolute filesystem Path a source key denotes. An
-    absolute key (an out-of-repo source, e.g. ``T:/team-wiki/raw/notes.md``) is used as-is; a
-    repo-relative key (``raw/notes.md``) is joined under ``REPO_ROOT``. Replaces the scattered
-    ``REPO_ROOT / key`` joins that silently mis-resolved out-of-repo keys."""
+    absolute key (an out-of-workspace source, e.g. ``T:/team-wiki/raw/notes.md``) is used as-is; a
+    workspace-relative key (``raw/notes.md``) is joined under ``WORKSPACE_ROOT``. Replaces the
+    scattered root-relative joins that silently mis-resolved out-of-workspace keys."""
     p = Path(key)
-    return p if p.is_absolute() else REPO_ROOT / key
+    return p if p.is_absolute() else WORKSPACE_ROOT / key
 
 
 def display_key(key: str) -> str:
@@ -164,12 +215,12 @@ def display_key(key: str) -> str:
     return text
 
 
-def is_outside_repo(path: Path | str) -> bool:
-    """True if ``path`` does NOT live under ``REPO_ROOT`` — so the agentic CLI must be granted
-    explicit access to it (e.g. claude ``--add-dir``), since its file tools are otherwise scoped
-    to the repo-root working directory."""
+def is_outside_workspace(path: Path | str) -> bool:
+    """True if ``path`` does NOT live under ``WORKSPACE_ROOT`` — so the agentic CLI must be
+    granted explicit access to it (e.g. claude ``--add-dir``), since its file tools are otherwise
+    scoped to the workspace-root working directory."""
     try:
-        _safe_resolve(Path(path)).relative_to(_safe_resolve(REPO_ROOT))
+        _safe_resolve(Path(path)).relative_to(_safe_resolve(WORKSPACE_ROOT))
         return False
     except ValueError:
         return True
@@ -205,10 +256,13 @@ def robust_mkdir(path: Path | str, attempts: int = 5) -> None:
             time.sleep(0.2 * (attempt + 1))
 
 
-SCHEMA_PATH: Path = REPO_ROOT / "SCHEMA.md"
-# The direct-edit ingest rules the agentic CLI reads (by path) each run. Referenced in
-# the short ingest prompt; Python does not read it.
-AGENT_RULES_PATH: Path = REPO_ROOT / "AGENT_INGEST.md"
+# The rules layer the agentic CLI reads (by path) each run — packaged with the wheel so a
+# pip-installed citadel carries its own rules. Python does not read these files; they MUST be
+# real files on disk (the agent opens them by path), so they resolve directly off this module's
+# location — absolute, readable from ANY CWD, in a checkout and in site-packages alike.
+PACKAGED_RULES_DIR: Path = Path(__file__).resolve().parent / "rules"
+SCHEMA_PATH: Path = PACKAGED_RULES_DIR / "SCHEMA.md"
+AGENT_RULES_PATH: Path = PACKAGED_RULES_DIR / "AGENT_INGEST.md"
 INDEX_PATH: Path = WIKI_DIR / "index.md"
 LOG_PATH: Path = WIKI_DIR / "log.md"
 MANIFEST_PATH: Path = WIKI_DIR / ".citadel_ingested.json"
@@ -230,7 +284,7 @@ LLM_TIMEOUT: int = int(os.environ.get("CITADEL_LLM_TIMEOUT", "1200"))
 # does). Two opt-in knobs, both read at call time (so tests/CLI flags can override them):
 #
 # - CITADEL_LLM_LOG_DIR: a directory to write ONE transcript file per agent session (prompt + full
-#   stdout/stderr + exit code + duration). Relative paths resolve under REPO_ROOT. Empty = off.
+#   stdout/stderr + exit code + duration). Relative paths resolve under WORKSPACE_ROOT. Empty = off.
 # - CITADEL_LLM_VERBOSE: stream the CLI's output to the terminal live as the session runs, instead of
 #   capturing it silently — so you can watch the model work ("see everything") without dropping
 #   the non-interactive pipeline. copilot/gemini stream their full agentic transcript; the claude

@@ -44,9 +44,7 @@ def test_large_text_source_is_chunked_into_ordered_passes(tmp_citadel, fake_agen
     for i in range(6):
         assert f"Paragraph number {i}" in joined  # all content covered across segments
 
-    import json
-
-    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    data = tmp_citadel.read_manifest()
     assert "raw/big.txt" in data  # tracked once
     assert ingest.ingest().processed == []  # idempotent
 
@@ -108,8 +106,5 @@ def test_chunk_pass_failure_leaves_source_pending(tmp_citadel, fake_agent, cite_
     assert report.errors  # the failure surfaced
     assert (wiki / "misc" / "big.md").exists()  # segment one's page is live (documented partial)
 
-    import json
-
-    manifest_path = tmp_citadel.manifest_path
-    tracked = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
+    tracked = tmp_citadel.read_manifest()  # {} when never saved -> pending again next run
     assert "raw/big.txt" not in tracked  # not marked done -> pending again next run

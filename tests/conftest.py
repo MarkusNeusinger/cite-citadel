@@ -8,6 +8,7 @@ attributes is the single supported seam). The agent bridge is replaced per-test 
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -18,6 +19,23 @@ from citadel import config, llm, okf, repo
 
 
 # --- layout wiring -----------------------------------------------------------------------
+
+
+# Prompt-size budget for the paths-only argv guard (WinError 206). The real Windows limit is
+# 32,767 chars for the WHOLE CreateProcess command line; the guard only has to prove the prompt
+# stays paths-only (never embeds file content). 8000 leaves ~4x margin while absorbing long CI
+# runner tmp paths and the absolute packaged-rules paths.
+PROMPT_CHAR_BUDGET = 8000
+
+
+@pytest.fixture(autouse=True)
+def _stable_workspace_found(monkeypatch):
+    """Pin ``config.WORKSPACE_FOUND`` to True for EVERY test, so the suite behaves identically
+    no matter which CWD pytest was launched from (workspace discovery runs at import time and
+    would otherwise leak the developer's CWD into ``cli.main``'s fail-loud guard). A test
+    exercising the guard overrides this with ``monkeypatch.setattr(config, "WORKSPACE_FOUND",
+    False)``."""
+    monkeypatch.setattr(config, "WORKSPACE_FOUND", True)
 
 
 @dataclass(frozen=True)
@@ -31,7 +49,7 @@ class CitadelTmp:
     only this interface is guaranteed to survive that swap.
     """
 
-    root: Path  # the (fake) repo root -> config.REPO_ROOT
+    root: Path  # the (fake) workspace root -> config.WORKSPACE_ROOT
     wiki: Path  # config.WIKI_DIR
     raw: Path  # config.RAW_DIR
     docs: Path  # config.DOCS_DIR
@@ -39,6 +57,23 @@ class CitadelTmp:
     log_path: Path  # config.LOG_PATH
     manifest_path: Path  # config.MANIFEST_PATH
     failures_path: Path  # config.FAILURES_PATH
+
+    def read_manifest(self) -> dict:
+        """The manifest's flat ``{source key: entry}`` dict, read from THIS layout's live
+        manifest file — the seam tests assert source entries through, instead of hand-unwrapping
+        the on-disk shape (which tests/test_workspace.py pins deliberately).
+
+        Reads ``self.manifest_path`` directly rather than calling ``manifest.load()``: the
+        dataclass pins the LIVE path, so the read stays correct even from a hook that runs while
+        ingest has ``config`` repointed at its per-source staging copy. Unwraps the format-2
+        ``{"meta", "sources"}`` envelope (a legacy flat mapping reads as-is) and returns {} when
+        no manifest exists yet."""
+        try:
+            data = json.loads(self.manifest_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {}
+        sources = data.get("sources") if isinstance(data, dict) else None
+        return sources if isinstance(sources, dict) else data
 
 
 @pytest.fixture
@@ -75,7 +110,7 @@ def make_citadel(tmp_path: Path, monkeypatch) -> Callable[..., CitadelTmp]:
         # raising=True (the default): every one of these attributes exists in config today, so
         # a PR that renames the config internals makes this seam fail LOUD instead of silently
         # patching a dead attribute while the code reads the real (repo-local) one.
-        monkeypatch.setattr(config, "REPO_ROOT", cit.root)
+        monkeypatch.setattr(config, "WORKSPACE_ROOT", cit.root)
         monkeypatch.setattr(config, "WIKI_DIR", cit.wiki)
         monkeypatch.setattr(config, "RAW_DIR", cit.raw)
         monkeypatch.setattr(config, "DOCS_DIR", cit.docs)

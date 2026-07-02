@@ -66,8 +66,8 @@ def test_mark_done_records_model_and_roundtrips(tmp_citadel):
     manifest.save(m)
     reread = manifest.load()
     assert reread[key]["model"] == "claude:opus"
-    # save() is plain JSON the value of which is the dict record.
-    on_disk = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    # save() writes the stamped format: the record sits under the top-level "sources" section.
+    on_disk = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))["sources"]
     assert on_disk[key]["sha256"] == manifest.file_sha256(src)
 
 

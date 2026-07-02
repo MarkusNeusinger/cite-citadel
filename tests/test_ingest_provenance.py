@@ -32,9 +32,7 @@ def test_moved_raw_file_is_recognized_not_reingested(tmp_citadel, fake_agent, tr
     assert ("raw/notes.md", "raw/ml/notes.md") in second.moved
     assert not second.errors
 
-    import json
-
-    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    data = tmp_citadel.read_manifest()
     assert "raw/ml/notes.md" in data and "raw/notes.md" not in data  # re-keyed
 
     text = page.read_text(encoding="utf-8")
@@ -63,9 +61,7 @@ def test_duplicate_raw_file_not_reingested(tmp_citadel, fake_agent, transformer_
     assert agent.count == 1
     assert ("raw/notes.md", "raw/copy.md") in report.moved
 
-    import json
-
-    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    data = tmp_citadel.read_manifest()
     assert "raw/notes.md" in data and "raw/copy.md" in data  # both tracked
 
     text = (wiki / "concepts" / "transformer.md").read_text(encoding="utf-8")
@@ -135,7 +131,6 @@ def test_unreadable_already_ingested_file_does_not_crash(tmp_citadel, fake_agent
 def test_ingest_records_importing_model_in_manifest(tmp_citadel, fake_agent, transformer_page, monkeypatch):
     """Each ingested source records WHICH model imported it; the report/log carry it too. A source
     no model imported (an unreadable binary) records its sha alone, with no model."""
-    import json
 
     raw = tmp_citadel.raw
     monkeypatch.setattr(config, "LLM_CLI", "claude", raising=False)
@@ -149,7 +144,7 @@ def test_ingest_records_importing_model_in_manifest(tmp_citadel, fake_agent, tra
     assert report.model == "claude:opus"
     assert "Model: claude:opus" in report.render()
 
-    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    data = tmp_citadel.read_manifest()
     assert data["raw/notes.md"]["model"] == "claude:opus"
     assert "model" not in data["raw/blob.bin"]  # nothing imported it
 
@@ -207,7 +202,6 @@ def test_sources_catalog_removed_when_no_tracked_sources(tmp_citadel, seed_page)
 def test_moved_source_carries_original_importing_model(tmp_citadel, fake_agent, transformer_page, monkeypatch):
     """Reorganizing a raw file is not a re-ingest, so the moved entry keeps the model that
     ORIGINALLY imported it — not the model configured for the run that detected the move."""
-    import json
 
     wiki, raw = tmp_citadel.wiki, tmp_citadel.raw
     monkeypatch.setattr(config, "LLM_CLI", "claude", raising=False)
@@ -226,7 +220,7 @@ def test_moved_source_carries_original_importing_model(tmp_citadel, fake_agent, 
     report = ingest.ingest()
     assert ("raw/notes.md", "raw/ml/notes.md") in report.moved
 
-    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    data = tmp_citadel.read_manifest()
     assert "raw/notes.md" not in data
     assert data["raw/ml/notes.md"]["model"] == "claude:opus"  # original model carried, not haiku
 

@@ -43,11 +43,8 @@ def test_failed_session_rolls_back(tmp_citadel, fake_agent, seed_page):
     assert (wiki / "concepts" / "keep.md").exists()  # untouched
 
     # Source is retried next run (not in the manifest).
-    import json
 
-    manifest_path = tmp_citadel.manifest_path
-    if manifest_path.exists():
-        assert "raw/notes.md" not in json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert "raw/notes.md" not in tmp_citadel.read_manifest()  # {} when the manifest never got written
 
 
 def test_robust_rmtree_retries_then_succeeds(tmp_path, monkeypatch):
@@ -155,7 +152,6 @@ def test_completed_sources_persisted_before_interrupt(tmp_citadel, fake_agent, s
     """Progress is written to the manifest right after each source completes, so a Ctrl+C
     during a LATER source can't erase already-finished work. (The old code saved the manifest
     only in finalization, which a propagating KeyboardInterrupt skipped entirely.)"""
-    import json
 
     wiki, raw = tmp_citadel.wiki, tmp_citadel.raw
     (raw / "a.md").write_text("first\n", encoding="utf-8")
@@ -175,9 +171,8 @@ def test_completed_sources_persisted_before_interrupt(tmp_citadel, fake_agent, s
     with pytest.raises(KeyboardInterrupt):
         ingest.ingest()  # processes raw/a.md then raw/b.md (sorted order)
 
-    manifest_path = tmp_citadel.manifest_path
-    assert manifest_path.exists()  # saved incrementally, not only at finalization
-    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert tmp_citadel.manifest_path.exists()  # saved incrementally, not only at finalization
+    data = tmp_citadel.read_manifest()
     assert "raw/a.md" in data  # a finished -> persisted before the interrupt
     assert "raw/b.md" not in data  # b interrupted -> not marked done
     assert (wiki / "concepts" / "from-a.md").exists()  # a's page survived b's rollback

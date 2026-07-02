@@ -107,17 +107,10 @@ wheels = [
 
 [[package]]
 name = "cite-citadel"
-version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "mcp" },
     { name = "pyyaml" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "ruff" },
 ]
 
 [package.dev-dependencies]
@@ -129,11 +122,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "mcp", specifier = ">=1.2" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15" },
 ]
-provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
 dev = [
