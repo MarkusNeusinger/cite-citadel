@@ -13,6 +13,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from conftest import PROMPT_CHAR_BUDGET
 
 from citadel import config, llm
 
@@ -42,7 +43,7 @@ def test_build_instruction_references_paths_not_content():
     assert "raw/notes.md" in prompt
     assert "wiki/" in prompt
     # Must never embed a large blob — paths only.
-    assert len(prompt) < 3000
+    assert len(prompt) < PROMPT_CHAR_BUDGET
 
 
 def test_build_instruction_uses_configured_wiki_dir(tmp_path, monkeypatch):
@@ -62,7 +63,7 @@ def test_build_instruction_uses_configured_wiki_dir(tmp_path, monkeypatch):
     assert "wikiET/" in prompt  # the configured wiki dir is used throughout...
     assert "wiki/" not in prompt  # ...and no hardcoded bare 'wiki/' survives
     assert "raw/notes.md" in prompt  # the raw source path is still referenced verbatim
-    assert len(prompt) < 3000  # still tiny (paths-only) — WinError 206 guard
+    assert len(prompt) < PROMPT_CHAR_BUDGET  # still tiny (paths-only) — WinError 206 guard
 
 
 def test_rule_files_teach_path_and_filename_as_routing_context():
@@ -97,7 +98,9 @@ def test_build_instruction_reconcile_says_update_and_remove():
     # A co-cited fact must NOT be dropped whole — only this source's marker is removed unless it
     # was the last citation (mirrors the delete prompt; guards the Copilot-review fix).
     assert "co-cited" in low and "only if" in low
-    assert len(prompt) < 3000  # paths + rules + a code-handling pointer, never file content (WinError 206 guard)
+    assert (
+        len(prompt) < PROMPT_CHAR_BUDGET
+    )  # paths + rules + a code-handling pointer, never file content (WinError 206 guard)
 
 
 def test_build_instruction_office_read_path_points_to_extract_cites_original():
@@ -113,7 +116,7 @@ def test_build_instruction_office_read_path_points_to_extract_cites_original():
     assert "media/" in prompt  # points the agent at the extracted embedded images
     # Still paths-only and tiny (WinError 206 guard). The bound matches the reconcile prompt's; an
     # out-of-repo wiki/raw resolves to ABSOLUTE paths that appear several times, so allow headroom.
-    assert len(prompt) < 3000
+    assert len(prompt) < PROMPT_CHAR_BUDGET
 
 
 def test_build_instruction_no_read_path_keeps_direct_read_step():
@@ -168,7 +171,7 @@ def test_build_instruction_delete_strips_provenance_without_opening():
     assert "delete" in low and "no longer exists" in low
     assert "do not try" in low and "open it" in low  # must not re-read a missing file
     assert "resource" in low and "[^s" in prompt  # points at both provenance forms
-    assert len(prompt) < 3000
+    assert len(prompt) < PROMPT_CHAR_BUDGET
 
 
 def test_build_instruction_delete_honors_configured_wiki_dir(tmp_path, monkeypatch):
@@ -286,10 +289,10 @@ def test_rules_inside_workspace_need_no_grant(tmp_path, make_citadel):
 
 @pytest.mark.parametrize(("kind", "read_path", "segment"), _KIND_VARIANTS)
 def test_prompt_size_guard_every_kind(pip_like_workspace, kind, read_path, segment):
-    """The <3000-char argv guard (WinError 206) holds for EVERY prompt variant even in the
+    """The PROMPT_CHAR_BUDGET argv guard (WinError 206) holds for EVERY prompt variant even in the
     worst realistic case: the rules referenced by their ABSOLUTE site-packages paths."""
     prompt = llm._build_instruction("raw/notes.md", kind, read_path, segment)
-    assert len(prompt) < 3000
+    assert len(prompt) < PROMPT_CHAR_BUDGET
 
 
 def test_build_invocation_claude_uses_stdin_and_acceptedits(monkeypatch):

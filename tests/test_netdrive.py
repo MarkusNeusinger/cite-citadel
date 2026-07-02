@@ -21,6 +21,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from conftest import PROMPT_CHAR_BUDGET
+
 from citadel import config, ingest, lint, llm, manifest, okf, store, validate
 
 
@@ -101,7 +103,7 @@ def test_build_instruction_uses_absolute_paths_when_wiki_outside_repo(tmp_path, 
     assert raw.resolve().as_posix() in prompt  # absolute raw path
     assert abs_key in prompt  # the absolute source key
     assert abs_key.startswith(tmp_path.resolve().as_posix())  # it really is absolute
-    assert len(prompt) < 3000  # paths + rule pointers, never file content (WinError 206 guard)
+    assert len(prompt) < PROMPT_CHAR_BUDGET  # paths + rule pointers, never file content (WinError 206 guard)
 
 
 def test_external_dirs_lists_only_out_of_repo_dirs(tmp_citadel_external):

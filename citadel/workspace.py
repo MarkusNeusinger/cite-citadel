@@ -37,13 +37,17 @@ def init_workspace(target: Path | str) -> tuple[Path, list[tuple[str, str]]]:
     """Scaffold a workspace at ``target`` (created if missing) and return
     ``(resolved root, [(status, name), ...])`` with status in ``{"created", "skipped"}`` —
     one entry per scaffolded item, in scaffold order. Existing files/dirs are NEVER overwritten
-    (they report as ``skipped``), so the call is idempotent."""
+    (they report as ``skipped``), so the call is idempotent. A path that exists with the
+    WRONG type (a file named ``raw``, a directory named ``.env``) raises a clear error
+    instead of failing deep inside mkdir."""
     root = config._safe_resolve(Path(target).expanduser())
     config.robust_mkdir(root)
 
     results: list[tuple[str, str]] = []
     for name, content in ((config.WORKSPACE_MARKER, MARKER_CONTENT), (".env", _env_template())):
         path = root / name
+        if path.is_dir():
+            raise RuntimeError(f"cannot initialize workspace: '{name}' exists but is a directory - rename or remove it")
         if path.exists():
             results.append(("skipped", name))
         else:
@@ -51,6 +55,10 @@ def init_workspace(target: Path | str) -> tuple[Path, list[tuple[str, str]]]:
             results.append(("created", name))
     for name in ("raw", "wiki"):
         path = root / name
+        if path.exists() and not path.is_dir():
+            raise RuntimeError(
+                f"cannot initialize workspace: '{name}' exists but is not a directory - rename or remove it"
+            )
         if path.is_dir():
             results.append(("skipped", name + "/"))
         else:

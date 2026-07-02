@@ -12,6 +12,8 @@ from __future__ import annotations
 import json
 import os
 
+import pytest
+
 from citadel import cli, config, manifest, workspace
 
 
@@ -178,6 +180,21 @@ def test_workspace_needing_command_fails_loud_when_none_found(monkeypatch, capsy
     assert "no citadel workspace" in err
     assert "citadel init" in err  # the actionable fixes are named
     assert "CITADEL_WORKSPACE" in err
+
+
+def test_init_refuses_a_file_where_a_directory_belongs(tmp_path):
+    """Copilot review on PR #30: a FILE named raw/ or wiki/ used to fall through the is_dir()
+    check into robust_mkdir's FileExistsError. init must fail loud with an actionable error."""
+    (tmp_path / "raw").write_text("not a directory", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="'raw' exists but is not a directory"):
+        workspace.init_workspace(tmp_path)
+
+
+def test_init_refuses_a_directory_where_a_file_belongs(tmp_path):
+    """A directory named .env (or citadel.toml) must raise a clear error, not be 'skipped'."""
+    (tmp_path / ".env").mkdir()
+    with pytest.raises(RuntimeError, match="'.env' exists but is a directory"):
+        workspace.init_workspace(tmp_path)
 
 
 def test_init_is_exempt_from_the_workspace_guard(tmp_path, monkeypatch):

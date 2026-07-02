@@ -21,6 +21,13 @@ from citadel import config, llm, okf, repo
 # --- layout wiring -----------------------------------------------------------------------
 
 
+# Prompt-size budget for the paths-only argv guard (WinError 206). The real Windows limit is
+# 32,767 chars for the WHOLE CreateProcess command line; the guard only has to prove the prompt
+# stays paths-only (never embeds file content). 8000 leaves ~4x margin while absorbing long CI
+# runner tmp paths and the absolute packaged-rules paths.
+PROMPT_CHAR_BUDGET = 8000
+
+
 @pytest.fixture(autouse=True)
 def _stable_workspace_found(monkeypatch):
     """Pin ``config.WORKSPACE_FOUND`` to True for EVERY test, so the suite behaves identically
