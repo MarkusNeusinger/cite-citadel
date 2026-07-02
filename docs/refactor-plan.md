@@ -459,17 +459,21 @@ Separate verb (GraphRAG/Letta precedent), two layers (Wikipedia-bot model), **no
 ### Z12 — Licensing, third-party-CLI terms & OSS legal hygiene
 
 Prompted by the public-release / PyPI question: *can shelling out to `claude`/`copilot`/`gemini`
-create a licensing problem?* **Verified answer: no — the shell-out architecture IS the license-safe
-pattern, so this is a docs/metadata section with zero product code.** Grounding (checked against
-`llm.py`): cite-citadel bundles no provider code and no LLM SDK (runtime deps are only `mcp` +
+create a licensing problem?* **Assessment (engineering, not legal advice — see the disclaimer at the
+end of this section): the risk looks low because the shell-out design steers clear of what the
+CLIs' terms actually restrict, so the work here is docs/metadata with zero product code.** The
+load-bearing part is a set of **verifiable technical facts** (checked against `llm.py`), not a legal
+opinion: cite-citadel bundles no provider code and no LLM SDK (runtime deps are only `mcp` +
 `pyyaml`), embeds no credentials, reimplements no backend endpoint, and never reads or forwards an
 OAuth token — it does `shutil.which(<cli>)` + `subprocess` on the **official binary** the user
-installed and logged into, with a paths-only prompt. Calling a vendor's own CLI programmatically is
-permitted (each ships it for scripted/CI use); what the terms forbid is *redistributing the CLI's
-code* or *extracting its token for a third-party client* — cite-citadel does neither. MIT stays
-correct: invoking an external binary via subprocess is not a derivative work, so no
-copyleft/attribution obligation flows back into cite-citadel, and cite-citadel can carry any license
-independent of the three CLIs.
+installed and logged into, with a paths-only prompt. Those facts line up with the two things the
+vendor terms restrict — *redistributing the CLI's code* and *extracting its token for a third-party
+client* — neither of which cite-citadel does; calling a vendor's own CLI programmatically is the use
+each ships it for (scripted / CI). We keep **MIT** (a subprocess call to a user-installed binary is
+ordinary interop, not the kind of bundling that would pull another license in). Definitive licensing
+conclusions across jurisdictions are for counsel, not this doc. **Everything in this section — and
+the notices it plans — is informational, not legal advice; the release checklist includes a
+maintainer (and, if warranted, counsel) review of the final wording before the repo goes public.**
 
 **Deliverables (all documentation/metadata; fold into PR9, gate-free — not a blocker for the v0.1.0
 wheel, but MUST land before the repo is flipped public / announced):**
@@ -496,15 +500,39 @@ wheel, but MUST land before the repo is flipped public / announced):**
   reassurance for anyone publishing the resulting wiki.
 - **SECURITY.md data-flow note** (extends the Z9 SECURITY.md): cite-citadel spawns the CLI as a
   subprocess in the workspace; raw content is read by your CLI under your account and travels
-  wherever that provider's terms say (e.g. Copilot CLI retains prompts). cite-citadel itself reads,
-  logs, or transmits no secret. Privacy heads-up: a `CITADEL_LLM_LOG_DIR` transcript can contain
-  source content — it is local-only; recommend keeping it out of version control.
+  wherever that provider's terms say (some CLIs may retain prompts/logs per provider terms — the
+  linked terms note carries the specifics, kept out of this durable doc so a provider policy change
+  can't date it). cite-citadel itself reads, logs, or transmits no secret. Privacy heads-up: a
+  `CITADEL_LLM_LOG_DIR` transcript can contain source content — it is local-only; recommend keeping
+  it out of version control.
 - **`.env.example` header pointer** — one comment line: ingest uses your logged-in CLI under your
   account; see the README "License & third-party tools" section for terms.
 - **`citadel doctor` cross-ref** (the Z8 billing-shadow warning): doctor already warns when a
   provider API key sits in the environment while `CITADEL_LLM_CLI=claude` (ingest may then bill the
   API instead of the subscription) — cross-reference the terms note so the subscription-vs-API story
   is told once.
+
+**Rounding out the public-release legal surface (still all docs/metadata):**
+
+- **Dependency-license check** — confirm the whole shipped tree is permissive so nothing copyleft
+  rides along under the MIT wheel: runtime `mcp` (MIT) + `pyyaml` (MIT), dev-only `pytest`/`ruff`
+  (MIT). An optional `pip-licenses` / uv-based CI step documents it (KISS: a one-off manual check is
+  enough for now). Note that `mcp` is the **open** Model Context Protocol SDK, not a proprietary
+  Anthropic client — depending on it creates no vendor-ToS tie.
+- **Example-corpus & docs provenance — mostly already clean; verify it stays.** The demo `raw/` is
+  synthetic (fictional brands — `aurora-coffee`, `thornbury-tea` — plus generic coffee/tea guides),
+  safe to publish. `docs/okf-reference.md` and `docs/karpathy-llm-wiki.md` already carry
+  "Source / attribution" blocks (Google's OKF blog; Karpathy's gist) framing themselves as
+  paraphrases — **keep those blocks intact** when the docs move/update. Keep any new corpora (Z9's
+  counterfactual-atlas / project-history) original/synthetic so nothing third-party-copyrighted ever
+  ships in `raw/`.
+- **CONTRIBUTING: inbound = outbound** — state that contributions are accepted under the same MIT
+  license (a one-line inbound=outbound clause; optionally a DCO `Signed-off-by`). KISS — no CLA.
+- **Data-governance caveat (strengthen the terms note + SECURITY.md)** — because ingest sends raw
+  content to the user's CLI/provider, warn against ingesting confidential/regulated material on a
+  plan whose terms permit training on inputs; the user picks the plan/tier appropriate to their data
+  sensitivity. This is the user-facing complement to the "cite-citadel transmits no secret itself"
+  fact.
 
 **Roadmap:** no new PR — appended to **PR9 (OSS polish + skills)**; no code, no test gate, no effect
 on the v0.1.0/v0.2.0 tags beyond "the public-repo flip waits on the disclaimer + terms note
