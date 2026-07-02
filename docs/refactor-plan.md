@@ -456,6 +456,60 @@ Separate verb (GraphRAG/Letta precedent), two layers (Wikipedia-bot model), **no
   the Windows CI runner (Z8) makes it enforced instead of promised. New code (locators, status,
   scandir walk, init) lands with Windows-path tests.
 
+### Z12 — Licensing, third-party-CLI terms & OSS legal hygiene
+
+Prompted by the public-release / PyPI question: *can shelling out to `claude`/`copilot`/`gemini`
+create a licensing problem?* **Verified answer: no — the shell-out architecture IS the license-safe
+pattern, so this is a docs/metadata section with zero product code.** Grounding (checked against
+`llm.py`): cite-citadel bundles no provider code and no LLM SDK (runtime deps are only `mcp` +
+`pyyaml`), embeds no credentials, reimplements no backend endpoint, and never reads or forwards an
+OAuth token — it does `shutil.which(<cli>)` + `subprocess` on the **official binary** the user
+installed and logged into, with a paths-only prompt. Calling a vendor's own CLI programmatically is
+permitted (each ships it for scripted/CI use); what the terms forbid is *redistributing the CLI's
+code* or *extracting its token for a third-party client* — cite-citadel does neither. MIT stays
+correct: invoking an external binary via subprocess is not a derivative work, so no
+copyleft/attribution obligation flows back into cite-citadel, and cite-citadel can carry any license
+independent of the three CLIs.
+
+**Deliverables (all documentation/metadata; fold into PR9, gate-free — not a blocker for the v0.1.0
+wheel, but MUST land before the repo is flipped public / announced):**
+
+- **Affiliation & trademark disclaimer** — a `NOTICE.md` at repo root plus a "License & third-party
+  tools" section in the README (the README ships as the PyPI long-description, so the notice reaches
+  PyPI without touching `license-files`, which stays LICENSE-only). Text: not affiliated with,
+  endorsed by, or sponsored by Anthropic, GitHub/Microsoft, or Google; "Claude", "GitHub Copilot",
+  and "Gemini" are the respective owners' trademarks, named only to identify the user-supplied CLI.
+  **Packaging guard**: keep `cite-citadel`/`citadel` and the pyproject `name`/`description`/`keywords`
+  free of any vendor mark (they already are) — a one-line test asserts it so a later rename can't
+  smuggle one in.
+- **Bring-your-own-CLI terms note** — one paragraph in the README and `docs/configuration.md`:
+  ingest runs *your* authenticated CLI under *your* account, and that usage is governed by that
+  provider's terms (Anthropic Consumer/Commercial Terms, GitHub Copilot Product-Specific Terms,
+  Google Gemini / Code Assist ToS), not by cite-citadel; cite-citadel calls the official binary only
+  and does not proxy, store, or transmit credentials. Include the honest caveat: heavy / unattended
+  / CI ingest against a **consumer subscription** may hit rate limits or a provider's automated-use
+  expectations — for that scale prefer the tier the provider designates for programmatic use. Refine
+  the current README line ("uses your existing subscription … needs no API key") to link this note
+  rather than stand alone.
+- **Output-ownership one-liner** — README: the generated `wiki/` is the user's; Anthropic (and
+  peers) assign output rights to the user, and cite-citadel claims nothing over wiki content —
+  reassurance for anyone publishing the resulting wiki.
+- **SECURITY.md data-flow note** (extends the Z9 SECURITY.md): cite-citadel spawns the CLI as a
+  subprocess in the workspace; raw content is read by your CLI under your account and travels
+  wherever that provider's terms say (e.g. Copilot CLI retains prompts). cite-citadel itself reads,
+  logs, or transmits no secret. Privacy heads-up: a `CITADEL_LLM_LOG_DIR` transcript can contain
+  source content — it is local-only; recommend keeping it out of version control.
+- **`.env.example` header pointer** — one comment line: ingest uses your logged-in CLI under your
+  account; see the README "License & third-party tools" section for terms.
+- **`citadel doctor` cross-ref** (the Z8 billing-shadow warning): doctor already warns when a
+  provider API key sits in the environment while `CITADEL_LLM_CLI=claude` (ingest may then bill the
+  API instead of the subscription) — cross-reference the terms note so the subscription-vs-API story
+  is told once.
+
+**Roadmap:** no new PR — appended to **PR9 (OSS polish + skills)**; no code, no test gate, no effect
+on the v0.1.0/v0.2.0 tags beyond "the public-repo flip waits on the disclaimer + terms note
+existing".
+
 ---
 
 ## PR roadmap (order = dependencies; each PR gated by the open-pr rules once the skill exists)
@@ -472,7 +526,7 @@ Separate verb (GraphRAG/Letta precedent), two layers (Wikipedia-bot model), **no
 | 6 | **curate v1 + surface parity** | Detectors (incl. re-sort), recompute-per-run plan, agent layer on staging machinery, --dry-run/--limit/--stale-rules/--diff, failures-catalog attempt caps, `wiki_lint` MCP tool, **`citadel status` + CLI parity subcommands (`read`/`index`/`sources`) + parity test, locator lint checks** (Z11/Z6). Gate: verify-example + project-history if it exists yet. |
 | 7 | **Store/viewer hygiene** | store split, index single-pass, write_page guard, viewer subpackage + golden test, extract isolation, cleanups. (Truly parallel-safe parts only — grammar.py already landed as 3.5.) |
 | 8 | **Corpora** | Demo move + fresh regeneration (+ ci.yml lint step + Pages + gitignore flip, same PR), counterfactual-atlas, project-history with stages/ (incl. first-person opinion/style traps), per-corpus ground-truth description files (hidden from ingest), verify-corpus skill. |
-| 9 | **OSS polish + skills** | README/badges/CONTRIBUTING/CHANGELOG/SECURITY/docs-config, doctor, open-pr skill + CLAUDE.md routing section, sdist excludes. **tag v0.2.0.** |
+| 9 | **OSS polish + skills** | README/badges/CONTRIBUTING/CHANGELOG/SECURITY/docs-config, doctor, open-pr skill + CLAUDE.md routing section, sdist excludes. **Licensing/third-party-CLI hygiene (Z12): NOTICE.md + affiliation/trademark disclaimer, bring-your-own-CLI terms note, output-ownership line, SECURITY.md data-flow note, no-vendor-mark packaging guard** — the public-repo flip gates on these existing. **tag v0.2.0.** |
 | 10 | **Evidence quotes** | Optional; go/no-go per Z6 after corpora data exists. |
 
 ## Greenfield policy & operational safety
