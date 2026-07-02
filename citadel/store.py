@@ -14,16 +14,13 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from . import config, okf
+from . import config, grammar, okf
 from . import failures as failures_mod
 from . import manifest as manifest_mod
 from .okf import Page
 
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
-# A relative markdown link whose target ends in '.md' (mirrors lint.LINK_RE). Used to
-# find cross-links for broken-link detection and link rewriting after a restructure.
-_MD_LINK_RE = re.compile(r"\]\(([^)]+\.md)\)")
 
 
 def utc_now_iso() -> str:
@@ -157,27 +154,6 @@ def delete_page(rel_path: str) -> bool:
     return False
 
 
-def _resolved_md_links(rel_path: str, body: str) -> list[tuple[str, str]]:
-    """Every relative .md cross-link in ``body`` as ``(raw_target, resolved_rel_path)``.
-
-    ``raw_target`` is the link text as written (e.g. ``'./b.md'``); ``resolved_rel_path``
-    is its wiki-root-relative identity via okf.resolve_link. Skips external links,
-    anchors, and links into the raw/ source tree (the ## Sources footnotes)."""
-    out: list[tuple[str, str]] = []
-    for match in _MD_LINK_RE.finditer(body):
-        raw_target = match.group(1).strip()
-        if "://" in raw_target or raw_target.startswith("#"):
-            continue
-        resolved = okf.resolve_link(rel_path, raw_target)
-        # A resolved path that escapes the wiki root (starts with '..') is a source
-        # citation into the sibling raw/ or docs/ tree (e.g. '../../raw/x.md' from a
-        # concepts/ page resolves to '../raw/x.md'), NOT a wiki cross-link — skip it.
-        if resolved.startswith("..") or resolved.split("/", 1)[0] in ("raw", "docs"):
-            continue
-        out.append((raw_target, resolved))
-    return out
-
-
 def _follow_rename(resolved: str, rename_map: dict[str, str]) -> str:
     """Follow a (possibly multi-hop) chain of renames to a stable destination,
     guarding against cycles."""
@@ -194,17 +170,18 @@ def _rewrite_body_links(rel_path: str, body: str, rename_map: dict[str, str]) ->
     repointed at the mapped survivor, as a fresh relative link from ``rel_path``.
 
     The rewrite is span-based (``re.sub`` over only the ``](...md)`` link spans) and skips
-    fenced code blocks, so it touches ONLY genuine cross-links — never a literal ``](x.md)``
-    written in prose or a code example, and never a partial substring of a larger token.
-    Whitespace inside the parens is handled because the whole matched span is replaced.
-    Untouched links and all other text are left byte-for-byte intact."""
+    fenced code blocks (via :func:`grammar.iter_lines`, the shared fence implementation), so it
+    touches ONLY genuine cross-links — never a literal ``](x.md)`` written in prose or a code
+    example, and never a partial substring of a larger token. Whitespace inside the parens is
+    handled because the whole matched span is replaced. Untouched links and all other text are
+    left byte-for-byte intact."""
 
     def repl(match: re.Match) -> str:
         raw_target = match.group(1).strip()
-        if "://" in raw_target or raw_target.startswith("#"):
+        if grammar.is_external(raw_target):
             return match.group(0)
         resolved = okf.resolve_link(rel_path, raw_target)
-        if resolved.startswith("..") or resolved.split("/", 1)[0] in ("raw", "docs"):
+        if grammar.resolves_to_source(resolved):
             return match.group(0)  # source citation, not a wiki cross-link
         dest = _follow_rename(resolved, rename_map)
         if dest == resolved:
@@ -212,13 +189,8 @@ def _rewrite_body_links(rel_path: str, body: str, rename_map: dict[str, str]) ->
         return f"]({okf.rel_path_between(rel_path, dest)})"
 
     out: list[str] = []
-    in_fence = False
-    for line in body.splitlines(keepends=True):
-        if line.lstrip().startswith("```"):
-            in_fence = not in_fence
-            out.append(line)
-            continue
-        out.append(line if in_fence else _MD_LINK_RE.sub(repl, line))
+    for line, in_code in grammar.iter_lines(body, keepends=True):
+        out.append(line if in_code else grammar.MD_LINK_RE.sub(repl, line))
     return "".join(out)
 
 
@@ -247,36 +219,6 @@ def rewrite_links(rename_map: dict[str, str], pages: list[Page] | None = None) -
     return changed
 
 
-# A markdown link span ``](target)`` for ANY target (not only '.md'): citation links into the
-# raw/ source tree now point at arbitrary file types (.py/.txt/.pdf/...), so repointing a moved
-# source cannot assume the '.md' suffix that wiki cross-link rewriting relies on.
-_ANY_LINK_RE = re.compile(r"\]\(([^)]+)\)")
-
-
-def _split_link_target(inner: str) -> tuple[str, str]:
-    """Split a markdown link's parenthesized content into ``(path, suffix)``, where ``suffix`` is
-    any trailing ``"title"`` (or empty for a ``<path>`` form) preserved verbatim on rewrite. e.g.
-    ``'../../raw/x.md "note"'`` -> ``('../../raw/x.md', ' "note"')``; ``'<../../raw/x.md>'`` ->
-    ``('../../raw/x.md', '')``."""
-    inner = inner.strip()
-    if inner.startswith("<"):
-        end = inner.find(">")
-        return (inner[1:end], "") if end != -1 else (inner, "")
-    parts = inner.split(None, 1)
-    return (parts[0], " " + parts[1]) if len(parts) == 2 else (inner, "")
-
-
-def _link_abs(page_rel: str, target: str) -> str | None:
-    """The absolute, lexically-normalized filesystem path a relative citation ``target`` in wiki
-    page ``page_rel`` points at, or None for an external/anchor link. Lexical only (``normpath``,
-    no symlink resolution) so it stays consistent with how source keys are formed and works on
-    synthetic or not-yet-existing paths."""
-    if "://" in target or target.startswith("#"):
-        return None
-    page_dir = os.path.dirname(str(config.WIKI_DIR / page_rel))
-    return os.path.normpath(os.path.join(page_dir, target))
-
-
 def _link_points_at_key(page_rel: str, target: str, key: str) -> bool:
     """True if the relative citation ``target`` written in wiki page ``page_rel`` resolves to the
     raw source identified by ``key`` — a workspace-relative key (``raw/x.md``) OR an absolute
@@ -284,7 +226,7 @@ def _link_points_at_key(page_rel: str, target: str, key: str) -> bool:
     folding, so a ``../../raw/x.md`` citation matches its source whether the wiki and raw live in
     the workspace or together on a mounted network drive. Replaces the old resolver, which compared
     root-relative paths and so returned None for any citation that pointed outside the root."""
-    link_abs = _link_abs(page_rel, target)
+    link_abs = grammar.link_abs(page_rel, target)
     if link_abs is None:
         return False
     target_abs = str(config.source_path_for_key(key))
@@ -314,19 +256,14 @@ def _rewrite_raw_body_links(page_rel: str, body: str, old_rel: str, new_rel: str
     never a literal ``](x)`` inside a code fence or a partial substring."""
 
     def repl(match: re.Match) -> str:
-        path, suffix = _split_link_target(match.group(1))
+        path, suffix = grammar.split_link_target(match.group(1))
         if not _link_points_at_key(page_rel, path, old_rel):
             return match.group(0)
         return f"]({_source_key_to_page_link(page_rel, new_rel)}{suffix})"
 
     out: list[str] = []
-    in_fence = False
-    for line in body.splitlines(keepends=True):
-        if line.lstrip().startswith("```"):
-            in_fence = not in_fence
-            out.append(line)
-            continue
-        out.append(line if in_fence else _ANY_LINK_RE.sub(repl, line))
+    for line, in_code in grammar.iter_lines(body, keepends=True):
+        out.append(line if in_code else grammar.ANY_LINK_RE.sub(repl, line))
     return "".join(out)
 
 
@@ -377,16 +314,10 @@ def find_raw_references(rel_key: str, pages: list[Page] | None = None) -> list[s
         if str(page.frontmatter.get("resource") or "").strip().replace("\\", "/") == target:
             hits.append(page.rel_path)
             continue
-        in_fence = False
-        for line in page.body.splitlines():
-            if line.lstrip().startswith("```"):
-                in_fence = not in_fence
-                continue
-            if in_fence:
-                continue
+        for line in grammar.prose_lines(page.body):
             if any(
-                _link_points_at_key(page.rel_path, _split_link_target(m.group(1))[0], target)
-                for m in _ANY_LINK_RE.finditer(line)
+                _link_points_at_key(page.rel_path, grammar.split_link_target(m.group(1))[0], target)
+                for m in grammar.ANY_LINK_RE.finditer(line)
             ):
                 hits.append(page.rel_path)
                 break
@@ -396,13 +327,15 @@ def find_raw_references(rel_key: str, pages: list[Page] | None = None) -> list[s
 def find_broken_links(pages: list[Page] | None = None) -> list[tuple[str, str]]:
     """Every relative .md cross-link whose target page does not exist, as
     ``(source_rel_path, resolved_target)``. The 'links keep working' gate: ingest surfaces
-    this in its report and lint flips its exit code on it. Sorted for stable output."""
+    this in its report and lint flips its exit code on it. Delegates to the shared
+    :func:`grammar.resolved_md_links` (see grammar.py for the decided rules). Sorted for
+    stable output."""
     if pages is None:
         pages = load()
     paths = {p.rel_path for p in pages}
     broken: list[tuple[str, str]] = []
     for page in pages:
-        for _raw_target, resolved in _resolved_md_links(page.rel_path, page.body):
+        for _raw_target, resolved in grammar.resolved_md_links(page.rel_path, page.body):
             if resolved not in paths:
                 broken.append((page.rel_path, resolved))
     return sorted(broken)
@@ -414,7 +347,7 @@ def _inbound_map(pages: list[Page]) -> dict[str, list[str]]:
     paths = {p.rel_path for p in pages}
     inbound: dict[str, list[str]] = {p.rel_path: [] for p in pages}
     for page in pages:
-        for _raw, resolved in _resolved_md_links(page.rel_path, page.body):
+        for _raw, resolved in grammar.resolved_md_links(page.rel_path, page.body):
             if resolved in paths and resolved != page.rel_path:
                 inbound[resolved].append(page.rel_path)
     return {k: sorted(set(v)) for k, v in inbound.items()}
@@ -523,9 +456,10 @@ _OP_DONE_RE = re.compile(
     re.IGNORECASE,
 )
 _OP_REOPEN_RE = re.compile(r"\b(reopened|reopen|regression|regressed|wieder\s+offen)\b", re.IGNORECASE)
-# Flatten a bullet for the catalog: inline links -> their text, footnote markers dropped.
+# Flatten a bullet for the catalog: inline links -> their text, footnote markers dropped
+# (the shared marker grammar, with any leading whitespace swallowed along with the marker).
 _OP_MD_LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]+\)")
-_OP_FOOTNOTE_RE = re.compile(r"\s*\[\^[\w.-]+\]")
+_OP_FOOTNOTE_RE = re.compile(r"\s*" + grammar.FOOTNOTE_RE.pattern)
 
 
 @dataclass
@@ -560,7 +494,6 @@ def parse_open_points(page: Page) -> list[OpenPoint]:
     ``- YYYY-MM-DD: ...`` bullets. Returns ``[]`` for a page with no such section."""
     points: list[OpenPoint] = []
     in_section = False
-    in_fence = False
     cur_title: str | None = None
     cur_id = ""
     cur_bullets: list[tuple[str, str]] = []
@@ -572,13 +505,10 @@ def parse_open_points(page: Page) -> list[OpenPoint]:
             points.append(OpenPoint(page.rel_path, cur_id, cur_title, cur_bullets, status, last))
         cur_title, cur_id, cur_bullets = None, "", []
 
-    for line in page.body.splitlines():
+    for line, in_code in grammar.iter_lines(page.body):
+        if in_code:
+            continue
         stripped = line.strip()
-        if stripped.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
         if stripped.startswith("### "):
             # An H3 thread heading (only meaningful inside the section).
             if in_section:

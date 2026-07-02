@@ -319,3 +319,8 @@ def fake_agent(monkeypatch) -> Callable[..., FakeAgent]:
         return agent
 
     return _install
+
+
+def errors_of(issues):
+    """Filter validate issues down to severity=='error' (the strict-gate view)."""
+    return [i for i in issues if i.severity == "error"]

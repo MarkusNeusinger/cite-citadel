@@ -27,9 +27,9 @@ button, a collapsible sidebar (backslash-key shortcut) for a focus/reading mode,
 toggle. All of this is client-side state persisted in ``localStorage``; the embedded data is untouched.
 
 The only LLM-free, read-only consumer of the wiki besides search/lint. Reuses
-``store.load`` / ``store._inbound_map`` / ``store._resolved_md_links`` / ``store.tag_catalog`` /
-``store.find_raw_references`` so the graph, tags, and provenance always match the rest of the
-system.
+``store.load`` / ``store._inbound_map`` / ``store.tag_catalog`` / ``store.find_raw_references``
+and the shared citation/link/fence grammar (:mod:`citadel.grammar`) so the graph, tags, and
+provenance always match the rest of the system.
 
 The document shell, stylesheet, and viewer script are REAL files shipped as package data next to
 this module (``template.html`` / ``app.css`` / ``app.js``) and read at build time via
@@ -49,7 +49,7 @@ import webbrowser
 from importlib import resources
 from pathlib import Path
 
-from .. import config, extract, store
+from .. import config, extract, grammar, store
 from .. import manifest as manifest_mod
 
 
@@ -65,45 +65,25 @@ _SOURCE_MAX_CHARS = 200_000
 # First markdown ATX heading in a raw source — used as its human title when present.
 _HEADING_RE = re.compile(r"^#[ \t]+(.+?)[ \t]*$", re.MULTILINE)
 
-# Per-page provenance signal surfaced as sidebar badges and as the contradiction / LLM full-text
-# filters. An *inline* footnote marker `[^id]`; the id tells a raw citation (`[^sN]`) from a
-# model-supplied fact (`[^llmN]`, mirroring ``lint.LLM_MARKER_RE``). The `(?!:)` guards against a
-# stray footnote *definition* that sits outside a recognized ``## Sources`` section.
-_FN_INLINE_RE = re.compile(r"\[\^([\w.-]+)\](?!:)")
-# A contradiction callout header (``lint.CONTRADICTION_MARKER``), tolerant of leading indentation
-# and `>` spacing. Matched per prose line (not over the whole body) so a callout shown as an
-# example inside a code fence or the ``## Sources`` section is not counted.
-_CONTRADICTION_RE = re.compile(r"^\s*>\s*\[!CONTRADICTION\]", re.IGNORECASE)
-_SOURCES_HEADING_RE = re.compile(r"#+\s*sources\b", re.IGNORECASE)
-
 
 def _page_stats(body: str) -> tuple[int, int, int]:
     """``(raw_citations, llm_facts, contradictions)`` for one page body — the counts the viewer
-    shows as per-page sidebar badges and filters by. Counts only *prose*: it skips fenced code
-    blocks and the trailing ``## Sources`` section (the same regions ``lint._prose_lines`` skips),
-    so a marker or ``[!CONTRADICTION]`` written as a literal example — e.g. on a page documenting
-    the citation format — is not miscounted, and a ``[^sN]`` mentioned inside another footnote's
-    definition note is not mistaken for an inline use."""
+    shows as per-page sidebar badges and filters by. Counts only *prose* (the shared
+    ``grammar.prose_lines`` view): it skips fenced code blocks and the trailing ``## Sources``
+    section, so a marker or ``[!CONTRADICTION]`` written as a literal example — e.g. on a page
+    documenting the citation format — is not miscounted, and a ``[^sN]`` mentioned inside another
+    footnote's definition note is not mistaken for an inline use. An *inline* marker is one the
+    guarded ``grammar.USED_MARKER_RE`` matches (a use, not a stray definition)."""
     cites = llm = contradictions = 0
-    in_fence = in_sources = False
-    for line in body.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("```"):
-            in_fence = not in_fence
+    for line in grammar.prose_lines(body, skip_sources=True):
+        if line.lstrip().startswith("#"):  # headings carry no citation markers to count
             continue
-        if in_fence:
-            continue
-        if stripped.startswith("#"):
-            in_sources = bool(_SOURCES_HEADING_RE.match(stripped))
-            continue
-        if in_sources:
-            continue
-        for match in _FN_INLINE_RE.finditer(line):
-            if match.group(1).lower().startswith("llm"):
+        for match in grammar.USED_MARKER_RE.finditer(line):
+            if grammar.is_llm_marker(match.group(1)):
                 llm += 1
             else:
                 cites += 1
-        if _CONTRADICTION_RE.match(line):
+        if grammar.CONTRADICTION_LINE_RE.match(line):
             contradictions += 1
     return cites, llm, contradictions
 
@@ -122,7 +102,7 @@ def build_bundle(pages=None) -> dict:
     types: dict[str, list[str]] = {}
     for page in pages:
         outbound = sorted(
-            {resolved for _raw, resolved in store._resolved_md_links(page.rel_path, page.body) if resolved in paths}
+            {resolved for _raw, resolved in grammar.resolved_md_links(page.rel_path, page.body) if resolved in paths}
         )
         for target in outbound:
             edges.append({"source": page.rel_path, "target": target})
@@ -162,17 +142,6 @@ def build_bundle(pages=None) -> dict:
 # --------------------------------------------------------------------------------------
 
 
-def _is_within(path_abs: str | os.PathLike, base) -> bool:
-    """True if ``path_abs`` lies inside directory ``base`` (case-folded, purely LEXICAL — no
-    symlink resolution). Used to tell a citation into the raw/ or docs/ source tree apart from a
-    wiki cross-link or external URL. Stays lexical on purpose so it matches ``store._link_abs`` /
-    ``store._link_points_at_key`` (which never call ``resolve()``); resolving only one side would
-    diverge under a symlinked wiki/raw path and silently drop every cited source."""
-    base_s = os.path.normcase(os.path.normpath(str(base)))
-    p = os.path.normcase(os.path.normpath(str(path_abs)))
-    return p == base_s or p.startswith(base_s + os.sep)
-
-
 def _viewer_resolve(from_rel: str, target: str) -> str:
     """Python port of the viewer's in-browser ``resolveLink``: resolve a citation ``target`` written
     in page ``from_rel`` to a wiki-root-relative posix id, CLAMPING any ``..`` that would climb above
@@ -208,28 +177,22 @@ def _source_view_id(abs_path: str | os.PathLike) -> str:
 
 def _collect_sources(pages) -> dict[str, str]:
     """Map each cited raw/docs source's VIEWER IDENTITY -> its source key, by scanning citation
-    links (so a source is clickable even if it isn't in the manifest). The identity is computed with
-    :func:`_viewer_resolve` — the exact port of the browser's link resolver — so the source is keyed
-    under the same id the inline citation looks it up by, in any layout. Fence-aware, mirroring the
-    store's link scanners, so a citation written as a literal inside a ``` code fence is not counted.
-    First writer wins per identity, for determinism."""
+    links (so a source is clickable even if it isn't in the manifest). What counts as a citation is
+    the shared, config-aware :func:`grammar.is_source_citation` (a link into ``RAW_DIR``/``DOCS_DIR``).
+    The identity is computed with :func:`_viewer_resolve` — the exact port of the browser's link
+    resolver — so the source is keyed under the same id the inline citation looks it up by, in any
+    layout. Fence-aware via ``grammar.prose_lines``, so a citation written as a literal inside a
+    ``` code fence is not counted. First writer wins per identity, for determinism."""
     found: dict[str, str] = {}
     for page in pages:
-        in_fence = False
-        for line in page.body.splitlines():
-            if line.lstrip().startswith("```"):
-                in_fence = not in_fence
-                continue
-            if in_fence:
-                continue
-            for match in store._ANY_LINK_RE.finditer(line):
-                path, _suffix = store._split_link_target(match.group(1))
-                link_abs = store._link_abs(page.rel_path, path)
-                if link_abs is None:
+        for line in grammar.prose_lines(page.body):
+            for match in grammar.ANY_LINK_RE.finditer(line):
+                path, _suffix = grammar.split_link_target(match.group(1))
+                if not grammar.is_source_citation(page.rel_path, path):
                     continue
-                if _is_within(link_abs, config.RAW_DIR) or _is_within(link_abs, config.DOCS_DIR):
-                    view_id = _viewer_resolve(page.rel_path, path)
-                    found.setdefault(view_id, config.rel_or_abs_posix(Path(link_abs)))
+                link_abs = grammar.link_abs(page.rel_path, path)
+                view_id = _viewer_resolve(page.rel_path, path)
+                found.setdefault(view_id, config.rel_or_abs_posix(Path(link_abs)))
     return found
 
 

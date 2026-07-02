@@ -111,14 +111,19 @@ seam tests monkeypatch.
 - `citadel lint` (`lint.py`) — a **pure offline health check** (contradictions, orphans, missing
   cites, broken links, stale, fabricated sources, undefined abbreviations). Only *structural*
   problems (missing type, broken links, bad sources, wikilinks) flip its non-zero exit; the rest are
-  advisory. Shares citation/wikilink parsing with `validate`.
+  advisory. Both layers parse citations/links/fences through `grammar.py`, so lint and `citadel
+  check` agree by construction: a citation into `raw/` or `docs/` is legal provenance (never a
+  broken link), and a link inside a ``` code fence is literal text.
 
 **Other modules:** `okf.py` is the OKF format core (parse/dump, type→folder routing, link math, and
-the non-negotiable `safe_join` path guard — reuse it for any wiki-relative path). `store.py` is the
+the non-negotiable `safe_join` path guard — reuse it for any wiki-relative path). `grammar.py` is
+the **single home of the markdown grammar** (link/footnote/fence/Sources-heading parsing and the
+source-citation predicates) that `store`, `validate`, `lint`, and the viewer all parse through;
+never re-define any of it locally. `store.py` is the
 "database": `load()`, the single swappable `search()` seam, `rebuild_indexes()` (regenerates
 `index.md`, per-folder `index.md`, and `sources/index.md` mechanically from frontmatter +
 manifest), and the deterministic link-rewrite safety nets (`rewrite_links`, `rewrite_raw_references`,
-`find_raw_references`, `find_broken_links`). `manifest.py` tracks idempotency in
+`find_raw_references`, `find_broken_links`), all fence-aware via `grammar.py`. `manifest.py` tracks idempotency in
 `wiki/.citadel_ingested.json` (per source: sha256 or git commit + importing model). `repo.py` builds
 the digest for git-repo sources. `extract.py` pulls text from Office files (stdlib-only); the legacy
 OLE/CFBF salvage lives in `extract_ole.py`, imported lazily only when a legacy `.ppt`/`.doc`/`.xls`

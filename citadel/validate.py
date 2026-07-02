@@ -22,28 +22,16 @@ import os
 import re
 from dataclasses import dataclass
 
-from . import config, okf, store
+from . import config, grammar, okf, store
 from .okf import Page
 
 
 # STRICT — these frontmatter fields must be present and non-empty on every page.
 REQUIRED_FIELDS = ("type", "title", "description", "tags", "resource")
 
-# A [[wiki-style]] link — NOT allowed (the wiki uses relative markdown links).
-WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 # Tool-call / agent-transcript artifacts that must never leak into a wiki page body
 # (an agentic CLI occasionally flushes these tokens at the end of a file it writes).
 ARTIFACT_RE = re.compile(r"antml:|</?(?:invoke|function_calls|parameter|content)\b", re.IGNORECASE)
-# A relative .md markdown link target (mirrors store._MD_LINK_RE / lint.LINK_RE).
-_MD_LINK_RE = re.compile(r"\]\(([^)]+\.md)\)")
-
-# --- citation/source parsing (moved here from lint so there is ONE implementation) ----
-_DEF_LINE_RE = re.compile(r"^\s*\[\^([\w.-]+)\]:\s*(.*)$")
-# First markdown link on a definition line; tolerates a <url> form and stops the URL at
-# whitespace so a `(url "title")` link title is not swallowed into the path.
-_DEF_LINK_RE = re.compile(r"\[[^\]]*\]\(\s*<?([^)\s>]+)>?")
-# A footnote marker USED on a fact (not a definition — i.e. not followed by ':').
-_USED_MARKER_RE = re.compile(r"\[\^([\w.-]+)\](?!:)")
 
 
 @dataclass
@@ -71,44 +59,39 @@ def source_issues(rel_path: str, body: str) -> list[str]:
     section and code fences are skipped, so a page documenting the citation format is not
     falsely flagged. Resolution is by path math from the page's location under WIKI_DIR, so it
     works on synthetic (not-yet-written) pages too; only the cited SOURCE file must exist."""
-    page_dir = os.path.dirname(str(config.WIKI_DIR / rel_path))
-    in_fence = False
     in_sources = False
     defined: set[str] = set()
     used: set[str] = set()
     bad: list[str] = []
 
-    for line in body.splitlines():
+    for line, in_code in grammar.iter_lines(body):
+        if in_code:
+            continue
         stripped = line.strip()
-        if stripped.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
         if stripped.startswith("#"):
-            in_sources = bool(re.match(r"#+\s*sources\b", stripped, re.IGNORECASE))
+            in_sources = bool(grammar.SOURCES_HEADING_RE.match(stripped))
             continue
 
-        mdef = _DEF_LINE_RE.match(line)
+        mdef = grammar.DEF_LINE_RE.match(line)
         if mdef and in_sources:
             marker_id, rest = mdef.group(1), mdef.group(2)
             defined.add(marker_id)
-            if marker_id.lower().startswith("llm"):
+            if grammar.is_llm_marker(marker_id):
                 continue  # model-supplied fact: cites "LLM", no raw file expected
-            link = _DEF_LINK_RE.search(rest)
+            link = grammar.DEF_LINK_RE.search(rest)
             if not link:
                 bad.append(f"[^{marker_id}]: no resolvable source link")
                 continue
             target = link.group(1).strip()
-            if "://" in target or target.startswith("#"):
+            if grammar.is_external(target):
                 continue
-            resolved = os.path.normpath(os.path.join(page_dir, target))
+            resolved = grammar.link_abs(rel_path, target)
             if not os.path.exists(resolved):
                 bad.append(target)
             continue
 
         # Usage line: collect every marker that is not itself a definition.
-        used.update(_USED_MARKER_RE.findall(line))
+        used.update(grammar.USED_MARKER_RE.findall(line))
 
     # A fact tagged with a marker that is never defined is unverifiable provenance.
     for marker_id in sorted(used - defined):
@@ -120,14 +103,8 @@ def wikilink_targets(body: str) -> list[str]:
     """Every ``[[wiki-style]]`` link in ``body`` (skipping fenced code blocks). These are
     NOT valid in this wiki — cross-links must be relative markdown links."""
     found: list[str] = []
-    in_fence = False
-    for line in body.splitlines():
-        if line.lstrip().startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        found.extend(m.strip() for m in WIKILINK_RE.findall(line))
+    for line in grammar.prose_lines(body):
+        found.extend(m.strip() for m in grammar.WIKILINK_RE.findall(line))
     return found
 
 
@@ -135,7 +112,7 @@ def _backslash_links(body: str) -> list[str]:
     """Relative .md link targets written with backslashes (e.g. ``..\\raw\\x.md``) — these
     break cross-platform link resolution and must use forward slashes."""
     out: list[str] = []
-    for match in _MD_LINK_RE.finditer(body):
+    for match in grammar.MD_LINK_RE.finditer(body):
         target = match.group(1).strip()
         if "\\" in target:
             out.append(target)
