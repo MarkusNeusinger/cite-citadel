@@ -15,29 +15,26 @@ broken_links, bad_sources (a fact citing a missing raw/ file), or wikilinks (a
 ``[[wiki-style]]`` link). contradictions/orphans/missing_cites/stale/llm_facts/
 suggested_links/undefined_abbrevs are ADVISORY — render() lists every category with counts,
 but they do NOT flip ok(). The per-page citation (source) and wikilink checks are shared with the
-ingest gate via :mod:`citadel.validate`. This keeps `citadel lint` green on an empty
-seeded wiki and avoids failing on the advisory missing-cites heuristic.
+ingest gate via :mod:`citadel.validate`, and the link/fence grammar (what counts as a wiki
+cross-link vs a source citation into raw/ or docs/, and that fenced links are literal text) is
+shared via :mod:`citadel.grammar` — so lint and `citadel check` agree by construction. This
+keeps `citadel lint` green on an empty seeded wiki and avoids failing on the advisory
+missing-cites heuristic.
 """
 
 from __future__ import annotations
 
 import difflib
-import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from . import okf, store, validate
+from . import grammar, okf, store, validate
 from .okf import Page
 
 
-CONTRADICTION_MARKER = "> [!CONTRADICTION]"
-LINK_RE = re.compile(r"\]\(([^)]+\.md)\)")
-FOOTNOTE_RE = re.compile(r"\[\^[\w.-]+\]")
-# A model-supplied ("source: LLM") footnote marker, e.g. [^llm1]. These facts are added
-# from the model's own knowledge (essential, high-confidence, on-topic) rather than a raw
-# file, and are deliberately NOT required to cite a raw/ file.
-LLM_MARKER_RE = re.compile(r"\[\^llm[\w.-]*\]", re.IGNORECASE)
+# The link / footnote / callout grammar is shared (citadel.grammar) — re-exported names kept
+# for the marker constant this module historically defined.
 
 # An abbreviation/acronym candidate: 2–6 chars, all caps, starting with a letter (TCO, API,
 # SLA, KPI, V60, B2B). Used to surface domain abbreviations that recur across the wiki but are
@@ -160,31 +157,14 @@ class LintReport:
 
 
 def _outbound_links(page: Page) -> list[str]:
-    """All .md link targets in the body, resolved to wiki-root-relative posix
-    rel_paths (skipping Sources-section raw/ links). Used for orphan +
-    broken-link detection."""
-    base_dir = os.path.dirname(page.rel_path)
-    targets: list[str] = []
-    for match in LINK_RE.finditer(page.body):
-        raw_target = match.group(1).strip()
-        # Skip external links and anchors.
-        if "://" in raw_target or raw_target.startswith("#"):
-            continue
-        # Skip links into the raw/ source tree (these are the ## Sources footnotes).
-        # They may appear as ../../raw/foo.md relative to the page.
-        norm = os.path.normpath(os.path.join(base_dir, raw_target))
-        norm = norm.replace(os.sep, "/")
-        first = norm.split("/", 1)[0]
-        if first == "raw" or "/raw/" in ("/" + norm):
-            continue
-        # Resolve to a wiki-root-relative posix path.
-        targets.append(norm)
-    return targets
+    """Wiki cross-link targets for orphan/broken-link detection — delegates to the shared
+    :func:`grammar.resolved_md_links`; see grammar.py for the decided rules."""
+    return [resolved for _raw, resolved in grammar.resolved_md_links(page.rel_path, page.body)]
 
 
 def _has_footnote(paragraph: str) -> bool:
     """True if a [^sN]-style footnote marker is present."""
-    return FOOTNOTE_RE.search(paragraph) is not None
+    return grammar.FOOTNOTE_RE.search(paragraph) is not None
 
 
 def _is_stale(page: Page, stale_days: int) -> bool:
@@ -207,7 +187,6 @@ def _missing_cite_preview(page: Page) -> str | None:
 
     A "factual-looking paragraph" is a block of >1 sentence that is not a heading,
     not inside a code fence, and not part of the trailing ## Sources section."""
-    in_code_fence = False
     in_sources = False
     paragraph_lines: list[str] = []
 
@@ -223,20 +202,17 @@ def _missing_cite_preview(page: Page) -> str | None:
             return None
         return text[:80]
 
-    for line in page.body.splitlines():
+    for line, in_code in grammar.iter_lines(page.body):
+        if in_code:
+            continue
         stripped = line.strip()
-        if stripped.startswith("```"):
-            in_code_fence = not in_code_fence
-            continue
-        if in_code_fence:
-            continue
         if stripped.startswith("#"):
             # Heading: paragraph boundary; detect the Sources section.
             preview = flush(paragraph_lines)
             paragraph_lines = []
             if preview is not None:
                 return preview
-            if re.match(r"#+\s*sources\b", stripped, re.IGNORECASE):
+            if grammar.SOURCES_HEADING_RE.match(stripped):
                 in_sources = True
             continue
         if in_sources:
@@ -278,37 +254,12 @@ def _unlinked_mentions(
     return found
 
 
-def _prose_lines(body: str):
-    """Yield the prose lines of ``body`` — every line except fenced code blocks and the trailing
-    ``## Sources`` section (whose raw filenames, dates, and footnote links are not prose). A
-    heading other than ``## Sources`` IS prose — an abbreviation in a heading (e.g. ``## SCA
-    Water``) is a real use — so it is yielded; the ``## Sources`` heading and its body are skipped.
-    Shared by the use-counting and inline-expansion passes so both see the same region."""
-    in_fence = False
-    in_sources = False
-    for line in body.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        if stripped.startswith("#"):
-            in_sources = bool(re.match(r"#+\s*sources\b", stripped, re.IGNORECASE))
-            if not in_sources:
-                yield line
-            continue
-        if in_sources:
-            continue
-        yield line
-
-
 def _abbrev_token_uses(body: str) -> set[str]:
     """Abbreviation-shaped tokens (see ABBREV_RE) used in the prose of ``body`` (see
-    :func:`_prose_lines` — headings count, code fences and ``## Sources`` do not), skipping
-    chemistry formulae (a token trailed by a subscript digit, e.g. CO₂)."""
+    :func:`grammar.prose_lines` — headings count, code fences and ``## Sources`` do not),
+    skipping chemistry formulae (a token trailed by a subscript digit, e.g. CO₂)."""
     found: set[str] = set()
-    for line in _prose_lines(body):
+    for line in grammar.prose_lines(body, skip_sources=True):
         for m in ABBREV_RE.finditer(line):
             if m.end() < len(line) and line[m.end()] in _SCRIPT_DIGITS:
                 continue
@@ -319,10 +270,10 @@ def _abbrev_token_uses(body: str) -> set[str]:
 def _abbrev_expansions(body: str) -> set[str]:
     """Abbreviation tokens written next to a parenthetical expansion in the prose of ``body``
     (``solids (TDS)`` or ``WDT (Weiss …)``) — i.e. defined inline, so not a glossary gap. Only
-    prose counts (see :func:`_prose_lines`): an expansion that appears solely inside a code fence
-    or the ``## Sources`` section must not suppress the nudge for real uses elsewhere."""
+    prose counts (see :func:`grammar.prose_lines`): an expansion that appears solely inside a code
+    fence or the ``## Sources`` section must not suppress the nudge for real uses elsewhere."""
     out: set[str] = set()
-    for line in _prose_lines(body):
+    for line in grammar.prose_lines(body, skip_sources=True):
         out.update(_ABBR_IN_PARENS_RE.findall(line))
         out.update(_ABBR_THEN_PARENS_RE.findall(line))
     return out
@@ -435,7 +386,7 @@ def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
             report.missing_type.append(page.rel_path)
 
         # contradictions
-        if CONTRADICTION_MARKER in page.body:
+        if grammar.CONTRADICTION_MARKER in page.body:
             report.contradictions.append(page.rel_path)
 
         # broken_links
@@ -466,8 +417,10 @@ def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
         for target in validate.wikilink_targets(page.body):
             report.wikilinks.append((page.rel_path, target))
 
-        # llm_facts (advisory): page carries one or more model-supplied facts.
-        if LLM_MARKER_RE.search(page.body):
+        # llm_facts (advisory): page carries one or more model-supplied facts. Deliberately
+        # searched over the WHOLE body (fences and Sources definitions included): the badge
+        # answers "does model knowledge appear anywhere on this page", not "how many prose uses".
+        if grammar.LLM_MARKER_RE.search(page.body):
             report.llm_facts.append(page.rel_path)
 
         # suggested_links (advisory): un-linked mentions of other pages' titles.

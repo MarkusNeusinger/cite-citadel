@@ -237,7 +237,9 @@ citadel/rules/
 - Multi-root: `CITADEL_RAW_DIRS` (list env var); keys use the existing rel-or-abs discipline;
   deletion sweep scoped per root. The five hardcoded `'raw'`/`'docs'` literals (store.py:175/207,
   lint.py:180, viewer, config.display_key) collapse into one config-aware `is_source_citation`
-  predicate (lives in grammar.py, see Z7). **Citation form per root class is specified**: citations
+  predicate (lives in grammar.py, see Z7; refined during PR3.5 into the config-aware predicate
+  plus its config-free lexical twin `resolves_to_source` for the byte-stable rewriters — do not
+  re-collapse them). **Citation form per root class is specified**: citations
   into sibling roots stay relative links; non-sibling/out-of-repo roots are cited by absolute posix
   path in the footnote definition (validate/check accept it via `source_path_for_key` — the
   mechanism already exists for out-of-repo dirs; on Windows a cross-drive relative path cannot even

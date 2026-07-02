@@ -174,7 +174,7 @@ def test_citation_inside_code_fence_is_not_a_source(tmp_citadel, seed_page):
 
 def test_angle_bracket_citation_is_discovered(tmp_citadel, seed_page):
     # A citation written in markdown's <...> target form must still be discovered and embedded
-    # (store._split_link_target strips the brackets); the in-browser resolveLink strips them too.
+    # (grammar.split_link_target strips the brackets); the in-browser resolveLink strips them too.
     (tmp_citadel.raw / "x.md").write_text("# X\n\nbody\n", encoding="utf-8")
     seed_page(
         "concepts/p.md",

@@ -47,7 +47,7 @@
   // root is clamped), so a citation like '../../raw/x.md' resolves to 'raw/x.md' — exactly the
   // id under which build_sources keys an embedded source.
   function resolveLink(fromRel, target) {
-    // Strip a markdown <...> link target so it resolves like store._split_link_target does. inlineFmt
+    // Strip a markdown <...> link target so it resolves like grammar.split_link_target does. inlineFmt
     // runs on HTML-escaped text, so the brackets may already be &lt;...&gt;; the fnSrc parser passes
     // the raw <...>. Handle both forms.
     target = target.trim();
