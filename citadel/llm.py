@@ -34,6 +34,7 @@ import subprocess
 import sys
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import config
@@ -107,20 +108,56 @@ def _external_dirs(rel_key: str, read_path: str | None = None) -> list[str]:
     return sorted(out)
 
 
-# kind -> lifecycle task brief (tree-relative rules name). The EXTERNAL kind strings are the
-# stable API — ingest.py, the manifest, and the tests keep them; ONLY the mapping onto rules
-# files lives here. ingest/image/repo are all "fold a new source in" lifecycles (the format
-# brief carries what differs); the *-reconcile kinds re-fold a changed/forced source; delete
-# strips a removed source's provenance.
-_TASK_FOR_KIND = {
-    "ingest": "tasks/ingest.md",
-    "image": "tasks/ingest.md",
-    "repo": "tasks/ingest.md",
-    "reconcile": "tasks/reconcile.md",
-    "image-reconcile": "tasks/reconcile.md",
-    "repo-reconcile": "tasks/reconcile.md",
-    "delete": "tasks/delete.md",
+@dataclass(frozen=True)
+class _KindSpec:
+    """The per-kind prompt-composition spec — the ONE table that replaces the scattered ``kind``
+    checks. The EXTERNAL kind strings are the stable API (ingest.py, the manifest, and the tests
+    keep them); only their mapping onto prompt SHAPE lives here. Columns:
+
+    - ``task_file`` — the tree-relative ``tasks/*.md`` brief this kind reads.
+    - ``reads_source`` — whether the session reads a raw SOURCE for content. It gates the two
+      content-only frame parts: the genre enumeration (the agent judges genre FROM the source's
+      text) and the fallback-date bullet (the source file's own date). ``delete`` (the file is
+      gone) and ``curate`` (it improves EXISTING pages, not a source) read no source.
+    - ``format_policy`` — how the format brief is chosen: ``"source"`` (an Office extract arrives
+      via ``read_path`` → ``formats/office.md``; a large-source slice is covered by the task brief;
+      else a PDF is magic-sniffed → ``formats/pdf.md`` — the ingest/reconcile axis), ``"repo"``,
+      ``"image"``, or ``"none"``. ``"none"`` attaches NO format brief EVEN when a ``read_path`` is
+      present — curate's findings file arrives via ``read_path`` and must never pull in
+      ``formats/office.md``.
+    - ``subject_prefix`` — the ``- <prefix>: <key>`` session bullet naming what the session acts on.
+    """
+
+    task_file: str
+    reads_source: bool
+    format_policy: str
+    subject_prefix: str
+
+
+# kind -> its composition spec. ingest/image/repo are all "fold a NEW source in" lifecycles (the
+# format policy carries what differs); the *-reconcile kinds re-fold a changed/forced source;
+# delete strips a removed source's provenance; curate (PR6) re-reads the run's findings file and
+# improves EXISTING pages. An unknown kind is a FAIL-LOUD programming error (see _spec_for_kind).
+_KIND_SPECS: dict[str, _KindSpec] = {
+    "ingest": _KindSpec("tasks/ingest.md", True, "source", "Source (the source of record)"),
+    "image": _KindSpec("tasks/ingest.md", True, "image", "Source (the source of record)"),
+    "repo": _KindSpec("tasks/ingest.md", True, "repo", "Source (the source of record)"),
+    "reconcile": _KindSpec("tasks/reconcile.md", True, "source", "Source (the source of record)"),
+    "image-reconcile": _KindSpec("tasks/reconcile.md", True, "image", "Source (the source of record)"),
+    "repo-reconcile": _KindSpec("tasks/reconcile.md", True, "repo", "Source (the source of record)"),
+    "delete": _KindSpec("tasks/delete.md", False, "none", "Source (REMOVED from disk — do not open it)"),
+    "curate": _KindSpec("tasks/curate.md", False, "none", "Page to curate (the cluster anchor)"),
 }
+
+
+def _spec_for_kind(kind: str) -> _KindSpec:
+    """The composition spec for ``kind`` — FAIL LOUD (``ValueError``) on an unknown kind (a typo,
+    or a new lifecycle that forgot to register here) instead of silently defaulting to an ingest
+    brief and folding a source under the wrong task."""
+    try:
+        return _KIND_SPECS[kind]
+    except KeyError:
+        raise ValueError(f"unknown ingest kind {kind!r} (known: {', '.join(sorted(_KIND_SPECS))})") from None
 
 
 def _is_pdf_source(rel_key: str) -> bool:
@@ -135,21 +172,24 @@ def _is_pdf_source(rel_key: str) -> bool:
 
 
 def _format_brief(rel_key: str, kind: str, read_path: str | None, segment: tuple[int, int] | None) -> str | None:
-    """The tree-relative FORMAT brief for this session, or None when no format applies. Formats
-    are the structurally Python-detectable axis (repo markers, image magic, Office extraction,
-    PDF magic) — code selects the brief; genres stay the agent's content judgment.
+    """The tree-relative FORMAT brief for this session, or None when no format applies — decided by
+    the kind's ``format_policy`` (the ONE spec table). Formats are the structurally
+    Python-detectable axis (repo markers, image magic, Office extraction, PDF magic); code selects
+    the brief, genres stay the agent's content judgment.
 
-    - repo/image kinds carry their format in the kind itself.
-    - ``delete`` never reads the source, so it never gets a format brief.
-    - a ``read_path`` WITHOUT a segment is a pre-extracted Office source (``formats/office.md``);
-      WITH a segment it is a large-source slice, covered by the task brief's Large-sources rules
-      (a segmented Office source's slice already IS extracted text — no separate brief).
-    - otherwise, a direct read: a PDF (magic-sniffed) reads ``formats/pdf.md``."""
-    if kind in ("repo", "repo-reconcile"):
+    - ``repo``/``image`` policies carry their format in the kind itself.
+    - ``none`` (delete, curate) attaches NO brief — even with a ``read_path`` present (curate's
+      findings file must not pull in ``formats/office.md``).
+    - ``source`` (ingest/reconcile): a ``read_path`` WITHOUT a segment is a pre-extracted Office
+      source (``formats/office.md``); WITH a segment it is a large-source slice covered by the task
+      brief's Large-sources rules (a slice is not an Office extract, even when the source was one);
+      otherwise a direct read, and a PDF (magic-sniffed) reads ``formats/pdf.md``."""
+    policy = _spec_for_kind(kind).format_policy
+    if policy == "repo":
         return "formats/repo.md"
-    if kind in ("image", "image-reconcile"):
+    if policy == "image":
         return "formats/image.md"
-    if kind == "delete":
+    if policy == "none":
         return None
     if read_path:
         return None if segment is not None else "formats/office.md"
@@ -166,13 +206,15 @@ def _referenced_rules(
     :func:`_build_instruction` renders its rules lines from (single composition owner, so the
     two can never drift): ``schema`` and ``core`` (every session), the ``task`` brief for
     ``kind``, the ``format`` brief when one applies, the workspace ``local`` house rules when
-    present, and finally one ``genre`` entry per effective genre brief (agent-judged; skipped
-    for ``delete`` — there is no source content to judge). The single source of truth the
-    prompt-validation tests check against (every path must exist and be reachable)."""
+    present, and finally one ``genre`` entry per effective genre brief (agent-judged; only when
+    the kind READS a source — ``delete``/``curate`` have no source content to judge). The single
+    source of truth the prompt-validation tests check against (every path must exist and be
+    reachable)."""
+    spec = _spec_for_kind(kind)
     files: list[tuple[str, Path]] = [
         ("schema", config.effective_rules_file("schema.md")),
         ("core", config.effective_rules_file("core.md")),
-        ("task", config.effective_rules_file(_TASK_FOR_KIND.get(kind, "tasks/ingest.md"))),
+        ("task", config.effective_rules_file(spec.task_file)),
     ]
     fmt = _format_brief(rel_key, kind, read_path, segment)
     if fmt:
@@ -180,7 +222,7 @@ def _referenced_rules(
     local = config.local_rules_file()
     if local is not None:
         files.append(("local", local))
-    if kind != "delete":
+    if spec.reads_source:
         files.extend(("genre", g) for g in config.effective_genres())
     return files
 
@@ -237,6 +279,7 @@ def _build_instruction(
     # falls back to the primary RAW_DIR. Lexical lookup — no disk access, delete-safe.
     raw_root = config.root_covering(config.source_path_for_key(rel_key)) or config.RAW_DIR
     raw_rel = _agent_path(raw_root)
+    spec = _spec_for_kind(kind)  # the ONE table: subject bullet + whether a source is read
     fmt = _format_brief(rel_key, kind, read_path, segment)  # for the PDF-mode bullet below
 
     lines = [
@@ -256,10 +299,7 @@ def _build_instruction(
         )
 
     lines += ["", "Session variables (use these paths verbatim):"]
-    if kind == "delete":
-        lines.append(f"- Source (REMOVED from disk — do not open it): {rel_key}")
-    else:
-        lines.append(f"- Source (the source of record): {rel_key}")
+    lines.append(f"- {spec.subject_prefix}: {rel_key}")
     lines.append(f"- Wiki directory: {wiki_rel}/")
     lines.append(f"- Raw directory: {raw_rel}/")
     if read_path:
@@ -267,13 +307,15 @@ def _build_instruction(
     if segment is not None:
         lines.append(f"- Segment: part {segment[0]} of {segment[1]}")
     # Fallback date for time-anchored sources: the raw file's own modification date, used only
-    # when the source's CONTENT states no date (genres/meeting-minutes.md § Dates). Guarded so a
-    # missing file (a delete session, a repo folder, a unit test's phantom key) yields no bullet.
+    # when the source's CONTENT states no date (genres/meeting-minutes.md § Dates). Only for kinds
+    # that READ a source (delete/curate have none), and guarded so a missing file (a repo folder,
+    # a unit test's phantom key) yields no bullet.
     fallback_date = ""
-    with contextlib.suppress(OSError):
-        src = config.source_path_for_key(rel_key)
-        if src.is_file():
-            fallback_date = time.strftime("%Y-%m-%d", time.gmtime(src.stat().st_mtime))
+    if spec.reads_source:
+        with contextlib.suppress(OSError):
+            src = config.source_path_for_key(rel_key)
+            if src.is_file():
+                fallback_date = time.strftime("%Y-%m-%d", time.gmtime(src.stat().st_mtime))
     if fallback_date:
         lines.append(
             "- Fallback date — the source file's own date, used only when the source's content "

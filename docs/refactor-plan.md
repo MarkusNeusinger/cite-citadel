@@ -323,6 +323,18 @@ Separate verb (GraphRAG/Letta precedent), two layers (Wikipedia-bot model), **no
 - MCP: add `wiki_lint` (the curate driver is genuinely useful to external clients) and tool
   behavior annotations. The raw-source reader / per-page validate / force flag move to a small
   follow-up PR — the curate agent is a CLI session with file tools and reads raw/ directly.
+- *(Shipped in PR6: detectors + recompute-per-run plan (`curate.py`), the `--dry-run`/`--limit`/
+  `--stale-rules`/`--diff` driver, attempt-capped revert-and-stop cluster sessions on the existing
+  staging machinery, `CITADEL_CURATE_MODEL`, and the Z6 `locator` detector (via
+  `lint.check_locators`, shared with `citadel lint`). `wiki_lint` + `readOnlyHint`/`destructiveHint`/
+  `idempotentHint`/`openWorldHint` annotations on all eight MCP tools, and the CLI
+  `read`/`index`/`sources` parity subcommands + parity test, ship here too. Deviations: `curate`
+  does NOT re-stamp a re-grounded source's manifest `rules_version` (that field means "rules the
+  IMPORTING session ran under"; curate operates on pages, not imports), so a `rules_version_drift`
+  cluster re-plans until a real reconcile/`--force` re-ingest — mitigated by the mandatory
+  improve-or-NOOP (a second clean pass is a NOOP, no wiki churn); the stale×in-degree re-verify
+  sampling IS wired (reason "reverify", top-K by staleness × in-degree+1); only the
+  `oversized misc/` re-sort variant remains unwired.)*
 
 ### Z6 — Provenance precision: citation locators now, evidence quotes later
 
@@ -471,7 +483,13 @@ Separate verb (GraphRAG/Letta precedent), two layers (Wikipedia-bot model), **no
   favor of which file), ignored (which pattern), pending. Same data enriches the generated
   `sources/index.md` ("Could not ingest" already exists; add the positive side: every ingested
   source with its provenance stamp). The PR1 failures-catalog fix (repo/delete sessions) feeds
-  this.
+  this. *(Shipped in PR6: `status.py` renders ingested — model + rules_version + a `(stale)` flag
+  when the stamp predates the current rulebook — / failed — reason + attempts — / skipped-duplicate
+  / ignored / pending, from the manifest + failures catalog + one stat-only walk, never re-hashing.
+  Deviation: the `date` / `genre` / `segments` / forced-alongside columns are NOT shown — the
+  manifest records neither an ingest wall-clock time nor a segment count nor a genre stamp, so they
+  are omitted rather than fabricated; the `sources/index.md` enrichment is left as a later cheap
+  add.)*
 - **Full MCP↔CLI parity (goal 8)**: verified gaps — `wiki_read`, `wiki_index`, `wiki_sources`
   have no CLI counterpart today. Add `citadel read <page>`, `citadel index`, `citadel sources`
   (thin wrappers over store, like the existing subcommands), so an AI without MCP access can do

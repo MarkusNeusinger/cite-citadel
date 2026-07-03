@@ -29,14 +29,20 @@ idempotent), `ingest [paths…]` (fold raw/ into the wiki; `--verbose`/`-v` stre
 session, `--log-dir DIR` writes a transcript per source, `--quiet` drops the progress spinner,
 `--full-rescan` distrusts the manifest's stat cache and re-hashes every tracked source,
 `--force <paths>` deliberately re-reads already-ingested sources as a reconcile — it requires
-explicit paths and is refused without them), `serve` (MCP stdio server), `search <query> [--tag T] [--limit N]`, `tags [tag]`,
-`lint [--stale-days N]`, `check [paths…]`, `view [--out PATH] [--no-open] [--obsidian]`.
-`citadel --version` prints the version and (like `--help`) needs no workspace.
+explicit paths and is refused without them), `curate [--dry-run] [--limit N] [--stale-rules]
+[--diff PATH]` (the SECOND lifecycle: improve EXISTING pages — re-sort/split/re-ground/resolve
+contradictions/fix locators — against a recomputed findings checklist), `status` (read-only
+per-source state table: ingested / failed / skipped-duplicate / ignored / pending), `serve` (MCP
+stdio server), `search <query> [--tag T] [--limit N]`, `read <rel_path>` / `index` / `sources`
+(CLI twins of the `wiki_read`/`wiki_index`/`wiki_sources` MCP tools — full CLI↔MCP parity),
+`tags [tag]`, `lint [--stale-days N]`, `check [paths…]`, `view [--out PATH] [--no-open]
+[--obsidian]`, `rules list|show|eject`. `citadel --version` prints the version and (like `--help`)
+needs no workspace.
 
 Tests (pytest, all offline — no CLI/network is ever spawned):
 
 ```bash
-uv run pytest -q                                    # whole suite (~540 tests, ~3s)
+uv run pytest -q                                    # whole suite (~570 tests, ~3s)
 uv run pytest tests/test_ingest_core.py -q          # one file
 uv run pytest tests/test_ingest_core.py::test_ingest_creates_pages   # one test
 ```
@@ -122,10 +128,13 @@ it is itself a workspace.
 **`llm.py` is the ONLY place that talks to an LLM**, and it does so by shelling out to a CLI in
 agentic mode (`cwd` = workspace root, autonomous file tools). The prompt is **paths-only** — it references
 the source and rules by path, never embeds file content — which keeps argv tiny (the Windows
-`WinError 206` fix). `kind` selects the propagation: `ingest` (new), `reconcile` (changed source —
-update/remove stale facts, don't just append), `delete` (source removed — strip its provenance),
-`repo`/`repo-reconcile` (a whole git repo folded as one digest), and `image`/`image-reconcile` (an
-image source read visually). A large source is split into segments and folded in over several passes
+`WinError 206` fix). One per-kind spec table (`_KIND_SPECS`) maps each `kind` to its task-rule
+file, whether it reads a source, and its format policy; an unknown kind fails loud. `kind` selects
+the propagation: `ingest` (new), `reconcile` (changed source — update/remove stale facts, don't
+just append), `delete` (source removed — strip its provenance), `repo`/`repo-reconcile` (a whole
+git repo folded as one digest), `image`/`image-reconcile` (an image source read visually), and
+`curate` (improve an existing page cluster against a findings file — reads that file by path, not a
+raw source). A large source is split into segments and folded in over several passes
 (`segment=(part, total)` on `run_ingest_session`, telling later passes to MERGE into earlier ones).
 `run_ingest_session` is the single seam tests monkeypatch.
 
@@ -134,11 +143,32 @@ image source read visually). A large source is split into segments and folded in
   citations, relative non-broken links, no `[[wikilinks]]`). The ingest agent self-runs it; ingest
   re-runs it and fails the source on any error.
 - `citadel lint` (`lint.py`) — a **pure offline health check** (contradictions, orphans, missing
-  cites, broken links, stale, fabricated sources, undefined abbreviations). Only *structural*
-  problems (missing type, broken links, bad sources, wikilinks) flip its non-zero exit; the rest are
-  advisory. Both layers parse citations/links/fences through `grammar.py`, so lint and `citadel
-  check` agree by construction: a citation into `raw/` or `docs/` is legal provenance (never a
-  broken link), and a link inside a ``` code fence is literal text.
+  cites, broken links, stale, fabricated sources, undefined abbreviations, near-duplicate/malformed
+  open points, and **Z6 locator issues** — a `lines A-B` range past a text source's end or a
+  `§ Heading` naming a heading the source lacks, via `lint.check_locators`, shared with curate).
+  Only *structural* problems (missing type, broken links, bad sources, wikilinks) flip its non-zero
+  exit; the rest — locator issues included — are advisory. Both layers parse citations/links/fences
+  through `grammar.py`, so lint and `citadel check` agree by construction: a citation into `raw/` or
+  `docs/` is legal provenance (never a broken link), and a link inside a ``` code fence is literal text.
+
+**Curate is the second wiki lifecycle** (`curate.py`, `citadel curate`). It has **no persisted
+queue — the plan is recomputed from offline detectors every run** (the wiki IS the database):
+`rules_version_drift`, `page_length_hard`, `contradiction`, `orphan`, `llm_drift`, `resort`
+(type↔folder mismatch via `okf.folder_for_type`), and `locator` (from `lint.check_locators`);
+fact re-verification is pre-filtered offline through manifest shas (`reverify_candidates` — changed
+= reconcile's job, gone = delete's job). Each planned page CLUSTER (page + cited raw files + link
+neighbors) runs ONE staged `kind="curate"` session over ingest's existing staging machinery, its
+findings written to a temp file referenced by path. **The staging diff-by-hash is the single result
+arbiter** (empty = NOOP, clean promoted = applied, exception/check-fail = failed → revert-and-stop).
+A failed cluster lands in the failures catalog keyed by page rel_path with an additive `attempts`
+counter (default cap 2, never auto-retried until an explicit retry). `--dry-run` prints the plan
+with zero sessions; `--limit`/`--stale-rules` shape it; `--diff PATH` writes a per-page change
+report; curate sessions run under `CITADEL_CURATE_MODEL` (falling back to the ingest model).
+
+**Status is the read-only corpus view** (`status.py`, `citadel status`): the manifest + failures
+catalog + one stat-only walk (never re-hashes) rendered as a per-source state table — ingested
+(model + rules_version, `(stale)` when it predates the current rulebook), failed (reason, attempts),
+skipped-duplicate, ignored (pattern), pending.
 
 **Other modules:** `okf.py` is the OKF format core (parse/dump, type→folder routing, link math, and
 the non-negotiable `safe_join` path guard — reuse it for any wiki-relative path). `grammar.py` is
@@ -157,10 +187,15 @@ Office files (stdlib-only): OOXML `.pptx`/`.docx`/`.xlsx` (+ macro-enabled) via 
 and legacy OLE `.ppt`/`.doc`/`.xls` via the CFBF reader + best-effort text salvage in
 `extract_ole.py` (imported lazily, only when a legacy OLE file is dispatched); its
 `extract_media` also pulls embedded raster images out of OOXML files so the agent can view them.
-`server.py` is the FastMCP stdio server (7 tools; only `wiki_ingest` mutates; tools never raise —
-they return error strings). The `viewer/` subpackage builds the self-contained offline HTML viewer
-(build logic in `__init__.py`; `template.html`/`app.css`/`app.js` are real package-data assets loaded
-via `importlib.resources`). `config.py` resolves all paths/settings. `cli.py` mirrors the MCP tools as subcommands.
+`curate.py` is the second lifecycle (offline detectors + staged cluster sessions; see above).
+`status.py` is the read-only per-source state view. `server.py` is the FastMCP stdio server (8
+tools — 7 read-only incl. `wiki_lint`, only `wiki_ingest` mutates; every tool carries MCP behavior
+annotations — `readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint` — and never raises,
+returning error strings instead). The `viewer/` subpackage builds the self-contained offline HTML
+viewer (build logic in `__init__.py`; `template.html`/`app.css`/`app.js` are real package-data
+assets loaded via `importlib.resources`). `config.py` resolves all paths/settings. `cli.py` mirrors
+the MCP tools as subcommands (full parity: `read`/`index`/`sources` twin the reader tools; `lint`/
+`view` stay CLI-only and `wiki_lint` closes the gap from the MCP side).
 
 ## Conventions specific to this codebase
 
@@ -184,7 +219,8 @@ via `importlib.resources`). `config.py` resolves all paths/settings. `cli.py` mi
   Windows/SMB failures.
 - Config knobs live in the workspace-root `.env` (auto-loaded, gitignored; template:
   `citadel/templates/env.example`): `CITADEL_LLM_CLI`,
-  `CITADEL_INGEST_MODEL`, `CITADEL_LLM_TIMEOUT`, `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,
+  `CITADEL_INGEST_MODEL`, `CITADEL_CURATE_MODEL` (model for `citadel curate` sessions; falls back to
+  `CITADEL_INGEST_MODEL`), `CITADEL_LLM_TIMEOUT`, `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,
   `CITADEL_REPO_SUPPORT`, `CITADEL_IMAGE_SUPPORT` (read images visually), `CITADEL_MAX_SOURCE_CHARS`
   (large-source chunking threshold), `CITADEL_DEDUP_BY_BASENAME` (skip same-basename document
   duplicates), `CITADEL_IGNORE_PATTERNS` (OS/junk-file globs skipped at discovery — `Thumbs.db`,

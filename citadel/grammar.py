@@ -146,6 +146,33 @@ def iter_lines(body: str, *, keepends: bool = False) -> Iterator[tuple[str, bool
             yield line, in_fence
 
 
+def source_definitions(body: str) -> Iterator[tuple[str, str]]:
+    """Yield ``(marker_id, rest)`` for every raw-source footnote DEFINITION line inside the page's
+    ``## Sources`` section — THE single walk over a page's source citations. ``rest`` is everything
+    after ``[^id]:`` (the source link plus any locator/description tail). Fence-aware and
+    section-aware via :func:`iter_lines`: a heading toggles the Sources section and code fences are
+    skipped, so a page documenting the citation format is never mis-read as citing.
+
+    Model-supplied ``[^llm]`` definitions are SKIPPED — they cite "LLM", not a raw file, and every
+    consumer (``validate``'s provenance check, ``lint``'s locator check, ``curate``'s cited-key
+    collection) wants only the raw-file citations. Those consumers therefore agree by construction
+    on what a source definition IS."""
+    in_sources = False
+    for line, in_code in iter_lines(body):
+        if in_code:
+            continue
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            in_sources = bool(SOURCES_HEADING_RE.match(stripped))
+            continue
+        if not in_sources:
+            continue
+        match = DEF_LINE_RE.match(line)
+        if not match or is_llm_marker(match.group(1)):
+            continue
+        yield match.group(1), match.group(2)
+
+
 def prose_lines(body: str, *, skip_sources: bool = False) -> Iterator[str]:
     """The fence-aware prose-line view over :func:`iter_lines`: yield every line of ``body``
     outside ``` code fences. With ``skip_sources=True`` the ``## Sources`` heading and its

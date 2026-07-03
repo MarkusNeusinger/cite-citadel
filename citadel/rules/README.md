@@ -13,6 +13,7 @@ files changes how the wiki is built — **with no code change**; treat them as p
 | `tasks/ingest.md` | Fold a NEW source in; segmented large-source passes | kinds `ingest`, `image`, `repo` |
 | `tasks/reconcile.md` | Re-fold a CHANGED (or force-re-read) source: update/remove stale facts, re-check locators, keep genre treatment | kinds `reconcile`, `image-reconcile`, `repo-reconcile` |
 | `tasks/delete.md` | Strip a REMOVED source's provenance | kind `delete` |
+| `tasks/curate.md` | Improve EXISTING pages against a run's findings checklist: re-sort, split, merge, re-verify — improve-or-NOOP, never invent, never break provenance | kind `curate` (`citadel curate`) |
 | `formats/repo.md` | A git repo as one source: the digest, capture-by-use, System pages, repo-reconcile | repo sources |
 | `formats/image.md` | View an image source and transcribe its facts | image sources |
 | `formats/pdf.md` | PDFs read whole; `text` vs `images` mode; page locators | PDF sources |

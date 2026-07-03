@@ -55,6 +55,8 @@ once and `/login`). Everything else (`search`, `tags`, `check`, `lint`, `view`, 
 ```bash
 cp ~/notes/*.md raw/                          # drop in any text-bearing files
 uv run python -m citadel ingest               # fold new/changed sources into wiki/
+uv run python -m citadel curate               # improve existing pages (--dry-run to preview)
+uv run python -m citadel status               # per-source state: ingested / failed / pending / …
 uv run python -m citadel search "caffeine"    # ranked keyword search (--tag to filter)
 uv run python -m citadel view                 # open the offline, single-file HTML viewer
 uv run python -m citadel serve                # run the MCP server (stdio)
@@ -87,6 +89,20 @@ quick-check without re-reading its bytes (`citadel ingest --full-rescan` re-hash
 `citadel ingest --force <paths>` deliberately re-reads already-ingested sources, re-verifying the
 wiki's facts under the current rules (it requires explicit paths, so a whole-corpus re-read never
 happens by accident).
+
+**`citadel curate` is the wiki's second lifecycle** — where ingest *folds sources in*, curate
+*improves the pages that already exist*. It recomputes a work plan from offline detectors every run
+(no stored queue — the wiki itself is the database): pages ingested under an older rulebook,
+overlong pages to split, unresolved contradictions, orphans, pages leaning on model knowledge
+instead of their sources, pages filed in the wrong folder, and citation locators that no longer
+point at the right place. Each flagged page cluster gets one agent session over the same
+all-or-nothing staging machinery ingest uses, so a bad edit rolls back and the live wiki only ever
+gains clean, validated improvements. `citadel curate --dry-run` prints the plan and runs zero
+sessions; `--limit`/`--stale-rules` narrow it, `--diff report.md` writes a per-page change report,
+and `CITADEL_CURATE_MODEL` lets curate run on a cheaper model than ingest. `citadel status` answers
+"what state is my corpus in?" — a read-only per-source table of ingested (with model + rules
+version), failed, skipped-duplicate, ignored, and pending sources, computed without re-reading a
+byte.
 
 ## How it works
 
@@ -137,9 +153,12 @@ offline single-file viewer regenerated from the wiki on every push.
 
 ## MCP server
 
-`citadel serve` exposes seven tools over stdio: `wiki_search`, `wiki_read`, `wiki_index`,
-`wiki_sources`, `wiki_tags`, `wiki_validate` (read-only), and `wiki_ingest` (the only mutating one).
-Wire it into an MCP client (e.g. Claude Desktop):
+`citadel serve` exposes eight tools over stdio: `wiki_search`, `wiki_read`, `wiki_index`,
+`wiki_sources`, `wiki_tags`, `wiki_validate`, `wiki_lint` (read-only), and `wiki_ingest` (the only
+mutating one). Each carries MCP behavior annotations (`readOnlyHint` etc.) so a client can tell the
+readers from the one mutating tool. Every MCP tool has a CLI counterpart — `citadel read`,
+`citadel index`, `citadel sources`, `citadel lint`, … — so an AI without MCP access can do
+everything through the CLI. Wire it into an MCP client (e.g. Claude Desktop):
 
 ```json
 {

@@ -1307,9 +1307,11 @@ class _SourceJob:
       the job succeeds immediately with zero page changes.
     - ``on_success``: the post-success bookkeeping that differs per kind — the manifest stamp
       (``mark_done`` / repo entry / key drop), clearing the failure record, the per-source
-      manifest save, and which report list the source lands in. Receives the source's
-      :class:`_SourceOutcome`: curate (PR6) consumes the diff as the single result arbiter
-      (today's jobs ignore it).
+      manifest save, and which report list the source lands in. Takes no arguments: the page
+      changes already went into the report before it runs, so a job needs no view of the diff.
+      (``citadel curate`` deliberately BYPASSES ``_SourceJob`` — its per-cluster report, different
+      vocabulary, and NOOP outcome do not fit here — and rides :func:`_run_agent_sessions`
+      directly, so nothing consumes a per-source outcome through this seam.)
     - ``extra_check``/``allow_emptying``: passed through to the session runner (deletion cleanup
       asserts no reference survived and may legitimately empty the wiki).
     - ``sha_stat``: the (sha256, stat) discovery already took for the source, threaded into the
@@ -1318,7 +1320,7 @@ class _SourceJob:
 
     key: str
     build_sessions: Callable[[], tuple[list[Callable[[], None]], list[str]]]
-    on_success: Callable[[_SourceOutcome], None]
+    on_success: Callable[[], None]
     prepare_error: str
     extra_check: Callable[[], list[str]] | None = None
     allow_emptying: bool = False
@@ -1383,7 +1385,7 @@ def _run_source_jobs(jobs: list[_SourceJob], emit, report: IngestReport, failure
         report.pages_updated.extend(outcome.updated)
         report.pages_written.extend(outcome.created + outcome.updated)
         report.pages_deleted.extend(outcome.deleted)
-        job.on_success(outcome)
+        job.on_success()
         emit(
             "source_done",
             index=index,
@@ -1856,7 +1858,7 @@ def ingest(
             ]
             return sessions, tmpdirs
 
-        def done(_outcome: _SourceOutcome) -> None:
+        def done() -> None:
             # mark_done records exactly what discovery hashed (sha_stat above). On a forced
             # re-read this re-stamps the entry with the CURRENT model + rules_version.
             done_sha, done_stat = sha_stat
@@ -1895,7 +1897,7 @@ def ingest(
             sessions = [lambda rp=read_key: llm.run_ingest_session(rjob.key, kind=rjob.kind, read_path=rp)]
             return sessions, [tmp]
 
-        def done(_outcome: _SourceOutcome) -> None:
+        def done() -> None:
             # On success the manifest records the repo's CURRENT commit identity.
             manifest_dict[rjob.key] = manifest.make_repo_entry(
                 repo.identity(rjob.path), model, repo.remote_url(rjob.path), rules_ver
@@ -1917,7 +1919,7 @@ def ingest(
                 return [], []  # nothing cites it: no cleanup session, just forget it below
             return [lambda: llm.run_ingest_session(key, kind="delete")], []
 
-        def done(_outcome: _SourceOutcome) -> None:
+        def done() -> None:
             manifest_dict.pop(key, None)
             failures.clear(failures_dict, key)
             manifest.save(manifest_dict)
