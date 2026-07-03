@@ -217,6 +217,12 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# The repo-root raw/ + wiki/ are the developer's own gitignored citadel WORKSPACE (the checkout
+# carries a citadel.toml marker). The committed showcase corpus lives at corpora/beverages/ instead;
+# the leading slash anchors these to the repo root so corpora/**/{raw,wiki}/ stay tracked.
+/raw/
+/wiki/
+
 # citadel generated viewer (regenerable artifact: `citadel view`)
 .citadel_viewer.html
 wiki/.citadel_viewer.html

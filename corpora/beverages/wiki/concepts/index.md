@@ -1,0 +1,23 @@
+# concepts
+
+The pages in this folder. Generated — do not edit.
+
+- [Adenosine](adenosine.md) — The molecule that accumulates in the brain over the day to create sleep pressure, and the receptor caffeine blocks to produce alertness.
+- [Aurora Ritual](aurora-ritual.md) — Caffe Aurora's three-step coffee-tasting practice — smell, taste plain, then customize.
+- [Caffeine](caffeine.md) — The principal stimulant in coffee, tea, and matcha — its content is governed mainly by species/type and dose, barely by roast level, and its stimulant effect works by blocking adenosine receptors in the brain.
+- [Coffee and Health](coffee-and-health.md) — What the research says about coffee's health associations, and common myths about dehydration, growth, and stomach upset.
+- [Coffee Brewing](coffee-brewing.md) — Extracting soluble compounds from ground coffee into water, governed by brew ratio, grind size, water temperature, and contact time.
+- [Coffee Processing](coffee-processing.md) — The post-harvest methods — washed, natural, and honey — used to extract and dry coffee seeds, each shaping the final flavor differently.
+- [Coffee Roasting](coffee-roasting.md) — The application of heat that transforms green coffee seeds into brown, aromatic beans, ranging from light to dark roast levels.
+- [Cold Brew Coffee](cold-brew-coffee.md) — An immersion brewing method — coarse grounds steeped 12-18 hours in room-temperature or cold water at a concentrated ratio, then diluted to taste — yielding a smoother, lower-acid, higher-caffeine cup than hot brewing.
+- [Espresso Bar Culture](espresso-bar-culture.md) — The stand-up counter ritual around espresso in Italian and Adriatic coffee towns, where the drink is treated as secondary to the ceremony.
+- [Espresso](espresso.md) — A concentrated coffee shot made by forcing hot water through finely ground, tamped coffee at roughly nine bars of pressure.
+- [History of Coffee](history-of-coffee.md) — The spread of coffee cultivation from Ethiopia through Yemen and the Arab world to Europe and, later, colonial plantations worldwide.
+- [History of Tea](history-of-tea.md) — Tea's spread from its legendary discovery in ancient China, via Buddhist monks to Japan, to Europe in the 17th century.
+- [L-Theanine](l-theanine.md) — A calming amino acid nearly unique to the tea plant that smooths caffeine's edge into a steady, focused alertness rather than a jittery one.
+- [Matcha Preparation](matcha-preparation.md) — Whisking matcha powder into water kept at 70-80 C with a bamboo whisk in a zig-zag motion, prepared plain as usucha or as the base for a latte.
+- [Tea and Health](tea-and-health.md) — Practical health guidance on tea — its contribution to hydration, its effect on teeth and iron absorption via tannins, evening/caffeine timing, and the sugar caveat in sweetened tea.
+- [Tea Antioxidants](tea-antioxidants.md) — Catechins (led by EGCG) and tannins — the compounds behind tea's reputation as a healthful drink and its characteristic astringency.
+- [Tea Brewing](tea-brewing.md) — Water temperature and steeping time by tea type — from cool 70-80 °C water for green tea to near-boiling water for black tea.
+- [Tea Processing](tea-processing.md) — The oxidation spectrum — from barely-processed white tea to fully oxidized black tea to fermented pu-erh — that turns one plant's leaf into radically different teas.
+- [Tea Storage](tea-storage.md) — Keeping tea away from light, heat, moisture, and odours — and why pu-erh is the deliberate exception, aged for years like wine.

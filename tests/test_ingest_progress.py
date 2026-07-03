@@ -37,9 +37,14 @@ def test_mixed_run_progress_vocabulary_and_order_are_pinned(
     """SourceJob unification pin (docs/refactor-plan.md Z7): the progress-event vocabulary for a
     MIXED run — one pending file + one repo + one deleted source — is frozen exactly as it is
     today, so collapsing the three per-source loops behind one job loop cannot change what a
-    progress consumer sees: the event names and order (files, then repos, then deletions), the
-    exact payload keys of every event, and the per-GROUP index/total counters that restart at 1
-    for each source kind."""
+    progress consumer sees: the event names, the exact payload keys of every event, and the
+    per-GROUP index/total counters that restart at 1 for each source kind.
+
+    The group ORDER is DELETIONS first, then files, then repos (corpus-discovered fix,
+    project-history wave 3): a delete cleanup must strip a vanished source's stale provenance
+    BEFORE a pending source's session touches a page that still cites it, or that pre-existing
+    stale citation fails the pending session's validation (bad_source) and rolls it back
+    fruitlessly. The event VOCABULARY is unchanged — only the deliberate order is."""
     raw = repo_wiki.raw
     (raw / "note.md").write_text("a note\n", encoding="utf-8")
     make_repo(raw, "svc", {"README.md": "# Svc\n", "app.py": "x\n"})
@@ -60,17 +65,17 @@ def test_mixed_run_progress_vocabulary_and_order_are_pinned(
     assert [e for e, _ in events] == [
         "start",
         "source_start",
+        "source_done",  # the deletion cleanup
+        "source_start",
         "source_done",  # the pending file
         "source_start",
         "source_done",  # the repo
-        "source_start",
-        "source_done",  # the deletion cleanup
         "finalize",
         "done",
     ]
     assert events[0][1] == {"pending": 1, "skipped": 0, "moved": 0, "unreadable": 0, "deleted": 1, "repos": 1}
-    # Files first, then repos, then deletions — and per-GROUP counters restarting at 1/1.
-    assert [d["source"] for e, d in events if e == "source_start"] == ["raw/note.md", "raw/svc", "raw/gone.md"]
+    # Deletions first, then files, then repos — and per-GROUP counters restarting at 1/1.
+    assert [d["source"] for e, d in events if e == "source_start"] == ["raw/gone.md", "raw/note.md", "raw/svc"]
     for event, data in events:
         if event == "source_start":
             assert set(data) == {"index", "total", "source"}

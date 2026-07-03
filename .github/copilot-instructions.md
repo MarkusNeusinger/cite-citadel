@@ -64,6 +64,22 @@ uv run ruff format .      # auto-format (CI runs `ruff format --check .`)
 
 Python 3.12+ is required. There is no separate build step — `pytest` and `ruff` are the checks.
 
+## Test corpora
+
+Three synthetic corpora live under `corpora/` (`corpora/<name>/{raw/, stages/?, README.md}`),
+runnable individually or together: **beverages** (the coffee+tea showcase — its committed wiki at
+`corpora/beverages/wiki/` is the GitHub Pages demo and CI's lint target), **counterfactual-atlas** (a
+coherent fictional world stated wrong about reality — graded that facts appear as stated, cited,
+never corrected), and **project-history** (a 3-year programme ingested in dated `stages/` waves that
+drives reconcile/delete/force, temporal supersession, German→English, and attributed opinions). Each
+carries a hidden answer key at `.claude/skills/verify-corpus/<name>/ground-truth.md` — **outside the
+corpus so the ingest agent never sees it** (Mode A also points `CITADEL_RAW_DIR` at the corpus `raw/`
+only). The parameterized `verify-corpus` skill (`verify-corpus <name>|all [--grade-only]`) ingests a
+corpus into a throwaway sandbox workspace (never a live wiki) and grades it in two phases: `citadel
+check` + `lint` exit 0 (structural eligibility), then answer-key content grading. Corpora live
+**outside** `citadel/`, so they never ship in the wheel. The repo-root `raw/` + `wiki/` are a
+gitignored developer workspace (the checkout's `citadel.toml` marker still makes it a workspace).
+
 ## Architecture
 
 **The `wiki/` directory _is_ the database.** No SQLite, no vector store, no second source of truth.
@@ -119,9 +135,12 @@ it is itself a workspace.
   never holds a partially imported source; the accepted trade-off is that a failure at segment N
   discards the earlier segments' work and the source retries from segment 1 next run). Any
   failure/timeout/Ctrl+C leaves the live wiki exactly as it was; the source is retried next run.
-  Files, repos, and deletion cleanups all drive this through ONE shared per-source loop
-  (`_SourceJob` + `_run_source_jobs`). This all-or-nothing + network-share-hardened machinery
-  (`_robust_*`, `robust_mkdir`) is load-bearing — don't simplify it away.
+  Deletion cleanups, then pending files, then repos all drive this through ONE shared per-source
+  loop (`_SourceJob` + `_run_source_jobs`) — **deletions run first** so a delete cleanup strips a
+  vanished source's stale provenance before any pending session touches a page that still cites it
+  (else that pre-existing bad citation would fail the pending session's validation and roll it
+  back). This all-or-nothing + network-share-hardened machinery (`_robust_*`, `robust_mkdir`) is
+  load-bearing — don't simplify it away.
 
 **`llm.py` is the ONLY place that talks to an LLM**, and it does so by shelling out to a CLI in
 agentic mode (`cwd` = workspace root, autonomous file tools). The prompt is **paths-only** — it references

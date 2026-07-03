@@ -384,7 +384,9 @@ Separate verb (GraphRAG/Letta precedent), two layers (Wikipedia-bot model), **no
 ### Z8 — Packaging / CI / OSS
 
 - pyproject: PEP 639 license, dynamic version, 3.14 classifier, drop the duplicated dev-deps table,
-  sdist excludes (.claude/, .github/, uv.lock, demo wiki, CLAUDE.md, wrapper scripts).
+  sdist excludes (.claude/, .github/, uv.lock, CLAUDE.md, wrapper scripts, and the whole `corpora/`
+  test-corpora tree — explicitly including the committed `corpora/beverages/wiki` showcase and its
+  `.citadel_ingested.json` manifest; none of it belongs in the distributed package).
 - CI adds: **wheel-smoke job** (uv build → twine check → clean venv → `citadel --version` +
   `citadel init` + `citadel check` from a temp CWD — the regression test for the whole
   phantom-workspace bug class), **windows-latest + macos-latest runners** (the SMB/Windows
@@ -439,7 +441,7 @@ Separate verb (GraphRAG/Letta precedent), two layers (Wikipedia-bot model), **no
      off must yield facts only.
   - Trap taxonomy per corpus (ConflictBank): misinformation (sources disagree), temporal (dated
     change), semantic (one term, two meanings).
-- **Grading stays two files per corpus** (the shipped verify-example pattern, proven): a
+- **Grading stays two files per corpus** (the proven two-files-per-corpus pattern): a
   `ground-truth.md` answer key — **the corpus's description file (owner requirement): it
   enumerates every deliberately planted error, contradiction, counterfactual, and load-bearing
   fact**, with the greppable values, expected citations/locators, and hard/soft criteria (sections
@@ -463,7 +465,7 @@ Separate verb (GraphRAG/Letta precedent), two layers (Wikipedia-bot model), **no
   the write-rules idea); branch `claude/<topic>-<slug>` off main; `gh pr create` ready-not-draft;
   CI-watch fix loop; stop at green with the PR URL; never merge. Plus a "Self-verification
   (feedback loops)" section in CLAUDE.md: "Routing is mandatory, not advisory."
-- **verify-corpus** (parameterized family replacing verify-example, per Z9).
+- **verify-corpus** (the parameterized end-to-end corpus grader, per Z9).
 - Deferred until a recurring need shows: /prime, audit-provenance (run once manually pre-publish),
   optimize-skills, optimize-ingest. House style for any new skill: 100-200 lines, numbered §§ of
   runnable bash with dated "Expected:" baselines, Gotchas = real incidents, cheap Mode-B path.
@@ -591,14 +593,14 @@ existing".
 |---|-------|-------|
 | 1 | **Test foundation** | conftest.py (`tmp_citadel` as thin seam), test_ingest split, coverage for server/cli/search, the failures-catalog quick fix (repo+delete sessions), CLAUDE.md test-count fix. No product code changes. |
 | 2 | **Workspace + packaging** | citadel.toml marker discovery (env-only workspaces stay valid), .env-from-workspace, rules packaged 1:1 as internal data (**no editable workspace rules yet** — avoids the double-churn/.new storm), minimal prompt-path repoint + `_external_dirs` grant, fail-loud guard, wheel-smoke CI, Windows/macOS runners, release.yml + Trusted Publishing, dynamic version + `--version`, PEP 639. Test: assembled prompt byte-identical modulo rules paths. |
-| 3 | **Rules split + prompt externalization** | schema/core/tasks/formats/genres tree (genres = starter set, enumerated dynamically from the effective dir; incl. `genres/first-person.md` behind `CITADEL_STYLE_PROFILES`), **citation locator grammar** (Z6), **`CITADEL_WIKI_LANG`** (default en), gut `_build_instruction`, genre-by-agent + manifest genre stamp, `CITADEL_PDF_MODE`, rules_version content-hash stamping, `rules eject/show`, prompt-validation tests. **Gate: verify-example full grade before/after, same model, recorded in the PR.** |
+| 3 | **Rules split + prompt externalization** | schema/core/tasks/formats/genres tree (genres = starter set, enumerated dynamically from the effective dir; incl. `genres/first-person.md` behind `CITADEL_STYLE_PROFILES`), **citation locator grammar** (Z6), **`CITADEL_WIKI_LANG`** (default en), gut `_build_instruction`, genre-by-agent + manifest genre stamp, `CITADEL_PDF_MODE`, rules_version content-hash stamping, `rules eject/show`, prompt-validation tests. **Gate: verify-corpus full grade before/after, same model, recorded in the PR.** |
 | — | **tag v0.1.0** | Workspace model + final rules shape stable; publishes the first working wheel, reserves the name. |
 | 3.5 | **grammar.py** | Shared parsing + `is_source_citation`; resolve lint-vs-check divergences. Prerequisite for 4, 6, and the store split. |
-| 4 | **Discovery** | Manifest stat fields + backfill-save + progress notice, failures-catalog stat fields, single scandir walk, candidates-then-confirm deletion + abort-on-walk-error + out-of-root exclusion, racy guard (source-clock), `CITADEL_RAW_DIRS` + cross-root citation form, `--full-rescan`, workspace-identity hard guard on deletion sweeps (Z1). **Pinning tests first.** Gate: verify-example. |
+| 4 | **Discovery** | Manifest stat fields + backfill-save + progress notice, failures-catalog stat fields, single scandir walk, candidates-then-confirm deletion + abort-on-walk-error + out-of-root exclusion, racy guard (source-clock), `CITADEL_RAW_DIRS` + cross-root citation form, `--full-rescan`, workspace-identity hard guard on deletion sweeps (Z1). **Pinning tests first.** Gate: verify-corpus. |
 | 5 | **--force + session completeness** | Per Z4 incl. repo force-reconcile and failure-record clearing. **Promote-once-per-source for segmented sources** (Z11 — single staging copy across all segments). Then the SourceJob/dataclass ingest() refactor lands here or immediately after (same-file sequencing; never parallel to 4/5). |
-| 6 | **curate v1 + surface parity** | Detectors (incl. re-sort), recompute-per-run plan, agent layer on staging machinery, --dry-run/--limit/--stale-rules/--diff, failures-catalog attempt caps, `wiki_lint` MCP tool, **`citadel status` + CLI parity subcommands (`read`/`index`/`sources`) + parity test, locator lint checks** (Z11/Z6). Gate: verify-example + project-history if it exists yet. |
+| 6 | **curate v1 + surface parity** | Detectors (incl. re-sort), recompute-per-run plan, agent layer on staging machinery, --dry-run/--limit/--stale-rules/--diff, failures-catalog attempt caps, `wiki_lint` MCP tool, **`citadel status` + CLI parity subcommands (`read`/`index`/`sources`) + parity test, locator lint checks** (Z11/Z6). Gate: verify-corpus + project-history if it exists yet. |
 | 7 | **Store/viewer hygiene** | store split, index single-pass, write_page guard, viewer subpackage + golden test, extract isolation, cleanups. (Truly parallel-safe parts only — grammar.py already landed as 3.5.) |
-| 8 | **Corpora** | Demo move + fresh regeneration (+ ci.yml lint step + Pages + gitignore flip, same PR), counterfactual-atlas, project-history with stages/ (incl. first-person opinion/style traps), per-corpus ground-truth description files (hidden from ingest), verify-corpus skill. |
+| 8 | **Corpora** | Demo move + fresh regeneration (+ ci.yml lint step + Pages + gitignore flip, same PR), counterfactual-atlas, project-history with stages/ (incl. first-person opinion/style traps), per-corpus ground-truth description files (hidden from ingest), verify-corpus skill. *(Shipped in PR8; corpus-discovered fix: ingest runs DELETION cleanups before pending sources, so a new source touching a page that still cites a just-deleted source no longer fails validation on that stale citation — project-history wave 3.)* |
 | 9 | **OSS polish + skills** | README/badges/CONTRIBUTING/CHANGELOG/SECURITY/docs-config, doctor, open-pr skill + CLAUDE.md routing section, sdist excludes. **Licensing/third-party-CLI hygiene (Z12): NOTICE.md + affiliation/trademark disclaimer, bring-your-own-CLI terms note, output-ownership line, SECURITY.md data-flow note, no-vendor-mark packaging guard** — the public-repo flip gates on these existing. **tag v0.2.0.** |
 | 10 | **Evidence quotes** | Optional; go/no-go per Z6 after corpora data exists. |
 
@@ -612,5 +614,5 @@ existing".
   out-of-root keys are never swept, promotion stays all-or-nothing, and a workspace-identity
   mismatch fails loud instead of silently re-keying. Breaking a format is fine; corrupting or
   silently thinning a wiki is not.
-- Every PR touching ingest/llm/rules runs the verify-example (later verify-corpus) gate before and
+- Every PR touching ingest/llm/rules runs the verify-corpus gate before and
   after; the load-bearing list at the top is pinned by tests before its files are touched.
