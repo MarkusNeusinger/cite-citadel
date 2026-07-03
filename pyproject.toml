@@ -7,7 +7,9 @@ build-backend = "hatchling.build"
 name = "cite-citadel"
 # Single-sourced: __version__ in citadel/__init__.py (see [tool.hatch.version]).
 dynamic = ["version"]
-description = "cite-citadel — an LLM-maintained, fully-cited personal wiki in Google OKF, fed by a coding-agent CLI (claude/copilot/gemini), with an MCP search server. Every fact is cited to its source; nothing is invented."
+# Vendor-neutral by design: the distributed identity (name/description/keywords) names no provider —
+# the coding-agent CLI is user-supplied. Pinned by test_packaging.py so a rename can't smuggle a mark in.
+description = "cite-citadel — an LLM-maintained, fully-cited personal wiki in the Open Knowledge Format, fed by a coding-agent CLI you already have logged in, with an MCP search server. Every fact is cited to its source; nothing is invented."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
@@ -59,6 +61,22 @@ path = "citadel/__init__.py"
 # Non-Python package data (citadel/rules/*.md, citadel/templates/*) ships automatically:
 # hatchling includes every file under a listed package directory.
 packages = ["citadel"]
+
+[tool.hatch.build.targets.sdist]
+# The sdist otherwise mirrors the VCS tree. Trim everything that is dev/CI/test scaffolding and does
+# not belong in the distributed package — none of it is imported by the installed code, and the
+# corpora tree (raw sources + the committed showcase wiki + its manifest) is large. The WHEEL is
+# unaffected (it ships only the `citadel` package). Keep this list in sync with refactor-plan Z8.
+exclude = [
+    "/corpora",              # test corpora incl. the beverages showcase wiki + .citadel_ingested.json
+    "/.claude",              # skills + hidden corpus answer keys (ground-truth.md)
+    "/.github",              # workflows + copilot-instructions
+    "/uv.lock",              # dev lockfile
+    "/CLAUDE.md",            # contributor architecture notes
+    "/citadel.cmd",          # dev-checkout wrapper (Windows cmd)
+    "/citadel.ps1",          # dev-checkout wrapper (PowerShell)
+    "/docs/refactor-plan.md", # internal refactor design doc
+]
 
 [tool.ruff]
 line-length = 120
