@@ -21,6 +21,7 @@ manifest — docs/refactor-plan.md Z4, pinned tests-first. The decided semantics
 
 from __future__ import annotations
 
+import pytest
 from conftest import REAL_RULES_DIR
 
 from citadel import config, failures, ingest, manifest, repo
@@ -34,7 +35,9 @@ from citadel import config, failures, ingest, manifest, repo
 def test_forced_sha_match_runs_reconcile_never_plain_ingest(tmp_citadel, fake_agent, cite_page):
     """Z4: forcing an UNCHANGED, already-ingested source bypasses the sha short-circuit — it lands
     in pending and runs ``kind="reconcile"`` via the existing changed-keys logic (the key is
-    tracked), NEVER a plain ``ingest`` that would duplicate its pages."""
+    tracked), NEVER a plain ``ingest`` that would duplicate its pages. Control on the same corpus:
+    an UNFORCED path-scoped run still skips the sha match — force must not weaken the default
+    (the full-run half of that control is tests/test_ingest_core.py's idempotency pin)."""
     raw = tmp_citadel.raw
     (raw / "notes.md").write_text("stable content\n", encoding="utf-8")
     agent = fake_agent(side_effect=lambda rel_key, **kw: cite_page("misc/note.md", rel_key, "A fact."))
@@ -43,24 +46,24 @@ def test_forced_sha_match_runs_reconcile_never_plain_ingest(tmp_citadel, fake_ag
     assert agent.calls == [("raw/notes.md", "ingest")]  # brand new -> plain ingest
 
     agent.reset()
+    assert ingest.ingest([str(raw / "notes.md")]).skipped == ["raw/notes.md"]
+    assert agent.count == 0  # unforced path-scoped run: sha short-circuit stands
+
     report = ingest.ingest([str(raw / "notes.md")], force=True)
     assert agent.calls == [("raw/notes.md", "reconcile")]  # forced sha match -> reconcile, exactly once
     assert report.processed == ["raw/notes.md"]
     assert not report.errors
 
 
-def test_unforced_run_still_skips_sha_match(tmp_citadel, fake_agent, cite_page):
-    """Control pin: WITHOUT ``force``, the sha short-circuit stands — an unchanged ingested source
-    runs no session on a later run (full or path-scoped). Force must not weaken the default."""
-    raw = tmp_citadel.raw
-    (raw / "notes.md").write_text("stable content\n", encoding="utf-8")
-    agent = fake_agent(side_effect=lambda rel_key, **kw: cite_page("misc/note.md", rel_key, "A fact."))
-    ingest.ingest()
-
-    agent.reset()
-    assert ingest.ingest().skipped == ["raw/notes.md"]
-    assert ingest.ingest([str(raw / "notes.md")]).skipped == ["raw/notes.md"]
-    assert agent.count == 0
+def test_force_without_paths_refused_at_the_api_layer(tmp_citadel, fake_agent):
+    """Z4 guard, API twin of the CLI's exit-2 refusal: ``ingest(force=True)`` with no paths must
+    raise ValueError BEFORE any work — one agent session per source must never hit the whole
+    corpus by accident, no matter the caller. (The MCP server's ``wiki_ingest`` does not expose
+    ``force`` at all.)"""
+    agent = fake_agent()
+    with pytest.raises(ValueError, match="--force requires explicit paths"):
+        ingest.ingest(force=True)
+    assert agent.count == 0  # refused before any session could run
 
 
 def test_force_restamps_manifest_with_current_model_and_rules_version(tmp_citadel, fake_agent, cite_page, monkeypatch):
@@ -114,7 +117,7 @@ def test_forced_source_failure_rolls_back_and_is_recorded(tmp_citadel, fake_agen
     assert recorded["reason"] == failures.ERROR and "forced boom" in recorded["detail"]
 
 
-def test_forced_path_run_never_sweeps_deletions(tmp_citadel, fake_agent, cite_page, seed_page):
+def test_forced_path_run_never_sweeps_deletions(tmp_citadel, fake_agent, cite_page, seed_cited_deleted_source):
     """Z4: NO deletion sweep on a path-scoped force run — ``citadel ingest --force <path>`` must
     not read the rest of the manifest as candidates for deletion (``swept_roots=None`` already
     covers path-scoped runs; force must not re-arm it)."""
@@ -123,14 +126,7 @@ def test_forced_path_run_never_sweeps_deletions(tmp_citadel, fake_agent, cite_pa
     agent = fake_agent(side_effect=lambda rel_key, **kw: cite_page("misc/note.md", rel_key, "A fact."))
     ingest.ingest()
     # A tracked source that vanished from disk, still cited by a live page.
-    seed_page(
-        "concepts/topic.md",
-        {"type": "Concept", "title": "Topic", "description": "d", "tags": ["x"], "resource": "raw/gone.md"},
-        "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/gone.md](../../raw/gone.md) - g\n",
-    )
-    tracked = manifest.load()
-    tracked["raw/gone.md"] = manifest.make_entry("dd" * 32, "fake:model-a")
-    manifest.save(tracked)
+    seed_cited_deleted_source()
 
     agent.reset()
     report = ingest.ingest([str(raw / "notes.md")], force=True)

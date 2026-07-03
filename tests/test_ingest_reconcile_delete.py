@@ -31,16 +31,11 @@ def test_changed_source_runs_reconcile_not_plain_ingest(tmp_citadel, fake_agent,
     assert agent.calls[-1] == ("raw/notes.md", "reconcile")  # changed bytes -> reconcile
 
 
-def test_deleted_source_citations_reconciled_out(tmp_citadel, fake_agent, seed_page):
+def test_deleted_source_citations_reconciled_out(tmp_citadel, fake_agent, seed_cited_deleted_source):
     """A tracked raw file that vanished from disk triggers a kind='delete' cleanup session: the
     page it solely sourced is removed, its manifest key is dropped, and lint stays clean."""
     wiki = tmp_citadel.wiki
-    seed_page(
-        "concepts/topic.md",
-        {"type": "Concept", "title": "Topic", "description": "d", "tags": ["x"], "resource": "raw/gone.md"},
-        "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/gone.md](../../raw/gone.md) - g\n",
-    )
-    manifest.save({"raw/gone.md": "deadbeef"})  # tracked, but the file is NOT on disk
+    seed_cited_deleted_source()  # raw/gone.md: tracked + cited, but the file is NOT on disk
 
     def fake(rel_key, kind="ingest"):
         # The deleted source was this page's only provenance -> remove the page entirely.

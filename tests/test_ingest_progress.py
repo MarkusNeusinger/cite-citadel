@@ -4,7 +4,9 @@ ASCII-only console renderer. ``llm.run_ingest_session`` is replaced by ``fake_ag
 
 from __future__ import annotations
 
-from citadel import config, ingest, manifest, store
+from conftest import delete_citing_pages
+
+from citadel import ingest
 
 
 def test_ingest_emits_progress_events(tmp_citadel, fake_agent, transformer_page):
@@ -29,7 +31,9 @@ def test_ingest_emits_progress_events(tmp_citadel, fake_agent, transformer_page)
     assert "seconds" in done
 
 
-def test_mixed_run_progress_vocabulary_and_order_are_pinned(repo_wiki, fake_agent, seed_page, make_repo, cite_page):
+def test_mixed_run_progress_vocabulary_and_order_are_pinned(
+    repo_wiki, fake_agent, seed_cited_deleted_source, make_repo, cite_page
+):
     """SourceJob unification pin (docs/refactor-plan.md Z7): the progress-event vocabulary for a
     MIXED run — one pending file + one repo + one deleted source — is frozen exactly as it is
     today, so collapsing the three per-source loops behind one job loop cannot change what a
@@ -40,17 +44,11 @@ def test_mixed_run_progress_vocabulary_and_order_are_pinned(repo_wiki, fake_agen
     (raw / "note.md").write_text("a note\n", encoding="utf-8")
     make_repo(raw, "svc", {"README.md": "# Svc\n", "app.py": "x\n"})
     # A tracked source that vanished from disk, still cited -> one delete-cleanup session.
-    seed_page(
-        "concepts/topic.md",
-        {"type": "Concept", "title": "Topic", "description": "d", "tags": ["x"], "resource": "raw/gone.md"},
-        "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/gone.md](../../raw/gone.md) - g\n",
-    )
-    manifest.save({"raw/gone.md": manifest.make_entry("dd" * 32, "m")})
+    seed_cited_deleted_source()
 
     def fake(rel_key, kind="ingest", read_path=None, segment=None):
         if kind == "delete":
-            for rel in store.find_raw_references(rel_key):
-                (config.WIKI_DIR / rel).unlink(missing_ok=True)
+            delete_citing_pages(rel_key)
             return
         slug = rel_key.rsplit("/", 1)[-1].replace(".", "-")
         cite_page(f"misc/{slug}.md", rel_key, "A fact.")

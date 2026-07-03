@@ -12,7 +12,9 @@ drops the entry again.
 
 from __future__ import annotations
 
-from citadel import config, failures, ingest, manifest, repo, store
+from conftest import delete_citing_pages
+
+from citadel import failures, ingest, manifest, repo
 
 
 # --------------------------------------------------------------------------------------------
@@ -99,18 +101,9 @@ def test_failed_repo_digest_build_recorded_and_retried(repo_wiki, fake_agent, ma
 # --------------------------------------------------------------------------------------------
 
 
-def _seed_cited_deleted_source(seed_page) -> None:
-    """A wiki page citing ``raw/gone.md`` plus a manifest entry for it, with NO file on disk —
-    the next full run detects the deletion and must run a ``kind="delete"`` cleanup session."""
-    seed_page(
-        "concepts/topic.md",
-        {"type": "Concept", "title": "Topic", "description": "d", "tags": ["x"], "resource": "raw/gone.md"},
-        "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/gone.md](../../raw/gone.md) - g\n",
-    )
-    manifest.save({"raw/gone.md": manifest.make_entry("deadbeef", None)})
-
-
-def test_mixed_run_failed_file_repo_and_delete_all_recorded_then_cleared(repo_wiki, seed_page, fake_agent, make_repo):
+def test_mixed_run_failed_file_repo_and_delete_all_recorded_then_cleared(
+    repo_wiki, seed_cited_deleted_source, fake_agent, make_repo
+):
     """SourceJob unification pin (shape-neutral, docs/refactor-plan.md Z7): ONE run in which a
     FILE source, a REPO source, and a DELETE cleanup all fail must land all three in the failures
     catalog with reasons — through whatever shared per-source loop drives them — with retry
@@ -119,7 +112,7 @@ def test_mixed_run_failed_file_repo_and_delete_all_recorded_then_cleared(repo_wi
     raw = repo_wiki.raw
     (raw / "note.md").write_text("a note\n", encoding="utf-8")
     make_repo(raw, "svc", {"README.md": "# Svc\n", "app.py": "x\n"})
-    _seed_cited_deleted_source(seed_page)  # raw/gone.md: tracked + cited, not on disk
+    seed_cited_deleted_source()  # raw/gone.md: tracked + cited, not on disk
 
     fake_agent(error=RuntimeError("boom"))
     report = ingest.ingest()
@@ -135,8 +128,7 @@ def test_mixed_run_failed_file_repo_and_delete_all_recorded_then_cleared(repo_wi
     # A later run where every session succeeds clears all three records again.
     def cleanup(rel_key, kind="ingest", **kwargs):
         if kind == "delete":
-            for rel in store.find_raw_references(rel_key):
-                (config.WIKI_DIR / rel).unlink(missing_ok=True)
+            delete_citing_pages(rel_key)
 
     fake_agent(side_effect=cleanup)
     second = ingest.ingest()
@@ -146,11 +138,11 @@ def test_mixed_run_failed_file_repo_and_delete_all_recorded_then_cleared(repo_wi
     assert failures.load() == {}
 
 
-def test_failed_delete_session_recorded_wiki_untouched_and_retried(tmp_citadel, seed_page, fake_agent):
+def test_failed_delete_session_recorded_wiki_untouched_and_retried(tmp_citadel, seed_cited_deleted_source, fake_agent):
     """Regression: a delete-propagation session that failed only reached ``report.errors`` —
     never the failures catalog. It must be recorded, the live wiki must be left exactly as it
     was (rollback), and the manifest key KEPT so the cleanup is retried next full run."""
-    _seed_cited_deleted_source(seed_page)
+    seed_cited_deleted_source()
     page = tmp_citadel.wiki / "concepts" / "topic.md"
     before_text = page.read_text(encoding="utf-8")
 
@@ -172,8 +164,7 @@ def test_failed_delete_session_recorded_wiki_untouched_and_retried(tmp_citadel, 
     # the persisted failure is dropped.
     def cleanup(rel_key, kind="ingest", **kwargs):
         if kind == "delete":
-            for rel in store.find_raw_references(rel_key):
-                (config.WIKI_DIR / rel).unlink(missing_ok=True)
+            delete_citing_pages(rel_key)
 
     agent2 = fake_agent(side_effect=cleanup)
     second = ingest.ingest()

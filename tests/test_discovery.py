@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
-from conftest import _cite_page, errors_of
+from conftest import _cite_page, delete_citing_pages, errors_of
 
 from citadel import config, failures, grammar, ingest, lint, manifest, okf, store, validate
 
@@ -46,8 +46,7 @@ def _fake_session(rel_key: str, kind: str = "ingest", **_kw) -> None:
     valid page citing ``rel_key``; a delete session removes every page citing it. Reads/writes the
     staging wiki through ``config`` at call time, exactly like the real agent's file edits."""
     if kind == "delete":
-        for rel in store.find_raw_references(rel_key):
-            (Path(config.WIKI_DIR) / rel).unlink()
+        delete_citing_pages(rel_key)
         return
     _write_page_citing(rel_key)
 
