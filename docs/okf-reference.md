@@ -1,12 +1,15 @@
 # Open Knowledge Format (OKF) — reference note
 
-> **Source / attribution.** Google Cloud blog, *"How the Open Knowledge Format can
-> improve data sharing"*:
-> <https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing>
+> **Source / attribution.** The authoritative specification is
+> [`GoogleCloudPlatform/knowledge-catalog` → `okf/SPEC.md`](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).
+> The Google Cloud blog *"How the Open Knowledge Format can improve data sharing"*
+> (<https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing>)
+> is a secondary introduction.
 >
 > This note captures just enough of OKF v0.1 to explain how this repository's `wiki/`
-> directory is structured. Defer to the official specification for anything not covered
-> here.
+> directory is structured. Defer to
+> [SPEC.md](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
+> for anything not covered here.
 
 ## What OKF is
 
@@ -20,7 +23,8 @@ is instead expressed as plain files anyone can read, ship, and version-control.
 ## File structure
 
 An OKF **bundle** is a **directory of markdown files**, each with a YAML frontmatter
-block. Directories may contain an `index.md` for progressive disclosure. Example:
+block. Two filenames are reserved: `index.md` (a directory listing for progressive
+disclosure, itself carrying no frontmatter) and `log.md` (chronological history). Example:
 
 ```
 wiki/
@@ -46,25 +50,31 @@ timestamp: 2026-06-21T... # optional, ISO 8601 last-update time
 ---
 ```
 
-- `type` is the **only required field**. Everything else is optional.
-- The spec is *minimally opinionated*: producers choose which `type` values exist and may
-  add their own fields. Consumers ignore what they do not understand.
+- `type` is the **only required field**; `title`, `description`, `resource`, `tags`, and
+  `timestamp` are recommended-but-optional (the spec lists them in that priority order).
+- The spec is *minimally opinionated*: `type` values are not registered centrally — producers
+  pick descriptive ones — and producers may add custom fields, which consumers preserve on
+  round-trip rather than discard.
 
 ## Cross-linking (the knowledge graph)
 
-Concepts link to one another with **standard markdown links**, e.g.
-`[transformer](../concepts/transformer.md)`. File paths are concept identities, and the
-links form a graph richer than the directory tree alone.
+Concepts link to one another with **standard markdown links**, each asserting an (untyped,
+directed) relationship, so the links form a graph richer than the directory tree alone. The
+spec allows two path forms: **bundle-relative absolute** (a leading `/`), recommended because
+it survives moves, and plain **relative** paths like `[transformer](../concepts/transformer.md)`.
+File paths are concept identities, and consumers must tolerate broken links.
 
 ## Provenance & history
 
 - **`resource`** points to the authoritative source of a page.
-- **`log.md`** gives optional append-only chronological history.
+- **`log.md`** gives optional chronological history (date-grouped, newest first).
 - **`timestamp`** tracks versions.
 
 ## How this repo uses OKF
 
-The `wiki/` directory is an OKF bundle. Beyond the standard fields, each page records the
-`raw/` source files it was derived from, and **every individual fact carries an inline
-citation back to the exact raw source** (see [`schema.md`](../citadel/rules/schema.md) for the precise
-convention). This satisfies the project goal: *a source reference for every fact*.
+The `wiki/` directory is an OKF bundle. It uses the relative link form throughout and, stricter
+than the spec's "tolerate broken links", treats any broken link as an error (`citadel lint` /
+`check` fail on one). Beyond the standard fields, each page records the `raw/` source files it was
+derived from, and **every individual fact carries an inline citation back to the exact raw source**
+(see [`schema.md`](../citadel/rules/schema.md) for the precise convention). This satisfies the
+project goal: *a source reference for every fact*.

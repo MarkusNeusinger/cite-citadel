@@ -24,6 +24,62 @@ lives once in the README:
 | `CLAUDE_CODE_PATH` / `COPILOT_CLI_PATH` / `GEMINI_CLI_PATH` | (PATH lookup) | Override the CLI binary path when it isn't on `PATH`. |
 | `COPILOT_MODEL` / `GEMINI_MODEL` | (unset) | Concrete model id recorded per source for those backends (also covers a local/Ollama model). |
 
+## Local models (Ollama)
+
+Run ingest **fully on your own machine or LAN**, so a private wiki's content never leaves it. Point
+the *same* agent CLI at a local [Ollama](https://ollama.com) model — do **not** call the Ollama API
+directly, which would lose the agentic file-reading loop citadel is built on. Both recipes below can
+live entirely in the workspace `.env` (the loader fills in any unset variable) — except that an
+already-**exported** real key is never overridden, so unset it first.
+
+**Claude Code → local model.** Ollama ≥ 0.14 serves a native Anthropic-compatible surface on
+`:11434` (no `/v1`):
+
+```sh
+ANTHROPIC_BASE_URL=http://localhost:11434   # or http://<host>:11434 for a LAN server
+ANTHROPIC_AUTH_TOKEN=ollama
+ANTHROPIC_API_KEY=""                          # empty — and unset any real exported key first
+CITADEL_LLM_CLI=claude
+CITADEL_INGEST_MODEL=qwen3.6:27b              # the exact `ollama list` tag
+```
+
+**GitHub Copilot → local model.** OpenAI-compatible surface — note the `/v1`. citadel's copilot path
+passes no `--model`, so **`COPILOT_MODEL` is the selector** (`CITADEL_INGEST_MODEL` is ignored here);
+this is proven for the non-interactive `copilot -p` that citadel spawns:
+
+```sh
+COPILOT_PROVIDER_BASE_URL=http://<host>:11434/v1
+COPILOT_PROVIDER_API_KEY=ollama
+COPILOT_PROVIDER_WIRE_API=completions
+COPILOT_MODEL=qwen3.6:27b
+COPILOT_PROVIDER_MAX_PROMPT_TOKENS=120000
+COPILOT_PROVIDER_MAX_OUTPUT_TOKENS=8000
+NO_PROXY=<host>                               # when a proxy is set in the environment
+CITADEL_LLM_CLI=copilot
+```
+
+The same in PowerShell:
+
+```powershell
+$env:COPILOT_PROVIDER_BASE_URL = "http://<host>:11434/v1"
+$env:COPILOT_PROVIDER_API_KEY = "ollama"
+$env:COPILOT_PROVIDER_WIRE_API = "completions"
+$env:COPILOT_MODEL = "qwen3.6:27b"
+$env:COPILOT_PROVIDER_MAX_PROMPT_TOKENS = "120000"
+$env:COPILOT_PROVIDER_MAX_OUTPUT_TOKENS = "8000"
+$env:NO_PROXY = "<host>"
+$env:CITADEL_LLM_CLI = "copilot"
+```
+
+**Caveats.**
+
+- Raise the model's context window (`OLLAMA_CONTEXT_LENGTH`, or `num_ctx` in a Modelfile) — ≥ 32k is
+  realistic for ingest.
+- Tool-calling-capable models only (the agent CLI drives file tools).
+- Expect a coder-class model of ~27B or larger; owner-tested floor is `qwen3.6:27b`.
+- `CITADEL_PDF_MODE=images` additionally needs a **vision**-capable local model.
+- The Gemini CLI has no first-party local-model path today, so it is not offered here.
+
 ## Sessions & observability
 
 | Variable | Default | What it does |

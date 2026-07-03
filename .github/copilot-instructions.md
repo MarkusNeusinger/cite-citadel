@@ -97,6 +97,22 @@ Two `.claude/skills/` skills close the loop between a change and its proof:
 
 **Routing is mandatory, not advisory: any commit/push/PR request goes through `/open-pr`.**
 
+## Release process
+
+Trunk-based, no `develop` branch by design: every change lands on `main` via PR (through `/open-pr`
+with its gates + the Copilot round), so `main` is always releasable. A release is a deliberate act,
+never automatic on merge:
+
+1. A small **release PR** bumps `__version__` in `citadel/__init__.py` and re-dates CHANGELOG.md's
+   `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` (keep the flip-gate blockquote under a fresh
+   `## [Unreleased]` heading while it still applies).
+2. After merge, tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+3. `.github/workflows/release.yml` then builds and publishes **automatically** — PyPI via Trusted
+   Publishing (no token, no manual upload) + a GitHub Release.
+
+SemVer: patch for fixes/docs, minor for features. PyPI versions are **immutable** — never re-tag or
+re-release a number; a mistake costs it, so bump again.
+
 ## Architecture
 
 **The `wiki/` directory _is_ the database.** No SQLite, no vector store, no second source of truth.
@@ -110,7 +126,7 @@ recomputed from them in memory.
    `okf.folder_for_type`), cross-linked with relative markdown links, each fact carrying a footnote
    citation.
 3. `citadel/rules/` — the schema/rules tree, packaged with the wheel (index:
-   `citadel/rules/README.md`; the repo-root `SCHEMA.md`/`AGENT_INGEST.md` are thin pointers):
+   `citadel/rules/README.md`):
    `schema.md` (format contract) + `core.md` (agent behavior) are read every session, plus one
    lifecycle brief from `tasks/`, any file-type brief from `formats/`, and the agent-judged
    `genres/` briefs. These are **read by the ingest agent at run time** (referenced by path in the
