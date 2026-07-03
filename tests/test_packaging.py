@@ -44,3 +44,23 @@ def test_dev_deps_live_only_in_the_pep735_dependency_group():
     assert "optional-dependencies" not in data["project"]
     assert any(dep.startswith("pytest") for dep in data["dependency-groups"]["dev"])
     assert any(dep.startswith("ruff") for dep in data["dependency-groups"]["dev"])
+
+
+def test_readme_links_are_absolute_for_pypi():
+    """README.md ships as the PyPI long-description, where relative repo links 404 (owner report
+    on the v0.1.0 release page). Every markdown link outside fenced code blocks must be absolute
+    (or an in-page anchor); fenced blocks may show relative citations as literal examples."""
+    import re
+
+    fence = False
+    offenders = []
+    for n, line in enumerate(Path("README.md").read_text(encoding="utf-8").splitlines(), 1):
+        if line.lstrip().startswith("```"):
+            fence = not fence
+            continue
+        if fence:
+            continue
+        for target in re.findall(r"\]\(([^)]+)\)", line):
+            if not (target.startswith(("http://", "https://", "#"))):
+                offenders.append(f"README.md:{n} -> {target}")
+    assert not offenders, f"relative links break on PyPI: {offenders}"
