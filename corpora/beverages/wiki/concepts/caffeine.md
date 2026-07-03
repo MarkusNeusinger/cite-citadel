@@ -11,10 +11,10 @@ tags:
 - chemistry
 - physiology
 resource: raw/coffee-guide.md
-timestamp: '2026-07-03T13:56:51Z'
+timestamp: '2026-07-03T22:29:14Z'
 ---
 
-Caffeine is the principal stimulant in coffee and a major reason for its popularity.[^s1] The amount in a serving depends on the species used, the dose of coffee, and the brewing method.[^s1] A standard 8-ounce cup of drip coffee contains about 95 mg of caffeine; espresso is far more concentrated per unit volume, but an individual shot is small, so the caffeine in a single espresso is often comparable to or less than that in a full cup of drip coffee.[^s1][^s5] One account puts a single [espresso](espresso.md) shot (about one ounce) at roughly 63 mg of caffeine, corroborating that it falls under the 95 mg drip-cup baseline.[^s21] In everyday terms a "cup" often exceeds that 8-ounce baseline — a large café coffee can easily be two to three times the size, with the caffeine scaling up accordingly.[^s6]
+Caffeine is the principal stimulant in coffee and a major reason for its popularity.[^s1] The amount in a serving depends on the species used, the dose of coffee, and the brewing method.[^s1] A standard 8-ounce cup of drip coffee contains about 95 mg of caffeine; espresso is far more concentrated per unit volume, but an individual shot is small, so the caffeine in a single espresso is often comparable to or less than that in a full cup of drip coffee.[^s1][^s5][^s33] One account puts a single [espresso](espresso.md) shot (about one ounce) at roughly 63 mg of caffeine, corroborating that it falls under the 95 mg drip-cup baseline.[^s21] In everyday terms a "cup" often exceeds that 8-ounce baseline — a large café coffee can easily be two to three times the size, with the caffeine scaling up accordingly.[^s6]
 
 A persistent and widespread belief holds that dark roasts contain dramatically more or less caffeine than light roasts. In fact, roast level barely changes the caffeine content of coffee.[^s2] Caffeine is a remarkably stable molecule that does not break down meaningfully at the temperatures reached during roasting, so a dark roast is not decaffeinated by the act of roasting, nor does it carry dramatically less caffeine than a light roast; measured by weight of coffee, light and dark roasts are nearly equal in caffeine.[^s2]
 
@@ -23,11 +23,25 @@ A persistent and widespread belief holds that dark roasts contain dramatically m
 >
 > Resolution: the corroborated view is correct — caffeine is heat-stable and is not meaningfully destroyed by roasting, so a dark roast is not decaffeinated by roasting alone; producing a genuinely caffeine-free coffee requires an actual decaffeination process.[^llm1]
 
+[Caffe Aurora](../organizations/caffe-aurora.md) states elsewhere, in a spring newsletter, that coffee begins losing its caffeine the moment it leaves the roaster — that fresh-roasted beans carry their peak flavor and caffeine on the day they are roasted, and that both quietly fade over the following weeks on the shelf — and gives this as its reason for roasting in small batches and dating every bag.[^s31]
+
+> [!CONTRADICTION]
+> [Caffe Aurora](../organizations/caffe-aurora.md) states that coffee's caffeine content fades over the weeks a roasted bag sits on the shelf, so a fresh bag delivers more caffeine than an older one.[^s31] This conflicts with the corroborated view above that caffeine is a stable molecule that does not break down meaningfully once formed.[^s2]
+>
+> Resolution: caffeine remains chemically stable at room temperature over the weeks a bag of coffee sits on a shelf; what actually fades with age is the coffee's volatile aroma and flavor compounds through staling and off-gassing, not its caffeine content — Aurora's freshness-first roasting and bag-dating practice serves flavor, not the caffeine-based reason the newsletter gives for it.[^llm4]
+
 The minor differences people do observe are largely a matter of measurement: because dark-roasted beans have lost more moisture and expanded more, they are slightly less dense than light-roasted beans, so a scoop measured by volume of dark roast contains marginally fewer beans, while a portion measured by weight contains marginally more, since each bean weighs less — small effects of dosing, not of caffeine being destroyed in the roaster.[^s3]
 
 The species used exerts a far greater influence on the caffeine in the finished cup than roast level ever does: [Robusta](../objects/robusta.md) carries roughly twice the caffeine of [Arabica](../objects/arabica.md), and caffeine acts as a natural chemical deterrent against insects in the plant.[^s4][^s7] The overall dose of coffee relative to water also exerts a far greater influence on caffeine content than roast level.[^s4]
 
 That dose effect shows up clearly in [cold brew](cold-brew-coffee.md): because a cold brew concentrate uses a very high grounds-to-water ratio (around 1:8) and a long 12-to-18-hour steep, it often ends up with more total caffeine than a hot drip cup of the same coffee — cold temperature does not reduce caffeine extraction, the ratio and contact time do the work.[^s19]
+
+[Caffe Aurora](../organizations/caffe-aurora.md) nonetheless markets its own [cold brew](cold-brew-coffee.md) as the lowest-caffeine drink on its menu, stating that brewing cold pulls out far less caffeine than hot water ever could.[^s32]
+
+> [!CONTRADICTION]
+> Caffe Aurora states that its cold brew is the lowest-caffeine drink on the menu because brewing cold extracts far less caffeine than hot water.[^s32] This conflicts with the corroborated view above that cold brew typically carries MORE total caffeine than hot drip coffee, driven by its high grounds-to-water ratio and long steep.[^s19]
+>
+> Resolution: the corroborated view is correct — cold water does not extract less caffeine than hot water once ratio and contact time are accounted for; a cold brew concentrate's high dose and long steep typically give it more total caffeine than a hot drip cup, not less. Aurora's low-caffeine framing more likely reflects the drink's smoother, less acidic taste than its actual caffeine content.[^llm5]
 
 [Tea](../objects/tea.md) naturally contains caffeine as well, and — as with coffee — the amount in a finished cup depends on the type of tea, the quantity of leaf used, the water temperature, and the length of the steep.[^s23][^s29] A cup of black tea contains about 47 mg of caffeine, while a cup of green tea contains about 28 mg; the lower figure for green tea reflects both its cooler brewing water and its shorter typical steep rather than any fundamental shortage of caffeine in the leaf itself.[^s24][^s27] Oolong and pu-erh sit in between, at roughly 37 mg and 40 mg per cup.[^s25] A common misconception deserves correction here: white tea does contain caffeine, roughly 30 to 55 mg per cup — being the least processed of the teas does not render it caffeine-free. Because white tea is made from very young buds, which are rich in the compound, its caffeine content can rival or exceed that of some green and even black teas; anyone seeking to avoid caffeine entirely should choose a genuine herbal infusion rather than any product of the [tea plant](../objects/camellia-sinensis.md).[^s26]
 
@@ -103,6 +117,11 @@ During pregnancy, common guidance is to keep caffeine under about 200 mg a day �
 [^s28]: [raw/tea-health-faq.md](../../raw/tea-health-faq.md), lines 23-25 — caffeine and L-theanine synergy (ingested 2026-07-03)
 [^s29]: [raw/tea-health-faq.md](../../raw/tea-health-faq.md), lines 27-29 — tea's calm reputation comes from L-theanine alongside caffeine, not from being caffeine-free (ingested 2026-07-03)
 [^s30]: [raw/tea-history-and-trade.md](../../raw/tea-history-and-trade.md), line 35 — green vs. black tea caffeine claim (ingested 2026-07-03)
+[^s31]: [raw/aurora-bulletin-2024.md](../../raw/aurora-bulletin-2024.md), § One thing worth knowing (the Aurora nerd corner) — freshness/caffeine-fade claim (ingested 2026-07-03)
+[^s32]: [raw/aurora-bulletin-2026.md](../../raw/aurora-bulletin-2026.md), § The Aurora nerd corner — how we brew it now — cold brew caffeine claim (ingested 2026-07-03)
+[^s33]: [raw/brewing-science-notes.md](../../raw/brewing-science-notes.md), § Espresso vs. filter — the two ends of the same dial — corroborates 63 mg espresso vs. 95 mg drip mug (ingested 2026-07-03)
 [^llm1]: LLM - model knowledge, not from a raw file (added 2026-07-03)
 [^llm2]: LLM - model knowledge, not from a raw file (added 2026-07-03)
 [^llm3]: LLM - model knowledge, not from a raw file (added 2026-07-03)
+[^llm4]: LLM - model knowledge, not from a raw file (added 2026-07-03)
+[^llm5]: LLM - model knowledge, not from a raw file (added 2026-07-03)
