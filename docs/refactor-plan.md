@@ -239,8 +239,20 @@ citadel/rules/
   minus a 3s SMB/FAT window. mtime compared as an opaque equality token, never ordered. No inode,
   no ctime (unstable on SMB — document with the restic/borg references). No file watcher —
   inotify/SMB CHANGE_NOTIFY can't be trusted; document why.
+  *(PR4 deviation on ctime: a freshly-ingested file is by definition inside the racy window
+  (hashed moments after its last write), so the pure window rule would re-hash every new corpus
+  once per run forever — "0 reads on an unchanged corpus" is unsatisfiable under it. The shipped
+  guard records `ctime_ns` as ONE MORE OPAQUE EQUALITY token (git's own index does the same):
+  ctime equality — which userspace cannot forge on POSIX — proves nothing changed since the hash
+  and short-circuits the window; entries without a recorded ctime (hand-seeded/pre-PR4) fall back
+  to the pure `hashed_at` window. Still never ordered, still no inode; an unstable SMB ctime
+  degrades to a harmless re-hash because sha remains the sole arbiter. Windows caveat, same as
+  git there: `st_ctime` is creation time, so a backdated same-size rewrite is invisible to stat —
+  `--full-rescan` or any real mtime change surfaces it.)*
 - Multi-root: `CITADEL_RAW_DIRS` (list env var); keys use the existing rel-or-abs discipline;
-  deletion sweep scoped per root. The five hardcoded `'raw'`/`'docs'` literals (store.py:175/207,
+  deletion sweep scoped per root. *(PR4 addition: a byte-identical file in a second root is
+  recognized as a duplicate against the SAME RUN's pending set too — one agent session, both keys
+  tracked — extending the manifest-only move/duplicate detection to the cross-root drop case.)* The five hardcoded `'raw'`/`'docs'` literals (store.py:175/207,
   lint.py:180, viewer, config.display_key) collapse into one config-aware `is_source_citation`
   predicate (lives in grammar.py, see Z7; refined during PR3.5 into the config-aware predicate
   plus its config-free lexical twin `resolves_to_source` for the byte-stable rewriters — do not

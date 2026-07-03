@@ -24,18 +24,21 @@ from citadel.progress import ConsoleProgress
 
 
 class IngestSpy:
-    """Stands in for ``ingest.ingest``: records (paths, progress), returns a canned report."""
+    """Stands in for ``ingest.ingest``: records (paths, progress, extra kwargs such as
+    ``full_rescan``), returns a canned report."""
 
     def __init__(self, report: IngestReport):
         self.report = report
         self.called = False
         self.paths = None
         self.progress = None
+        self.kwargs: dict = {}
 
-    def __call__(self, paths=None, progress=None):
+    def __call__(self, paths=None, progress=None, **kwargs):
         self.called = True
         self.paths = paths
         self.progress = progress
+        self.kwargs = kwargs
         return self.report
 
 
@@ -154,6 +157,15 @@ def test_ingest_dispatches_prints_report_and_returns_0(ingest_spy, capsys):
     assert ingest_spy.called
     assert ingest_spy.paths is None  # no positional paths -> ingest all of raw/
     assert "Ingest complete" in capsys.readouterr().out
+
+
+def test_ingest_full_rescan_flag_reaches_ingest(ingest_spy):
+    """``--full-rescan`` hands ``full_rescan=True`` through to ``ingest.ingest`` (the flag must
+    actually reach discovery); without it the kwarg is False."""
+    assert cli.main(["ingest", "--quiet"]) == 0
+    assert ingest_spy.kwargs["full_rescan"] is False
+    assert cli.main(["ingest", "--quiet", "--full-rescan"]) == 0
+    assert ingest_spy.kwargs["full_rescan"] is True
 
 
 def test_ingest_forwards_explicit_paths(ingest_spy):

@@ -27,7 +27,8 @@ uv run python -m citadel <subcommand>
 
 Subcommands: `init [DIR]` (scaffold a workspace: `citadel.toml` marker, `.env`, `raw/`, `wiki/`;
 idempotent), `ingest [paths…]` (fold raw/ into the wiki; `--verbose`/`-v` streams the agent
-session, `--log-dir DIR` writes a transcript per source, `--quiet` drops the progress spinner),
+session, `--log-dir DIR` writes a transcript per source, `--quiet` drops the progress spinner,
+`--full-rescan` distrusts the manifest's stat cache and re-hashes every tracked source),
 `serve` (MCP stdio server), `search <query> [--tag T] [--limit N]`, `tags [tag]`,
 `lint [--stale-days N]`, `check [paths…]`, `view [--out PATH] [--no-open] [--obsidian]`.
 `citadel --version` prints the version and (like `--help`) needs no workspace.
@@ -87,6 +88,15 @@ it is itself a workspace.
 **Ingest is the heart of the system** (`ingest.py` → `llm.py`). The flow per source:
 - `ingest.ingest()` partitions candidates into pending / already-ingested (sha match) / reorganized
   (moved-or-duplicate) / unreadable (binary) / deleted (vanished from disk, full runs only).
+- **Discovery is incremental and deletion-safe**: one `os.scandir` walk over every
+  `CITADEL_RAW_DIRS` root; the manifest doubles as the scan cache (an entry's
+  `size`/`mtime_ns`/`ctime_ns`/`hashed_at_ns` are a skip-hint — sha256 stays the sole arbiter of
+  "changed"; `--full-rescan` distrusts the cache). Deletion candidates come from the
+  walked-seen-set diff and each is positively confirmed with `.exists()`; any walk error aborts
+  the whole sweep, an unreachable root contributes no candidates, keys under no configured root
+  are logged and never swept, and a workspace-identity mismatch whose keys do not resolve refuses
+  the sweep. A flaky share or unmounted root must NEVER read as mass deletion — don't weaken
+  these guards.
 - For each pending source it runs the agent against a **per-source staging copy** of the wiki (a
   sibling dir, never the live wiki), then snapshots before/after and **diffs by content hash** to
   learn what the agent created/updated/deleted — the agent has no return value, its file edits *are*
@@ -159,4 +169,5 @@ resolves all paths/settings. `cli.py` mirrors the MCP tools as subcommands.
   `CITADEL_INGEST_MODEL`, `CITADEL_LLM_TIMEOUT`, `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,
   `CITADEL_REPO_SUPPORT`, `CITADEL_WIKI_LANG` (target language of all wiki prose, default `en`),
   `CITADEL_PDF_MODE` (`text` | `images`), `CITADEL_STYLE_PROFILES` (opt-in style capture, default
-  `0`), the `CITADEL_*_DIR` path overrides, and `*_CLI_PATH` binary overrides.
+  `0`), the `CITADEL_*_DIR` path overrides, `CITADEL_RAW_DIRS` (multi-root: a comma/newline-separated
+  list of raw roots discovery walks), and `*_CLI_PATH` binary overrides.

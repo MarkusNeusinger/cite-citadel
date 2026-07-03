@@ -82,6 +82,13 @@ def build_parser() -> argparse.ArgumentParser:
         "DIR, so you can inspect what the model did even in headless mode. Overrides "
         "CITADEL_LLM_LOG_DIR.",
     )
+    p_ingest.add_argument(
+        "--full-rescan",
+        action="store_true",
+        help="Distrust the manifest's stat cache and re-hash every tracked source (sha256 still "
+        "decides: an unchanged source is re-stamped, not re-ingested). Use after moving a "
+        "workspace or when the cache is suspect.",
+    )
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_serve = sub.add_parser("serve", help="Run the MCP stdio server (wiki_search/wiki_read/wiki_index/wiki_ingest).")
@@ -186,7 +193,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         # CITADEL_LLM_VERBOSE — not just the --verbose flag — also drops the spinner that would
         # otherwise clobber the streamed transcript.
         progress = ConsoleProgress(spinner=not config.LLM_VERBOSE)
-    report = ingest.ingest(args.paths or None, progress=progress)
+    report = ingest.ingest(args.paths or None, progress=progress, full_rescan=args.full_rescan)
     print(report.render())
     # Non-zero on a per-source error OR a structural problem left behind (a broken
     # cross-link the agent introduced) — so ingest gates the wiki's integrity in CI.

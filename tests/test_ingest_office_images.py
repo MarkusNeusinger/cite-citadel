@@ -39,15 +39,15 @@ def test_partition_classifies_office_text_vs_textless_once(tmp_citadel, make_ppt
     make_pptx(raw / "withtext.pptx", [["A real fact."]])
     make_pptx(raw / "notext.pptx", [[]])
 
-    pending, skipped, moved, unreadable, deleted, office_text, images, duplicates = ingest._partition_sources(None, {})
+    scan = ingest._partition_sources(None, {})
 
-    pending_keys = {manifest.rel_key(p) for p in pending}
-    unreadable_keys = {manifest.rel_key(p) for p in unreadable}
+    pending_keys = {manifest.rel_key(p) for p in scan.pending}
+    unreadable_keys = {manifest.rel_key(p) for p in scan.unreadable}
     assert "raw/withtext.pptx" in pending_keys
     assert "raw/notext.pptx" in unreadable_keys
     # The extracted text is cached so the agent step reuses it (no second ZIP/XML parse).
-    assert any("A real fact." in t for t in office_text.values())
-    assert all(isinstance(p, Path) for p in office_text)  # keyed by the pending Path objects
+    assert any("A real fact." in t for t in scan.office_text.values())
+    assert all(isinstance(p, Path) for p in scan.office_text)  # keyed by the pending Path objects
 
 
 def test_office_pptx_extracted_to_temp_and_ingested(tmp_citadel, fake_agent, seed_page, make_pptx):

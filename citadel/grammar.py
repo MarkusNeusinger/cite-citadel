@@ -41,9 +41,12 @@ MD_LINK_RE = re.compile(r"\]\(([^)]+\.md)\)")
 # raw/ source tree point at arbitrary file types (.py/.txt/.pdf/...), so source-link handling
 # cannot assume the '.md' suffix that wiki cross-link handling relies on.
 ANY_LINK_RE = re.compile(r"\]\(([^)]+)\)")
-# First full markdown link on a footnote-definition line; tolerates a <url> form and stops the
-# path at whitespace so a `(url "title")` link title is not swallowed into the path.
-DEF_LINK_RE = re.compile(r"\[[^\]]*\]\(\s*<?([^)\s>]+)>?")
+# First full markdown link on a footnote-definition line. Two alternatives, mirroring
+# split_link_target: the <angle> form captures everything up to the closing '>' (the ONE
+# supported way to cite a source path containing spaces — see split_link_target), and the bare
+# form stops the path at whitespace so a `(url "title")` link title is not swallowed into the
+# path. Read the target through def_link_target(), which folds the two groups together.
+DEF_LINK_RE = re.compile(r"\[[^\]]*\]\(\s*(?:<([^>)]+)>|([^)\s>]+))")
 # A [[wiki-style]] link — NOT allowed (the wiki uses relative markdown links).
 WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 
@@ -85,17 +88,44 @@ def is_external(target: str) -> bool:
     return "://" in target or target.startswith("#")
 
 
+def def_link_target(rest: str) -> str | None:
+    """The target path of the first markdown link on a footnote-definition line's ``rest``, or
+    None when there is no resolvable link. Folds :data:`DEF_LINK_RE`'s two alternatives (the
+    ``<angle>`` form — which may contain spaces — and the whitespace-terminated bare form) into
+    the one path string the strict gate resolves."""
+    match = DEF_LINK_RE.search(rest)
+    if not match:
+        return None
+    return match.group(1) if match.group(1) is not None else match.group(2)
+
+
 def split_link_target(inner: str) -> tuple[str, str]:
     """Split a markdown link's parenthesized content into ``(path, suffix)``, where ``suffix`` is
     any trailing ``"title"`` (or empty for a ``<path>`` form) preserved verbatim on rewrite. e.g.
     ``'../../raw/x.md "note"'`` -> ``('../../raw/x.md', ' "note"')``; ``'<../../raw/x.md>'`` ->
-    ``('../../raw/x.md', '')``."""
+    ``('../../raw/x.md', '')``.
+
+    DECIDED (the standard-markdown rule this grammar supports): a target containing SPACES must
+    be written in the angle form — ``[my report](<../../raw/my report.pdf>)`` — which this
+    function reads whole; a bare spacey target lexically splits at the first whitespace (it is
+    indistinguishable from a ``"title"`` boundary) and is NOT a supported citation. The
+    emitters render through :func:`format_link_target` (the write-side twin), which angle-wraps
+    whenever a target contains whitespace, so a rewrite round-trips."""
     inner = inner.strip()
     if inner.startswith("<"):
         end = inner.find(">")
         return (inner[1:end], "") if end != -1 else (inner, "")
     parts = inner.split(None, 1)
     return (parts[0], " " + parts[1]) if len(parts) == 2 else (inner, "")
+
+
+def format_link_target(target: str) -> str:
+    """Write-side twin of :func:`split_link_target`: render ``target`` for emission inside a
+    markdown link's parentheses. A target containing whitespace is angle-wrapped (``<...>``) —
+    the ONE parseable citation form for a spacey path (per the parse rule above, a bare spacey
+    target lexically splits at the first whitespace and would never resolve again); any other
+    target is returned unchanged."""
+    return f"<{target}>" if re.search(r"\s", target) else target
 
 
 # --- the ONE fence-aware line iterator -------------------------------------------------------
@@ -154,29 +184,37 @@ def link_abs(page_rel: str, target: str) -> str | None:
     return os.path.normpath(os.path.join(page_dir, target))
 
 
-def _is_within(path_abs: str | os.PathLike, base: str | os.PathLike) -> bool:
+def is_within(path_abs: str | os.PathLike, base: str | os.PathLike, *, flavor=os.path) -> bool:
     """True if ``path_abs`` lies inside directory ``base`` (case-folded, purely LEXICAL — no
     symlink resolution, mirroring :func:`link_abs`; resolving only one side would diverge under
-    a symlinked wiki/raw path)."""
-    base_s = os.path.normcase(os.path.normpath(str(base)))
-    p = os.path.normcase(os.path.normpath(str(path_abs)))
-    return p == base_s or p.startswith(base_s + os.sep)
+    a symlinked wiki/raw path). The ONE containment primitive: the citation predicate below and
+    ``config.root_covering`` (the root-lookup behind the deletion sweep and the agent prompt's
+    raw-dir bullet) both build on it.
+
+    ``flavor`` (``os.path`` by default — production always uses the native flavor) is the pure
+    lexical path module the containment math runs through. It exists so the Windows semantics —
+    ``ntpath.normcase`` case-folds AND rewrites ``/`` to ``\\``, so a drive-letter/mixed-case/
+    mixed-separator pair still nests — are unit-testable from any platform (the suite probes
+    both ``ntpath`` and ``posixpath`` explicitly instead of trusting whichever OS CI runs on)."""
+    base_s = flavor.normcase(flavor.normpath(str(base)))
+    p = flavor.normcase(flavor.normpath(str(path_abs)))
+    return p == base_s or p.startswith(base_s + flavor.sep)
 
 
 def is_source_citation(page_rel: str, target: str) -> bool:
     """True when the link ``target`` written in wiki page ``page_rel`` is a citation into a
-    SOURCE tree — by default the configured ``config.RAW_DIR`` / ``config.DOCS_DIR`` roots,
-    read at call time so tests (and out-of-workspace layouts) can repoint them. Such a link
-    is legal provenance, never a wiki cross-link (decided rule 1 in the module docstring).
-    Filesystem-space twin of :func:`resolves_to_source` (see there for why both exist).
+    SOURCE tree — every configured raw source root (``config.source_roots()``, the one deduped
+    ``RAW_DIRS``+``RAW_DIR`` union) plus ``config.DOCS_DIR``, all read at call time so tests
+    (and out-of-workspace layouts) can repoint them. Such a link is legal provenance, never a
+    wiki cross-link (decided rule 1 in the module docstring). Filesystem-space twin of
+    :func:`resolves_to_source` (see there for why both exist).
 
     Containment is lexical and existence is NOT required: whether the cited file is really on
-    disk is the strict gate's job (``validate.source_issues``), not the grammar's. Multi-root
-    discovery (PR4) lands by extending the call-time default below, not the signature."""
+    disk is the strict gate's job (``validate.source_issues``), not the grammar's."""
     abs_path = link_abs(page_rel, target)
     if abs_path is None:
         return False
-    return any(_is_within(abs_path, root) for root in (config.RAW_DIR, config.DOCS_DIR))
+    return any(is_within(abs_path, root) for root in (*config.source_roots(), config.DOCS_DIR))
 
 
 def resolves_to_source(resolved: str) -> bool:

@@ -78,11 +78,11 @@ def source_issues(rel_path: str, body: str) -> list[str]:
             defined.add(marker_id)
             if grammar.is_llm_marker(marker_id):
                 continue  # model-supplied fact: cites "LLM", no raw file expected
-            link = grammar.DEF_LINK_RE.search(rest)
-            if not link:
+            link_target = grammar.def_link_target(rest)
+            if link_target is None:
                 bad.append(f"[^{marker_id}]: no resolvable source link")
                 continue
-            target = link.group(1).strip()
+            target = link_target.strip()
             if grammar.is_external(target):
                 continue
             resolved = grammar.link_abs(rel_path, target)

@@ -239,13 +239,16 @@ def _source_key_to_page_link(page_rel: str, key: str) -> str:
     (out-of-repo): when the source and the wiki sit on the SAME volume — the network-drive case,
     e.g. both under ``T:/team-wiki`` — a normal relative link is produced; on the rare
     cross-volume layout where no relative path exists, fall back to the absolute POSIX path so the
-    link still resolves rather than raising."""
+    link still resolves rather than raising. Emitted through ``grammar.format_link_target``, so a
+    key containing spaces comes back angle-wrapped — the ONE parseable citation form — and every
+    emitter (the citation rewriter, sources/index.md, the index reflinks) stays round-trippable."""
     page_dir = os.path.dirname(str(config.WIKI_DIR / page_rel))
     target_abs = str(config.source_path_for_key(key))
     try:
-        return os.path.relpath(target_abs, page_dir).replace(os.sep, "/")
+        link = os.path.relpath(target_abs, page_dir).replace(os.sep, "/")
     except ValueError:
-        return target_abs.replace(os.sep, "/")
+        link = target_abs.replace(os.sep, "/")
+    return grammar.format_link_target(link)
 
 
 def _rewrite_raw_body_links(page_rel: str, body: str, old_rel: str, new_rel: str) -> str:
@@ -259,6 +262,8 @@ def _rewrite_raw_body_links(page_rel: str, body: str, old_rel: str, new_rel: str
         path, suffix = grammar.split_link_target(match.group(1))
         if not _link_points_at_key(page_rel, path, old_rel):
             return match.group(0)
+        # _source_key_to_page_link already emits through grammar.format_link_target, so a spacey
+        # repointed target comes back angle-wrapped and the rewritten span always parses back.
         return f"]({_source_key_to_page_link(page_rel, new_rel)}{suffix})"
 
     out: list[str] = []

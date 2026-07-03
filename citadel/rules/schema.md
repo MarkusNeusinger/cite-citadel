@@ -127,7 +127,9 @@ The raw files are the primary source of truth:
   - raw: `[^s1]: [raw/attention.md](../../raw/attention.md) — short note (ingested 2026-06-21)`
     — the link is a **relative** path to the real raw file (a `concepts/` page reaches raw via
     `../../raw/<file>`). A `[^sN]` must point at a raw file that **exists** — a citation to a
-    missing file, or a marker used but never defined, is a hard failure.
+    missing file, or a marker used but never defined, is a hard failure. A source path
+    containing **spaces** is written in the standard markdown angle form —
+    `[my report](<../../raw/my report.pdf>)` — a bare spacey path does not parse.
   - model: `[^llm1]: LLM - model knowledge, not from a raw file (added 2026-06-21)` (no link) —
     surfaced by lint for transparency/audit.
 - **Multiple sources, one fact:** when several raw files support the **same** statement, cite
