@@ -27,7 +27,7 @@ button, a collapsible sidebar (backslash-key shortcut) for a focus/reading mode,
 toggle. All of this is client-side state persisted in ``localStorage``; the embedded data is untouched.
 
 The only LLM-free, read-only consumer of the wiki besides search/lint. Reuses
-``store.load`` / ``store._inbound_map`` / ``store.tag_catalog`` / ``store.find_raw_references``
+``store.load`` / ``store.inbound_map`` / ``store.tag_catalog`` / ``store.find_raw_references``
 and the shared citation/link/fence grammar (:mod:`citadel.grammar`) so the graph, tags, and
 provenance always match the rest of the system.
 
@@ -95,7 +95,7 @@ def build_bundle(pages=None) -> dict:
     if pages is None:
         pages = store.load()
     paths = {p.rel_path for p in pages}
-    inbound = store._inbound_map(pages)
+    inbound = store.inbound_map(pages)
 
     pages_json: list[dict] = []
     edges: list[dict] = []
