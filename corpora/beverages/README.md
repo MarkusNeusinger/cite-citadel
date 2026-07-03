@@ -2,14 +2,18 @@
 
 > **SOURCE / provenance:** Everything in this corpus is **synthetic** and was authored by hand for
 > testing and demonstrating cite-citadel. The brands, people, and companies (Caffè Aurora, Lina
-> Marchetti, Thornbury & Lin, Sir Edmund Thornbury, Mei Lin) are **fictional**; any resemblance to
-> real persons or organizations is accidental. Safe to publish.
+> Marchetti, Cordwell Roastworks, Thornbury & Lin, Sir Edmund Thornbury, Mei Lin) are **fictional**;
+> any resemblance to real persons or organizations is accidental. The coffee and tea science, on the
+> other hand, is real. Safe to publish.
 
-cite-citadel's **showcase** corpus and its original end-to-end test: ten short documents — five about
-**coffee**, five about **tea** — written in deliberately mixed registers (a reference guide, a prose
-essay, lab-notebook jottings, an FAQ, a brand blog) so the same facts recur across sources in
-different words. It is the corpus the README walks through and the one the committed demo wiki
-(`corpora/beverages/wiki/`, republished as the GitHub Pages viewer) is built from.
+cite-citadel's **showcase** corpus and its original end-to-end test: fourteen short documents — eight
+about **coffee**, six about **tea** — written in deliberately mixed registers (a reference guide, a
+prose essay, lab-notebook jottings, an FAQ, brand blogs, an extraction-science reference sheet, a
+tea-processing-and-cultivar deep dive, and a pair of dated seasonal bulletins two years apart) so the
+same facts recur across sources in different words — and, where the sources disagree or a date moves
+the story on, so the wiki has to reconcile them. It is the corpus the README walks through and the one
+the committed demo wiki (`corpora/beverages/wiki/`, republished as the GitHub Pages viewer) is built
+from.
 
 ## What it exercises
 
