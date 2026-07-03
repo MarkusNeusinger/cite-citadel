@@ -22,15 +22,16 @@ imported (a binary/unreadable file that was only seen and skipped).
 **The manifest is also the scan cache** (docs/refactor-plan.md Z3 — no second cache file): an
 entry additionally records the source's stat at hash time — ``size`` + ``mtime_ns`` (opaque
 equality tokens, never ordered: an older-but-different mtime invalidates exactly like a newer
-one), ``ctime_ns`` (one more opaque equality token, see :func:`entry_trusts_stat`), and
-``hashed_at_ns`` (the newest reading of the SOURCE file's own stat clock available at hash time —
-never the manifest write time or the local wall clock, because the wiki and the raw share can sit
-on different servers with skewed clocks). These are a SKIP HINT only: sha256 stays the sole
-arbiter of "changed"; a stat mismatch merely costs one stream-hash. Entries without the stat
-fields (hand-seeded, pre-refactor) are rehashed once and backfilled. No inode is recorded, and
-ctime is never a hard requirement — restic/borg made the same call for SMB, where inode/ctime
-are not stable across mounts (a flaky ctime here degrades to a harmless rehash, never to a
-missed change, because the sha decides).
+one), ``ctime_ns`` (one more opaque equality token — authoritative when recorded, see
+:func:`entry_trusts_stat`), and ``hashed_at_ns`` (the newest reading of the SOURCE file's own
+stat clock available at hash time — never the manifest write time or the local wall clock,
+because the wiki and the raw share can sit on different servers with skewed clocks). These are a
+SKIP HINT only: sha256 stays the sole arbiter of "changed"; a stat mismatch merely costs one
+stream-hash. Entries without the stat fields (hand-seeded, pre-refactor) are rehashed once and
+backfilled. No inode is recorded, and ctime is never a hard requirement — restic/borg made the
+same call for SMB, where inode/ctime are not stable across mounts (a flaky ctime here degrades
+to a harmless rehash, never to a missed change, because a recorded-but-mismatching ctime always
+forces the rehash and the sha decides).
 
 :func:`load` returns the FLAT sources dict — callers never see ``meta`` — and :func:`save` stamps
 ``meta`` with the CURRENT workspace root. A legacy flat manifest (pre-workspace, no meta) is read
@@ -109,11 +110,16 @@ def entry_trusts_stat(entry: Entry | None, st: os.stat_result) -> bool:
     granularity, or a backdating ``utime`` — is the classic racy-git case), so one of two
     guards must additionally hold:
 
-    - ``ctime_ns`` equality: POSIX bumps ctime on EVERY content/metadata change and userspace
-      cannot set it back, so a matching ctime proves nothing happened since the hash. (On
-      Windows ``st_ctime`` is the stable creation time — there, like git on Windows, a
-      deliberately backdated same-size rewrite is invisible to stat and only ``--full-rescan``
-      or a real mtime change surfaces it.)
+    - ``ctime_ns`` equality — AUTHORITATIVE whenever the entry recorded one: POSIX bumps ctime
+      on EVERY content/metadata change (a backdating ``utime`` included) and userspace cannot
+      set it back, so a matching ctime proves nothing happened since the hash and a MISMATCH
+      proves something did — it must distrust, never fall through to the window below (which a
+      forged mtime could otherwise talk into trusting). An unstable SMB ctime therefore
+      degrades to a harmless re-hash, never to a missed change. (On Windows ``st_ctime`` is the
+      stable creation time: a match still rules out the file being REPLACED, but — like git on
+      Windows — a deliberately backdated same-size in-place rewrite is invisible to stat and
+      only ``--full-rescan`` or a real mtime change surfaces it. See the PR4 deviation note in
+      docs/refactor-plan.md Z3.)
     - the racy-timestamp window (the git model, for entries carrying no ctime — hand-seeded or
       written by another tool): the file's mtime must lie comfortably BEFORE the recorded
       ``hashed_at_ns`` (both readings of the source's own clock), beyond
@@ -127,8 +133,8 @@ def entry_trusts_stat(entry: Entry | None, st: os.stat_result) -> bool:
     if entry.get("size") != st.st_size or entry.get("mtime_ns") != st.st_mtime_ns:
         return False
     ctime = entry.get("ctime_ns")
-    if isinstance(ctime, int) and ctime == st.st_ctime_ns:
-        return True
+    if isinstance(ctime, int):
+        return ctime == st.st_ctime_ns
     hashed_at = entry.get("hashed_at_ns")
     return isinstance(hashed_at, int) and st.st_mtime_ns < hashed_at - RACY_WINDOW_NS
 

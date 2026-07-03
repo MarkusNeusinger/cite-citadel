@@ -151,6 +151,34 @@ def test_absolute_citation_targets_are_source_links():
     assert not grammar.resolves_to_source("concepts/b.md")
 
 
+def test_is_within_windows_flavor_probe():
+    """The ONE containment primitive, probed under EXPLICIT ntpath semantics so the Windows
+    behavior is asserted from any CI platform instead of only where windows-latest happens to
+    run: ``ntpath.normcase`` both case-folds and rewrites ``/`` to ``\\``, so a key produced by
+    ``rel_or_abs_posix`` (forward slashes, resolve()-cased drive letter) still nests inside a
+    configured root written with backslashes/other casing. Also pins the boundary rule (a
+    sibling sharing the prefix is NOT within) and drive-letter-case folding."""
+    import ntpath
+
+    assert grammar.is_within("C:/Users/Bob/raw/sub/x.md", "C:\\Users\\Bob\\raw", flavor=ntpath)
+    assert grammar.is_within("c:/users/bob/RAW/x.md", "C:\\Users\\Bob\\raw", flavor=ntpath)  # case-folded
+    assert grammar.is_within("C:/Users/Bob/raw", "C:/Users/Bob/raw", flavor=ntpath)  # the root itself
+    assert not grammar.is_within("C:/Users/Bob/raw-archive/x.md", "C:/Users/Bob/raw", flavor=ntpath)
+    assert not grammar.is_within("D:/Users/Bob/raw/x.md", "C:/Users/Bob/raw", flavor=ntpath)  # other drive
+    assert grammar.is_within("//server/share/raw/x.md", "\\\\server\\share\\raw", flavor=ntpath)  # UNC
+
+
+def test_is_within_posix_flavor_probe():
+    """The posixpath twin of the probe above: no case folding (POSIX paths are case-sensitive),
+    same prefix-boundary rule — so the primitive's semantics are pinned per flavor, not left to
+    whatever ``os.path`` the test host provides."""
+    import posixpath
+
+    assert grammar.is_within("/mnt/share/raw/x.md", "/mnt/share/raw", flavor=posixpath)
+    assert not grammar.is_within("/mnt/share/RAW/x.md", "/mnt/share/raw", flavor=posixpath)
+    assert not grammar.is_within("/mnt/share/raw-archive/x.md", "/mnt/share/raw", flavor=posixpath)
+
+
 def test_resolved_md_links_shared_detector():
     """One pass: keeps only genuine wiki cross-links — no citations, no fenced literals, no
     external/anchor targets — resolved to wiki-root-relative identities."""

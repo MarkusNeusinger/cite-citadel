@@ -433,7 +433,7 @@ def _dedup_rank(ext: str) -> int:
 
 
 def _dedup_by_basename(
-    pending: list[Path], manifest_dict: dict[str, str]
+    pending: list[Path], manifest_dict: dict[str, manifest.Entry]
 ) -> tuple[list[Path], list[tuple[str, str]], set[Path]]:
     """Collapse same-folder, same-basename groups of DOCUMENT-export formats to a single kept file.
 
@@ -516,7 +516,7 @@ class _Scan:
 
 def _partition_sources(
     paths: list[str] | None,
-    manifest_dict: dict[str, str],
+    manifest_dict: dict[str, manifest.Entry],
     failures_dict: dict[str, dict] | None = None,
     full_rescan: bool = False,
     walk: _Walk | None = None,

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any, Callable
 
 import pytest
@@ -217,8 +217,15 @@ def seed_page() -> Callable[..., Path]:
 def _cite_page(rel_path: str, rel_key: str, body_fact: str) -> None:
     """Write a minimal valid OKF page that cites ``rel_key`` once (for use inside fake sessions).
     A workspace-relative key is cited with a relative link; an absolute (out-of-workspace) key by
-    its absolute posix path — the Z3 cross-root citation form."""
-    link = rel_key if PurePosixPath(rel_key).is_absolute() else f"../../{rel_key}"
+    its absolute posix path — the Z3 cross-root citation form.
+
+    Absoluteness is decided with the NATIVE ``Path`` flavor (the same discipline as
+    ``config.source_path_for_key``), never ``PurePosixPath``: keys are produced by
+    ``config.rel_or_abs_posix`` on the platform under test, and a Windows drive-letter key
+    (``C:/Users/...``) is NOT posix-absolute — ``PurePosixPath("C:/x").is_absolute()`` is False —
+    which would emit a broken ``../../C:/...`` link and fail every fake session for an
+    out-of-workspace source on Windows."""
+    link = rel_key if Path(rel_key).is_absolute() else f"../../{rel_key}"
     target = config.WIKI_DIR / rel_path
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(

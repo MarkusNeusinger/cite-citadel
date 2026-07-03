@@ -267,16 +267,34 @@ def test_racy_timestamp_entries_are_rehashed_despite_matching_stat(tmp_citadel, 
     assert count_hashes.of(raw / "boundary.md") == 1  # exactly at the 3s window edge: distrusted
 
 
-def test_same_stat_edit_right_after_ingest_is_still_detected(tmp_citadel, fake_agent):
-    """The end-to-end property the racy guard exists for: a source rewritten with the SAME byte
-    length and the SAME mtime_ns immediately after being ingested (mtime granularity / clock skew
-    can produce exactly this) must still be detected as changed on the next run. Passes today
-    (everything is rehashed) and MUST keep passing once the stat quick check lands — the freshly
-    hashed entry is inside the racy window, so it is rehashed, not quick-skipped."""
+def test_same_stat_edit_within_racy_window_is_still_detected(tmp_citadel, fake_agent):
+    """The end-to-end property the racy-window guard exists for (docs/refactor-plan.md Z3): a
+    source rewritten with the SAME byte length and the SAME mtime_ns (mtime granularity / clock
+    skew / a backdating ``utime`` can produce exactly this) is still detected as changed when the
+    entry is inside the racy window — its recorded mtime is not comfortably before its recorded
+    ``hashed_at_ns``, so the quick check distrusts it and the rehash catches the new bytes.
+
+    Pinned on a PURE-WINDOW entry (ctime token stripped, ``hashed_at_ns`` set to the recorded
+    mtime — the hand-seeded/other-tool entry class) because that is the guarantee that holds on
+    EVERY platform. This is the accepted Z3 limitation, same as git: OUTSIDE the window the quick
+    check needs the ctime token, and on Windows ``st_ctime`` is the stable creation time, so a
+    deliberately backdated same-size in-place rewrite there is invisible to stat until
+    ``--full-rescan`` or a real mtime change (see the PR4 deviation note in Z3 and
+    ``manifest.entry_trusts_stat``). The ctime-mismatch catch is pinned separately below."""
     src = tmp_citadel.raw / "a.md"
     src.write_text("alpha version one\n", encoding="utf-8")
     agent = fake_agent(side_effect=_fake_session)
     ingest.ingest()
+
+    # Rewrite the manifest entry as a pure-window one: no ctime token to vouch, hashed_at equal
+    # to the recorded mtime — i.e. hashed the instant it was last written, the racy case, made
+    # deterministic and platform-independent instead of relying on real stat-clock timing.
+    m = manifest.load()
+    entry = dict(m["raw/a.md"])
+    entry.pop("ctime_ns", None)
+    entry["hashed_at_ns"] = entry["mtime_ns"]
+    m["raw/a.md"] = entry
+    manifest.save(m)
 
     st = src.stat()
     src.write_text("alpha version two\n", encoding="utf-8")  # same length, new bytes
@@ -287,6 +305,60 @@ def test_same_stat_edit_right_after_ingest_is_still_detected(tmp_citadel, fake_a
     report = ingest.ingest()
     assert agent.calls == [("raw/a.md", "reconcile")]
     assert report.processed == ["raw/a.md"]
+
+
+def test_ctime_token_mismatch_forces_rehash_even_when_window_looks_safe(tmp_citadel, fake_agent):
+    """The ctime token is AUTHORITATIVE end-to-end: an entry whose recorded ``ctime_ns`` does not
+    match the file's current one is distrusted and rehashed EVEN when its ``hashed_at_ns`` is
+    forged to look comfortably safe — the case a backdated mtime could otherwise talk the pure
+    window into trusting. On POSIX this is exactly the same-size same-mtime rewrite (the kernel
+    bumps ctime on every change and userspace cannot set it back); on Windows it is a REPLACED
+    file (a new file gets a new creation time). The mismatch is planted on the recorded token
+    (one tick before the real ctime) rather than produced by a live rewrite, because on a fast
+    filesystem write->ingest->rewrite can land inside ONE coarse-clock tick and leave the real
+    ctime unchanged — the planted form pins the identical code path deterministically on every
+    platform."""
+    src = tmp_citadel.raw / "a.md"
+    src.write_text("alpha version one\n", encoding="utf-8")
+    agent = fake_agent(side_effect=_fake_session)
+    ingest.ingest()
+
+    m = manifest.load()
+    entry = dict(m["raw/a.md"])
+    assert isinstance(entry.get("ctime_ns"), int)  # the token really is recorded end-to-end
+    entry["ctime_ns"] -= 1  # the file's ctime moved since the hash (rewrite / replacement)
+    entry["hashed_at_ns"] = entry["mtime_ns"] + 60 * 10**9  # window alone would say "safe"
+    m["raw/a.md"] = entry
+    manifest.save(m)
+
+    st = src.stat()
+    src.write_text("alpha version two\n", encoding="utf-8")  # same length, new bytes
+    os.utime(src, ns=(st.st_mtime_ns, st.st_mtime_ns))  # same mtime token
+    assert src.stat().st_size == st.st_size
+
+    agent.reset()
+    report = ingest.ingest()
+    assert agent.calls == [("raw/a.md", "reconcile")]
+    assert report.processed == ["raw/a.md"]
+
+
+def test_recorded_ctime_token_is_authoritative_in_the_quick_check(tmp_citadel):
+    """Unit pin on :func:`manifest.entry_trusts_stat`, platform-independent by construction (the
+    entry dict is manipulated, never the file): with (size, mtime_ns) matching, a recorded
+    ``ctime_ns`` decides ALONE — equal -> trusted, different -> distrusted even when
+    ``hashed_at_ns`` sits comfortably past the window (a mismatching ctime proves change; falling
+    through to the window would let a forged mtime win). Only an entry with NO ctime token falls
+    back to the pure racy-window rule."""
+    src = tmp_citadel.raw / "a.md"
+    src.write_text("alpha\n", encoding="utf-8")
+    st = src.stat()
+    safe_hashed_at = st.st_mtime_ns + 60 * 10**9
+    base = {"sha256": "aa" * 32, "size": st.st_size, "mtime_ns": st.st_mtime_ns}
+
+    assert manifest.entry_trusts_stat({**base, "ctime_ns": st.st_ctime_ns}, st)
+    assert not manifest.entry_trusts_stat({**base, "ctime_ns": st.st_ctime_ns + 1, "hashed_at_ns": safe_hashed_at}, st)
+    assert manifest.entry_trusts_stat({**base, "hashed_at_ns": safe_hashed_at}, st)
+    assert not manifest.entry_trusts_stat({**base, "hashed_at_ns": st.st_mtime_ns}, st)
 
 
 # --- 3. duplicate/unreadable sources join the quick check via the failures catalog -----------
