@@ -1,5 +1,7 @@
 # objects
 
+The pages in this folder. Generated — do not edit.
+
 - [Arabica](arabica.md) — Coffea arabica, the dominant coffee species, prized for its sweeter, more complex flavor.
 - [Aurora Midnight](aurora-midnight.md) — Caffe Aurora's flagship dark-roast coffee, marketed as naturally caffeine-free.
 - [Camellia sinensis](camellia-sinensis.md) — The single evergreen shrub species from whose leaves all true tea — white, green, oolong, black, and pu-erh alike — is made.

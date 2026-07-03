@@ -1,5 +1,7 @@
 # concepts
 
+The pages in this folder. Generated — do not edit.
+
 - [Adenosine](adenosine.md) — The molecule that accumulates in the brain over the day to create sleep pressure, and the receptor caffeine blocks to produce alertness.
 - [Aurora Ritual](aurora-ritual.md) — Caffe Aurora's three-step coffee-tasting practice — smell, taste plain, then customize.
 - [Caffeine](caffeine.md) — The principal stimulant in coffee, tea, and matcha — its content is governed mainly by species/type and dose, barely by roast level, and its stimulant effect works by blocking adenosine receptors in the brain.
