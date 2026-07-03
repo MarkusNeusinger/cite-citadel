@@ -10,18 +10,20 @@ tags:
 - cold-brew
 - measurement
 resource: raw/cold-brew-notes.md
-timestamp: '2026-07-03T13:17:00Z'
+timestamp: '2026-07-03T22:29:14Z'
 ---
 
 Cold brew is an immersion method: rather than passing hot water through the grounds quickly, coarsely ground coffee steeps in room-temperature or refrigerated water for an extended period before being drawn off.[^s3] Bench trials default to [Cordwell Roastworks](../organizations/cordwell-roastworks.md)' medium-roast [Slow Tide](../objects/slow-tide.md) as the house bean unless otherwise noted, with strength measured on the bench's Hadley-Roe refractometer, calibrated weekly, as Total Dissolved Solids ([TDS](../abbreviations/tds-total-dissolved-solids.md)).[^s1]
 
 The grind is kept coarse — about 1,100 to 1,200 microns, described as "sea-salt-ish," dialled in at burr setting 9.5 on the bench's Vossberg grinder — because finer grinds turn silty and over-extract over the course of the long steep.[^s2][^s3] A later attempt at a medium-coarse grind (burr setting 8, versus the usual 9.5) came out silty and slightly astringent at 16 hours, confirming that the coarser setting is non-negotiable for a long steep.[^s11] The concentrate is brewed at roughly a 1:8 ratio of grounds to water by weight (for example 250 g of grounds to 2,000 g of water), which serves as the anchor figure; the finished concentrate is then diluted to taste, typically from 1:1 up to 1:3 with water or milk over ice.[^s2][^s5]
 
-The working steep window is 12 to 18 hours: under 12 hours the cup comes out thin and sour, and past 18 hours it turns woody.[^s3] Temperature changes the pace of extraction: at a 14-hour steep, room temperature (about 22 C) reaches a concentrate TDS of 4.0%, while the fridge (about 4 C) reaches only 3.6%, so a fridge steep needs to run closer to 18 hours to match what a room-temperature steep achieves in about 14; fridge steeps also taste cleaner and brighter, while room-temperature steeps come out rounder and heavier-bodied.[^s4]
+The working steep window is 12 to 18 hours: under 12 hours the cup comes out thin and sour, and past 18 hours it turns woody.[^s3][^s21] Temperature changes the pace of extraction: at a 14-hour steep, room temperature (about 22 C) reaches a concentrate TDS of 4.0%, while the fridge (about 4 C) reaches only 3.6%, so a fridge steep needs to run closer to 18 hours to match what a room-temperature steep achieves in about 14; fridge steeps also taste cleaner and brighter, while room-temperature steeps come out rounder and heavier-bodied.[^s4]
 
 After steeping, the concentrate is drawn off through a stainless-steel screen and then polished through a single paper filter; skipping the paper stage in favor of the screen alone leaves the cup cloudier, heavier-bodied, and prone to sediment at the bottom of the keg, while the paper stage clears the cup of silt entirely.[^s9] Source water also matters: too-soft water, under about 30 ppm of dissolved minerals, produces a flat, hollow cup, while raising the water's mineral content to about 60 ppm sharpens sweetness and definition without adding acidity.[^s10]
 
 Counterintuitively, cold brew often ends up carrying more total [caffeine](caffeine.md) than hot drip coffee — the popular belief that cold brewing means less caffeine is a myth. The effect comes from the concentrate's very high grounds-to-water ratio (about 1:8) combined with the long 12-to-18-hour steep, which together pull far more caffeine per gram of grounds than a quick hot brew, even though the finished glass is diluted afterward and so varies in strength; bench notes cite an internal figure of roughly 2.5 times the caffeine of a standard hot-drip mug for a 1:8 concentrate before dilution.[^s6] The same notes put caffeine's half-life in the body at about 3 hours, used as the basis for flagging a decaf upsell on cold brew orders after 2 p.m. — see [Caffeine](caffeine.md) for how this compares with the commonly cited figure.[^s7]
+
+[Caffe Aurora](../organizations/caffe-aurora.md) markets its own cold brew differently, calling it the lowest-caffeine drink on its menu and stating that brewing cold pulls out far less caffeine than hot water ever could — the cup it recommends to customers who want the flavor without the buzz.[^s20] See [Caffeine](caffeine.md) for how this claim compares with the established view on cold brew's caffeine content above.
 
 [Extraction yield](../abbreviations/ey-extraction-yield.md) (EY) — the percentage of the dry grounds' mass that ends up dissolved in the cup — is calculated as (TDS% × beverage mass) ÷ dry grounds mass.[^s8] Applied to a 14-hour room-temperature run (4.0% concentrate TDS, 1,820 g of draw-off from 250 g of grounds), this gives an EY of about 29.1%; despite running higher than the roughly 20% EY typical of hot drip on the same bean, the long, gentle steep reaches that extraction without added bitterness.[^s8]
 
@@ -58,6 +60,7 @@ id: op-decaf-cold-brew-line
 - [EY — Extraction Yield](../abbreviations/ey-extraction-yield.md)
 - [Cordwell Roastworks](../organizations/cordwell-roastworks.md)
 - [Slow Tide](../objects/slow-tide.md)
+- [Caffe Aurora](../organizations/caffe-aurora.md)
 
 ## Sources
 [^s1]: [raw/cold-brew-notes.md](../../raw/cold-brew-notes.md), lines 3-4 — bench rig and default house bean (ingested 2026-07-03)
@@ -79,3 +82,5 @@ id: op-decaf-cold-brew-line
 [^s17]: [raw/cold-brew-notes.md](../../raw/cold-brew-notes.md), lines 91-94 — open questions (ingested 2026-07-03)
 [^s18]: [raw/cold-brew-notes.md](../../raw/cold-brew-notes.md), lines 96-98 — stir test result (ingested 2026-07-03)
 [^s19]: [raw/cold-brew-notes.md](../../raw/cold-brew-notes.md), lines 100-106 — steep-time TDS curve (ingested 2026-07-03)
+[^s20]: [raw/aurora-bulletin-2026.md](../../raw/aurora-bulletin-2026.md), § The Aurora nerd corner — how we brew it now — cold brew caffeine claim (ingested 2026-07-03)
+[^s21]: [raw/brewing-science-notes.md](../../raw/brewing-science-notes.md), § Grind, time, and temperature — the three levers you actually turn — corroborates cold brew's very coarse grind and 12-18 hour steep (ingested 2026-07-03)

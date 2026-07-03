@@ -45,7 +45,7 @@ Ingest runs through a coding-agent CLI you already have — no API key, just you
 uv init my-wiki && cd my-wiki
 uv add cite-citadel
 uv run citadel init
-nano .env                 # pick your agent CLI (claude | copilot) — must be logged in
+nano .env                 # pick your agent CLI (claude | copilot | gemini) — must be logged in
 cp ~/notes/* raw/         # drop in anything your agent can open
 uv run citadel ingest     # one agent session per source builds the cited wiki
 uv run citadel view       # browse it offline

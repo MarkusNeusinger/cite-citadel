@@ -19,5 +19,6 @@ The pages in this folder. Generated — do not edit.
 - [Tea and Health](tea-and-health.md) — Practical health guidance on tea — its contribution to hydration, its effect on teeth and iron absorption via tannins, evening/caffeine timing, and the sugar caveat in sweetened tea.
 - [Tea Antioxidants](tea-antioxidants.md) — Catechins (led by EGCG) and tannins — the compounds behind tea's reputation as a healthful drink and its characteristic astringency.
 - [Tea Brewing](tea-brewing.md) — Water temperature and steeping time by tea type — from cool 70-80 °C water for green tea to near-boiling water for black tea.
-- [Tea Processing](tea-processing.md) — The oxidation spectrum — from barely-processed white tea to fully oxidized black tea to fermented pu-erh — that turns one plant's leaf into radically different teas.
+- [Tea Cultivars](tea-cultivars.md) — Named bred varieties beneath tea's two botanical varieties — Yabukita behind most Japanese sencha, the Wuyi rock oolong Da Hong Pao, and the Darjeeling flushes that turn one bush into two different teas by season.
+- [Tea Processing](tea-processing.md) — The oxidation spectrum — from barely-processed white tea through the rare yellow class to fully oxidized black tea to microbially fermented pu-erh — that turns one plant's leaf into radically different teas.
 - [Tea Storage](tea-storage.md) — Keeping tea away from light, heat, moisture, and odours — and why pu-erh is the deliberate exception, aged for years like wine.
