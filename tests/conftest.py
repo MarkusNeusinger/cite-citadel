@@ -111,6 +111,7 @@ def make_citadel(tmp_path: Path, monkeypatch) -> Callable[..., CitadelTmp]:
             "tasks/ingest.md",
             "tasks/reconcile.md",
             "tasks/delete.md",
+            "tasks/curate.md",
             "formats/repo.md",
             "formats/image.md",
             "formats/pdf.md",

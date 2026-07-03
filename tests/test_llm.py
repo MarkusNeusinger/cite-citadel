@@ -307,6 +307,54 @@ def test_build_instruction_delete_honors_configured_wiki_dir(tmp_path, monkeypat
     assert "wiki/" not in prompt
 
 
+def test_curate_kind_reads_curate_brief_via_findings_no_office_no_genres():
+    """PR6 curate: the kind maps to tasks/curate.md, names the anchor PAGE as its subject and the
+    findings file as the prepared file — but attaches NO format brief (format_policy 'none') even
+    though a read_path is present (curate's findings file must NOT pull in formats/office.md), and
+    enumerates NO genres (it edits existing pages, not source content). Paths-only, tiny."""
+    findings = "/tmp/okf_findings_x/concepts_topic.md"
+    prompt = llm._build_instruction("concepts/topic.md", "curate", findings)
+    assert _ref("tasks/curate.md") in prompt
+    assert _ref("schema.md") in prompt and _ref("core.md") in prompt
+    assert _ref("tasks/ingest.md") not in prompt and _ref("tasks/reconcile.md") not in prompt
+    assert "concepts/topic.md" in prompt  # the cluster anchor page
+    assert findings in prompt  # the findings checklist, referenced BY PATH (not embedded)
+    assert "cluster anchor" in prompt
+    assert "Judge the source's genre" not in prompt  # no genre enumeration for curate
+    for fmt in ("formats/office.md", "formats/image.md", "formats/repo.md", "formats/pdf.md"):
+        assert _ref(fmt) not in prompt
+    assert len(prompt) < PROMPT_CHAR_BUDGET
+
+
+def test_unknown_kind_fails_loud():
+    """The per-kind spec table has no silent ingest-brief default: an unregistered kind (a typo, a
+    new lifecycle that forgot to register) raises loudly rather than folding a source under the
+    wrong task. Guards _spec_for_kind and every builder that goes through it."""
+    with pytest.raises(ValueError, match="unknown ingest kind"):
+        llm._spec_for_kind("bogus-kind")
+    with pytest.raises(ValueError, match="unknown ingest kind"):
+        llm._build_instruction("raw/notes.md", "bogus-kind")
+    with pytest.raises(ValueError, match="unknown ingest kind"):
+        llm._referenced_rules("raw/notes.md", "bogus-kind")
+
+
+def test_curate_brief_teaches_improve_or_noop_and_provenance_invariants():
+    """tasks/curate.md (the curate brief) must keep its load-bearing invariants: consume the
+    findings checklist, improve-or-NOOP ('make no edits and stop'), never invent, never break
+    [^sN] provenance, preserve counterfactuals, re-sort/split keeping every fact + citation, and
+    run citadel check before finishing. Coarse keyword pins so a rewording survives but a DROPPED
+    rule fails loud."""
+    brief = (REAL_RULES_DIR / "tasks/curate.md").read_text(encoding="utf-8").lower()
+    assert "findings" in brief  # consumes the findings file
+    assert "make no edits and stop" in brief  # improve-or-NOOP is mandatory
+    assert "never invent" in brief
+    assert "[^s" in brief and "provenance" in brief  # never break provenance
+    assert "counterfactual" in brief  # preserved as stated
+    assert "folder" in brief and "split" in brief  # re-sort + split-overlong
+    assert "citation" in brief  # every fact keeps its citation across a move/split
+    assert "citadel check" in brief  # the pre-finish gate
+
+
 # --- variables-as-bullets: the config knobs the rules expect -------------------------------
 
 
@@ -436,6 +484,7 @@ _KIND_VARIANTS = [
     ("ingest", "/tmp/okf_extract_x/big.md", (1, 4)),  # large-source segments
     ("ingest", "/tmp/okf_extract_x/big.md", (3, 4)),
     ("reconcile", "/tmp/okf_extract_x/big.md", (2, 4)),
+    ("curate", "/tmp/okf_findings_x/findings.md", None),  # curate: findings file arrives via read_path
 ]
 
 

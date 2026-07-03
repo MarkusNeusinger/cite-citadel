@@ -55,20 +55,33 @@ def seeded_wiki(tmp_citadel, seed_page):
 # --- registration ------------------------------------------------------------------------
 
 
-def test_all_seven_tools_registered():
-    """The FastMCP instance exposes exactly the seven documented tools (six read-only + the
+def test_all_eight_tools_registered():
+    """The FastMCP instance exposes exactly the eight documented tools (seven read-only + the
     one mutating wiki_ingest) — a rename or a lost decorator would silently drop a tool from
     every MCP client."""
     tools = asyncio.run(server.mcp.list_tools())
     assert sorted(t.name for t in tools) == [
         "wiki_index",
         "wiki_ingest",
+        "wiki_lint",
         "wiki_read",
         "wiki_search",
         "wiki_sources",
         "wiki_tags",
         "wiki_validate",
     ]
+
+
+def test_read_only_tools_are_annotated_read_only():
+    """Every reader carries the MCP ``readOnlyHint`` behavior annotation and only ``wiki_ingest``
+    is left un-read-only — so a client can tell the mutating tool apart before calling it. Skipped
+    gracefully if the installed mcp predates tool annotations."""
+    if server.ToolAnnotations is None:  # older mcp without annotations -> nothing to assert
+        return
+    tools = {t.name: t for t in asyncio.run(server.mcp.list_tools())}
+    for name in ("wiki_search", "wiki_read", "wiki_index", "wiki_sources", "wiki_tags", "wiki_validate", "wiki_lint"):
+        assert tools[name].annotations is not None and tools[name].annotations.readOnlyHint is True
+    assert tools["wiki_ingest"].annotations.readOnlyHint is False
 
 
 # --- _snippet ----------------------------------------------------------------------------

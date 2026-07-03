@@ -461,6 +461,13 @@ FAILURES_PATH: Path = WIKI_DIR / ".citadel_failures.json"
 # CLI) which model alias/id to pass. No API key is used.
 LLM_CLI: str = os.environ.get("CITADEL_LLM_CLI", "claude")
 INGEST_MODEL: str = os.environ.get("CITADEL_INGEST_MODEL", "sonnet")
+# The model `citadel curate` sessions run under. Curate is a bounded cleanup pass (re-sort, split,
+# re-ground) that can run on a cheaper/faster model than a full ingest — set CITADEL_CURATE_MODEL to
+# choose it. Empty (the default) falls back to INGEST_MODEL, so a workspace that never sets it
+# curates on the same model it ingests with. Only the claude backend is passed --model, so this
+# knob is authoritative there; copilot/gemini run their own model regardless (see
+# ingest_model_label). Read at call time / swapped in by curate.py so tests can monkeypatch it.
+CURATE_MODEL: str = os.environ.get("CITADEL_CURATE_MODEL", "").strip()
 LLM_TIMEOUT: int = int(os.environ.get("CITADEL_LLM_TIMEOUT", "1200"))
 
 # Observability for the otherwise-headless agent session — by default the CLI's stdout/stderr is
@@ -548,6 +555,13 @@ DEDUP_BY_BASENAME: bool = os.environ.get("CITADEL_DEDUP_BY_BASENAME", "1").strip
 # only genuinely large sources are split; lower it for a small-context backend, raise it (or set 0
 # to disable) for a very large one.
 MAX_SOURCE_CHARS: int = int(os.environ.get("CITADEL_MAX_SOURCE_CHARS", "300000"))
+
+# Curate page-length thresholds, measured in BODY lines (docs/refactor-plan.md Z5). `citadel lint`
+# only WARNS at the soft threshold; `citadel curate` ACTS (plans a topic split, every fact keeping
+# its citation) at the hard one. Deliberately module constants, not env knobs — one KISS default the
+# rules-tree page-shape guidance is written around, not a per-workspace dial.
+CURATE_PAGE_SOFT_LINES: int = 400
+CURATE_PAGE_HARD_LINES: int = 800
 
 # OS/system junk files & folders to IGNORE entirely during a raw/ scan — never ingested, never
 # recorded in the manifest or the failures catalog. These are noise a file manager or the OS drops

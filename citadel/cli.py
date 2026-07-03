@@ -4,13 +4,21 @@
 
     citadel init [DIR]           # scaffold a workspace (citadel.toml marker, .env, raw/, wiki/)
     citadel ingest [paths ...]   # fold raw/ (or explicit paths) into the wiki
+    citadel curate [--dry-run] [--limit N] [--stale-rules] [--diff PATH]  # improve existing pages
+    citadel status               # per-source corpus state (ingested/failed/skipped/ignored/pending)
     citadel serve                # run the MCP stdio server
     citadel search <query> [--limit N] [--tag T]
+    citadel read <rel_path>      # print one page's full OKF text (mirrors wiki_read)
+    citadel index                # print the generated wiki/index.md (mirrors wiki_index)
+    citadel sources              # print the generated wiki/sources/index.md (mirrors wiki_sources)
     citadel tags [tag]           # browse pages by tag
     citadel lint [--stale-days N]
     citadel check [paths ...]    # validate links/format/required-fields (the ingest gate)
     citadel view [--out PATH] [--no-open] [--obsidian]   # offline single-file HTML viewer
     citadel rules list|show|eject   # inspect / fork the rules files the ingest agent reads
+
+The read/index/sources/lint subcommands give an AI without MCP access full parity with the
+server's tools (`lint`/`view` stay CLI-only; `wiki_lint` closes the gap from the MCP side).
 
 Every subcommand except ``init`` and ``rules`` needs a resolved WORKSPACE (see config's discovery
 order); ``main`` fails loud with exit 2 — pointing at ``citadel init`` and ``CITADEL_WORKSPACE``
@@ -37,7 +45,7 @@ from . import __version__
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the ``citadel`` argument parser with its eight subcommands."""
+    """Build the ``citadel`` argument parser with its subcommands."""
     parser = argparse.ArgumentParser(
         prog="citadel", description="An LLM-maintained personal wiki in Google OKF, with an MCP search server."
     )
@@ -101,8 +109,55 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_ingest.set_defaults(func=cmd_ingest)
 
+    p_curate = sub.add_parser(
+        "curate",
+        help="Improve EXISTING pages (re-sort, split, re-ground, resolve contradictions) against a "
+        "recomputed findings checklist — the second wiki lifecycle beside ingest.",
+    )
+    p_curate.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Recompute and print the plan only; run zero agent sessions and leave the wiki untouched.",
+    )
+    p_curate.add_argument(
+        "--limit", type=int, default=None, metavar="N", help="Curate at most the first N clusters of the plan."
+    )
+    p_curate.add_argument(
+        "--stale-rules",
+        action="store_true",
+        help="Restrict the plan to pages whose source was ingested under an older rulebook.",
+    )
+    p_curate.add_argument(
+        "--diff",
+        default=None,
+        metavar="PATH",
+        help="Write a per-page change report (unified diffs) for this run to PATH.",
+    )
+    p_curate.set_defaults(func=cmd_curate)
+
+    p_status = sub.add_parser(
+        "status",
+        help="Show per-source corpus state: ingested / failed / skipped-duplicate / ignored / pending "
+        "(read-only; reads the manifest + failures catalog, never re-hashes).",
+    )
+    p_status.set_defaults(func=cmd_status)
+
     p_serve = sub.add_parser("serve", help="Run the MCP stdio server (wiki_search/wiki_read/wiki_index/wiki_ingest).")
     p_serve.set_defaults(func=cmd_serve)
+
+    p_read = sub.add_parser("read", help="Print the full OKF text of one wiki page (mirrors the wiki_read MCP tool).")
+    p_read.add_argument("rel_path", help="Page to print, e.g. concepts/transformer.md.")
+    p_read.set_defaults(func=cmd_read)
+
+    p_index = sub.add_parser(
+        "index", help="Print wiki/index.md — the generated catalog of every page (mirrors wiki_index)."
+    )
+    p_index.set_defaults(func=cmd_index)
+
+    p_sources = sub.add_parser(
+        "sources", help="Print wiki/sources/index.md — the generated provenance catalog (mirrors wiki_sources)."
+    )
+    p_sources.set_defaults(func=cmd_sources)
 
     p_search = sub.add_parser("search", help="Keyword search across the wiki pages.")
     p_search.add_argument("query", help="Search query.")
@@ -220,6 +275,71 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     # Non-zero on a per-source error OR a structural problem left behind (a broken
     # cross-link the agent introduced) — so ingest gates the wiki's integrity in CI.
     return 1 if (report.errors or report.broken_links) else 0
+
+
+def cmd_curate(args: argparse.Namespace) -> int:
+    """Run one curate pass and print the report (docs/refactor-plan.md Z5). ``--dry-run`` recomputes
+    the plan and runs zero sessions; ``--limit``/``--stale-rules`` shape the plan; ``--diff`` writes a
+    change report. Returns 1 when a cluster failed its gate (surfaced for CI), else 0."""
+    from . import curate
+
+    report = curate.curate(dry_run=args.dry_run, limit=args.limit, stale_rules=args.stale_rules, diff=args.diff)
+    print(report.render())
+    return 1 if report.failed else 0
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    """Print the per-source corpus state (docs/refactor-plan.md Z11) — ingested / failed /
+    skipped-duplicate / ignored / pending, read from the manifest + failures catalog with one
+    stat-only walk. Read-only: always returns 0."""
+    from . import status
+
+    print(status.build_status().render(), end="")
+    return 0
+
+
+def cmd_read(args: argparse.Namespace) -> int:
+    """Print one wiki page's full OKF text (the CLI twin of the wiki_read MCP tool). Returns 1 on a
+    missing page or an unsafe path, mirroring the tool's error contract as a CLI exit code."""
+    from . import okf, store
+
+    try:
+        page = store.read_page(args.rel_path)
+    except FileNotFoundError:
+        print(f"error: page not found: {args.rel_path}", file=sys.stderr)
+        return 1
+    except okf.OKFError as e:
+        print(f"error: unsafe path: {e}", file=sys.stderr)
+        return 1
+    text = okf.dump(page.frontmatter, page.body)
+    print(text, end="" if text.endswith("\n") else "\n")
+    return 0
+
+
+def cmd_index(args: argparse.Namespace) -> int:
+    """Print the generated wiki/index.md catalog (the CLI twin of wiki_index)."""
+    from . import config
+
+    try:
+        text = config.INDEX_PATH.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        print("No wiki index yet (run `citadel ingest` first).")
+        return 0
+    print(text, end="" if text.endswith("\n") else "\n")
+    return 0
+
+
+def cmd_sources(args: argparse.Namespace) -> int:
+    """Print the generated wiki/sources/index.md provenance catalog (the CLI twin of wiki_sources)."""
+    from . import config
+
+    try:
+        text = (config.WIKI_DIR / "sources" / "index.md").read_text(encoding="utf-8")
+    except FileNotFoundError:
+        print("No sources catalog yet (run `citadel ingest` first).")
+        return 0
+    print(text, end="" if text.endswith("\n") else "\n")
+    return 0
 
 
 def cmd_serve(args: argparse.Namespace) -> int:

@@ -28,6 +28,7 @@ import difflib
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 
 from . import grammar, okf, store, validate
 from .okf import Page
@@ -58,6 +59,44 @@ _ABBREV_REPORT_CAP = 25
 _OP_DUP_RATIO = 0.85
 _OP_DUP_CAP = 50
 
+# --- Z6 locator verification (deterministic, for text-bearing raw sources) ------------------
+# The link span on a footnote-definition line, up to its closing ')': `](path)` or `](<path>)`.
+# What follows it is the (optional) locator + description tail.
+_LINK_SPAN_RE = re.compile(r"\]\((?:<[^>]*>|[^)]*)\)")
+# A line locator, matched as a PREFIX of the tail (a trailing ` - description` is left in place, not
+# split off — a description separator is a spaced dash, which is indistinguishable from a dash INSIDE
+# a heading, so we never split blindly). Groups: start, optional end (`lines 40-52`, en/em dash ok).
+_LOC_LINES_RE = re.compile(r"^lines?\s+(\d+)(?:\s*[-–—]\s*(\d+))?", re.IGNORECASE)
+# The trailing `(ingested YYYY-MM-DD)` stamp the citation emitter always appends last — the one
+# suffix we can strip unambiguously before reading the locator.
+_INGESTED_SUFFIX_RE = re.compile(r"\s*\(ingested[^)]*\)\s*$", re.IGNORECASE)
+# A spaced dash (` - ` / ` – ` / ` — `): the description separator AND a legal character inside a
+# heading. Heading verification tries the full text first, then progressively drops a trailing
+# `<spaced-dash> …` segment, so a heading that itself contains a spaced dash still matches.
+_SPACED_DASH_RE = re.compile(r"\s[-–—]\s")
+# Paginated / binary source extensions whose locators (`p. 12`) are agent-verified, not read here.
+_NON_TEXT_EXTS = {
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".ppt",
+    ".pptx",
+    ".xls",
+    ".xlsx",
+    ".odt",
+    ".odp",
+    ".ods",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".bmp",
+    ".webp",
+    ".tif",
+    ".tiff",
+    ".heic",
+}
+
 
 @dataclass
 class LintReport:
@@ -80,6 +119,10 @@ class LintReport:
     duplicate_open_points: list[tuple[str, str]] = field(default_factory=list)
     # (rel_path, title): an open-point thread missing its `id:` line or any dated bullet. Advisory.
     malformed_open_points: list[tuple[str, str]] = field(default_factory=list)
+    # (rel_path, detail): a `lines A-B` locator past the end of its text source, or a `§ Heading`
+    # locator naming a heading the source does not contain (Z6). Advisory — a locator being off does
+    # not break navigation, so it does NOT flip ok(); it is also fed to `citadel curate` as a finding.
+    locator_issues: list[tuple[str, str]] = field(default_factory=list)
 
     def ok(self) -> bool:
         """True unless there are structural-integrity problems: missing_type, broken_links,
@@ -147,6 +190,10 @@ class LintReport:
         lines.append(f"Malformed open points (no id/date): {len(self.malformed_open_points)}")
         for rel, title in self.malformed_open_points:
             lines.append(f"  - {rel}: {title}")
+
+        lines.append(f"Locator issues (out-of-range lines / missing headings): {len(self.locator_issues)}")
+        for rel, detail in self.locator_issues:
+            lines.append(f"  - {rel}: {detail}")
 
         lines.append("")
         lines.append("OK" if self.ok() else "FAIL (missing type, broken links, fabricated sources, or [[wiki-links]])")
@@ -350,6 +397,127 @@ def _duplicate_open_points(points: list[store.OpenPoint]) -> list[tuple[str, str
     return sorted(pairs)
 
 
+def _read_source_text(page_rel: str, target: str) -> str | None:
+    """The text of the raw source a citation ``target`` (written in ``page_rel``) points at, or
+    None when it is not a locator-checkable text file: not a source citation, missing, a paginated/
+    binary format (PDF/Office/image — those carry agent-verified page locators), or undecodable. A
+    NUL byte or a decode failure means "binary" — the locator is left for the agent, not flagged."""
+    if not grammar.is_source_citation(page_rel, target):
+        return None
+    abs_path = grammar.link_abs(page_rel, target)
+    if abs_path is None:
+        return None
+    path = Path(abs_path)
+    if path.suffix.lower() in _NON_TEXT_EXTS:
+        return None
+    try:
+        if not path.is_file():
+            return None  # a missing source is bad_sources' job, not the locator check's
+        data = path.read_bytes()
+    except OSError:
+        return None
+    if b"\x00" in data:
+        return None
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def _locator_tail(rest: str) -> str | None:
+    """The locator tail on a footnote-definition line's ``rest`` (everything after the source link),
+    or None when there is none. A locator is comma-separated from the link (``…md), lines 40-52``,
+    per ``schema.md`` § Locators); only the unambiguous trailing ``(ingested …)`` stamp is stripped —
+    the ``- description`` separator is left in place because it is a spaced dash, indistinguishable
+    from a dash inside a heading (the line/heading checks handle the description themselves)."""
+    span = _LINK_SPAN_RE.search(rest)
+    if span is None:
+        return None
+    tail = rest[span.end() :].lstrip()
+    if not tail.startswith(","):
+        return None  # a bare ` - description` (no locator) or nothing
+    tail = _INGESTED_SUFFIX_RE.sub("", tail[1:].strip()).strip()
+    return tail or None
+
+
+def _heading_candidates(text: str):
+    """The heading strings to try for a ``§`` locator, most-specific first: the full text, then it
+    with a trailing ``<spaced-dash> …`` segment dropped, and so on. So a heading that legitimately
+    contains a spaced dash (``A word on the rivalry — yes, the coffee``) matches on the full text,
+    while a real trailing description (``Nonexistent Heading - x``) is trimmed away and re-tried."""
+    text = text.strip()
+    yield text
+    for match in reversed(list(_SPACED_DASH_RE.finditer(text))):
+        candidate = text[: match.start()].strip()
+        if candidate:
+            yield candidate
+
+
+def _locator_problem(page_rel: str, target: str, tail: str) -> str | None:
+    """Verify ONE locator ``tail`` against its text source, returning a human-readable problem or
+    None. A line range (matched as a prefix, so a trailing description is ignored) is checked against
+    the file's line count; ``§ Heading`` against the source's headings (a heading = a line matching a
+    candidate once its leading ``#``/space is stripped, case-folded). ``p. 12`` / ``pp. 3-5`` page
+    locators (and any unrecognized form) are agent-verified — skipped."""
+    lines_m = _LOC_LINES_RE.match(tail)
+    if lines_m:
+        text = _read_source_text(page_rel, target)
+        if text is None:
+            return None
+        start = int(lines_m.group(1))
+        end = int(lines_m.group(2)) if lines_m.group(2) else start
+        n = len(text.splitlines())
+        if start < 1 or start > end or end > n:
+            return f"locator '{lines_m.group(0).strip()}' out of range (source has {n} lines)"
+        return None
+    if tail.startswith("§"):
+        text = _read_source_text(page_rel, target)
+        if text is None:
+            return None
+        headings = {line.strip().lstrip("#").strip().lower() for line in text.splitlines()}
+        wanted = tail[1:].strip()
+        if not wanted:
+            return None
+        if any(cand.lower() in headings for cand in _heading_candidates(wanted)):
+            return None
+        return f"locator '§ {wanted}' names a heading not in the source"
+    return None
+
+
+def check_locators(pages: list[Page]) -> list[tuple[str, str]]:
+    """Deterministically verify every ``[^sN]`` citation locator against its text-bearing raw source
+    (docs/refactor-plan.md Z6): a ``lines A-B`` range past the file's end, or a ``§ Heading`` naming
+    a heading the source lacks, is a ``(rel_path, detail)`` warning. PDF/Office page locators stay
+    agent-verified (no Python PDF reader by design). Shared by :func:`lint` and ``citadel curate``;
+    reuses the one citation/link/fence grammar, so it agrees with the strict gate by construction."""
+    issues: list[tuple[str, str]] = []
+    for page in pages:
+        in_sources = False
+        for line, in_code in grammar.iter_lines(page.body):
+            if in_code:
+                continue
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                in_sources = bool(grammar.SOURCES_HEADING_RE.match(stripped))
+                continue
+            if not in_sources:
+                continue
+            match = grammar.DEF_LINE_RE.match(line)
+            if not match or grammar.is_llm_marker(match.group(1)):
+                continue
+            rest = match.group(2)
+            target = grammar.def_link_target(rest)
+            if target is None or grammar.is_external(target):
+                continue
+            tail = _locator_tail(rest)
+            if tail is None:
+                continue
+            problem = _locator_problem(page.rel_path, target, tail)
+            if problem:
+                issues.append((page.rel_path, problem))
+    return sorted(issues)
+
+
 def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
     """If pages is None, store.load(). Build the link graph; flag orphans (no inbound
     and no outbound non-raw links), contradictions (marker present), missing_type
@@ -435,6 +603,9 @@ def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
         (pt.page_rel, pt.title) for pt in op_points if not pt.point_id or not pt.bullets
     )
     report.duplicate_open_points = _duplicate_open_points(op_points)
+
+    # locator issues (advisory, Z6): line ranges past a text source's end / missing §-headings.
+    report.locator_issues = check_locators(pages)
 
     # Deterministic ordering.
     report.contradictions.sort()
