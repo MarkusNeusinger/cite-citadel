@@ -135,9 +135,12 @@ it is itself a workspace.
   never holds a partially imported source; the accepted trade-off is that a failure at segment N
   discards the earlier segments' work and the source retries from segment 1 next run). Any
   failure/timeout/Ctrl+C leaves the live wiki exactly as it was; the source is retried next run.
-  Files, repos, and deletion cleanups all drive this through ONE shared per-source loop
-  (`_SourceJob` + `_run_source_jobs`). This all-or-nothing + network-share-hardened machinery
-  (`_robust_*`, `robust_mkdir`) is load-bearing — don't simplify it away.
+  Deletion cleanups, then pending files, then repos all drive this through ONE shared per-source
+  loop (`_SourceJob` + `_run_source_jobs`) — **deletions run first** so a delete cleanup strips a
+  vanished source's stale provenance before any pending session touches a page that still cites it
+  (else that pre-existing bad citation would fail the pending session's validation and roll it
+  back). This all-or-nothing + network-share-hardened machinery (`_robust_*`, `robust_mkdir`) is
+  load-bearing — don't simplify it away.
 
 **`llm.py` is the ONLY place that talks to an LLM**, and it does so by shelling out to a CLI in
 agentic mode (`cwd` = workspace root, autonomous file tools). The prompt is **paths-only** — it references
