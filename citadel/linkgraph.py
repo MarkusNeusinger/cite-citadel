@@ -18,6 +18,21 @@ from .okf import Page
 from .store_core import load
 
 
+def _norm(p) -> str:
+    """The leaf normal form for OS-case-folded absolute-path comparison:
+    ``normcase(normpath(str(p)))``. The single normalizer used by :func:`_link_points_at_key` and
+    :func:`citing_pages_map` so the single-key finder and the batch map compute the SAME normal form
+    structurally, not by proof."""
+    return os.path.normcase(os.path.normpath(str(p)))
+
+
+def _resource_norm(value) -> str:
+    """The normal form for matching a ``resource`` frontmatter value against a source key: a
+    stripped, forward-slashed string. Shared by :func:`find_raw_references`' resource comparison and
+    :func:`citing_pages_map`'s resource index so both match a ``resource`` field to a key identically."""
+    return str(value or "").strip().replace("\\", "/")
+
+
 def _follow_rename(resolved: str, rename_map: dict[str, str]) -> str:
     """Follow a (possibly multi-hop) chain of renames to a stable destination,
     guarding against cycles."""
@@ -94,10 +109,10 @@ def _link_points_at_key(page_rel: str, target: str, key: str) -> bool:
     if link_abs is None:
         return False
     target_abs = str(config.source_path_for_key(key))
-    return os.path.normcase(os.path.normpath(link_abs)) == os.path.normcase(os.path.normpath(target_abs))
+    return _norm(link_abs) == _norm(target_abs)
 
 
-def _source_key_to_page_link(page_rel: str, key: str) -> str:
+def source_key_to_page_link(page_rel: str, key: str) -> str:
     """The relative markdown link FROM wiki page ``page_rel`` TO the raw source ``key`` (e.g. page
     ``concepts/a.md`` + key ``raw/sub/x.md`` -> ``../../raw/sub/x.md``). ``key`` may be absolute
     (out-of-repo): when the source and the wiki sit on the SAME volume — the network-drive case,
@@ -126,9 +141,9 @@ def _rewrite_raw_body_links(page_rel: str, body: str, old_rel: str, new_rel: str
         path, suffix = grammar.split_link_target(match.group(1))
         if not _link_points_at_key(page_rel, path, old_rel):
             return match.group(0)
-        # _source_key_to_page_link already emits through grammar.format_link_target, so a spacey
+        # source_key_to_page_link already emits through grammar.format_link_target, so a spacey
         # repointed target comes back angle-wrapped and the rewritten span always parses back.
-        return f"]({_source_key_to_page_link(page_rel, new_rel)}{suffix})"
+        return f"]({source_key_to_page_link(page_rel, new_rel)}{suffix})"
 
     out: list[str] = []
     for line, in_code in grammar.iter_lines(body, keepends=True):
@@ -175,12 +190,12 @@ def find_raw_references(rel_key: str, pages: list[Page] | None = None) -> list[s
     Link detection is fence-aware (mirroring :func:`_rewrite_raw_body_links`), so a citation
     written as a literal inside a ``` code fence — e.g. a page documenting the citation format —
     is NOT counted, exactly as the rewriter would leave it untouched. Sorted for stable output."""
-    target = rel_key.replace("\\", "/")
+    target = _resource_norm(rel_key)
     if pages is None:
         pages = load()
     hits: list[str] = []
     for page in pages:
-        if str(page.frontmatter.get("resource") or "").strip().replace("\\", "/") == target:
+        if _resource_norm(page.frontmatter.get("resource")) == target:
             hits.append(page.rel_path)
             continue
         for line in grammar.prose_lines(page.body):
@@ -200,13 +215,15 @@ def citing_pages_map(keys, pages: list[Page] | None = None) -> dict[str, list[st
     ``## Sources`` section from a single call, replacing the old O(sources × pages) scan run twice
     (docs/refactor-plan.md Z7).
 
-    Matching is byte-for-byte identical to :func:`find_raw_references`: a page references a key via
-    its ``resource`` frontmatter (exact key-string equality) OR a citation link that resolves to the
-    key's source path (absolute-path equality, OS-case-folded). Reuses the SAME grammar parsers
-    (:func:`grammar.prose_lines`, :data:`grammar.ANY_LINK_RE`, :func:`grammar.split_link_target`,
-    :func:`grammar.link_abs`) as the single-key finder — no second regex copy — and the same
-    ``config.source_path_for_key`` key→path mapping as :func:`_link_points_at_key`. Fence-aware, so a
-    citation inside a ``` code fence is not counted, exactly as the rewriter would leave it."""
+    Matching shares the normal form with :func:`_link_points_at_key` by construction: a page
+    references a key via its ``resource`` frontmatter (exact key-string equality) OR a citation link
+    that resolves to the key's source path (absolute-path equality, OS-case-folded). Reuses the SAME
+    grammar parsers (:func:`grammar.prose_lines`, :data:`grammar.ANY_LINK_RE`,
+    :func:`grammar.split_link_target`, :func:`grammar.link_abs`) as the single-key finder — no second
+    regex copy — the same ``config.source_path_for_key`` key→path mapping AND the same :func:`_norm`
+    leaf and :func:`_resource_norm` helper as :func:`_link_points_at_key` / :func:`find_raw_references`.
+    Fence-aware, so a citation inside a ``` code fence is not counted, exactly as the rewriter would
+    leave it."""
     if pages is None:
         pages = load()
     keys = list(keys)
@@ -214,19 +231,19 @@ def citing_pages_map(keys, pages: list[Page] | None = None) -> dict[str, list[st
     if not keys:
         return result
     # Two match indices, computed once (mirroring find_raw_references's two match modes): the
-    # resource-frontmatter path matches the key STRING; the citation-link path matches the key's
-    # normalized absolute source path (source_path_for_key), the exact comparison _link_points_at_key
-    # makes. Several keys can share a normalized value (a rel and an abs key for the same file), so
-    # both indices map to a LIST of keys.
+    # resource-frontmatter path matches the key STRING (via _resource_norm); the citation-link path
+    # matches the key's normalized absolute source path (source_path_for_key via _norm), the exact
+    # normal form _link_points_at_key computes. Several keys can share a normalized value (a rel and
+    # an abs key for the same file), so both indices map to a LIST of keys.
     resource_to_keys: dict[str, list[str]] = {}
     abs_to_keys: dict[str, list[str]] = {}
     for key in keys:
-        resource_to_keys.setdefault(key.replace("\\", "/"), []).append(key)
-        key_abs = os.path.normcase(os.path.normpath(str(config.source_path_for_key(key))))
+        resource_to_keys.setdefault(_resource_norm(key), []).append(key)
+        key_abs = _norm(config.source_path_for_key(key))
         abs_to_keys.setdefault(key_abs, []).append(key)
     for page in pages:
         matched: set[str] = set()
-        resource = str(page.frontmatter.get("resource") or "").strip().replace("\\", "/")
+        resource = _resource_norm(page.frontmatter.get("resource"))
         if resource in resource_to_keys:
             matched.update(resource_to_keys[resource])
         for line in grammar.prose_lines(page.body):
@@ -234,7 +251,7 @@ def citing_pages_map(keys, pages: list[Page] | None = None) -> dict[str, list[st
                 link_abs = grammar.link_abs(page.rel_path, grammar.split_link_target(m.group(1))[0])
                 if link_abs is None:
                     continue
-                link_norm = os.path.normcase(os.path.normpath(link_abs))
+                link_norm = _norm(link_abs)
                 if link_norm in abs_to_keys:
                     matched.update(abs_to_keys[link_norm])
         for key in matched:

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from citadel import lint, okf, store
+from citadel import catalogs, lint, okf, store
 from citadel.okf import Page
 
 
@@ -98,7 +98,7 @@ id: op-fake
 
 def test_render_catalog_groups_flattens_and_links():
     points = store.collect_open_points([_page("systems/checkout.md", TWO_POINTS_BODY)])
-    body = store._render_open_points_catalog(points, {"systems/checkout.md": "Checkout Service"})
+    body = catalogs._render_open_points_catalog(points, {"systems/checkout.md": "Checkout Service"})
     assert body is not None
     assert "# Open Points" in body
     assert "## Open (1)" in body and "## Done (1)" in body
@@ -112,7 +112,7 @@ def test_render_catalog_groups_flattens_and_links():
 
 
 def test_render_catalog_none_when_empty():
-    assert store._render_open_points_catalog([], {}) is None
+    assert catalogs._render_open_points_catalog([], {}) is None
 
 
 # ----- rebuild_indexes wiring (tmp wiki), mirroring test_sources_index -----

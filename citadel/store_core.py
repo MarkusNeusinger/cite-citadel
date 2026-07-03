@@ -27,7 +27,7 @@ def utc_now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _is_skipped_name(name: str) -> bool:
+def is_skipped_name(name: str) -> bool:
     """True for files load() must skip: index.md, log.md, and any dotfile."""
     if name.startswith("."):
         return True
@@ -49,7 +49,7 @@ def load() -> list[Page]:
         for name in filenames:
             if not name.endswith(".md"):
                 continue
-            if _is_skipped_name(name):
+            if is_skipped_name(name):
                 continue
             abs_path = os.path.join(dirpath, name)
             rel_path = os.path.relpath(abs_path, wiki_dir).replace(os.sep, "/")

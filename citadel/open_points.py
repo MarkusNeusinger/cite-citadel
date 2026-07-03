@@ -24,6 +24,7 @@ _OP_ID_RE = re.compile(r"^id:\s*(\S+)\s*$", re.IGNORECASE)
 _OP_SECTION_TITLES = ("open points", "offene punkte")
 # Deriving a point's CURRENT status from its latest dated bullet (never stored): a reopen tell
 # wins (still open), else a done tell closes it, else it is open.
+# policy, not mechanism — belongs in the rules layer (docs/refactor-plan.md Z2); relocated here as-is in PR7
 _OP_DONE_RE = re.compile(
     r"\b(done|resolved|closed|fixed|shipped|completed|complete|erledigt|abgeschlossen|geschlossen|gel[oö]st)\b",
     re.IGNORECASE,

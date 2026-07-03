@@ -16,7 +16,7 @@ import re
 from . import config, grammar, okf
 from . import failures as failures_mod
 from . import manifest as manifest_mod
-from .linkgraph import _source_key_to_page_link, citing_pages_map, inbound_map
+from .linkgraph import citing_pages_map, inbound_map, source_key_to_page_link
 from .okf import Page
 from .open_points import OpenPoint, collect_open_points
 from .store_core import load, tag_catalog
@@ -70,7 +70,7 @@ def _render_sources_catalog(
         lines += ["| Source | Model | Referenced by |", "| --- | --- | --- |"]
         for key in sorted(manifest_dict):
             model = manifest_mod.entry_model(manifest_dict[key]) or "—"
-            source_cell = f"[{_md_cell(key)}]({_source_key_to_page_link(SOURCES_INDEX_REL, key)})"
+            source_cell = f"[{_md_cell(key)}]({source_key_to_page_link(SOURCES_INDEX_REL, key)})"
             refs = refs_by_key.get(key, [])
             if refs:
                 ref_cell = ", ".join(
@@ -97,7 +97,7 @@ def _render_sources_catalog(
             entry = failures_dict[key] if isinstance(failures_dict[key], dict) else {}
             reason = str(entry.get("reason") or "—")
             detail = str(entry.get("detail") or "—")
-            source_cell = f"[{_md_cell(key)}]({_source_key_to_page_link(SOURCES_INDEX_REL, key)})"
+            source_cell = f"[{_md_cell(key)}]({source_key_to_page_link(SOURCES_INDEX_REL, key)})"
             lines.append(f"| {source_cell} | {_md_cell(reason)} | {_md_cell(detail)} |")
     return "\n".join(lines).rstrip("\n") + "\n"
 
@@ -272,7 +272,7 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
             refs = refs_by_key.get(key, [])
             n = len(refs)
             cited = f"cited by {n} page{'s' if n != 1 else ''}" if n else "uncited"
-            src_link = _source_key_to_page_link("index.md", key)
+            src_link = source_key_to_page_link("index.md", key)
             lines.append(f"- [{_md_cell(key)}]({src_link}) — {cited}")
         lines.append("")
 
@@ -292,10 +292,6 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
     # ----- ## Abbreviations: the glossary, generated from every type: Abbreviation page -----
     abbrev_pages = [p for p in pages if (p.type or "").strip().lower() == "abbreviation"]
     if abbrev_pages:
-
-        def _cell(text: str) -> str:
-            return text.replace("|", "\\|").strip()
-
         rows = [(okf.abbrev_short_long(p), p) for p in abbrev_pages]
         rows.sort(key=lambda r: (r[0][0].lower(), r[0][1].lower(), r[1].rel_path))
         lines.append("## Abbreviations")
@@ -303,7 +299,7 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
         lines.append("| Abbreviation | Expansion | Page |")
         lines.append("| --- | --- | --- |")
         for (short, expansion), page in rows:
-            lines.append(f"| {_cell(short)} | {_cell(expansion)} | [{_cell(page.title)}]({page.rel_path}) |")
+            lines.append(f"| {_md_cell(short)} | {_md_cell(expansion)} | [{_md_cell(page.title)}]({page.rel_path}) |")
         lines.append("")
 
     body = "\n".join(lines).rstrip("\n") + "\n"

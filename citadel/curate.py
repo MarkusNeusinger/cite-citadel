@@ -567,7 +567,7 @@ def _texts_on_disk() -> dict[str, str]:
     for dirpath, dirnames, filenames in os.walk(config.WIKI_DIR):
         dirnames[:] = [d for d in dirnames if not d.startswith(".")]
         for name in filenames:
-            if not name.endswith(".md") or store._is_skipped_name(name):
+            if not name.endswith(".md") or store.is_skipped_name(name):
                 continue
             rel_path = os.path.relpath(os.path.join(dirpath, name), config.WIKI_DIR).replace(os.sep, "/")
             text = _page_text(rel_path)

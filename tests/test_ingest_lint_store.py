@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from citadel import lint, okf, store
+from citadel import linkgraph, lint, okf, store
 
 
 def test_lint_flags_fabricated_source(tmp_citadel, seed_page):
@@ -54,7 +54,7 @@ def test_rewrite_links_skips_code_fences_and_substrings():
     """The link rewrite touches only genuine link spans: a literal ](old) inside a fenced
     code block is left intact, and only the real cross-link is repointed."""
     body = "See [Old](./old.md) for details.\n\n```\ndocumented syntax: [X](./old.md)\n```\n\nEnd.\n"
-    out = store._rewrite_body_links("concepts/page.md", body, {"concepts/old.md": "concepts/new.md"})
+    out = linkgraph._rewrite_body_links("concepts/page.md", body, {"concepts/old.md": "concepts/new.md"})
     assert "[Old](new.md)" in out  # real link repointed
     assert "[X](./old.md)" in out  # fenced literal left intact
     assert out.count("(new.md)") == 1
