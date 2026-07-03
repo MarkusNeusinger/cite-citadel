@@ -78,7 +78,8 @@ def _external_dirs(rel_key: str, read_path: str | None = None) -> list[str]:
     ``--include-directories`` — both grant RECURSIVELY, so one grant of a rules root covers its
     tasks/formats/genres subdirs; copilot needs nothing — it runs with ``--allow-all-paths``). The
     agent's ``cwd`` is the workspace root, so this returns — de-duplicated and sorted — only the
-    out-of-workspace members of {wiki dir (written), raw dir, docs dir, every directory that can
+    out-of-workspace members of {wiki dir (written), every raw source root
+    (``config.source_roots()``), docs dir, every directory that can
     hold a referenced rules file (the packaged ``config.PACKAGED_RULES_DIR`` — under site-packages
     for a pip install, hence never inside a user workspace and ALWAYS granted there — plus the
     workspace ``rules/`` overlay, which lives under cwd and therefore filters out), the source
@@ -87,7 +88,7 @@ def _external_dirs(rel_key: str, read_path: str | None = None) -> list[str]:
     invocation is byte-for-byte unchanged."""
     candidates = [
         config.WIKI_DIR,
-        config.RAW_DIR,
+        *config.source_roots(),  # every raw source root (multi-root: an out-of-workspace root needs a grant)
         config.DOCS_DIR,
         config.PACKAGED_RULES_DIR,
         config.source_path_for_key(rel_key).parent,
@@ -231,7 +232,11 @@ def _build_instruction(
     repo digest — the agent reads it for content while citing ``rel_key`` as the source of
     record (per the task/format briefs)."""
     wiki_rel = _agent_path(config.WIKI_DIR)
-    raw_rel = _agent_path(config.RAW_DIR)
+    # The raw-dir bullet names the root that COVERS this source (in a multi-root corpus a
+    # second-root source must not be pointed at the primary); an out-of-root explicit path
+    # falls back to the primary RAW_DIR. Lexical lookup — no disk access, delete-safe.
+    raw_root = config.root_covering(config.source_path_for_key(rel_key)) or config.RAW_DIR
+    raw_rel = _agent_path(raw_root)
     fmt = _format_brief(rel_key, kind, read_path, segment)  # for the PDF-mode bullet below
 
     lines = [

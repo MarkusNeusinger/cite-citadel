@@ -133,27 +133,64 @@ if WORKSPACE_FOUND:
     _load_dotenv(WORKSPACE_ROOT)
 
 
-def _dir_setting(env_key: str, default: Path) -> Path:
-    """Resolve a configurable directory (wiki/raw/docs) to an absolute Path.
+def _split_list_env(value: str) -> list[str]:
+    """Split a comma/newline-separated env value into a clean list (whitespace stripped, blank
+    entries dropped) — the ONE splitter behind the list-valued settings
+    (``CITADEL_IGNORE_PATTERNS``, ``CITADEL_RAW_DIRS``)."""
+    return [p.strip() for p in value.replace("\n", ",").split(",") if p.strip()]
 
-    With no override, use ``default``. With ``CITADEL_*_DIR`` set: expand a leading ``~``, take an
-    ABSOLUTE override AS-IS — including a Windows mapped-drive path (``T:\\team-wiki\\wiki``) or a
-    POSIX mount (``/mnt/share/wiki``) — so the wiki/raw can live OUTSIDE the workspace, e.g. on a
-    mounted network drive; and resolve a RELATIVE override against the WORKSPACE ROOT (not the
-    process CWD), so ``CITADEL_WIKI_DIR=wiki`` means ``WORKSPACE_ROOT/wiki`` regardless of where
-    ``citadel`` is launched from. Always returns a ``resolve()``-d absolute path."""
-    raw = os.environ.get(env_key, "").strip()
-    if not raw:
-        return default.resolve()
-    path = Path(raw).expanduser()
+
+def _resolve_dir_entry(value: str) -> Path:
+    """Resolve ONE configured-directory value to an absolute Path: expand a leading ``~``, take
+    an ABSOLUTE value AS-IS — including a Windows mapped-drive path (``T:\\team-wiki\\wiki``) or
+    a POSIX mount (``/mnt/share/wiki``) — and resolve a RELATIVE value against the WORKSPACE
+    ROOT (never the process CWD). Always ``_safe_resolve``-d, so ``CITADEL_*_DIR`` and every
+    ``CITADEL_RAW_DIRS`` entry resolve through the identical path."""
+    path = Path(value).expanduser()
     if not path.is_absolute():
         path = WORKSPACE_ROOT / path
     return _safe_resolve(path)
 
 
+def _dir_setting(env_key: str, default: Path) -> Path:
+    """Resolve a configurable directory (wiki/raw/docs) to an absolute Path.
+
+    With no override, use ``default``. With ``CITADEL_*_DIR`` set, resolve it through
+    :func:`_resolve_dir_entry` — absolute overrides as-is (so the wiki/raw can live OUTSIDE the
+    workspace, e.g. on a mounted network drive), relative ones against the workspace root, so
+    ``CITADEL_WIKI_DIR=wiki`` means ``WORKSPACE_ROOT/wiki`` regardless of where ``citadel`` is
+    launched from. Always returns a ``resolve()``-d absolute path."""
+    raw = os.environ.get(env_key, "").strip()
+    if not raw:
+        return default.resolve()
+    return _resolve_dir_entry(raw)
+
+
 WIKI_DIR: Path = _dir_setting("CITADEL_WIKI_DIR", WORKSPACE_ROOT / "wiki")
 RAW_DIR: Path = _dir_setting("CITADEL_RAW_DIR", WORKSPACE_ROOT / "raw")
 DOCS_DIR: Path = _dir_setting("CITADEL_DOCS_DIR", WORKSPACE_ROOT / "docs")
+
+
+def _resolve_raw_dirs() -> list[Path]:
+    """Every raw ROOT discovery walks, from ``CITADEL_RAW_DIRS`` — a comma/newline-separated list
+    (split by :func:`_split_list_env`), each entry resolved through :func:`_resolve_dir_entry`
+    exactly like a ``CITADEL_*_DIR`` override (relative against ``WORKSPACE_ROOT``, absolute — a
+    mounted share — as-is, ``_safe_resolve``-d). Unset/blank falls back to the single
+    :data:`RAW_DIR`.
+
+    Relationship to ``RAW_DIR``: ``RAW_DIR`` stays the PRIMARY root — the fallback the agent
+    prompt's raw-dir bullet names for an out-of-root source — while ``RAW_DIRS`` is the full
+    walk list. When ``CITADEL_RAW_DIRS`` is set it REPLACES the list, so include the primary
+    root explicitly if it should still be scanned. Root-membership consumers iterate the deduped
+    union of both via :func:`source_roots`."""
+    raw_env = os.environ.get("CITADEL_RAW_DIRS", "").strip()
+    if not raw_env:
+        return [Path(RAW_DIR)]
+    return [_resolve_dir_entry(item) for item in _split_list_env(raw_env)]
+
+
+# Read at call time by discovery/grammar/llm (tests monkeypatch this list directly, like RAW_DIR).
+RAW_DIRS: list[Path] = _resolve_raw_dirs()
 
 
 def rel_or_abs_posix(path: Path | str) -> str:
@@ -182,6 +219,39 @@ def source_path_for_key(key: str) -> Path:
     return p if p.is_absolute() else WORKSPACE_ROOT / key
 
 
+def source_roots() -> list[Path]:
+    """Every directory that counts as a RAW SOURCE ROOT: the multi-root walk list
+    (:data:`RAW_DIRS`) plus the primary :data:`RAW_DIR` (kept alongside for layouts whose
+    ``CITADEL_RAW_DIRS`` replaces the list without re-listing the primary), de-duplicated in
+    that order. The one union every root-membership consumer iterates — citation containment
+    (``grammar.is_source_citation``), display collapsing (:func:`display_key`), the agent-CLI
+    directory grants (``llm._external_dirs``), and the repo corpus-root guard
+    (``ingest._is_repo_source``). Read at call time so tests can monkeypatch either attribute."""
+    roots: list[Path] = []
+    seen: set[str] = set()
+    for root in (*RAW_DIRS, RAW_DIR):
+        ident = os.path.normcase(os.path.normpath(str(root)))
+        if ident not in seen:
+            seen.add(ident)
+            roots.append(Path(root))
+    return roots
+
+
+def root_covering(path: Path | str) -> Path | None:
+    """The configured raw root (:data:`RAW_DIRS`, the walk list — read at call time) that
+    lexically contains ``path``, or None for a path under NO configured root (an explicit
+    out-of-root ingest, a root removed from the config). Containment is ``grammar.is_within`` —
+    purely lexical, no ``resolve()`` — so a lookup never blocks on a dead mount. Config owns the
+    roots: the deletion sweep's root scoping and the agent prompt's raw-dir bullet both go
+    through this one lookup."""
+    from . import grammar  # call-time import: grammar depends on config, not the other way round
+
+    for root in RAW_DIRS:
+        if grammar.is_within(path, root):
+            return root
+    return None
+
+
 def display_key(key: str) -> str:
     """A short, human-facing rendering of a source key for the ingest CONSOLE output.
 
@@ -207,7 +277,7 @@ def display_key(key: str) -> str:
         # Resolve an ABSOLUTE key through the same normalization the roots use, so the two compare in
         # one space; leave a relative (in-repo) key alone — resolving it would bind it to the CWD.
         kp = PurePosixPath(_safe_resolve(p).as_posix()) if p.is_absolute() else PurePosixPath(text)
-        for root in (RAW_DIR, DOCS_DIR):
+        for root in (*source_roots(), DOCS_DIR):
             base = PurePosixPath(_safe_resolve(root).as_posix())
             try:
                 rel = kp.relative_to(base)
@@ -515,23 +585,18 @@ _DEFAULT_IGNORE_PATTERNS: tuple[str, ...] = (
 )
 
 
-def _parse_ignore_patterns(raw: str) -> list[str]:
-    """Split a comma/newline-separated ignore-pattern string into a clean list (whitespace stripped,
-    blank entries dropped)."""
-    return [p.strip() for p in raw.replace("\n", ",").split(",") if p.strip()]
-
-
 def _resolve_ignore_patterns() -> list[str]:
-    """Build the effective ignore list from the built-in defaults and ``CITADEL_IGNORE_PATTERNS``:
-    unset/blank keeps the defaults; a value with a leading ``+`` is ADDED to them (e.g.
-    ``+*.bak,~backup*``); any other value REPLACES them (set it to a pattern that matches nothing to
-    effectively disable — though ignoring these is almost always wanted)."""
+    """Build the effective ignore list from the built-in defaults and ``CITADEL_IGNORE_PATTERNS``
+    (split by the shared :func:`_split_list_env`): unset/blank keeps the defaults; a value with a
+    leading ``+`` is ADDED to them (e.g. ``+*.bak,~backup*``); any other value REPLACES them (set
+    it to a pattern that matches nothing to effectively disable — though ignoring these is almost
+    always wanted)."""
     raw = os.environ.get("CITADEL_IGNORE_PATTERNS", "").strip()
     if not raw:
         return list(_DEFAULT_IGNORE_PATTERNS)
     if raw.startswith("+"):
-        return list(_DEFAULT_IGNORE_PATTERNS) + _parse_ignore_patterns(raw[1:])
-    return _parse_ignore_patterns(raw)
+        return list(_DEFAULT_IGNORE_PATTERNS) + _split_list_env(raw[1:])
+    return _split_list_env(raw)
 
 
 # Read at call time by ingest's discovery walk (tests monkeypatch this list directly).

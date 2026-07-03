@@ -82,6 +82,24 @@ def test_build_instruction_uses_configured_wiki_dir(tmp_path, monkeypatch):
     assert len(prompt) < PROMPT_CHAR_BUDGET  # still tiny (paths-only) — WinError 206 guard
 
 
+def test_raw_directory_bullet_names_the_covering_root(tmp_citadel, tmp_path, monkeypatch):
+    """Multi-root corpora: the prompt's 'Raw directory' bullet names the root that COVERS the
+    current source (config.root_covering), not blindly the primary — a root-2 source must not be
+    pointed at root 1. An out-of-root explicit path falls back to the primary RAW_DIR."""
+    root_b = tmp_path / "share" / "more-raw"
+    root_b.mkdir(parents=True)
+    (root_b / "b.md").write_text("beta\n", encoding="utf-8")
+    monkeypatch.setattr(config, "RAW_DIRS", [tmp_citadel.raw, root_b], raising=False)
+
+    key_b = (root_b / "b.md").resolve().as_posix()
+    assert f"- Raw directory: {config.rel_or_abs_posix(root_b)}/" in llm._build_instruction(key_b)
+    # A primary-root source still names the primary root, byte-for-byte as before.
+    assert "- Raw directory: raw/" in llm._build_instruction("raw/notes.md")
+    # An explicit out-of-root path: no covering root — fall back to the primary.
+    outside = (tmp_path / "elsewhere.md").resolve().as_posix()
+    assert "- Raw directory: raw/" in llm._build_instruction(outside)
+
+
 # --- the rules tree keeps teaching what the prompt no longer says --------------------------
 #
 # The tiny argv prompt only POINTS the agent at the rules files, so — exactly like provenance

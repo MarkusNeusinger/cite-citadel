@@ -78,10 +78,12 @@ CITADEL_INGEST_MODEL=sonnet   # claude model alias/id
 ```
 
 [`citadel/templates/env.example`](citadel/templates/env.example) documents every knob — timeouts,
-verbose/transcript debugging, an out-of-workspace `wiki/`/`raw/` on a network drive, ingesting a
-whole git repo as one source, the wiki's target language (`CITADEL_WIKI_LANG`, default `en`),
-PDF figure reading (`CITADEL_PDF_MODE=text|images`), and opt-in persona/style capture
-(`CITADEL_STYLE_PROFILES`).
+verbose/transcript debugging, an out-of-workspace `wiki/`/`raw/` on a network drive, multiple raw
+roots (`CITADEL_RAW_DIRS`, a comma/newline-separated list of directories all walked by ingest),
+ingesting a whole git repo as one source, the wiki's target language (`CITADEL_WIKI_LANG`, default
+`en`), PDF figure reading (`CITADEL_PDF_MODE=text|images`), and opt-in persona/style capture
+(`CITADEL_STYLE_PROFILES`). Re-scans are incremental — an unchanged file is skipped by a stat
+quick-check without re-reading its bytes (`citadel ingest --full-rescan` re-hashes everything).
 
 ## How it works
 

@@ -35,6 +35,7 @@ import os
 import re
 import shutil
 import stat
+import sys
 import tempfile
 import time
 from dataclasses import dataclass, field
@@ -146,6 +147,15 @@ def _same_path(a: Path, b: Path) -> bool:
         return a == b
 
 
+def _resolved_or_self(path: Path) -> Path:
+    """``path.resolve()`` falling back to ``path`` itself on an OS error (mirroring
+    :func:`_same_path`'s guard) — the once-per-root identity the deletion sweep compares."""
+    try:
+        return path.resolve()
+    except OSError:
+        return path
+
+
 def _is_ignored_name(name: str) -> bool:
     """True if ``name`` (a file OR directory BASENAME) matches one of the configured OS/junk-file
     ignore globs (``config.IGNORE_PATTERNS``), matched case-insensitively. Such entries are noise
@@ -158,112 +168,184 @@ def _is_ignored_name(name: str) -> bool:
 
 def _is_repo_source(path: Path) -> bool:
     """True if ``path`` should be ingested as ONE repo source: repo support is on, it is a repo
-    dir (``.git``/``.citadelsource``), and it is NOT the corpus root ``RAW_DIR`` itself. The latter
-    guard matters because a user may keep the whole ``raw/`` tree under git for backup — that must
-    still be scanned file-by-file (its repo SUB-folders are the sources), not collapsed into one."""
-    return config.REPO_SUPPORT and repo.is_repo_dir(path) and not _same_path(path, config.RAW_DIR)
+    dir (``.git``/``.citadelsource``), and it is NOT a configured corpus root (``RAW_DIR`` or any
+    ``RAW_DIRS`` member) itself. The latter guard matters because a user may keep a whole raw
+    root under git for backup — that must still be scanned file-by-file (its repo SUB-folders
+    are the sources), not collapsed into one."""
+    if not (config.REPO_SUPPORT and repo.is_repo_dir(path)):
+        return False
+    return not any(_same_path(path, root) for root in config.source_roots())
 
 
-def _prune_repo_dirs(parent: Path, dirnames: list[str]) -> list[str]:
-    """Drop the sub-directories of ``parent`` that are repo roots (a ``.git`` or ``.citadelsource``
-    marker) when repo support is on, so the per-file walk does NOT descend into a repository — it
-    is ingested as one source instead (see :mod:`citadel.repo`). With repo support off, nothing is
-    pruned and a repo's files are walked individually (the legacy behavior). Hidden dirs, and any
-    dir whose name matches an ignore glob (``$RECYCLE.BIN`` etc.; see :func:`_is_ignored_name`), are
-    always dropped."""
-    kept: list[str] = []
-    for name in sorted(dirnames):
-        if name.startswith("."):
+@dataclass
+class _Walk:
+    """Everything ONE discovery pass over the raw roots learned — files WITH their stat (the
+    scan-cache quick check consumes it, killing the per-candidate ``is_file()``/hash), the repo
+    dirs found, and the operational-safety facts the deletion sweep is scoped by: every walk
+    error (a flaky SMB subdirectory), the roots that could not be entered at all (an unmounted
+    share), and the roots discovery actually ENTERED (top-level scandir succeeded). A root that
+    is missing, errors at top level, or hides files behind a flaky listing must NEVER read as
+    "the user deleted these sources" (docs/refactor-plan.md Z3): any error anywhere zeroes the
+    sweep for the whole run, so entered-vs-clean needs no per-root error bookkeeping."""
+
+    files: list[tuple[Path, os.stat_result]] = field(default_factory=list)
+    repos: list[Path] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)  # OSErrors below an entered root
+    unreachable: list[Path] = field(default_factory=list)  # roots that could not be entered at all
+    entered_roots: list[Path] = field(default_factory=list)  # roots whose top-level scandir succeeded
+
+
+def _scan_tree(root: Path, walk: _Walk) -> None:
+    """ONE iterative ``os.scandir`` walk over ``root``, appending onto ``walk`` — this replaces
+    the two ``os.walk`` passes (files + repos) with a single traversal whose ``DirEntry.stat``
+    results are kept for the scan-cache quick check.
+
+    Same skip rules as before: hidden names (leading ``.``), OS/junk ignore globs
+    (:func:`_is_ignored_name`), and — with repo support on — no descending into a git repository
+    (collected as one repo source instead). Any file type in any sub-folder is picked up;
+    ``follow_symlinks=False`` throughout, so a symlinked directory is never recursed into (a
+    cycle on a share must not hang discovery). Deterministic order (names sorted per directory,
+    depth-first). NEVER raises: a top-level failure marks the root unreachable; a failure deeper
+    in records a walk error (either one disarms the deletion sweep — see :func:`ingest`)."""
+    at_root = True
+    stack: list[Path] = [Path(root)]
+    while stack:
+        d = stack.pop()
+        try:
+            with os.scandir(d) as it:
+                entries = sorted(it, key=lambda e: e.name)
+        except OSError as exc:
+            if at_root:
+                walk.unreachable.append(Path(root))
+                return
+            walk.errors.append(f"{d}: {exc}")
             continue
-        if _is_ignored_name(name):
-            continue
-        if _is_repo_source(parent / name):
-            continue
-        kept.append(name)
-    return kept
-
-
-def _walk_files(root: Path) -> list[Path]:
-    """Every file under ``root``, recursively, in deterministic order — skipping hidden files
-    and hidden directories (a leading ``.``: ``.gitkeep``, ``.git``, etc.), skipping OS/junk files
-    and folders that match an ignore glob (``Thumbs.db``, ``desktop.ini``, ``~$*`` lock files, …;
-    see :func:`_is_ignored_name`), and NOT descending into git repositories (handled as one source
-    each; see :func:`_prune_repo_dirs`).
-
-    Unlike the old top-level ``*.md`` glob, this picks up ANY file type (``.txt``/``.py``/
-    ``.sql``/``.pdf``/…) and descends into sub-folders, so a user can organize ``raw/`` however
-    they like and drop in arbitrary sources. The agent decides what text it can extract; a
-    binary with no readable text is filtered out later by :func:`_is_ingestible`."""
-    out: list[Path] = []
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = _prune_repo_dirs(Path(dirpath), dirnames)
-        for name in sorted(filenames):
+        if at_root:
+            walk.entered_roots.append(Path(root))
+            at_root = False
+        subdirs: list[Path] = []
+        for entry in entries:
+            name = entry.name
             if name.startswith(".") or _is_ignored_name(name):
                 continue
-            out.append(Path(dirpath) / name)
-    return out
+            path = Path(d) / name
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    # Deliberately NOT _is_repo_source: its corpus-root guard resolve()s every root per call
+                    # — too costly per-directory on a network share (a subdir is never a configured root here).
+                    if config.REPO_SUPPORT and repo.is_repo_dir(path):
+                        walk.repos.append(path)  # one repo source; the file walk stops here
+                    else:
+                        subdirs.append(path)
+                elif entry.is_file(follow_symlinks=False):
+                    walk.files.append((path, entry.stat(follow_symlinks=False)))
+            except OSError as exc:
+                walk.errors.append(f"{path}: {exc}")
+        stack.extend(reversed(subdirs))  # LIFO -> depth-first in sorted order
 
 
-def _candidates(paths: list[str] | None) -> list[Path]:
-    """Resolve requested paths (or default to all of ``RAW_DIR``) to a candidate FILE list.
-
-    A file path is taken as-is; a directory contributes ALL of its files, recursively (any
-    extension, sub-folders included, hidden files/dirs skipped); with no paths, default to
-    every file under ``config.RAW_DIR``. A directory that is itself a git repository is NOT
-    expanded here — it is a repo source, returned by :func:`_discover_repos` instead."""
-    candidates: list[Path] = []
+def _discover_walk(paths: list[str] | None) -> _Walk:
+    """Resolve requested paths (or default to every configured raw root, ``config.RAW_DIRS``)
+    into one :class:`_Walk`. A requested file path is stat'ed and taken as-is (even a hidden or
+    ignore-matched name — explicit wins, as before; one that is missing or not a regular file is
+    silently dropped, replacing the old per-candidate ``is_file()``); a requested directory
+    contributes its whole subtree — unless it is itself a repo source, which
+    :func:`_discover_repos` handles. Roots are de-duplicated by resolved path."""
+    walk = _Walk()
     if paths:
         for raw in paths:
             p = Path(raw)
             if p.is_dir():
-                if _is_repo_source(p):
-                    continue
-                candidates.extend(_walk_files(p))
-            else:
-                candidates.append(p)
-    elif config.RAW_DIR.exists():
-        candidates.extend(_walk_files(config.RAW_DIR))
-    return candidates
-
-
-def _repos_under(root: Path) -> list[Path]:
-    """Every git repository (or ``.citadelsource``-marked folder) under ``root``, not descending into a
-    repo once found (a nested repo is part of its parent's tree). Deterministic order."""
-    found: list[Path] = []
-    for dirpath, dirnames, _filenames in os.walk(root):
-        parent = Path(dirpath)
-        kept: list[str] = []
-        for name in sorted(dirnames):
-            if name.startswith("."):
+                if not _is_repo_source(p):
+                    _scan_tree(p, walk)
                 continue
-            child = parent / name
-            if repo.is_repo_dir(child):
-                found.append(child)
-            else:
-                kept.append(name)
-        dirnames[:] = kept
-    return found
+            try:
+                st = os.stat(p)
+            except OSError:
+                continue
+            if stat.S_ISREG(st.st_mode):
+                walk.files.append((p, st))
+        return walk
+    seen: set[Path] = set()
+    for root in config.RAW_DIRS:
+        try:
+            resolved = Path(root).resolve()
+        except OSError:
+            resolved = Path(root)
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        _scan_tree(Path(root), walk)
+    return walk
 
 
-def _discover_repos(paths: list[str] | None) -> list[Path]:
-    """The repo sources to ingest: directories under ``RAW_DIR`` (or under an explicitly requested
-    directory) that are git repositories / ``.citadelsource``-marked folders. An explicitly requested
-    path that is itself a repo is taken directly. De-duplicated by resolved path, sorted. Empty when
-    repo support is off."""
+def _candidates(paths: list[str] | None) -> list[Path]:
+    """The candidate FILE list for requested paths (or all raw roots) — the path-only view over
+    :func:`_discover_walk` (discovery itself keeps the walk's stats for the quick check).
+    Unused by :func:`ingest` itself; kept as the thin test-facing seam the discovery tests
+    drive the walk through."""
+    return [p for p, _st in _discover_walk(paths).files]
+
+
+def _sweep_gone(keys, exclude_keys: set[str], swept_roots: list[Path] | None) -> tuple[list[str], list[str]]:
+    """The candidates-then-confirm deletion sweep shared by the file and repo partitions.
+
+    ``keys`` are the tracked manifest keys of one kind; ``exclude_keys`` the ones this run
+    accounted for (walked/seen, or the source side of a detected move — a reorganize whose
+    references get repointed, not a deletion). ``swept_roots`` is the caller's ONE sweep
+    decision: None = no sweep at all (a path-scoped run, a degraded walk, or the
+    workspace-identity guard), else exactly the roots discovery entered this run. The remaining
+    guards, in order (operational safety is the point — docs/refactor-plan.md Z3):
+
+    - a key under NO configured root (``config.root_covering``) whose file is gone lands in
+      ``out_of_root`` (an explicit out-of-root ingest, a root removed from the config) —
+      reported by the caller, never swept;
+    - a key whose root was not swept this run (unreachable/unentered) is kept and re-checked
+      next run;
+    - a surviving candidate is positively CONFIRMED gone with ``.exists()`` — the seen-set diff
+      only ever nominates.
+
+    Returns ``(deleted, out_of_root)``, both in sorted-key order. The swept roots are resolved
+    ONCE up front and each distinct covering root once, so the candidate loop costs no
+    per-candidate ``resolve()`` (previously O(candidates x roots) stats on a dead mount)."""
+    deleted: list[str] = []
+    out_of_root: list[str] = []
+    if swept_roots is None:
+        return deleted, out_of_root
+    swept_ids = {_resolved_or_self(Path(root)) for root in swept_roots}
+    root_swept: dict[Path, bool] = {}
+    for key in sorted(keys):
+        if key in exclude_keys:
+            continue
+        path = config.source_path_for_key(key)
+        root = config.root_covering(path)
+        if root is None:
+            if not path.exists():
+                out_of_root.append(key)
+            continue
+        if root not in root_swept:
+            root_swept[root] = _resolved_or_self(Path(root)) in swept_ids
+        if not root_swept[root]:
+            continue  # its root was unreachable this run: retry next run, never sweep
+        if path.exists():
+            continue  # the walk raced/missed it but it IS on disk: never swept
+        deleted.append(key)
+    return deleted, out_of_root
+
+
+def _discover_repos(paths: list[str] | None, walk: _Walk) -> list[Path]:
+    """The repo sources to ingest: the repo dirs the walk found under the raw roots (or under an
+    explicitly requested directory), plus an explicitly requested path that is itself a repo.
+    De-duplicated by resolved path, sorted. Empty when repo support is off (the walk then
+    descended into repos file-by-file — the legacy behavior)."""
     if not config.REPO_SUPPORT:
         return []
-    found: list[Path] = []
+    found: list[Path] = list(walk.repos)
     if paths:
         for raw in paths:
             p = Path(raw)
-            if not p.is_dir():
-                continue
-            if _is_repo_source(p):
+            if p.is_dir() and _is_repo_source(p):
                 found.append(p)
-            else:
-                found.extend(_repos_under(p))
-    elif config.RAW_DIR.exists():
-        found.extend(_repos_under(config.RAW_DIR))
     seen: set[Path] = set()
     unique: list[Path] = []
     for p in found:
@@ -404,20 +486,40 @@ def _dedup_by_basename(
     return kept, duplicates, dropped
 
 
+@dataclass
+class _Scan:
+    """:func:`_partition_sources`'s result (attribute access only — see the field comments
+    there). ``hashed`` carries the (sha, stat) taken for every candidate whose content hash
+    became known this run — the single-hash currency the caller threads into ``mark_done``/the
+    failures catalog instead of re-hashing; ``mutated`` is True when a manifest entry was
+    refreshed/backfilled in place (the caller must save); ``out_of_root`` lists the gone tracked
+    keys under no configured raw root (logged, never swept)."""
+
+    pending: list[Path]
+    skipped: list[str]
+    moved: list[tuple[str, str, str, bool]]
+    unreadable: list[Path]
+    deleted: list[str]
+    office_text: dict[Path, str]
+    images: set[Path]
+    duplicates: list[tuple[str, str]]
+    hashed: dict[str, tuple[str, os.stat_result]] = field(default_factory=dict)
+    mutated: bool = False
+    out_of_root: list[str] = field(default_factory=list)
+
+
 def _partition_sources(
-    paths: list[str] | None, manifest_dict: dict[str, str]
-) -> tuple[
-    list[Path],
-    list[str],
-    list[tuple[str, str, str, bool]],
-    list[Path],
-    list[str],
-    dict[Path, str],
-    set[Path],
-    list[tuple[str, str]],
-]:
-    """Split candidates into ``(pending, skipped, moved, unreadable, deleted, office_text, images,
-    duplicates)`` in one walk.
+    paths: list[str] | None,
+    manifest_dict: dict[str, str],
+    failures_dict: dict[str, dict] | None = None,
+    full_rescan: bool = False,
+    walk: _Walk | None = None,
+    swept_roots: list[Path] | None = None,
+) -> _Scan:
+    """Split candidates into a :class:`_Scan` in one walk. ``walk`` is the (possibly
+    pre-computed) discovery walk — :func:`ingest` hoists it so ``swept_roots`` (the ONE sweep
+    decision, see below) can be derived from it once and passed to BOTH partitions; a direct
+    caller may omit both.
 
     - ``pending``: new/changed files with novel, readable content — fed to the agent (sorted,
       de-duplicated by resolved path).
@@ -429,8 +531,10 @@ def _partition_sources(
     - ``unreadable``: files with no extractable text (binary/unsupported) — logged, not ingested.
     - ``deleted``: rel-keys tracked in the manifest whose file VANISHED from disk and is NOT the
       source side of a move — their provenance is reconciled out of the wiki by a cleanup agent
-      session. Computed ONLY for a full run (``paths is None``); a path-scoped run never sweeps
-      the whole manifest for deletions, so it can't surprise-prune sources it wasn't pointed at.
+      session. Candidates come from the walked-seen-set diff and go through the shared
+      :func:`_sweep_gone` guard set, scoped by ``swept_roots`` — the caller's one sweep decision
+      (None = no sweep at all: a path-scoped run, a degraded walk, or the workspace-identity
+      guard; operational safety is the point).
     - ``office_text``: ``{src_path: extracted_text}`` for the pending PowerPoint/Word/Excel sources
       (``.pptx``/``.docx``/``.xlsx`` and their macro-enabled + legacy ``.ppt``/``.doc``/``.xls``
       siblings) whose text was extracted here to classify them — reused by the agent step so an
@@ -441,16 +545,28 @@ def _partition_sources(
       favor of another format (see :func:`_dedup_by_basename`), when ``config.DEDUP_BY_BASENAME`` is
       on. The dropped files are removed from ``pending`` (and from ``office_text``/``images``).
 
+    Already-tracked candidates go through the scan-cache quick check first
+    (:func:`manifest.entry_trusts_stat` over the walk's stat): a trusted entry is skipped with
+    ZERO content reads; anything else is stream-hashed exactly ONCE (the sha is threaded through
+    ``hashed`` to ``mark_done``), and an unchanged-content hit refreshes/backfills the entry's
+    stat cache in place (``mutated``). Untracked candidates consult the failures catalog's
+    sha+stat the same way, so an unchanged stuck source (duplicate twin, unreadable binary) is
+    re-evaluated without being re-hashed. ``full_rescan`` bypasses both quick checks.
+
     Move/duplicate detection only fires for a genuinely NEW path (``key not in manifest_dict``):
     an in-place edit of an already-tracked file is always re-ingested, even if its new content
-    happens to match another file.
+    happens to match another file. It matches against tracked shas AND against content already
+    accepted as pending earlier in the SAME run, so a byte-identical copy in a second root folds
+    in exactly once.
     """
     by_sha: dict[str, list[str]] = {}
     for k, v in manifest_dict.items():
         if manifest.is_repo_entry(v):
             continue  # repo sources are versioned by commit, not sha — handled separately
         by_sha.setdefault(manifest.entry_sha(v), []).append(k)
+    failures_dict = failures_dict if failures_dict is not None else {}
 
+    walk = walk if walk is not None else _discover_walk(paths)
     pending: list[Path] = []
     skipped: list[str] = []
     moved: list[tuple[str, str, str, bool]] = []
@@ -460,8 +576,16 @@ def _partition_sources(
     office_text: dict[Path, str] = {}
     # Pending image sources — the agent reads these VISUALLY (no text extraction here).
     images: set[Path] = set()
+    # (sha, walk stat) for every candidate whose content hash became known — quick-check reuse or
+    # ONE stream-hash — threaded through to mark_done/the failures catalog (no second hash).
+    hashed: dict[str, tuple[str, os.stat_result]] = {}
+    # Same-run duplicate recognition: content already accepted as pending under another key this
+    # run (a byte-identical copy in a second root) is a duplicate, not a second agent session.
+    pending_by_sha: dict[str, str] = {}
+    mutated = False
     seen: set[Path] = set()
-    for src in _candidates(paths):
+    seen_keys: set[str] = set()
+    for src, st in walk.files:
         try:
             resolved = src.resolve()
         except OSError:
@@ -469,30 +593,59 @@ def _partition_sources(
         if resolved in seen:
             continue
         seen.add(resolved)
-        if not src.is_file():
-            continue
         key = manifest.rel_key(src)
-        try:
-            changed = manifest.is_pending(manifest_dict, src)
-        except OSError:
-            # is_pending() hashes the file when it is already tracked; an already-ingested source
-            # that became unreadable (permissions / transient IO) must NOT crash the whole run —
-            # it is already in the wiki, so treat it as skipped rather than a fresh source.
-            skipped.append(key)
-            continue
-        if not changed:
-            skipped.append(key)
-            continue
-        # New/changed content. Hash once for move detection (and to fail closed on an OS read
-        # error — a brand-new source we cannot read — by treating it as unreadable). The hash is
-        # streamed (manifest.file_sha256), so even a large file stays memory-bounded.
-        try:
-            sha = manifest.file_sha256(src)
-        except OSError:
-            unreadable.append(src)
-            continue
-        if key not in manifest_dict:
+        seen_keys.add(key)
+        entry = manifest_dict.get(key)
+        untracked_sha: str | None = None
+        if entry is not None:
+            file_entry = not manifest.is_repo_entry(entry)
+            if file_entry and not full_rescan and manifest.entry_trusts_stat(entry, st):
+                # The scan-cache quick check: (size, mtime_ns) match and the entry is not racy —
+                # the recorded sha stands, no content read at all.
+                skipped.append(key)
+                continue
+            try:
+                sha = manifest.file_sha256(src)
+            except OSError:
+                # An already-ingested source that became unreadable (permissions / transient IO)
+                # must NOT crash the whole run — it is already in the wiki, so treat it as
+                # skipped rather than a fresh source.
+                skipped.append(key)
+                continue
+            hashed[key] = (sha, st)
+            if file_entry and sha == manifest.entry_sha(entry):
+                # Unchanged content behind a stale/absent stat cache (a touched-but-identical
+                # file, a pre-PR4 entry, --full-rescan): refresh/backfill the entry in place —
+                # keeping the recorded model/rules_version — so the next run quick-skips it.
+                manifest_dict[key] = manifest.make_entry(
+                    sha, manifest.entry_model(entry), manifest.entry_rules_version(entry), st=st
+                )
+                mutated = True
+                skipped.append(key)
+                continue
+            # Changed bytes (sha is the sole arbiter): fall through to classification below.
+        else:
+            fentry = failures_dict.get(key)
+            fsha = fentry.get("sha256") if isinstance(fentry, dict) else None
+            if fsha and not full_rescan and manifest.entry_trusts_stat(fentry, st):
+                # An unchanged stuck source (dedup-dropped twin, unreadable binary, erroring
+                # session) — the failures catalog is its scan cache: reuse the recorded sha so
+                # it is re-EVALUATED below without being re-hashed forever.
+                sha = str(fsha)
+            else:
+                # New/changed content. Hash once — this single stream-hash serves move detection
+                # AND is passed through to mark_done. Fail closed on an OS read error (a
+                # brand-new source we cannot read) by treating it as unreadable.
+                try:
+                    sha = manifest.file_sha256(src)
+                except OSError:
+                    unreadable.append(src)
+                    continue
+            hashed[key] = (sha, st)
+            untracked_sha = sha
             prior = sorted(k for k in by_sha.get(sha, []) if k != key)
+            if not prior and pending_by_sha.get(sha, key) != key:
+                prior = [pending_by_sha[sha]]
             if prior:
                 gone = sorted(k for k in prior if not config.source_path_for_key(k).exists())
                 old_key = gone[0] if gone else prior[0]
@@ -508,31 +661,29 @@ def _partition_sources(
                 pending.append(src)
             else:
                 unreadable.append(src)
-            continue
-        if _is_image_source(src):
+                continue
+        elif _is_image_source(src):
             # An image the agent reads visually — routed to pending BEFORE the binary sniff (which
             # would reject its NUL bytes). No text is extracted here; the agent opens it by path.
             images.add(src)
             pending.append(src)
-            continue
-        if not _is_ingestible(src):
+        elif not _is_ingestible(src):
             unreadable.append(src)
             continue
-        pending.append(src)
+        else:
+            pending.append(src)
+        if untracked_sha is not None:
+            pending_by_sha.setdefault(untracked_sha, key)
 
-    # Deleted sources: tracked keys whose file is gone (full run only). Exclude the source side
-    # of a detected move — its old path is also gone, but that is a reorganize (references get
-    # repointed), not a deletion to reconcile away.
-    deleted: list[str] = []
-    if paths is None:
-        moved_old = {old_key for old_key, _new, _sha, old_gone in moved if old_gone}
-        for key in sorted(manifest_dict):
-            if key in moved_old:
-                continue
-            if manifest.is_repo_entry(manifest_dict[key]):
-                continue  # repo deletions are detected by _partition_repos, not the file sweep
-            if not config.source_path_for_key(key).exists():
-                deleted.append(key)
+    # Deleted sources — the tracked FILE keys the walk did not see, run through the shared
+    # candidates-then-confirm sweep (:func:`_sweep_gone` holds the full guard set; ``swept_roots``
+    # is the caller's one sweep decision). Repo keys are excluded — repo deletions are detected by
+    # _partition_repos, not the file sweep. Also excluded: the source side of a detected move —
+    # its old path is gone too, but that is a reorganize (references get repointed), not a
+    # deletion to reconcile away.
+    moved_old = {old_key for old_key, _new, _sha, old_gone in moved if old_gone}
+    file_keys = [k for k, v in manifest_dict.items() if not manifest.is_repo_entry(v)]
+    deleted, out_of_root = _sweep_gone(file_keys, moved_old | seen_keys, swept_roots)
     # Collapse same-basename document duplicates (e.g. report.pptx + report.pdf) to one kept file,
     # dropping the rest from pending (and from the office/image side-tables). Recorded for the run.
     duplicates: list[tuple[str, str]] = []
@@ -541,7 +692,19 @@ def _partition_sources(
         for p in dropped:
             office_text.pop(p, None)
             images.discard(p)
-    return sorted(pending), skipped, moved, unreadable, deleted, office_text, images, duplicates
+    return _Scan(
+        pending=sorted(pending),
+        skipped=skipped,
+        moved=moved,
+        unreadable=unreadable,
+        deleted=deleted,
+        office_text=office_text,
+        images=images,
+        duplicates=duplicates,
+        hashed=hashed,
+        mutated=mutated,
+        out_of_root=out_of_root,
+    )
 
 
 @dataclass
@@ -557,17 +720,18 @@ class _RepoJob:
 
 
 def _partition_repos(
-    repo_paths: list[Path], manifest_dict: dict[str, manifest.Entry], full_run: bool
-) -> tuple[list[_RepoJob], list[tuple[str, str, str]], list[str], list[str]]:
-    """Split discovered repos into ``(pending, moved, deleted, skipped)``.
+    repo_paths: list[Path], manifest_dict: dict[str, manifest.Entry], swept_roots: list[Path] | None
+) -> tuple[list[_RepoJob], list[tuple[str, str, str]], list[str], list[str], list[str]]:
+    """Split discovered repos into ``(pending, moved, deleted, skipped, out_of_root)``.
 
     - ``pending``: repos that are new (``kind="repo"``) or whose commit changed since last ingest
       (``kind="repo-reconcile"``, carrying the old commit for the diff).
     - ``moved``: ``(old_key, new_key, identity)`` for a repo that appeared under a NEW path whose
       base commit matches a tracked repo whose old folder is gone — a rename; references get
       repointed, not re-ingested.
-    - ``deleted``: tracked repo keys whose folder vanished (full run only) — their citations are
-      reconciled out by the shared deletion-cleanup path.
+    - ``deleted``/``out_of_root``: tracked repo keys whose folder vanished, through the shared
+      :func:`_sweep_gone` guard set — scoped exactly like the file sweep by ``swept_roots``, the
+      caller's one sweep decision (None = no sweep at all).
     - ``skipped``: repo keys already at the current commit (nothing to do).
     """
     repo_keys = {k: v for k, v in manifest_dict.items() if manifest.is_repo_entry(v)}
@@ -608,15 +772,10 @@ def _partition_repos(
         kind = "repo-reconcile" if old_commit else "repo"
         pending.append(_RepoJob(path=path, key=key, kind=kind, old_commit=old_commit))
 
-    deleted: list[str] = []
-    if full_run:
-        moved_old = {old for old, _new, _ident in moved}
-        for key in sorted(repo_keys):
-            if key in moved_old:
-                continue
-            if not config.source_path_for_key(key).exists():
-                deleted.append(key)
-    return pending, moved, deleted, skipped
+    moved_old = {old for old, _new, _ident in moved}
+    walked_keys = {manifest.rel_key(p) for p in repo_paths}
+    deleted, out_of_root = _sweep_gone(repo_keys, moved_old | walked_keys, swept_roots)
+    return pending, moved, deleted, skipped, out_of_root
 
 
 def _hash_pages(pages: list[Page]) -> dict[str, str]:
@@ -1209,7 +1368,7 @@ def _pending_session(rel_key: str, kind: str, read_key: str | None, segment: tup
         llm.run_ingest_session(rel_key, kind=kind)
 
 
-def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
+def ingest(paths: list[str] | None = None, progress=None, full_rescan: bool = False) -> IngestReport:
     """Run one ingest. Exactly one ``llm.run_ingest_session`` call per pending or deleted source.
 
     Before the per-source loop, candidates are partitioned (``_partition_sources``) into
@@ -1217,7 +1376,16 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
     duplicate — recognized, not re-ingested; a real move repoints the wiki's resource/citation
     references and re-keys the manifest) / **unreadable** (no extractable text, e.g. a binary —
     logged and marked done, never fed to the agent) / **deleted** (a tracked source that
-    vanished from disk — full runs only).
+    vanished from disk — full runs only). Discovery is incremental: the manifest doubles as the
+    scan cache, so an unchanged corpus is skipped on stat alone (``full_rescan=True`` — the
+    ``--full-rescan`` flag — distrusts that cache and re-hashes everything; sha stays the sole
+    arbiter, so unchanged sources are re-stamped, not re-ingested).
+
+    Deletion detection is guarded (docs/refactor-plan.md Z3 — operational safety over
+    thoroughness): candidates come from the walked-seen-set diff, each positively confirmed with
+    ``.exists()``; any walk error aborts the entire sweep for the run; an unreachable root
+    contributes no candidates; keys under no configured root are logged, never swept; and a
+    workspace-identity mismatch whose keys do not resolve refuses the sweep outright.
 
     Per pending source: run the agent against a per-source STAGING copy of the wiki (a sibling
     dir), snapshot it before/after, diff to learn what changed, validate + re-stamp the changed
@@ -1247,7 +1415,11 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
             except Exception:  # noqa: BLE001 - progress must never break ingest
                 pass
 
+    # ONE manifest parse: load() stashes the file's meta, and the mismatch probe reads that
+    # stash — taken BEFORE anything saves (a save re-stamps meta with the CURRENT root, which
+    # would blind the identity guard below to the mismatch it must catch).
     manifest_dict = manifest.load()
+    workspace_mismatch = manifest.stamped_workspace_mismatch()
     # Persistent record of sources that could not be ingested (unreadable / errored / timed out).
     # Updated through the run and rewritten at the end, so it always reflects the CURRENT stuck set.
     failures_dict = failures.load()
@@ -1280,26 +1452,86 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
     rules_ver = config.rules_version()
     report = IngestReport([], [], [], [], model=model)
 
-    pending, skipped, moved, unreadable, deleted_sources, office_text, images, duplicates = _partition_sources(
-        paths, manifest_dict
-    )
+    # --- The workspace-identity HARD guard (Z1 key-space stability): the manifest was stamped by
+    # a DIFFERENT workspace root AND most of its relative keys do not resolve here
+    # (``manifest.workspace_rekeyed``) — a nested marker or a moved checkout re-keyed the world,
+    # so the seen-set diff would read the entire old key space as deleted. Refuse the deletion
+    # sweep (ingest of pending sources still proceeds); the dual-mount case (stamp differs but
+    # keys resolve) stays a warning. ---
+    workspace_shifted = bool(paths is None and workspace_mismatch and manifest.workspace_rekeyed(manifest_dict))
+    if workspace_shifted:
+        report.errors.append(
+            f"workspace mismatch: the manifest was stamped by a workspace rooted at "
+            f"{workspace_mismatch!r}, and most of its keys do not resolve under the current "
+            f"root — refusing deletion detection so a re-keyed manifest is not read as mass "
+            f"deletion. If the move is intentional, run `citadel ingest --full-rescan` once: the "
+            f"sweep stays off for that run, but the manifest is re-stamped at its end so the "
+            f"next run is clean (or re-init the workspace)."
+        )
+
+    if full_rescan and paths is None:
+        # A full re-hash of a big corpus on a slow share takes a while — announce it so the run
+        # does not look hung.
+        print("NOTE: --full-rescan: re-hashing every tracked source (sha256 still decides).", file=sys.stderr)
+    walk = _discover_walk(paths)
+    # The ONE sweep decision (Z3): None = NO deletion sweep this run — a path-scoped run, a
+    # degraded walk (any error anywhere has an unknown blast radius), or the workspace guard
+    # above — else exactly the roots discovery ENTERED (an unreachable root contributes no
+    # candidates). Passed to BOTH the file and the repo partition; every remaining guard
+    # (root scoping, positive .exists() confirmation) lives in _sweep_gone.
+    swept_roots: list[Path] | None = None
+    if paths is None and not workspace_shifted and not walk.errors:
+        swept_roots = list(walk.entered_roots)
+    scan = _partition_sources(paths, manifest_dict, failures_dict, full_rescan, walk=walk, swept_roots=swept_roots)
+    if scan.mutated:
+        # The quick check refreshed/backfilled stat caches on unchanged entries: persist them now
+        # so the very next run reads no content for these files, even if nothing else happens.
+        manifest.save(manifest_dict)
+
     # Git repositories under raw/ are ingested as ONE source each (a digest), versioned by commit.
     # Discover + partition them alongside the file sources; a vanished repo folder is reconciled out
-    # by the SAME deletion-cleanup path as a file (its citations point at the repo folder key).
-    repo_paths = _discover_repos(paths)
-    repo_pending, repo_moved, repo_deleted, repo_skipped = _partition_repos(repo_paths, manifest_dict, paths is None)
-    report.skipped = skipped + repo_skipped
-    deleted_sources = deleted_sources + repo_deleted
+    # by the SAME deletion-cleanup path as a file (its citations point at the repo folder key), and
+    # its deletion sweep is scoped by the same one swept_roots decision.
+    repo_paths = _discover_repos(paths, walk)
+    repo_pending, repo_moved, repo_deleted, repo_skipped, repo_out_of_root = _partition_repos(
+        repo_paths, manifest_dict, swept_roots
+    )
+    report.skipped = scan.skipped + repo_skipped
+    deleted_sources = scan.deleted + repo_deleted
+    out_of_root = scan.out_of_root + repo_out_of_root
+
+    # --- Deletion-sweep skip notes: whenever tracked sources were EXCLUDED from deletion
+    # detection this run, say so loudly — silence here would look like "nothing was deleted"
+    # when the truth is "deletion detection did not run for these". ---
+    if paths is None:
+        if walk.errors:
+            print(
+                "NOTE: the raw scan hit errors; deletion detection is skipped for this whole run "
+                "(tracked sources are kept and re-checked next run):\n  " + "\n  ".join(walk.errors),
+                file=sys.stderr,
+            )
+        for root in walk.unreachable:
+            print(
+                f"NOTE: raw root {root} is unreachable (not mounted?); its sources are kept — "
+                "deletion detection for them is skipped this run.",
+                file=sys.stderr,
+            )
+        if out_of_root:
+            print(
+                "NOTE: tracked source(s) under no configured raw root — never swept by deletion "
+                "detection:\n  " + "\n  ".join(sorted(out_of_root)),
+                file=sys.stderr,
+            )
     # A pending source whose key is ALREADY tracked is a re-ingest of changed bytes (reconcile);
     # one not yet tracked is brand new. Captured before the manifest is mutated below.
-    changed_keys = {manifest.rel_key(p) for p in pending} & set(manifest_dict)
+    changed_keys = {manifest.rel_key(p) for p in scan.pending} & set(manifest_dict)
 
     # --- Reorganized sources: a file that only MOVED (or is a byte-for-byte duplicate) is
     # recognized and NOT re-ingested. For a real move (the old path is gone) repoint the wiki's
     # `resource` frontmatter and citation links to the new path so nothing breaks, then drop the
     # stale manifest key. Either way, record the new key so future runs skip it immediately. ---
     repointed = False
-    for old_key, new_key, sha, old_gone in moved:
+    for old_key, new_key, sha, old_gone in scan.moved:
         # A move/duplicate is NOT a re-ingest: carry over the model (and rules_version) that
         # originally imported this content (recorded under the old key) rather than stamping it
         # with this run's values.
@@ -1315,7 +1547,8 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 report.errors.append(f"{new_key}: repoint refs from {old_key}: {exc}")
                 continue
             manifest_dict.pop(old_key, None)
-        manifest_dict[new_key] = manifest.make_entry(sha, carried_model, carried_rules)
+        moved_stat = scan.hashed[new_key][1] if new_key in scan.hashed else None
+        manifest_dict[new_key] = manifest.make_entry(sha, carried_model, carried_rules, st=moved_stat)
         failures.clear(failures_dict, old_key)
         failures.clear(failures_dict, new_key)
         report.moved.append((old_key, new_key))
@@ -1342,32 +1575,43 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
     # --- Unreadable sources: no extractable text (binary/unsupported). Mark them done (so they
     # are not re-checked and re-logged every run) and surface + log them — the file "did not
     # work", but it is not a hard error that should fail the whole run. ---
-    for src in unreadable:
+    for src in scan.unreadable:
         key = manifest.rel_key(src)
-        try:
-            # No model imported it (it was only sniffed and skipped), so record the sha alone.
-            manifest_dict[key] = manifest.make_entry(manifest.file_sha256(src), None)
-        except OSError:
-            continue
+        if key not in scan.hashed:
+            continue  # not even its hash could be read (OS error on a brand-new file): retry next run
+        sha, src_stat = scan.hashed[key]
+        # No model imported it (it was only sniffed and skipped), so record the sha alone — with
+        # the stat cache, so a later run skips the unchanged binary without a content read.
+        manifest_dict[key] = manifest.make_entry(sha, None, st=src_stat)
         report.unreadable.append(key)
         # Persist the failure so it survives the run (surfaced in wiki/sources/index.md; written by
-        # the finalization step below, which an unreadable source always triggers).
-        failures.record(failures_dict, key, failures.UNREADABLE, "no extractable text (binary/unsupported)")
-    if unreadable:
+        # the finalization step below, which an unreadable source always triggers). sha+stat let the
+        # quick check recognize the unchanged file next run.
+        failures.record(
+            failures_dict, key, failures.UNREADABLE, "no extractable text (binary/unsupported)", sha=sha, st=src_stat
+        )
+    if scan.unreadable:
         manifest.save(manifest_dict)
 
     # --- Duplicate document sources: skipped in favor of another same-basename format (config
-    # DEDUP_BY_BASENAME). Record them (report + persistent failures) but do NOT mark them done, so a
-    # later run re-evaluates — deleting the kept file promotes one of these. ---
-    for dropped_key, kept_key in duplicates:
+    # DEDUP_BY_BASENAME). Record them (report + persistent failures, with sha+stat so an unchanged
+    # twin is never re-hashed) but do NOT mark them done, so a later run re-evaluates — deleting
+    # the kept file promotes one of these. ---
+    for dropped_key, kept_key in scan.duplicates:
         report.duplicates.append((dropped_key, kept_key))
+        dup_sha, dup_stat = scan.hashed.get(dropped_key, (None, None))
         failures.record(
-            failures_dict, dropped_key, failures.DUPLICATE, f"same basename as {kept_key}, which was ingested instead"
+            failures_dict,
+            dropped_key,
+            failures.DUPLICATE,
+            f"same basename as {kept_key}, which was ingested instead",
+            sha=dup_sha,
+            st=dup_stat,
         )
 
     emit(
         "start",
-        pending=len(pending),
+        pending=len(scan.pending),
         skipped=len(report.skipped),
         moved=len(report.moved),
         unreadable=len(report.unreadable),
@@ -1380,9 +1624,9 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
     # before it is re-raised. Without this, the per-source-persisted manifest could outlive a
     # stale index/log: a later run with nothing pending would never rebuild the derived files.
     pending_interrupt: BaseException | None = None
-    for index, src in enumerate(pending, 1):
+    for index, src in enumerate(scan.pending, 1):
         rel_key = manifest.rel_key(src)
-        is_image = src in images
+        is_image = src in scan.images
         # An already-tracked key with new bytes is a re-ingest: reconcile (update/remove stale
         # facts) rather than only appending. A brand-new key is a plain ingest. Image sources take
         # the image propagation (the agent VIEWS them) instead of reading text.
@@ -1390,20 +1634,21 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
             kind = "image-reconcile" if rel_key in changed_keys else "image"
         else:
             kind = "reconcile" if rel_key in changed_keys else "ingest"
-        emit("source_start", index=index, total=len(pending), source=rel_key)
+        emit("source_start", index=index, total=len(scan.pending), source=rel_key)
 
         # Plan the pass(es): an Office source materializes its extracted text to a temp .md the agent
         # reads; a source too large for one context is SPLIT into segments (one pass each, each
         # merging into the pages the earlier passes created); anything else is a single direct read.
         # A temp-write failure is a per-source error, NOT a run-aborting interrupt.
-        office = office_text.get(src)
+        office = scan.office_text.get(src)
         try:
             passes, tmpdirs = _prepare_passes(src, office, is_image)
         except OSError as exc:
             detail = f"{rel_key}: write source text: {exc}"
             report.errors.append(detail)
-            failures.record(failures_dict, rel_key, failures.ERROR, detail, model)
-            emit("source_error", index=index, total=len(pending), source=rel_key, error=str(exc), seconds=0.0)
+            err_sha, err_stat = scan.hashed.get(rel_key, (None, None))
+            failures.record(failures_dict, rel_key, failures.ERROR, detail, model, sha=err_sha, st=err_stat)
+            emit("source_error", index=index, total=len(scan.pending), source=rel_key, error=str(exc), seconds=0.0)
             continue
 
         created: list[str] = []
@@ -1431,11 +1676,14 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                     # the retried segments into the partial pages rather than duplicating them.
                     report.errors.extend(outcome.errors)
                     detail = outcome.errors[0] if outcome.errors else f"{rel_key}: agent session failed"
-                    failures.record(failures_dict, rel_key, failures.reason_for(detail), detail, model)
+                    err_sha, err_stat = scan.hashed.get(rel_key, (None, None))
+                    failures.record(
+                        failures_dict, rel_key, failures.reason_for(detail), detail, model, sha=err_sha, st=err_stat
+                    )
                     emit(
                         "source_error",
                         index=index,
-                        total=len(pending),
+                        total=len(scan.pending),
                         source=rel_key,
                         error=outcome.errors[0] if outcome.errors else "",
                         seconds=outcome.seconds,
@@ -1463,7 +1711,10 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
         if not source_ok:
             continue
 
-        manifest.mark_done(manifest_dict, src, model, rules_ver)
+        # Thread through the (sha, stat) discovery already took — the source's ONE content read
+        # this run — so mark_done records exactly what was ingested without re-hashing.
+        done_sha, done_stat = scan.hashed.get(rel_key, (None, None))
+        manifest.mark_done(manifest_dict, src, model, rules_ver, sha=done_sha, st=done_stat)
         # A source that had failed before now succeeded: drop its persisted failure.
         failures.clear(failures_dict, rel_key)
         # Persist progress immediately after each completed source: a later Ctrl+C (or a crash)
@@ -1473,7 +1724,7 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
         emit(
             "source_done",
             index=index,
-            total=len(pending),
+            total=len(scan.pending),
             source=rel_key,
             created=len(created),
             updated=len(updated),
@@ -1641,6 +1892,13 @@ def ingest(paths: list[str] | None = None, progress=None) -> IngestReport:
                 deleted=len(outcome.deleted),
                 seconds=outcome.seconds,
             )
+
+    if workspace_shifted and full_rescan:
+        # The guard's advertised remedy must not loop: --full-rescan keeps the sweep refused
+        # (safety frozen) but guarantees ONE end-of-run save, re-stamping the manifest meta with
+        # the CURRENT workspace root — so the next run reads a matching stamp and the deletion
+        # sweep is re-armed.
+        manifest.save(manifest_dict)
 
     failures_changed = failures_dict != failures_before
     if (

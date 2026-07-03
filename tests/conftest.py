@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 import pytest
@@ -138,6 +138,9 @@ def make_citadel(tmp_path: Path, monkeypatch) -> Callable[..., CitadelTmp]:
         monkeypatch.setattr(config, "WORKSPACE_ROOT", cit.root)
         monkeypatch.setattr(config, "WIKI_DIR", cit.wiki)
         monkeypatch.setattr(config, "RAW_DIR", cit.raw)
+        # The multi-root walk list mirrors the single-root default ([RAW_DIR]); multi-root tests
+        # re-patch it with their extra roots.
+        monkeypatch.setattr(config, "RAW_DIRS", [cit.raw])
         monkeypatch.setattr(config, "DOCS_DIR", cit.docs)
         monkeypatch.setattr(config, "PACKAGED_RULES_DIR", cit.packaged_rules)
         monkeypatch.setattr(config, "INDEX_PATH", cit.index_path)
@@ -212,14 +215,16 @@ def seed_page() -> Callable[..., Path]:
 
 
 def _cite_page(rel_path: str, rel_key: str, body_fact: str) -> None:
-    """Write a minimal valid OKF page that cites ``rel_key`` once (for use inside fake sessions)."""
-    depth = "../../"
+    """Write a minimal valid OKF page that cites ``rel_key`` once (for use inside fake sessions).
+    A workspace-relative key is cited with a relative link; an absolute (out-of-workspace) key by
+    its absolute posix path — the Z3 cross-root citation form."""
+    link = rel_key if PurePosixPath(rel_key).is_absolute() else f"../../{rel_key}"
     target = config.WIKI_DIR / rel_path
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
         okf.dump(
             {"type": "Note", "title": "Fact", "description": "d", "tags": ["t"], "resource": rel_key},
-            f"{body_fact}[^s1]\n\n## Sources\n\n[^s1]: [{rel_key}]({depth}{rel_key}) - src (ingested 2026-06-21)\n",
+            f"{body_fact}[^s1]\n\n## Sources\n\n[^s1]: [{rel_key}]({link}) - src (ingested 2026-06-21)\n",
         ),
         encoding="utf-8",
     )
