@@ -37,14 +37,6 @@ that usage is under your account and your provider's terms (see
 - **Honest provenance** — raw facts are restated faithfully and cite their source as `[^sN]`. A fact
   the model adds from its own knowledge must be labeled `[^llmN]`, never disguised as a raw citation.
 
-## Install
-
-```bash
-uv add cite-citadel            # add to a project
-uv tool install cite-citadel   # or install a global `citadel` CLI
-pip install cite-citadel       # or plain pip
-```
-
 ## Quickstart
 
 Ingest runs through a coding-agent CLI you already have — no API key, just your existing subscription.
@@ -60,9 +52,11 @@ uv run citadel view       # browse it offline
 ```
 
 Every other knob is documented inline in the generated `.env`. A global install (`uv tool install
-cite-citadel`) drops the `uv run` prefixes. `citadel serve` exposes the wiki to any AI over MCP —
-and **everything the MCP server offers, the CLI offers too** (`search`, `read`, `status`, …), so an
-AI without MCP access can drive citadel through equivalent shell commands.
+cite-citadel`; plain `pip install cite-citadel` works too) drops the `uv run` prefixes. On Windows,
+use `uv run python -m citadel` — the `uv run citadel` shorthand can be antivirus-blocked (see the
+contributor note below). `citadel serve` exposes the wiki to any AI over MCP — and **everything the
+MCP server offers, the CLI offers too** (`search`, `read`, `status`, …), so an AI without MCP access
+can drive citadel through equivalent shell commands.
 
 **Local models.** For a fully private wiki, point the same agent CLI at a local model (Ollama) so
 nothing you ingest ever leaves your machine or LAN — see
