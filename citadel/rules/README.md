@@ -60,7 +60,8 @@ path — the additive, upgrade-safe home for house rules.
   generated `sources/index.md`.
 - The agent works on a **staging copy** of the wiki; after the session the system diffs the wiki,
   re-validates and re-stamps every changed page, repoints renamed-page links, rebuilds the
-  indexes, and only a fully **clean** session is promoted onto the live wiki.
+  indexes, and only a fully **clean** source is promoted onto the live wiki (all segments of a
+  chunked source promote once, together).
 - Two gates, one strict and one advisory: **`citadel check`** (MCP `wiki_validate`) is the hard
   per-page gate the agent self-runs and the system re-runs; **`citadel lint`** is the periodic
   offline health check — contradictions, orphaned pages, facts missing citations, broken

@@ -28,15 +28,16 @@ uv run python -m citadel <subcommand>
 Subcommands: `init [DIR]` (scaffold a workspace: `citadel.toml` marker, `.env`, `raw/`, `wiki/`;
 idempotent), `ingest [paths…]` (fold raw/ into the wiki; `--verbose`/`-v` streams the agent
 session, `--log-dir DIR` writes a transcript per source, `--quiet` drops the progress spinner,
-`--full-rescan` distrusts the manifest's stat cache and re-hashes every tracked source),
-`serve` (MCP stdio server), `search <query> [--tag T] [--limit N]`, `tags [tag]`,
+`--full-rescan` distrusts the manifest's stat cache and re-hashes every tracked source,
+`--force <paths>` deliberately re-reads already-ingested sources as a reconcile — it requires
+explicit paths and is refused without them), `serve` (MCP stdio server), `search <query> [--tag T] [--limit N]`, `tags [tag]`,
 `lint [--stale-days N]`, `check [paths…]`, `view [--out PATH] [--no-open] [--obsidian]`.
 `citadel --version` prints the version and (like `--help`) needs no workspace.
 
 Tests (pytest, all offline — no CLI/network is ever spawned):
 
 ```bash
-uv run pytest -q                                    # whole suite (~420 tests, ~3s)
+uv run pytest -q                                    # whole suite (~540 tests, ~3s)
 uv run pytest tests/test_ingest_core.py -q          # one file
 uv run pytest tests/test_ingest_core.py::test_ingest_creates_pages   # one test
 ```
@@ -88,6 +89,9 @@ it is itself a workspace.
 **Ingest is the heart of the system** (`ingest.py` → `llm.py`). The flow per source:
 - `ingest.ingest()` partitions candidates into pending / already-ingested (sha match) / reorganized
   (moved-or-duplicate) / unreadable (binary) / deleted (vanished from disk, full runs only).
+  `ingest --force <paths>` bypasses the sha short-circuit: the named sources land in pending as
+  reconciles (a repo re-digests in full), and the manifest is re-stamped with the current model +
+  rules version.
 - **Discovery is incremental and deletion-safe**: one `os.scandir` walk over every
   `CITADEL_RAW_DIRS` root; the manifest doubles as the scan cache (an entry's
   `size`/`mtime_ns`/`ctime_ns`/`hashed_at_ns` are a skip-hint — sha256 stays the sole arbiter of
@@ -102,11 +106,16 @@ it is itself a workspace.
   learn what the agent created/updated/deleted — the agent has no return value, its file edits *are*
   the result.
 - It then re-imposes invariants on every changed page (`validate.validate_page` + `store.write_page`
-  to canonicalize YAML and stamp the timestamp), repairs renamed-page links, and **only on a fully
-  clean session promotes staging onto the live wiki** with a non-destructive copy-over-then-prune.
-  Any failure/timeout/Ctrl+C leaves the live wiki exactly as it was; the source is retried next run.
-  This all-or-nothing + network-share-hardened machinery (`_robust_*`, `robust_mkdir`) is load-bearing
-  — don't simplify it away.
+  to canonicalize YAML and stamp the timestamp) after **every** agent pass, repairs renamed-page
+  links, and **only on a fully clean source promotes staging onto the live wiki — exactly once per
+  source** — with a non-destructive copy-over-then-prune. A chunked large source folds ALL its
+  segments into that one staging copy before the single promote (refactor-plan Z11: the live wiki
+  never holds a partially imported source; the accepted trade-off is that a failure at segment N
+  discards the earlier segments' work and the source retries from segment 1 next run). Any
+  failure/timeout/Ctrl+C leaves the live wiki exactly as it was; the source is retried next run.
+  Files, repos, and deletion cleanups all drive this through ONE shared per-source loop
+  (`_SourceJob` + `_run_source_jobs`). This all-or-nothing + network-share-hardened machinery
+  (`_robust_*`, `robust_mkdir`) is load-bearing — don't simplify it away.
 
 **`llm.py` is the ONLY place that talks to an LLM**, and it does so by shelling out to a CLI in
 agentic mode (`cwd` = workspace root, autonomous file tools). The prompt is **paths-only** — it references

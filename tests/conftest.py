@@ -15,7 +15,7 @@ from typing import Any, Callable
 
 import pytest
 
-from citadel import config, llm, okf, repo
+from citadel import config, llm, manifest, okf, repo, store
 
 
 # --- layout wiring -----------------------------------------------------------------------
@@ -243,6 +243,34 @@ def cite_page() -> Callable[[str, str, str], None]:
     fact)`` writes one valid page whose single fact cites ``rel_key``. Reads ``config.WIKI_DIR``
     at call time, so inside a session it lands in ingest's per-source staging copy."""
     return _cite_page
+
+
+@pytest.fixture
+def seed_cited_deleted_source(seed_page) -> Callable[[], None]:
+    """Seed the canonical VANISHED-source setup shared across suites: one wiki page
+    (``concepts/topic.md``) citing ``raw/gone.md`` plus a manifest entry for it, with NO file on
+    disk — so the next full run detects the deletion and must run a ``kind="delete"`` cleanup
+    session. Updates the manifest in place (load-save), composing with already-tracked sources."""
+
+    def _seed() -> None:
+        seed_page(
+            "concepts/topic.md",
+            {"type": "Concept", "title": "Topic", "description": "d", "tags": ["x"], "resource": "raw/gone.md"},
+            "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/gone.md](../../raw/gone.md) - g\n",
+        )
+        tracked = manifest.load()
+        tracked["raw/gone.md"] = manifest.make_entry("dd" * 32, None)
+        manifest.save(tracked)
+
+    return _seed
+
+
+def delete_citing_pages(rel_key: str) -> None:
+    """The ``kind="delete"`` fake-session idiom shared across suites: remove every page citing
+    ``rel_key`` from the CONFIGURED wiki — ingest's per-source staging copy at call time, exactly
+    like the real agent's file edits — enough to satisfy the delete post-condition."""
+    for rel in store.find_raw_references(rel_key):
+        (Path(config.WIKI_DIR) / rel).unlink(missing_ok=True)
 
 
 def _make_pptx(path: Path, slides: list[list[str]]) -> None:

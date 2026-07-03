@@ -83,7 +83,10 @@ roots (`CITADEL_RAW_DIRS`, a comma/newline-separated list of directories all wal
 ingesting a whole git repo as one source, the wiki's target language (`CITADEL_WIKI_LANG`, default
 `en`), PDF figure reading (`CITADEL_PDF_MODE=text|images`), and opt-in persona/style capture
 (`CITADEL_STYLE_PROFILES`). Re-scans are incremental — an unchanged file is skipped by a stat
-quick-check without re-reading its bytes (`citadel ingest --full-rescan` re-hashes everything).
+quick-check without re-reading its bytes (`citadel ingest --full-rescan` re-hashes everything), and
+`citadel ingest --force <paths>` deliberately re-reads already-ingested sources, re-verifying the
+wiki's facts under the current rules (it requires explicit paths, so a whole-corpus re-read never
+happens by accident).
 
 ## How it works
 

@@ -148,6 +148,42 @@ def test_keyboardinterrupt_rolls_back_current_source(tmp_citadel, fake_agent, se
     assert (wiki / "concepts" / "keep.md").exists()  # pre-existing page untouched
 
 
+def test_keyboardinterrupt_mid_segment_discards_whole_source(tmp_citadel, fake_agent, cite_page, monkeypatch):
+    """Z11 promote-once under Ctrl+C: a KeyboardInterrupt at segment 2 of a chunked source keeps
+    the capture-finalize-reraise semantics — the interrupt still propagates AFTER finalization ran
+    for the previously completed source — and leaves the live wiki with NOTHING from the segmented
+    source (previously segment 1's page was already promoted; that partial is flipped away by
+    Z11's single staging copy). The whole source retries from segment 1 next run."""
+    wiki, raw = tmp_citadel.wiki, tmp_citadel.raw
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 120)
+    (raw / "a.md").write_text("a small source that fits one pass\n", encoding="utf-8")
+    (raw / "big.txt").write_text(
+        "\n\n".join(f"Paragraph number {i} with some filler content about topic {i}." for i in range(6)),
+        encoding="utf-8",
+    )
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+        if rel_key == "raw/a.md":
+            cite_page("misc/from-a.md", rel_key, "Fact A.")
+            return
+        if segment[0] == 1:
+            cite_page("misc/big.md", rel_key, "A fact from segment one.")
+        elif segment[0] == 2:
+            raise KeyboardInterrupt()
+
+    fake_agent(side_effect=fake)
+    with pytest.raises(KeyboardInterrupt):
+        ingest.ingest()  # a.md completes first (sorted order), big.txt interrupts at segment 2
+
+    assert not (wiki / "misc" / "big.md").exists()  # the whole segmented source discarded (Z11)
+    data = tmp_citadel.read_manifest()
+    assert "raw/big.txt" not in data  # retried in full next run
+    assert "raw/a.md" in data  # the completed source was persisted before the interrupt
+    assert "from-a.md" in (wiki / "index.md").read_text(encoding="utf-8")  # finalize ran before re-raise
+    # No staging sibling left behind by the interrupted multi-segment source.
+    assert not any(p.name.startswith(".wiki.staging") for p in wiki.parent.iterdir())
+
+
 def test_completed_sources_persisted_before_interrupt(tmp_citadel, fake_agent, seed_page):
     """Progress is written to the manifest right after each source completes, so a Ctrl+C
     during a LATER source can't erase already-finished work. (The old code saved the manifest

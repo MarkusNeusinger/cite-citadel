@@ -13,6 +13,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from conftest import delete_citing_pages
 
 from citadel import config, ingest, lint, manifest, okf, repo, store
 
@@ -33,8 +34,7 @@ def fake_session(seed_page):
 
     def _session(rel_key, kind="ingest", read_path=None):
         if kind == "delete":
-            for rel in store.find_raw_references(rel_key):
-                (config.WIKI_DIR / rel).unlink(missing_ok=True)
+            delete_citing_pages(rel_key)
             return
 
         slug = rel_key.replace("raw/", "").replace("/", "-").replace(".", "-") or "source"
