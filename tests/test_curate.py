@@ -183,6 +183,20 @@ def test_reverify_candidates_are_prefiltered_to_sha_unchanged_sources(tmp_citade
     assert "raw/gone.md" not in candidates  # gone -> delete
 
 
+def test_reverify_sampling_is_wired_into_the_plan(tmp_citadel, seed_page):
+    """Fact re-verification is WIRED into build_plan (Z5): a stale page whose cited source is tracked
+    and sha-UNCHANGED is sampled into the plan under reason ``reverify`` (a page whose source is
+    changed/gone never lands here — that is reconcile's / delete's job)."""
+    from citadel import curate
+
+    (tmp_citadel.raw / "notes.md").write_text("stable\n", encoding="utf-8")
+    _seed_cited(seed_page, "concepts/topic.md", "raw/notes.md", timestamp="2000-01-01T00:00:00Z")
+    _track("raw/notes.md", manifest.file_sha256(tmp_citadel.raw / "notes.md"), config.rules_version())
+
+    plan = curate.build_plan()
+    assert "reverify" in _reasons_for(plan, "concepts/topic.md")
+
+
 # --- the plan: recompute per run, --dry-run zero sessions, --limit, --stale-rules ------------
 
 
@@ -295,8 +309,9 @@ def test_cluster_failed_validate_reverts_and_records_failure(tmp_citadel, seed_p
 
 def test_failed_cluster_is_attempt_capped_across_runs(tmp_citadel, seed_page, fake_agent):
     """A failing curate cluster is never auto-retried: its failures-catalog ``attempts`` counter
-    increments per run and, once it reaches the cap (default 2), later runs SKIP the cluster
-    (no further agent session) until an explicit re-try."""
+    increments per run and, once it reaches the cap (default 2), build_plan DROPS it from the
+    runnable plan (into ``plan.skipped``) so no further agent session runs — and ``--dry-run``/
+    ``--limit`` reflect that — until an explicit re-try."""
     from citadel import curate, failures
 
     _seed_resort_cluster(tmp_citadel, seed_page)
@@ -307,8 +322,16 @@ def test_failed_cluster_is_attempt_capped_across_runs(tmp_citadel, seed_page, fa
     curate.curate()  # attempt 2 -> reaches the cap
     assert agent.count == 2
     assert failures.load()["concepts/alice.md"]["attempts"] == 2
-    curate.curate()  # capped: skipped, no new session
+
+    report = curate.curate()  # capped: dropped from the runnable plan, no new session
     assert agent.count == 2
+    assert "concepts/alice.md" in report.skipped
+    assert "concepts/alice.md" not in _plan_pages(report.plan)
+
+    # --dry-run reflects what would actually run: the capped cluster is not a runnable item.
+    dry = curate.curate(dry_run=True)
+    assert "concepts/alice.md" not in _plan_pages(dry.plan)
+    assert "concepts/alice.md" in dry.skipped
 
 
 # --- transparency side-effects: log.md edit summary + --diff report --------------------------
@@ -412,6 +435,26 @@ def test_wiki_lint_tool_never_raises(tmp_citadel, monkeypatch):
     monkeypatch.setattr(lint, "lint", boom)
     out = wiki_lint()
     assert isinstance(out, str) and out.lower().startswith("error")
+
+
+# --- soft-vs-hard page length: lint warns, curate acts (Z5) ---------------------------------
+
+
+def test_lint_warns_on_soft_overlong_page_as_advisory(tmp_citadel, seed_page):
+    """ "lint warns at soft, curate acts at hard" (Z5): a page over the SOFT page-length threshold is
+    listed under lint's advisory ``long_pages`` but does NOT flip ok() — only `citadel curate` acts,
+    and only once a page crosses the HARD threshold."""
+    (tmp_citadel.raw / "notes.md").write_text("body\n", encoding="utf-8")
+    long_body = "".join(f"Line {i}.[^s1]\n\n" for i in range(config.CURATE_PAGE_SOFT_LINES + 50))
+    seed_page(
+        "concepts/long.md",
+        {"type": "Concept", "title": "Long", "description": "d", "tags": ["t"], "resource": "raw/notes.md"},
+        f"{long_body}## Sources\n\n[^s1]: [raw/notes.md](../../raw/notes.md) - s\n",
+    )
+
+    report = lint.lint()
+    assert "concepts/long.md" in report.long_pages
+    assert report.ok()  # advisory: the soft threshold never flips the lint exit
 
 
 # --- Z6 locator lint checks for text-bearing raw sources ------------------------------------

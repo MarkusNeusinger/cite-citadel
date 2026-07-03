@@ -122,6 +122,33 @@ def read_page(rel_path: str) -> Page:
     return Page(rel_path=rel_path, frontmatter=frontmatter, body=body)
 
 
+# --- shared page/catalog text providers ------------------------------------------------------
+# The ONE implementation behind each of the read/index/sources behaviors, consumed by BOTH the
+# CLI subcommands (cli.cmd_read/index/sources — print + exit codes) and the MCP tools
+# (server.wiki_read/index/sources — never-raise error strings). Each returns the text or raises a
+# typed error the caller maps to its own contract, so the behavior lives exactly once.
+
+
+def read_page_text(rel_path: str) -> str:
+    """The full verbatim OKF text of one wiki page (frontmatter + body). Raises FileNotFoundError
+    (no such page), okf.OKFError (unsafe/traversal path), or an OS/decoding error (an undecodable
+    file) — the callers translate those into a CLI exit code or an MCP error string."""
+    page = read_page(rel_path)
+    return okf.dump(page.frontmatter, page.body)
+
+
+def index_text() -> str:
+    """The generated ``wiki/index.md`` catalog text. Raises FileNotFoundError when no index exists
+    yet (nothing ingested), or an OS error when the path is unreadable."""
+    return config.INDEX_PATH.read_text(encoding="utf-8")
+
+
+def sources_text() -> str:
+    """The generated ``wiki/sources/index.md`` provenance catalog text. Raises FileNotFoundError
+    when nothing has been ingested yet, or an OS error when the path is unreadable."""
+    return config.SOURCES_INDEX_PATH.read_text(encoding="utf-8")
+
+
 def write_page(rel_path: str, frontmatter: dict, body: str) -> Page:
     """okf.validate(frontmatter); target = okf.safe_join(WIKI_DIR, rel_path)
     (rejects '..'/absolute FIRST); mkdir -p; set frontmatter['timestamp']=utc_now_iso();
@@ -626,7 +653,7 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
     manifest_dict = manifest_mod.load()
     failures_dict = failures_mod.load()
     sources_body = _render_sources_catalog(manifest_dict, pages, failures_dict)
-    sources_path = config.WIKI_DIR / SOURCES_INDEX_REL
+    sources_path = config.SOURCES_INDEX_PATH
     if sources_body is not None:
         config.robust_mkdir(sources_path.parent)
         sources_path.write_text(sources_body, encoding="utf-8")

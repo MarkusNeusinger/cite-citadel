@@ -13,9 +13,12 @@ Two layers, the Wikipedia-bot model, with **no persisted queue** — the wiki IS
    one), ``contradiction`` (an unresolved ``> [!CONTRADICTION]`` callout), ``orphan`` (an island),
    ``llm_drift`` (a page dominated by ``[^llm]`` facts with little ``[^sN]`` grounding), and
    ``resort`` (a page whose ``type`` routes to a different folder than the one it sits in, via
-   :func:`okf.folder_for_type`). Fact re-verification is pre-filtered offline through the manifest
-   shas (:func:`reverify_candidates`): a CHANGED source is reconcile's job, a GONE source is
-   delete's job — only sha-unchanged sources need the agent's entailment pass.
+   :func:`okf.folder_for_type`), and ``reverify`` (a sampled fact re-verification pass). Fact
+   re-verification is pre-filtered offline through the manifest shas (:func:`reverify_candidates`):
+   a CHANGED source is reconcile's job, a GONE source is delete's job — only sha-unchanged sources
+   need the agent's entailment pass, and :func:`build_plan` samples just :data:`REVERIFY_SAMPLE_K`
+   of the citing pages per run (the stalest × most-linked), so re-verification rolls over the
+   corpus without a per-run token blow-up.
 
 2. **Agent layer** (:func:`curate`): one staged session per page CLUSTER (the anchor page + its
    cited raw files + direct link neighbors), built on ingest's EXISTING all-or-nothing staging
@@ -37,9 +40,11 @@ from __future__ import annotations
 
 import contextlib
 import difflib
+import os
 import shutil
 import tempfile
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import config, failures, grammar, ingest, lint, llm, manifest, okf, store
@@ -54,6 +59,7 @@ REASON_CONTRADICTION = "contradiction"
 REASON_RULES_DRIFT = "rules_version_drift"
 REASON_LLM_DRIFT = "llm_drift"
 REASON_LOCATOR = "locator"
+REASON_REVERIFY = "reverify"
 REASON_ORPHAN = "orphan"
 
 # Deterministic cluster ordering for --limit: structural fixes that change a page's identity/shape
@@ -66,6 +72,7 @@ _REASON_ORDER = [
     REASON_RULES_DRIFT,
     REASON_LLM_DRIFT,
     REASON_LOCATOR,
+    REASON_REVERIFY,
     REASON_ORPHAN,
 ]
 
@@ -73,6 +80,11 @@ _REASON_ORDER = [
 # The failures-catalog ``attempts`` counter increments per run; once it reaches this cap the cluster
 # is left alone until an explicit retry (``curate(force=True)`` / the CLI's retry flag).
 ATTEMPT_CAP = 2
+
+# How many pages the rolling fact re-verification samples PER RUN (docs/refactor-plan.md Z5). Kept
+# small and deterministic: each run re-checks the K stalest, most-linked sha-unchanged-cited pages,
+# so a large corpus re-verifies over many runs without a per-run token blow-up.
+REVERIFY_SAMPLE_K = 3
 
 # The `[^sN]`-drift outlier rule: a page counts as drifted when its model-supplied (``[^llm]``)
 # facts both outnumber its raw-grounded (``[^sN]``) facts AND reach this floor (so a single stray
@@ -86,23 +98,29 @@ _LLM_DRIFT_MIN = 2
 @dataclass
 class PlanItem:
     """One page CLUSTER planned for a curate pass — the anchor page and the concrete reason codes
-    the offline detectors flagged it under. ``priority`` orders the plan for ``--limit`` (lower is
-    more urgent)."""
+    the offline detectors flagged it under. Ordering for ``--limit`` is computed from the reasons
+    at sort time (:func:`_priority`), never stored."""
 
     page: str  # the cluster anchor page rel_path
     reasons: list[str] = field(default_factory=list)  # reason codes, deduped + sorted
-    priority: int = 0
 
 
 @dataclass
 class Plan:
-    """The recomputed-per-run curate work list: an ordered list of page-cluster :class:`PlanItem`s.
-    There is NO persisted queue — this is rebuilt from the detectors on every run."""
+    """The recomputed-per-run curate work list: an ordered list of page-cluster :class:`PlanItem`s
+    plus ``skipped`` — the anchor pages an attempt-capped failure record drops from the runnable
+    plan (surfaced, but not re-run this pass). There is NO persisted queue: this is rebuilt from the
+    detectors on every run, so ``--dry-run``/``--limit`` reflect exactly what would actually run."""
 
     items: list[PlanItem] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)
 
     def render(self) -> str:
+        # Only the RUNNABLE items are listed here; attempt-capped clusters are surfaced by the
+        # CurateReport's own "Skipped" section (they are in self.skipped), so no double-listing.
         if not self.items:
+            if self.skipped:
+                return "No runnable curate work (only attempt-capped clusters remain)."
             return "No curate work: every page is clean."
         lines = [f"Curate plan ({len(self.items)} cluster(s)):"]
         for item in self.items:
@@ -154,17 +172,46 @@ def _stale_source_keys(manifest_dict: dict, current_rules_version: str) -> set[s
     return stale
 
 
-def _orphans(pages: list[Page]) -> list[str]:
-    """Island pages — no page links to them AND they link to nothing (only source citations, which
-    resolve into raw/ and are never wiki cross-links). Same definition and shared grammar as
-    :func:`lint.lint`'s orphan check, recomputed here so curate stays self-contained."""
-    outbound: dict[str, list[str]] = {}
-    inbound: set[str] = set()
+def _in_degree(pages: list[Page]) -> dict[str, int]:
+    """``{rel_path: number of pages that link TO it}`` — the in-degree map the reverify sampler
+    weights staleness by. Reuses the shared wiki-link grammar (source citations don't count)."""
+    indeg: dict[str, int] = {}
     for page in pages:
-        links = [resolved for _raw, resolved in grammar.resolved_md_links(page.rel_path, page.body)]
-        outbound[page.rel_path] = links
-        inbound.update(links)
-    return [p.rel_path for p in pages if p.rel_path not in inbound and not outbound[p.rel_path]]
+        for _raw, resolved in grammar.resolved_md_links(page.rel_path, page.body):
+            indeg[resolved] = indeg.get(resolved, 0) + 1
+    return indeg
+
+
+def _staleness_seconds(page: Page, now: datetime) -> float:
+    """How old the page's ``timestamp`` is in seconds (>= 0), or 0.0 when it is missing/unparseable
+    — the staleness axis of the reverify sampler's ``staleness × in-degree`` weight."""
+    ts = page.frontmatter.get("timestamp")
+    if not isinstance(ts, str) or not ts:
+        return 0.0
+    try:
+        dt = datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return 0.0
+    return max(0.0, (now - dt).total_seconds())
+
+
+def _reverify_sample(citing_pages: set[str], pages: list[Page]) -> list[str]:
+    """The up-to-:data:`REVERIFY_SAMPLE_K` citing pages to re-verify this run, ranked by
+    ``staleness × (in-degree + 1)`` so the stalest, most-linked pages are re-checked first while a
+    stale island (in-degree 0) is never fully discounted (docs/refactor-plan.md Z5). Deterministic:
+    ties break on rel_path."""
+    if not citing_pages:
+        return []
+    indeg = _in_degree(pages)
+    now = datetime.now(timezone.utc)
+    by_path = {p.rel_path: p for p in pages}
+
+    def weight(rel_path: str) -> float:
+        page = by_path.get(rel_path)
+        return _staleness_seconds(page, now) * (indeg.get(rel_path, 0) + 1) if page is not None else 0.0
+
+    ranked = sorted(citing_pages, key=lambda rel: (-weight(rel), rel))
+    return ranked[:REVERIFY_SAMPLE_K]
 
 
 def _page_line_count(page: Page) -> int:
@@ -257,17 +304,31 @@ def _priority(reasons: set[str]) -> int:
     return min(ranks) if ranks else len(_REASON_ORDER)
 
 
-def build_plan(pages: list[Page] | None = None, *, stale_rules: bool = False, limit: int | None = None) -> Plan:
+def build_plan(
+    pages: list[Page] | None = None,
+    *,
+    stale_rules: bool = False,
+    limit: int | None = None,
+    failures_dict: dict | None = None,
+    force: bool = False,
+) -> Plan:
     """Recompute the curate work list from the wiki + manifest (NO persisted queue). Every detector
     is offline and reuses shared grammar/store/okf. One :class:`PlanItem` per flagged page,
     aggregating all its reason codes, ordered deterministically (:func:`_priority`, then rel_path).
 
     ``stale_rules`` narrows the plan to pages whose source was ingested under an OLDER effective-rules
     hash (the ``--stale-rules`` selector) — a page carrying only other reasons is dropped. ``limit``
-    keeps the first N clusters of that ordered plan (``--limit``)."""
+    keeps the first N clusters of that ordered plan (``--limit``).
+
+    ``failures_dict`` (loaded when omitted) supplies the per-cluster attempt counts: a cluster at or
+    past :data:`ATTEMPT_CAP` is DROPPED from the runnable ``items`` into ``Plan.skipped`` — so
+    ``--dry-run``/``--limit`` reflect only what would actually run — unless ``force`` bypasses the
+    cap (an explicit retry of stuck clusters)."""
     if pages is None:
         pages = store.load()
     manifest_dict = manifest.load()
+    if failures_dict is None:
+        failures_dict = failures.load()
     current_rules_version = config.rules_version()
 
     reasons_by_page: dict[str, set[str]] = {}
@@ -281,13 +342,23 @@ def build_plan(pages: list[Page] | None = None, *, stale_rules: bool = False, li
         for rel_path in store.find_raw_references(key, pages):
             add(rel_path, REASON_RULES_DRIFT)
 
-    for rel_path in _orphans(pages):
+    for rel_path in lint.orphans(pages):
         add(rel_path, REASON_ORPHAN)
 
     # locator drift (Z6): a `lines A-B`/`§ Heading` citation that no longer resolves against its
     # still-unchanged text source. Reuses lint's one deterministic verifier (no second parser).
     for rel_path, _detail in lint.check_locators(pages):
         add(rel_path, REASON_LOCATOR)
+
+    # fact re-verification (Z5): every page citing a sha-UNCHANGED tracked source is a candidate
+    # (a changed source is reconcile's job, a gone one delete's) — sample K of them by staleness ×
+    # in-degree for the agent's entailment re-check of each [^sN] claim against its still-identical
+    # source.
+    reverify_citing: set[str] = set()
+    for key in reverify_candidates():
+        reverify_citing.update(store.find_raw_references(key, pages))
+    for rel_path in _reverify_sample(reverify_citing, pages):
+        add(rel_path, REASON_REVERIFY)
 
     for page in pages:
         rel_path = page.rel_path
@@ -301,14 +372,19 @@ def build_plan(pages: list[Page] | None = None, *, stale_rules: bool = False, li
             add(rel_path, REASON_RESORT)
 
     items: list[PlanItem] = []
+    skipped: list[str] = []
     for rel_path, reasons in reasons_by_page.items():
         if stale_rules and REASON_RULES_DRIFT not in reasons:
             continue
-        items.append(PlanItem(page=rel_path, reasons=sorted(reasons), priority=_priority(reasons)))
-    items.sort(key=lambda item: (item.priority, item.page))
+        if not force and _cluster_attempts(failures_dict, rel_path) >= ATTEMPT_CAP:
+            skipped.append(rel_path)
+            continue
+        items.append(PlanItem(page=rel_path, reasons=sorted(reasons)))
+    items.sort(key=lambda item: (_priority(set(item.reasons)), item.page))
+    skipped.sort()
     if limit is not None:
         items = items[:limit]
-    return Plan(items=items)
+    return Plan(items=items, skipped=skipped)
 
 
 # --- the agent layer (staged cluster sessions) ----------------------------------------------
@@ -344,20 +420,8 @@ def _cited_source_keys(page: Page) -> list[str]:
             keys.append(key)
 
     push(str(page.frontmatter.get("resource") or ""))
-    in_sources = False
-    for line, in_code in grammar.iter_lines(page.body):
-        if in_code:
-            continue
-        stripped = line.strip()
-        if stripped.startswith("#"):
-            in_sources = bool(grammar.SOURCES_HEADING_RE.match(stripped))
-            continue
-        if not in_sources:
-            continue
-        match = grammar.DEF_LINE_RE.match(line)
-        if not match or grammar.is_llm_marker(match.group(1)):
-            continue
-        target = grammar.def_link_target(match.group(2))
+    for _marker_id, rest in grammar.source_definitions(page.body):
+        target = grammar.def_link_target(rest)
         if target is None or grammar.is_external(target):
             continue
         abs_path = grammar.link_abs(page.rel_path, target)
@@ -408,6 +472,12 @@ _REASON_GUIDANCE = {
         "A `[^sN]` citation on this page has a locator (line range or `§ Heading`) that no longer "
         "matches its text source. Re-check each locator against the current raw file and fix it to "
         "the place the fact actually lives (see `schema.md` § Locators)."
+    ),
+    REASON_REVERIFY: (
+        "Re-verify each `[^sN]` claim on this page against its still-unchanged raw source: read the "
+        "cited file and confirm the paraphrase entails what it says. Correct any drifted wording to "
+        "what the source actually states; add nothing new, and leave a claim that already holds "
+        "untouched (a NOOP is correct)."
     ),
     REASON_ORPHAN: (
         "This page is an island (no inbound and no outbound wiki links). Add cross-links to and from "
@@ -473,15 +543,36 @@ def _record_cluster_failure(failures_dict: dict, page: str, outcome, model: str)
     failures_dict[page]["attempts"] = attempts
 
 
-def _content_map() -> dict[str, str]:
-    """``{rel_path: on-disk text}`` for every current wiki page — the before/after snapshots the
-    ``--diff`` report diffs. Reuses ``store.load``'s 'what is a page' rule (index/log/dotfiles out)."""
+def _page_text(rel_path: str) -> str | None:
+    """The on-disk text of one wiki page, or None when it cannot be read — the raw bytes the
+    ``--diff`` snapshots compare (no okf parse)."""
+    try:
+        return okf.safe_join(config.WIKI_DIR, rel_path).read_text(encoding="utf-8")
+    except (OSError, okf.OKFError):
+        return None
+
+
+def _texts_for(pages: list[Page]) -> dict[str, str]:
+    """Before-snapshot: ``{rel_path: on-disk text}`` for each ALREADY-LOADED page — reuses the run's
+    ``store.load()`` list instead of parsing every page a second time just to re-read its bytes."""
+    return {page.rel_path: text for page in pages if (text := _page_text(page.rel_path)) is not None}
+
+
+def _texts_on_disk() -> dict[str, str]:
+    """After-snapshot: ``{rel_path: on-disk text}`` from a plain ``.md`` file walk of the wiki (no
+    okf parse) — curate may have added or deleted pages, so the set is re-discovered, but reuses
+    ``store``'s 'what is a page' rule (index/log/sources-catalog/dotfiles skipped) so the diff
+    ignores generated files."""
     out: dict[str, str] = {}
-    for page in store.load():
-        try:
-            out[page.rel_path] = okf.safe_join(config.WIKI_DIR, page.rel_path).read_text(encoding="utf-8")
-        except (OSError, okf.OKFError):
-            continue
+    for dirpath, dirnames, filenames in os.walk(config.WIKI_DIR):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        for name in filenames:
+            if not name.endswith(".md") or store._is_skipped_name(name):
+                continue
+            rel_path = os.path.relpath(os.path.join(dirpath, name), config.WIKI_DIR).replace(os.sep, "/")
+            text = _page_text(rel_path)
+            if text is not None:
+                out[rel_path] = text
     return out
 
 
@@ -567,20 +658,28 @@ def curate(
                 progress(event, data)
 
     pages = store.load()
-    plan = build_plan(pages, stale_rules=stale_rules, limit=limit)
+    failures_dict = failures.load()
+    # build_plan already applies the attempt cap: capped clusters land in plan.skipped, not items,
+    # so plan.items is exactly what will run (nothing to re-check in the loop).
+    plan = build_plan(pages, stale_rules=stale_rules, limit=limit, failures_dict=failures_dict, force=force)
     scope = _select_pages(pages, paths)
     if scope is not None:
-        plan = Plan(items=[item for item in plan.items if item.page in scope])
+        plan = Plan(
+            items=[item for item in plan.items if item.page in scope],
+            skipped=[page for page in plan.skipped if page in scope],
+        )
 
     report = CurateReport(plan=plan)
+    report.skipped = list(plan.skipped)
     if dry_run:
         emit("plan", clusters=len(plan.items))
         return report
 
     pages_by_path = {p.rel_path: p for p in pages}
-    failures_dict = failures.load()
-    before_map = _content_map() if diff else {}
+    before_map = _texts_for(pages) if diff else {}
     emit("start", clusters=len(plan.items))
+    for page_rel in plan.skipped:
+        emit("cluster_skipped", page=page_rel)
 
     with _curate_model_active():
         model = config.ingest_model_label()
@@ -590,11 +689,6 @@ def curate(
             if page is None:  # vanished since the plan was computed (nothing to curate)
                 continue
             emit("cluster_start", index=index, total=len(plan.items), page=page_rel)
-            if not force and _cluster_attempts(failures_dict, page_rel) >= ATTEMPT_CAP:
-                report.skipped.append(page_rel)
-                emit("cluster_skipped", index=index, total=len(plan.items), page=page_rel)
-                continue
-
             read_path, tmpdir = _write_findings(item, page, pages)
             try:
                 session = [lambda pr=page_rel, rp=read_path: llm.run_ingest_session(pr, kind="curate", read_path=rp)]
@@ -629,7 +723,7 @@ def curate(
         store.rebuild_indexes()
 
     if diff:
-        _write_diff_report(diff, before_map, _content_map(), report)
+        _write_diff_report(diff, before_map, _texts_on_disk(), report)
 
     emit("done", applied=len(report.applied), noop=len(report.noop), failed=len(report.failed))
     return report

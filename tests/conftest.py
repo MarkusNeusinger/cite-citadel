@@ -59,6 +59,7 @@ class CitadelTmp:
     raw: Path  # config.RAW_DIR
     docs: Path  # config.DOCS_DIR
     index_path: Path  # config.INDEX_PATH
+    sources_index_path: Path  # config.SOURCES_INDEX_PATH
     log_path: Path  # config.LOG_PATH
     manifest_path: Path  # config.MANIFEST_PATH
     failures_path: Path  # config.FAILURES_PATH
@@ -128,6 +129,7 @@ def make_citadel(tmp_path: Path, monkeypatch) -> Callable[..., CitadelTmp]:
             raw=raw,
             docs=docs,
             index_path=wiki / "index.md",
+            sources_index_path=wiki / "sources" / "index.md",
             log_path=wiki / "log.md",
             manifest_path=wiki / ".citadel_ingested.json",
             failures_path=wiki / ".citadel_failures.json",
@@ -145,6 +147,7 @@ def make_citadel(tmp_path: Path, monkeypatch) -> Callable[..., CitadelTmp]:
         monkeypatch.setattr(config, "DOCS_DIR", cit.docs)
         monkeypatch.setattr(config, "PACKAGED_RULES_DIR", cit.packaged_rules)
         monkeypatch.setattr(config, "INDEX_PATH", cit.index_path)
+        monkeypatch.setattr(config, "SOURCES_INDEX_PATH", cit.sources_index_path)
         monkeypatch.setattr(config, "LOG_PATH", cit.log_path)
         monkeypatch.setattr(config, "MANIFEST_PATH", cit.manifest_path)
         monkeypatch.setattr(config, "FAILURES_PATH", cit.failures_path)

@@ -155,14 +155,13 @@ def wiki_read(rel_path: str) -> str:
     from . import okf, store
 
     try:
-        page = store.read_page(rel_path)
+        return store.read_page_text(rel_path)
     except FileNotFoundError:
         return f"error: page not found: {rel_path!r}"
     except okf.OKFError as e:
         return f"error: unsafe path: {e}"
     except Exception as e:  # never raise out of the tool
         return f"error: could not read {rel_path!r}: {e}"
-    return okf.dump(page.frontmatter, page.body)
 
 
 @mcp.tool(annotations=_annotations(**_READ_ONLY))
@@ -171,10 +170,10 @@ def wiki_index() -> str:
     one-line descriptions, for progressive disclosure (the cheap first read
     an agent does to orient before searching).
     """
-    from . import config
+    from . import store
 
     try:
-        return config.INDEX_PATH.read_text(encoding="utf-8")
+        return store.index_text()
     except FileNotFoundError:
         return "error: wiki index not found (run `citadel ingest` first)."
     except Exception as e:  # never raise out of the tool
@@ -191,10 +190,10 @@ def wiki_sources() -> str:
     loader, so wiki_search never returns it; this tool exposes it directly.) Returns a clear
     message when nothing has been ingested yet. Never raises out of the tool.
     """
-    from . import config
+    from . import store
 
     try:
-        return (config.WIKI_DIR / "sources" / "index.md").read_text(encoding="utf-8")
+        return store.sources_text()
     except FileNotFoundError:
         return "No sources catalog yet (run `citadel ingest` first)."
     except Exception as e:  # never raise out of the tool

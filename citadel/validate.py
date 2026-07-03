@@ -59,42 +59,35 @@ def source_issues(rel_path: str, body: str) -> list[str]:
     section and code fences are skipped, so a page documenting the citation format is not
     falsely flagged. Resolution is by path math from the page's location under WIKI_DIR, so it
     works on synthetic (not-yet-written) pages too; only the cited SOURCE file must exist."""
-    in_sources = False
     defined: set[str] = set()
-    used: set[str] = set()
     bad: list[str] = []
 
+    # The one shared Sources-section def walk (grammar owns it): raw-file definitions only —
+    # [^llm] defs are dropped there (they cite "LLM", not a raw file, and are provenance-exempt).
+    for marker_id, rest in grammar.source_definitions(body):
+        defined.add(marker_id)
+        link_target = grammar.def_link_target(rest)
+        if link_target is None:
+            bad.append(f"[^{marker_id}]: no resolvable source link")
+            continue
+        target = link_target.strip()
+        if grammar.is_external(target):
+            continue
+        resolved = grammar.link_abs(rel_path, target)
+        if not os.path.exists(resolved):
+            bad.append(target)
+
+    # A raw-fact marker used but never defined in ## Sources is unverifiable provenance. Markers
+    # are collected outside code fences and headings; def lines themselves never match USED_MARKER_RE
+    # (its ']' is followed by ':'). [^llm] markers are exempt — they cite "LLM", not a raw file.
+    used: set[str] = set()
     for line, in_code in grammar.iter_lines(body):
-        if in_code:
+        if in_code or line.strip().startswith("#"):
             continue
-        stripped = line.strip()
-        if stripped.startswith("#"):
-            in_sources = bool(grammar.SOURCES_HEADING_RE.match(stripped))
-            continue
-
-        mdef = grammar.DEF_LINE_RE.match(line)
-        if mdef and in_sources:
-            marker_id, rest = mdef.group(1), mdef.group(2)
-            defined.add(marker_id)
-            if grammar.is_llm_marker(marker_id):
-                continue  # model-supplied fact: cites "LLM", no raw file expected
-            link_target = grammar.def_link_target(rest)
-            if link_target is None:
-                bad.append(f"[^{marker_id}]: no resolvable source link")
-                continue
-            target = link_target.strip()
-            if grammar.is_external(target):
-                continue
-            resolved = grammar.link_abs(rel_path, target)
-            if not os.path.exists(resolved):
-                bad.append(target)
-            continue
-
-        # Usage line: collect every marker that is not itself a definition.
         used.update(grammar.USED_MARKER_RE.findall(line))
-
-    # A fact tagged with a marker that is never defined is unverifiable provenance.
     for marker_id in sorted(used - defined):
+        if grammar.is_llm_marker(marker_id):
+            continue
         bad.append(f"[^{marker_id}] used but undefined")
     return bad
 

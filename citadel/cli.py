@@ -304,24 +304,23 @@ def cmd_read(args: argparse.Namespace) -> int:
     from . import okf, store
 
     try:
-        page = store.read_page(args.rel_path)
+        text = store.read_page_text(args.rel_path)
     except FileNotFoundError:
         print(f"error: page not found: {args.rel_path}", file=sys.stderr)
         return 1
     except okf.OKFError as e:
         print(f"error: unsafe path: {e}", file=sys.stderr)
         return 1
-    text = okf.dump(page.frontmatter, page.body)
     print(text, end="" if text.endswith("\n") else "\n")
     return 0
 
 
 def cmd_index(args: argparse.Namespace) -> int:
     """Print the generated wiki/index.md catalog (the CLI twin of wiki_index)."""
-    from . import config
+    from . import store
 
     try:
-        text = config.INDEX_PATH.read_text(encoding="utf-8")
+        text = store.index_text()
     except FileNotFoundError:
         print("No wiki index yet (run `citadel ingest` first).")
         return 0
@@ -331,10 +330,10 @@ def cmd_index(args: argparse.Namespace) -> int:
 
 def cmd_sources(args: argparse.Namespace) -> int:
     """Print the generated wiki/sources/index.md provenance catalog (the CLI twin of wiki_sources)."""
-    from . import config
+    from . import store
 
     try:
-        text = (config.WIKI_DIR / "sources" / "index.md").read_text(encoding="utf-8")
+        text = store.sources_text()
     except FileNotFoundError:
         print("No sources catalog yet (run `citadel ingest` first).")
         return 0

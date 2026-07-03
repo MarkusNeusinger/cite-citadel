@@ -21,19 +21,11 @@ empty pending/ignored rather than raising.
 
 from __future__ import annotations
 
-import fnmatch
 import os
 from dataclasses import dataclass, field
 
 from . import config, failures, ingest, manifest
 
-
-# Lifecycle buckets (also the state stamped on each row, for a caller that groups by state).
-INGESTED = "ingested"
-FAILED = "failed"
-SKIPPED_DUPLICATE = "skipped-duplicate"
-IGNORED = "ignored"
-PENDING = "pending"
 
 # How much of a (long) content hash / rules-version / commit id to show in the table.
 _ID_WIDTH = 12
@@ -41,11 +33,12 @@ _ID_WIDTH = 12
 
 @dataclass
 class SourceState:
-    """One raw source's lifecycle row. ``model``/``rules_version``/``commit`` describe an ingested
-    source's provenance stamp; ``reason``/``detail``/``attempts`` describe a failed or skipped one."""
+    """One raw source's lifecycle row. Which BUCKET a row lands in on :class:`StatusReport` IS its
+    state — there is no separate stamped field. ``model``/``rules_version``/``commit`` describe an
+    ingested source's provenance stamp; ``reason``/``detail``/``attempts`` describe a failed or
+    skipped one."""
 
     key: str
-    state: str
     model: str | None = None
     rules_version: str | None = None
     commit: str | None = None
@@ -140,13 +133,8 @@ def _present_source_keys() -> set[str]:
 def _ignored_names() -> list[str]:
     """The OS/junk basenames under the raw roots that discovery skips (``CITADEL_IGNORE_PATTERNS``)
     — a light, stat-free ``os.walk`` that prunes ignored/hidden directories exactly as discovery
-    does. Deduped + sorted; degrades to an empty list on any walk error."""
-    patterns = [p.lower() for p in config.IGNORE_PATTERNS]
-
-    def matches(name: str) -> bool:
-        low = name.lower()
-        return any(fnmatch.fnmatchcase(low, pat) for pat in patterns)
-
+    does (the ONE ignore predicate, :func:`ingest._is_ignored_name`). Deduped + sorted; degrades to
+    an empty list on any walk error."""
     found: set[str] = set()
     for root in config.source_roots():
         try:
@@ -155,13 +143,13 @@ def _ignored_names() -> list[str]:
                 for d in dirnames:
                     if d.startswith("."):
                         continue
-                    if matches(d):
+                    if ingest._is_ignored_name(d):
                         found.add(d)
                     else:
                         kept.append(d)
                 dirnames[:] = kept  # prune (don't descend into hidden/ignored dirs)
                 for f in filenames:
-                    if not f.startswith(".") and matches(f):
+                    if not f.startswith(".") and ingest._is_ignored_name(f):
                         found.add(f)
         except OSError:
             continue
@@ -179,27 +167,17 @@ def build_status() -> StatusReport:
 
     for key in sorted(manifest_dict):
         entry = manifest_dict[key]
-        if manifest.is_repo_entry(entry):
-            report.ingested.append(
-                SourceState(
-                    key=key,
-                    state=INGESTED,
-                    model=manifest.entry_model(entry),
-                    commit=manifest.entry_commit(entry) or None,
-                    rules_version=manifest.entry_rules_version(entry),
-                    stale_rules=_is_stale_rules(entry, current),
-                )
+        # One construction for both kinds: entry_commit is "" for a non-repo (file) source, so
+        # `or None` leaves commit unset there and render falls back to the rules_version stamp.
+        report.ingested.append(
+            SourceState(
+                key=key,
+                model=manifest.entry_model(entry),
+                commit=manifest.entry_commit(entry) or None,
+                rules_version=manifest.entry_rules_version(entry),
+                stale_rules=_is_stale_rules(entry, current),
             )
-        else:
-            report.ingested.append(
-                SourceState(
-                    key=key,
-                    state=INGESTED,
-                    model=manifest.entry_model(entry),
-                    rules_version=manifest.entry_rules_version(entry),
-                    stale_rules=_is_stale_rules(entry, current),
-                )
-            )
+        )
 
     for key in sorted(failures_dict):
         entry = failures_dict[key]
@@ -210,14 +188,14 @@ def build_status() -> StatusReport:
             continue  # a curate cluster is a page, not a source — surfaced by `citadel curate`
         row = SourceState(
             key=key,
-            state=FAILED,
             model=entry.get("model"),
             reason=reason,
             detail=str(entry.get("detail") or "") or None,
             attempts=int(entry.get("attempts", 0) or 0),
         )
+        # The bucket a row lands in IS its state: a same-basename `duplicate` is a skip, not a
+        # failure; everything else is a genuine failure.
         if reason == failures.DUPLICATE:
-            row.state = SKIPPED_DUPLICATE
             report.skipped_duplicate.append(row)
         else:
             report.failed.append(row)

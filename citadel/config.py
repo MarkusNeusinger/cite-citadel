@@ -449,6 +449,11 @@ def rules_version() -> str:
 
 
 INDEX_PATH: Path = WIKI_DIR / "index.md"
+# The generated provenance catalog wiki/sources/index.md (mirrors INDEX_PATH). The ONE filesystem
+# path for it — store.rebuild_indexes, the MCP wiki_sources tool, and the CLI `sources` subcommand
+# all resolve it here rather than re-joining the "sources"/"index.md" literal. (store keeps the
+# wiki-relative "sources/index.md" string for the catalog's own link math.)
+SOURCES_INDEX_PATH: Path = WIKI_DIR / "sources" / "index.md"
 LOG_PATH: Path = WIKI_DIR / "log.md"
 MANIFEST_PATH: Path = WIKI_DIR / ".citadel_ingested.json"
 # Persistent record of raw sources that could NOT be ingested — a binary/unsupported file, or a

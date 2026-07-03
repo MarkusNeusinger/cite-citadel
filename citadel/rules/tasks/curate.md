@@ -17,13 +17,12 @@ where it genuinely holds against those sources:
 
 ## Hard invariants — never cross these
 
-- **Never invent.** Add no fact that is not already in a raw source (`[^sN]`) or a labeled model
-  note (`[^llmN]`). Curation reorganizes and repairs what is already cited; it never manufactures.
-- **Never break provenance.** Every `[^sN]` marker keeps pointing at the raw file it always did,
-  its `## Sources` definition intact. Moving a fact to another page carries its `[^sN]` marker AND
-  its definition with it. Never drop, renumber-away, or fabricate a citation.
-- **Preserve counterfactuals as stated** (`schema.md` § Grounding). A sourced claim you believe is
-  wrong stays as the source stated it, cited — curation never "corrects" it out.
+- **Never invent, never break provenance.** See `schema.md` § Grounding for the `[^sN]` (raw) vs
+  `[^llmN]` (labeled model note) grammar and how a fact carries its marker + `## Sources` definition
+  when it moves (`core.md` § Restructuring). Curation only reorganizes and repairs what is already
+  cited — it never manufactures a fact or a citation.
+- **Preserve counterfactuals as stated** (`schema.md` § Grounding): a sourced claim you believe is
+  wrong stays as the source stated it, cited — never "corrected" out.
 - **Never resurrect a deleted fact or invent a replacement for one.**
 
 ## What curation MAY do

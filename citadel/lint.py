@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import grammar, okf, store, validate
+from . import config, grammar, okf, store, validate
 from .okf import Page
 
 
@@ -123,6 +123,11 @@ class LintReport:
     # locator naming a heading the source does not contain (Z6). Advisory — a locator being off does
     # not break navigation, so it does NOT flip ok(); it is also fed to `citadel curate` as a finding.
     locator_issues: list[tuple[str, str]] = field(default_factory=list)
+    # rel_paths over the SOFT page-length threshold (config.CURATE_PAGE_SOFT_LINES, ~400 body lines):
+    # long enough to be worth an eventual topic split. Advisory — "lint warns at soft, curate acts at
+    # hard" (docs/refactor-plan.md Z5): this does NOT flip ok(); `citadel curate` only plans a split
+    # once a page crosses the HARD threshold.
+    long_pages: list[str] = field(default_factory=list)
 
     def ok(self) -> bool:
         """True unless there are structural-integrity problems: missing_type, broken_links,
@@ -161,6 +166,10 @@ class LintReport:
 
         lines.append(f"Stale: {len(self.stale)}")
         for rel in self.stale:
+            lines.append(f"  - {rel}")
+
+        lines.append(f"Long pages (over soft length, consider a split): {len(self.long_pages)}")
+        for rel in self.long_pages:
             lines.append(f"  - {rel}")
 
         lines.append(f"Fabricated/missing sources: {len(self.bad_sources)}")
@@ -204,6 +213,20 @@ def _outbound_links(page: Page) -> list[str]:
     """Wiki cross-link targets for orphan/broken-link detection — delegates to the shared
     :func:`grammar.resolved_md_links`; see grammar.py for the decided rules."""
     return [resolved for _raw, resolved in grammar.resolved_md_links(page.rel_path, page.body)]
+
+
+def orphans(pages: list[Page]) -> list[str]:
+    """Island pages — no page links TO them AND they link to nothing (only source citations, which
+    resolve into raw/ and are never wiki cross-links). THE single orphan definition: :func:`lint`'s
+    own check and ``citadel curate``'s plan both consume this (the :func:`check_locators` precedent),
+    so they agree by construction. Sorted."""
+    outbound: dict[str, list[str]] = {}
+    inbound: set[str] = set()
+    for page in pages:
+        links = _outbound_links(page)
+        outbound[page.rel_path] = links
+        inbound.update(links)
+    return sorted(p.rel_path for p in pages if p.rel_path not in inbound and not outbound[p.rel_path])
 
 
 def _has_footnote(paragraph: str) -> bool:
@@ -397,16 +420,30 @@ def _duplicate_open_points(points: list[store.OpenPoint]) -> list[tuple[str, str
     return sorted(pairs)
 
 
-def _read_source_text(page_rel: str, target: str) -> str | None:
+def _read_source_text(page_rel: str, target: str, cache: dict[str, str | None]) -> str | None:
     """The text of the raw source a citation ``target`` (written in ``page_rel``) points at, or
     None when it is not a locator-checkable text file: not a source citation, missing, a paginated/
     binary format (PDF/Office/image — those carry agent-verified page locators), or undecodable. A
-    NUL byte or a decode failure means "binary" — the locator is left for the agent, not flagged."""
+    NUL byte or a decode failure means "binary" — the locator is left for the agent, not flagged.
+
+    ``cache`` memoizes the result per resolved absolute path for the lifetime of one
+    :func:`check_locators` call, so a page whose many ``[^sN]`` locators cite the SAME source file
+    reads that file once (O(files), not O(citations))."""
     if not grammar.is_source_citation(page_rel, target):
         return None
     abs_path = grammar.link_abs(page_rel, target)
     if abs_path is None:
         return None
+    if abs_path in cache:
+        return cache[abs_path]
+    text = _load_source_text(abs_path)
+    cache[abs_path] = text
+    return text
+
+
+def _load_source_text(abs_path: str) -> str | None:
+    """Read one resolved source path as locator-checkable text, or None when it is missing, a
+    paginated/binary format, or undecodable (the uncached inner read behind :func:`_read_source_text`)."""
     path = Path(abs_path)
     if path.suffix.lower() in _NON_TEXT_EXTS:
         return None
@@ -453,15 +490,16 @@ def _heading_candidates(text: str):
             yield candidate
 
 
-def _locator_problem(page_rel: str, target: str, tail: str) -> str | None:
+def _locator_problem(page_rel: str, target: str, tail: str, cache: dict[str, str | None]) -> str | None:
     """Verify ONE locator ``tail`` against its text source, returning a human-readable problem or
     None. A line range (matched as a prefix, so a trailing description is ignored) is checked against
     the file's line count; ``§ Heading`` against the source's headings (a heading = a line matching a
     candidate once its leading ``#``/space is stripped, case-folded). ``p. 12`` / ``pp. 3-5`` page
-    locators (and any unrecognized form) are agent-verified — skipped."""
+    locators (and any unrecognized form) are agent-verified — skipped. ``cache`` is the per-run
+    source-text memo threaded through :func:`_read_source_text`."""
     lines_m = _LOC_LINES_RE.match(tail)
     if lines_m:
-        text = _read_source_text(page_rel, target)
+        text = _read_source_text(page_rel, target, cache)
         if text is None:
             return None
         start = int(lines_m.group(1))
@@ -471,7 +509,7 @@ def _locator_problem(page_rel: str, target: str, tail: str) -> str | None:
             return f"locator '{lines_m.group(0).strip()}' out of range (source has {n} lines)"
         return None
     if tail.startswith("§"):
-        text = _read_source_text(page_rel, target)
+        text = _read_source_text(page_rel, target, cache)
         if text is None:
             return None
         headings = {line.strip().lstrip("#").strip().lower() for line in text.splitlines()}
@@ -489,30 +527,20 @@ def check_locators(pages: list[Page]) -> list[tuple[str, str]]:
     (docs/refactor-plan.md Z6): a ``lines A-B`` range past the file's end, or a ``§ Heading`` naming
     a heading the source lacks, is a ``(rel_path, detail)`` warning. PDF/Office page locators stay
     agent-verified (no Python PDF reader by design). Shared by :func:`lint` and ``citadel curate``;
-    reuses the one citation/link/fence grammar, so it agrees with the strict gate by construction."""
+    reuses the one citation/link/fence grammar (:func:`grammar.source_definitions`), so it agrees
+    with the strict gate by construction."""
     issues: list[tuple[str, str]] = []
     for page in pages:
-        in_sources = False
-        for line, in_code in grammar.iter_lines(page.body):
-            if in_code:
-                continue
-            stripped = line.strip()
-            if stripped.startswith("#"):
-                in_sources = bool(grammar.SOURCES_HEADING_RE.match(stripped))
-                continue
-            if not in_sources:
-                continue
-            match = grammar.DEF_LINE_RE.match(line)
-            if not match or grammar.is_llm_marker(match.group(1)):
-                continue
-            rest = match.group(2)
+        # One source-text memo per page: many [^sN] locators may cite the same file (read once).
+        cache: dict[str, str | None] = {}
+        for _marker_id, rest in grammar.source_definitions(page.body):
             target = grammar.def_link_target(rest)
             if target is None or grammar.is_external(target):
                 continue
             tail = _locator_tail(rest)
             if tail is None:
                 continue
-            problem = _locator_problem(page.rel_path, target, tail)
+            problem = _locator_problem(page.rel_path, target, tail, cache)
             if problem:
                 issues.append((page.rel_path, problem))
     return sorted(issues)
@@ -531,14 +559,9 @@ def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
     report = LintReport()
     page_paths = {p.rel_path for p in pages}
 
-    # Build the outbound-link graph once.
-    outbound: dict[str, list[str]] = {}
-    inbound_targets: set[str] = set()
-    for page in pages:
-        links = _outbound_links(page)
-        outbound[page.rel_path] = links
-        for target in links:
-            inbound_targets.add(target)
+    # Build the outbound-link graph once (for broken_links); orphans reuse the shared helper.
+    outbound: dict[str, list[str]] = {page.rel_path: _outbound_links(page) for page in pages}
+    report.orphans = orphans(pages)
 
     # Page titles long enough to match on (for the un-linked-mention suggestion).
     title_index = [(p.rel_path, p.title.strip().lower(), p.title.strip()) for p in pages if len(p.title.strip()) >= 3]
@@ -559,11 +582,9 @@ def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
             if target not in page_paths:
                 report.broken_links.append((page.rel_path, target))
 
-        # orphans: no inbound links AND no outbound (non-raw) links.
-        has_inbound = page.rel_path in inbound_targets
-        has_outbound = bool(outbound[page.rel_path])
-        if not has_inbound and not has_outbound:
-            report.orphans.append(page.rel_path)
+        # long_pages (advisory): over the SOFT length threshold — lint warns, curate acts at hard.
+        if len(page.body.splitlines()) > config.CURATE_PAGE_SOFT_LINES:
+            report.long_pages.append(page.rel_path)
 
         # missing_cites
         preview = _missing_cite_preview(page)
@@ -618,4 +639,5 @@ def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
     report.llm_facts.sort()
     report.suggested_links.sort()
     report.wikilinks.sort()
+    report.long_pages.sort()
     return report
