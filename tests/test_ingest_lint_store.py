@@ -60,8 +60,17 @@ def test_rewrite_links_skips_code_fences_and_substrings():
     assert out.count("(new.md)") == 1
 
 
-@pytest.mark.parametrize("rel_path", ["index.md", "log.md", "concepts/index.md",
-        "concepts\\index.md",  # windows separator must not bypass the guard, ".citadel_ingested.json", ""])
+@pytest.mark.parametrize(
+    "rel_path",
+    [
+        "index.md",
+        "log.md",
+        "concepts/index.md",
+        "concepts\\index.md",  # windows separator must not bypass the guard
+        ".citadel_ingested.json",
+        "",
+    ],
+)
 def test_write_page_refuses_generated_files(tmp_citadel, rel_path):
     """write_page carries delete_page's reserved-name guard: a programmatic write (e.g. curate)
     can NEVER clobber a generated/reserved file (index.md, any per-folder index.md, log.md, a
