@@ -62,9 +62,11 @@ Concepts link to one another with **standard markdown links**, each asserting an
 directed) relationship, so the links form a graph richer than the directory tree alone. The
 spec allows two path forms: **bundle-relative absolute** (a leading `/`), recommended because
 it survives moves, and plain **relative** paths like `[transformer](../concepts/transformer.md)`.
-File paths are concept identities, and consumers must tolerate broken links. citadel accepts
-**only** the relative form: a `/`-prefixed bundle-absolute link (the spec's recommended
-move-stable form) resolves outside the wiki root and so fails citadel's broken-link gate.
+File paths are concept identities, and consumers must tolerate broken links. citadel supports
+**only** the relative form for wiki cross-links: a `/`-prefixed bundle-absolute link (the spec's
+recommended move-stable form) is treated as a source-style reference and skipped by the link graph
+— it will neither work as a wiki link nor be flagged by lint. Authors must therefore use relative
+links.
 
 ## Provenance & history
 

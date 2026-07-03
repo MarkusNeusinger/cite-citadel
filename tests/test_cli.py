@@ -74,9 +74,12 @@ def ingest_spy(monkeypatch):
 
 @pytest.fixture
 def browser_spy(monkeypatch):
-    """Replace ``viewer.webbrowser`` with a :class:`BrowserSpy` so no browser ever launches."""
+    """Replace ``viewer.webbrowser`` with a :class:`BrowserSpy` so no browser ever launches, and
+    pin non-WSL so the suite stays hermetic on a WSL dev box (the WSL open path — wslview /
+    explorer.exe / wslpath — is exercised by its own tests in test_viewer.py)."""
     spy = BrowserSpy()
     monkeypatch.setattr(viewer, "webbrowser", spy)
+    monkeypatch.setattr(viewer, "_is_wsl", lambda: False)
     return spy
 
 

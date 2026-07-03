@@ -209,7 +209,7 @@ def test_billing_ok_when_base_url_redirects_the_key(tmp_citadel, monkeypatch):
     c = doctor.check_billing_shadow()
     assert c.status == doctor.OK
     assert "http://localhost:11434" in c.detail
-    assert "billing concern does not apply" in c.detail
+    assert "the key is not sent to Anthropic's API" in c.detail
 
 
 def test_billing_ok_when_key_but_backend_is_not_claude(tmp_citadel, monkeypatch):
