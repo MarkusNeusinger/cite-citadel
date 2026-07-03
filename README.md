@@ -35,74 +35,31 @@ database — no SQLite, no vector store. Ingest runs through a **coding-agent CL
 ## Install
 
 ```bash
-uv sync   # creates .venv, installs deps (just mcp + pyyaml) + the citadel CLI
+uv add cite-citadel            # add to a project
+uv tool install cite-citadel   # or install a global `citadel` CLI
+pip install cite-citadel       # or plain pip
 ```
-
-Run commands with the **portable** invocation that works the same on Linux/macOS/Windows:
-
-```bash
-uv run python -m citadel <subcommand>
-```
-
-(`uv run citadel …` is a shorthand but can be blocked by antivirus on Windows; the `python -m` form
-and the bundled `.\citadel` wrapper need no `.exe`. Prefer pip? `pip install -e '.[dev]'` works too.)
 
 ## Quickstart
 
-Ingest shells out to a coding-agent CLI — install and log into one (default `claude`: run `claude`
-once and `/login`). Everything else (`search`, `tags`, `check`, `lint`, `view`, MCP) needs no CLI.
+Ingest runs through a coding-agent CLI you already have — no API key, just your existing subscription.
 
-```bash
-cp ~/notes/*.md raw/                          # drop in any text-bearing files
-uv run python -m citadel ingest               # fold new/changed sources into wiki/
-uv run python -m citadel curate               # improve existing pages (--dry-run to preview)
-uv run python -m citadel status               # per-source state: ingested / failed / pending / …
-uv run python -m citadel search "caffeine"    # ranked keyword search (--tag to filter)
-uv run python -m citadel view                 # open the offline, single-file HTML viewer
-uv run python -m citadel serve                # run the MCP server (stdio)
-```
+1. **`citadel init my-wiki && cd my-wiki`** — scaffolds the workspace (the `citadel.toml` marker, a
+   `.env`, and empty `raw/` + `wiki/`).
+2. **Fill in the generated `.env`.** At minimum set the coding-agent CLI to shell out to —
+   `CITADEL_LLM_CLI=claude | copilot | gemini` — which must be installed and logged in (no API key
+   needed); optionally pin a model with `CITADEL_INGEST_MODEL`. Every other knob is documented
+   inline in that same file.
+3. **Drop any text-bearing files into `raw/`** — markdown, code, PDF, Office, images, in any sub-folder.
+4. **`citadel ingest`** — one agent session per source folds it into the cross-linked, cited wiki.
+5. **Use it** — `citadel search "caffeine"` (also `read`, `status`, `curate`, `view`, `lint`,
+   `check`, `tags`) from the shell, or `citadel serve` to expose the wiki to any AI over MCP.
+   **Everything the MCP server offers, the CLI offers too** — an AI without MCP access can drive
+   citadel through equivalent shell commands.
 
-Two health checks, both offline and CI-friendly:
-
-```bash
-uv run python -m citadel check    # strict per-page gate (fields, citations, links); ingest runs it too
-uv run python -m citadel lint     # health report (contradictions, orphans, fabricated sources, …)
-```
-
-Ingest is **idempotent** — a committed `wiki/.citadel_ingested.json` manifest tracks each source's
-hash and the model that imported it — and keeps the wiki in sync when a raw file is **edited,
-deleted, or moved**. Configure the backend in `.env` (`citadel init` scaffolds it from the
-packaged template, or copy [`citadel/templates/env.example`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/citadel/templates/env.example)):
-
-```ini
-CITADEL_LLM_CLI=claude        # claude | copilot | gemini
-CITADEL_INGEST_MODEL=sonnet   # claude model alias/id
-```
-
-[`citadel/templates/env.example`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/citadel/templates/env.example) documents every knob — timeouts,
-verbose/transcript debugging, an out-of-workspace `wiki/`/`raw/` on a network drive, multiple raw
-roots (`CITADEL_RAW_DIRS`, a comma/newline-separated list of directories all walked by ingest),
-ingesting a whole git repo as one source, the wiki's target language (`CITADEL_WIKI_LANG`, default
-`en`), PDF figure reading (`CITADEL_PDF_MODE=text|images`), and opt-in persona/style capture
-(`CITADEL_STYLE_PROFILES`). Re-scans are incremental — an unchanged file is skipped by a stat
-quick-check without re-reading its bytes (`citadel ingest --full-rescan` re-hashes everything), and
-`citadel ingest --force <paths>` deliberately re-reads already-ingested sources, re-verifying the
-wiki's facts under the current rules (it requires explicit paths, so a whole-corpus re-read never
-happens by accident).
-
-**`citadel curate` is the wiki's second lifecycle** — where ingest *folds sources in*, curate
-*improves the pages that already exist*. It recomputes a work plan from offline detectors every run
-(no stored queue — the wiki itself is the database): pages ingested under an older rulebook,
-overlong pages to split, unresolved contradictions, orphans, pages leaning on model knowledge
-instead of their sources, pages filed in the wrong folder, and citation locators that no longer
-point at the right place. Each flagged page cluster gets one agent session over the same
-all-or-nothing staging machinery ingest uses, so a bad edit rolls back and the live wiki only ever
-gains clean, validated improvements. `citadel curate --dry-run` prints the plan and runs zero
-sessions; `--limit`/`--stale-rules` narrow it, `--diff report.md` writes a per-page change report,
-and `CITADEL_CURATE_MODEL` lets curate run on a cheaper model than ingest. `citadel status` answers
-"what state is my corpus in?" — a read-only per-source table of ingested (with model + rules
-version), failed, skipped-duplicate, ignored, and pending sources, computed without re-reading a
-byte.
+> **Contributing?** Run from a checkout: `uv sync`, then the portable `uv run python -m citadel
+> <subcommand>` (identical on Linux/macOS/Windows and needs no `.exe` — on Windows, antivirus can
+> quarantine uv's generated `citadel.exe`).
 
 ## How it works
 
@@ -174,8 +131,8 @@ everything through the CLI. Wire it into an MCP client (e.g. Claude Desktop):
 {
   "mcpServers": {
     "citadel": {
-      "command": "uv",
-      "args": ["run", "python", "-m", "citadel", "serve"],
+      "command": "citadel",
+      "args": ["serve"],
       "env": { "CITADEL_LLM_CLI": "claude", "CITADEL_INGEST_MODEL": "sonnet" }
     }
   }
