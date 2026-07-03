@@ -5,7 +5,9 @@ tag catalog, and suggested links.
 
 from __future__ import annotations
 
-from citadel import lint, store
+import pytest
+
+from citadel import lint, okf, store
 
 
 def test_lint_flags_fabricated_source(tmp_citadel, seed_page):
@@ -56,6 +58,19 @@ def test_rewrite_links_skips_code_fences_and_substrings():
     assert "[Old](new.md)" in out  # real link repointed
     assert "[X](./old.md)" in out  # fenced literal left intact
     assert out.count("(new.md)") == 1
+
+
+@pytest.mark.parametrize("rel_path", ["index.md", "log.md", "concepts/index.md", ".citadel_ingested.json", ""])
+def test_write_page_refuses_generated_files(tmp_citadel, rel_path):
+    """write_page carries delete_page's reserved-name guard: a programmatic write (e.g. curate)
+    can NEVER clobber a generated/reserved file (index.md, any per-folder index.md, log.md, a
+    dotfile, or the empty path) — it raises before touching disk, even with valid frontmatter."""
+    wiki = tmp_citadel.wiki
+    before = (wiki / rel_path).read_bytes() if rel_path and (wiki / rel_path).is_file() else None
+    with pytest.raises(okf.OKFError):
+        store.write_page(rel_path, {"type": "Concept", "title": "Clobber"}, "body\n")
+    if before is not None:  # a pre-existing generated file is left byte-for-byte intact
+        assert (wiki / rel_path).read_bytes() == before
 
 
 def test_lint_allows_and_surfaces_llm_sourced_fact(tmp_citadel, seed_page):

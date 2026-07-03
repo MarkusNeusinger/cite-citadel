@@ -266,7 +266,7 @@ def resolved_md_links(page_rel: str, body: str) -> list[tuple[str, str]]:
     source citations (:func:`resolves_to_source` — the ``## Sources`` footnotes). Fence-aware
     (decided rule 2): a literal ``](x.md)`` inside a ``` code fence is text, exactly as the
     rewriters treat it, so detectors (broken links, backlinks, graph edges) and rewriters agree.
-    The shared upstream of ``store.find_broken_links`` / ``store._inbound_map`` /
+    The shared upstream of ``store.find_broken_links`` / ``store.inbound_map`` /
     ``lint``'s link graph / the viewer's edges."""
     out: list[tuple[str, str]] = []
     for line in prose_lines(body):
