@@ -5,14 +5,18 @@ the wiki, and **edits the wiki page files directly** — there is no ops JSON to
 module does the deterministic work around that autonomy:
 
 - run the agent against a **per-source staging copy** of the wiki (a sibling directory), so the
-  **live wiki is never the agent's scratch space**: a clean session is promoted onto the live
-  wiki, and a failed or aborted (Ctrl+C) one is discarded with the live wiki untouched. The
-  promote is a non-destructive sync (copy-over then prune), so the live wiki can never be left
-  empty or half-written — not even on a flaky network share, and not even if the promote is
-  interrupted. A source is all-or-nothing in every case EXCEPT a Ctrl+C landing in the brief
-  promote itself, which can leave that one source partially applied — a superset of valid pages,
-  never an emptied or corrupt wiki — that a later full run reconciles;
-- snapshot the wiki BEFORE and AFTER the session and **diff by content hash** to learn what
+  **live wiki is never the agent's scratch space**: a clean source is promoted onto the live
+  wiki, and a failed or aborted (Ctrl+C) one is discarded with the live wiki untouched. A
+  chunked large source runs ALL its segment passes against that ONE staging copy and promotes
+  ONCE, after the last segment passes (docs/refactor-plan.md Z11 — the live wiki only ever
+  contains fully imported sources; a failure at segment N deliberately discards the earlier
+  segments' work and the source retries from segment 1 next run). The promote is a
+  non-destructive sync (copy-over then prune), so the live wiki can never be left empty or
+  half-written — not even on a flaky network share, and not even if the promote is interrupted.
+  A source is all-or-nothing in every case EXCEPT a Ctrl+C landing in the brief promote itself,
+  which can leave that one source partially applied — a superset of valid pages, never an
+  emptied or corrupt wiki — that a later full run reconciles;
+- snapshot the wiki BEFORE and AFTER each session and **diff by content hash** to learn what
   the agent created/updated/deleted (no return value needed);
 - **validate + re-stamp** every changed page (``validate.validate_page`` re-imposes required
   fields / citations / link form; ``store.write_page`` canonicalizes YAML and stamps the
@@ -21,9 +25,10 @@ module does the deterministic work around that autonomy:
   via ``store.rewrite_links``, derived from the diff);
 - once per run, rebuild indexes, surface broken links, and append a log line.
 
-Idempotent: sources whose sha already matches the manifest are skipped, and a source is
-marked done only on a clean session. ``llm.run_ingest_session`` is the single outside call
-(tests monkeypatch it with a fake that writes files into the temp wiki).
+Idempotent: sources whose sha already matches the manifest are skipped (unless deliberately
+re-read with ``--force``), and a source is marked done only on a clean session.
+``llm.run_ingest_session`` is the single outside call (tests monkeypatch it with a fake that
+writes files into the temp wiki).
 """
 
 from __future__ import annotations
@@ -38,6 +43,7 @@ import stat
 import sys
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
@@ -515,6 +521,7 @@ def _partition_sources(
     full_rescan: bool = False,
     walk: _Walk | None = None,
     swept_roots: list[Path] | None = None,
+    force: bool = False,
 ) -> _Scan:
     """Split candidates into a :class:`_Scan` in one walk. ``walk`` is the (possibly
     pre-computed) discovery walk — :func:`ingest` hoists it so ``swept_roots`` (the ONE sweep
@@ -552,6 +559,14 @@ def _partition_sources(
     stat cache in place (``mutated``). Untracked candidates consult the failures catalog's
     sha+stat the same way, so an unchanged stuck source (duplicate twin, unreadable binary) is
     re-evaluated without being re-hashed. ``full_rescan`` bypasses both quick checks.
+
+    ``force`` (``ingest --force``, docs/refactor-plan.md Z4) goes one deliberate step further:
+    it bypasses the quick checks AND the sha short-circuit, so an unchanged already-ingested
+    candidate lands in ``pending`` and is re-read by the agent (the caller's changed-keys logic
+    then gives a tracked key ``kind="reconcile"``, never a page-duplicating plain ingest). It
+    also bypasses the same-basename dedup DROP: the explicitly requested file is ingested even
+    when a sibling format was kept, with ``duplicates`` carrying the would-be drop pairs purely
+    as the report's divergence record (nothing is dropped from ``pending``).
 
     Move/duplicate detection only fires for a genuinely NEW path (``key not in manifest_dict``):
     an in-place edit of an already-tracked file is always re-ingested, even if its new content
@@ -599,7 +614,7 @@ def _partition_sources(
         untracked_sha: str | None = None
         if entry is not None:
             file_entry = not manifest.is_repo_entry(entry)
-            if file_entry and not full_rescan and manifest.entry_trusts_stat(entry, st):
+            if file_entry and not full_rescan and not force and manifest.entry_trusts_stat(entry, st):
                 # The scan-cache quick check: (size, mtime_ns) match and the entry is not racy —
                 # the recorded sha stands, no content read at all.
                 skipped.append(key)
@@ -613,7 +628,7 @@ def _partition_sources(
                 skipped.append(key)
                 continue
             hashed[key] = (sha, st)
-            if file_entry and sha == manifest.entry_sha(entry):
+            if file_entry and not force and sha == manifest.entry_sha(entry):
                 # Unchanged content behind a stale/absent stat cache (a touched-but-identical
                 # file, a pre-PR4 entry, --full-rescan): refresh/backfill the entry in place —
                 # keeping the recorded model/rules_version — so the next run quick-skips it.
@@ -623,11 +638,12 @@ def _partition_sources(
                 mutated = True
                 skipped.append(key)
                 continue
-            # Changed bytes (sha is the sole arbiter): fall through to classification below.
+            # Changed bytes (sha is the sole arbiter) — or a FORCED re-read of unchanged ones:
+            # fall through to classification below.
         else:
             fentry = failures_dict.get(key)
             fsha = fentry.get("sha256") if isinstance(fentry, dict) else None
-            if fsha and not full_rescan and manifest.entry_trusts_stat(fentry, st):
+            if fsha and not full_rescan and not force and manifest.entry_trusts_stat(fentry, st):
                 # An unchanged stuck source (dedup-dropped twin, unreadable binary, erroring
                 # session) — the failures catalog is its scan cache: reuse the recorded sha so
                 # it is re-EVALUATED below without being re-hashed forever.
@@ -688,10 +704,17 @@ def _partition_sources(
     # dropping the rest from pending (and from the office/image side-tables). Recorded for the run.
     duplicates: list[tuple[str, str]] = []
     if config.DEDUP_BY_BASENAME:
-        pending, duplicates, dropped = _dedup_by_basename(pending, manifest_dict)
-        for p in dropped:
-            office_text.pop(p, None)
-            images.discard(p)
+        if force:
+            # Z4: a FORCED run ingests exactly the requested file(s) — the dedup drop is
+            # bypassed (_dedup_rank never decides), and the would-be drop pairs are kept only
+            # as the report's divergence record naming the sibling the wiki now deliberately
+            # holds alongside. Pending stays intact.
+            _kept, duplicates, _dropped = _dedup_by_basename(pending, manifest_dict)
+        else:
+            pending, duplicates, dropped = _dedup_by_basename(pending, manifest_dict)
+            for p in dropped:
+                office_text.pop(p, None)
+                images.discard(p)
     return _Scan(
         pending=sorted(pending),
         skipped=skipped,
@@ -711,21 +734,31 @@ def _partition_sources(
 class _RepoJob:
     """One pending repo source: its on-disk ``path``, its source key (``raw/acme-service``), the
     session ``kind`` (``"repo"`` first time / ``"repo-reconcile"`` on a later commit), and the
-    ``old_commit`` to diff against on a reconcile (None for a first ingest)."""
+    ``old_commit`` to diff against on a reconcile (None for a first ingest). ``force`` marks a
+    deliberately re-read repo (``ingest --force``, Z4): the session builds a FULL re-digest —
+    ``only=None`` and no change summary — instead of the diff-restricted reconcile digest (there
+    may be no commit diff to consult, and the point of forcing is to re-verify everything)."""
 
     path: Path
     key: str
     kind: str
     old_commit: str | None
+    force: bool = False
 
 
 def _partition_repos(
-    repo_paths: list[Path], manifest_dict: dict[str, manifest.Entry], swept_roots: list[Path] | None
+    repo_paths: list[Path],
+    manifest_dict: dict[str, manifest.Entry],
+    swept_roots: list[Path] | None,
+    force: bool = False,
 ) -> tuple[list[_RepoJob], list[tuple[str, str, str]], list[str], list[str], list[str]]:
     """Split discovered repos into ``(pending, moved, deleted, skipped, out_of_root)``.
 
     - ``pending``: repos that are new (``kind="repo"``) or whose commit changed since last ingest
-      (``kind="repo-reconcile"``, carrying the old commit for the diff).
+      (``kind="repo-reconcile"``, carrying the old commit for the diff). With ``force`` (Z4) a
+      repo already at its stored commit is NOT skipped: it lands here as ``kind="repo-reconcile"``
+      (never ``"repo"`` — a first-time brief would duplicate pages) with the force flag set, so
+      the session re-reads a full digest.
     - ``moved``: ``(old_key, new_key, identity)`` for a repo that appeared under a NEW path whose
       base commit matches a tracked repo whose old folder is gone — a rename; references get
       repointed, not re-ingested.
@@ -756,7 +789,7 @@ def _partition_repos(
         key = manifest.rel_key(path)
         ident = repo.identity(path)
         stored = manifest_dict.get(key)
-        if manifest.is_repo_entry(stored) and manifest.entry_commit(stored) == ident:
+        if not force and manifest.is_repo_entry(stored) and manifest.entry_commit(stored) == ident:
             skipped.append(key)
             continue
         if key not in manifest_dict:
@@ -770,7 +803,7 @@ def _partition_repos(
                     continue
         old_commit = manifest.entry_commit(stored) if manifest.is_repo_entry(stored) else None
         kind = "repo-reconcile" if old_commit else "repo"
-        pending.append(_RepoJob(path=path, key=key, kind=kind, old_commit=old_commit))
+        pending.append(_RepoJob(path=path, key=key, kind=kind, old_commit=old_commit, force=force))
 
     moved_old = {old for old, _new, _ident in moved}
     walked_keys = {manifest.rel_key(p) for p in repo_paths}
@@ -1163,24 +1196,35 @@ class _SourceOutcome:
     seconds: float = 0.0
 
 
-def _run_one_agent_session(session_fn, rel_key: str, extra_check=None, allow_emptying: bool = False) -> _SourceOutcome:
-    """Run ONE agent session with full all-or-nothing safety, shared by the pending
-    (ingest/reconcile) and deletion-cleanup loops.
+def _run_agent_sessions(session_fns, rel_key: str, extra_check=None, allow_emptying: bool = False) -> _SourceOutcome:
+    """Run one source's agent session(s) — a single pass, or every segment of a chunked source —
+    against ONE staging copy, with full all-or-nothing safety. Shared by every job kind
+    (ingest/reconcile, repo, deletion cleanup).
 
     Makes a STAGING copy of the live wiki (a sibling dir), redirects the agent + its ``citadel
-    check`` there, snapshots staging, calls ``session_fn()`` (the agent edits the STAGING copy —
-    never the live wiki), diffs to learn what changed, validates + re-stamps the changed pages,
-    repoints renamed-page links, and runs an optional ``extra_check()`` post-condition (used by
-    deletion cleanup to assert no reference to the removed source survived). Only on a CLEAN session
-    is staging promoted onto the live wiki (a non-destructive copy-over-then-prune that can never
-    empty or half-write it). On ANY failure — a validation error, a failed post-condition, or an
-    exception from the session — the live wiki is left exactly as it was and ``ok`` is False; the
-    caller leaves the source un-committed so it is retried next run. A propagating ``BaseException``
-    (Ctrl+C) during the session likewise leaves the live wiki untouched (nothing is promoted); during
-    the brief promote it can leave that ONE source partially applied — a SUPERSET of valid pages,
-    never an emptied wiki — which a later full run reconciles. Either way it re-raises for the
-    caller's loop to capture. Staging is always discarded in ``finally``. The caller owns the
-    manifest + report bookkeeping (different for a completed source vs. a removed one)."""
+    check`` there, then for EACH ``session_fn`` in order: snapshots staging, calls the session
+    (the agent edits the STAGING copy — never the live wiki), diffs to learn what that pass
+    changed, validates + re-stamps the changed pages (fail fast: an invalid segment stops the
+    source right there — later segments never run), and repoints renamed-page links. A later
+    segment therefore sees — and merges into — what the earlier segments wrote in the SAME
+    staging copy. After the last session an optional ``extra_check()`` post-condition runs (used
+    by deletion cleanup to assert no reference to the removed source survived).
+
+    PROMOTION HAPPENS EXACTLY ONCE, after the last session passes (docs/refactor-plan.md Z11 —
+    no silently partial imports): the non-destructive copy-over-then-prune that can never empty
+    or half-write the live wiki, which thus only ever contains FULLY imported sources. Trade-off
+    accepted and documented (Z11): a failure/timeout/interrupt at segment N discards the whole
+    staging copy — N-1 segments' agent work — and the source retries from segment 1 next run;
+    the all-or-nothing guarantee is worth more than salvaged partial passes.
+
+    On ANY failure — a validation error, a failed post-condition, or an exception from a session
+    — the live wiki is left exactly as it was and ``ok`` is False; the caller leaves the source
+    un-committed so it is retried next run. A propagating ``BaseException`` (Ctrl+C) during a
+    session likewise leaves the live wiki untouched (nothing is promoted); during the brief
+    promote it can leave that ONE source partially applied — a SUPERSET of valid pages, never an
+    emptied wiki — which a later full run reconciles. Either way it re-raises for the caller's
+    loop to capture. Staging is always discarded in ``finally``. The caller owns the manifest +
+    report bookkeeping (different for a completed source vs. a removed one)."""
     started = time.monotonic()
     live = config.WIKI_DIR
     staging: Path | None = None
@@ -1190,38 +1234,153 @@ def _run_one_agent_session(session_fn, rel_key: str, extra_check=None, allow_emp
     try:
         staging = _make_staging(live)
         with _redirect_wiki(staging):
-            before_pages = store.load()
-            before = _hash_pages(before_pages)
+            prev_pages = store.load()
+            prev = _hash_pages(prev_pages)
+            for session_fn in session_fns:
+                session_fn()  # the agent edits the STAGING copy, never the live wiki
 
-            session_fn()  # the agent edits the STAGING copy, never the live wiki
+                after = _snapshot()
+                seg_created, seg_updated, seg_deleted = _diff(prev, after)
 
-            after = _snapshot()
-            created, updated, deleted = _diff(before, after)
+                val_errors = _validate_and_restamp(seg_created + seg_updated, rel_key)
+                if val_errors:
+                    return _SourceOutcome(False, errors=val_errors, seconds=time.monotonic() - started)
 
-            val_errors = _validate_and_restamp(created + updated, rel_key)
-            if val_errors:
-                return _SourceOutcome(False, errors=val_errors, seconds=time.monotonic() - started)
+                _repair_renames(prev_pages, seg_created, seg_deleted)
 
-            _repair_renames(before_pages, created, deleted)
+                created.extend(seg_created)
+                updated.extend(seg_updated)
+                deleted.extend(seg_deleted)
+                # Re-baseline on the validated/re-stamped state, so the next segment's diff (and
+                # its validation) covers exactly what THAT segment changes.
+                prev_pages = store.load()
+                prev = _hash_pages(prev_pages)
 
             if extra_check is not None:
                 post_errors = extra_check()
                 if post_errors:
                     return _SourceOutcome(False, created, updated, deleted, post_errors, time.monotonic() - started)
 
-        # Clean session: commit it onto the live wiki (config now points back at live). This is the
-        # ONLY step that touches the live wiki, and it is non-destructive — so an interrupt here
-        # still cannot empty it.
+        # Every session was clean: commit the source onto the live wiki (config now points back
+        # at live). This is the ONLY step that touches the live wiki, it happens ONCE per source,
+        # and it is non-destructive — so an interrupt here still cannot empty it.
         _promote(staging, live, allow_emptying=allow_emptying)
         return _SourceOutcome(True, created, updated, deleted, [], time.monotonic() - started)
     except Exception as exc:  # noqa: BLE001 - collect per-source, keep going; live wiki untouched
         return _SourceOutcome(False, errors=[f"{rel_key}: {exc}"], seconds=time.monotonic() - started)
     finally:
-        # Discard staging on every exit (a clean session already promoted it; a failed or
+        # Discard staging on every exit (a clean source already promoted it; a failed or
         # interrupted one never touched the live wiki). A flaky share that refuses the delete only
         # leaves an inert sibling for the next run to clear — the live wiki is never at risk.
         if staging is not None:
             _robust_rmtree(staging)
+
+
+@dataclass
+class _SourceJob:
+    """ONE per-source unit of agent-driven work — the shared shape behind :func:`ingest`'s single
+    per-source loop (docs/refactor-plan.md Z7: the three near-duplicate loops — pending files,
+    repos, deletion cleanups — collapse behind this; :func:`_run_source_jobs` owns the
+    emit/report/failures vocabulary once).
+
+    - ``key``: the source key — the report/failures/progress identity.
+    - ``build_sessions``: plans the source's agent session(s), returning ``(session_fns,
+      tmpdirs)``: the callables run in order against ONE shared staging copy
+      (:func:`_run_agent_sessions`), and the temp dirs the loop removes afterwards. It may raise
+      — recorded as a per-source ``prepare_error`` failure, never aborting the run. An EMPTY
+      session list means there is nothing for an agent to do (a deleted source nothing cites):
+      the job succeeds immediately with zero page changes.
+    - ``on_success``: the post-success bookkeeping that differs per kind — the manifest stamp
+      (``mark_done`` / repo entry / key drop), clearing the failure record, the per-source
+      manifest save, and which report list the source lands in.
+    - ``extra_check``/``allow_emptying``: passed through to the session runner (deletion cleanup
+      asserts no reference survived and may legitimately empty the wiki).
+    - ``sha_stat``: the (sha256, stat) discovery already took for the source, threaded into the
+      failures catalog so an unchanged stuck source joins the stat quick check.
+    """
+
+    key: str
+    build_sessions: Callable[[], tuple[list[Callable[[], None]], list[str]]]
+    on_success: Callable[[], None]
+    prepare_error: str = "prepare source"
+    extra_check: Callable[[], list[str]] | None = None
+    allow_emptying: bool = False
+    sha_stat: tuple[str | None, os.stat_result | None] = (None, None)
+
+
+def _run_source_jobs(jobs: list[_SourceJob], emit, report: IngestReport, failures_dict, model) -> BaseException | None:
+    """Drive one GROUP of :class:`_SourceJob`s (files, repos, or deletion cleanups) through the
+    ONE shared per-source loop: emit ``source_start``, plan the session(s), run them all-or-nothing
+    against a single staging copy, then either record the failure (report + persistent failures
+    catalog + ``source_error``) or run the job's success bookkeeping and emit ``source_done``.
+
+    The progress vocabulary is frozen (pinned by tests): ``index``/``total`` count within THIS
+    group, restarting at 1 per group, and the event payload keys are exactly what the three
+    former loops emitted. Page changes reach the report only on success — a failed or interrupted
+    source promotes nothing, so the report claims nothing for it (Z11).
+
+    A ``BaseException`` (Ctrl+C) is RETURNED, not raised — the caller captures it, skips the
+    remaining groups, finalizes the completed sources, and re-raises (the frozen
+    capture-finalize-reraise pattern). The in-flight source was already rolled back by the
+    session runner's ``finally``."""
+    total = len(jobs)
+    for index, job in enumerate(jobs, 1):
+        emit("source_start", index=index, total=total, source=job.key)
+        sha, st = job.sha_stat
+        # Plan the session(s). A prepare failure (a temp write, a digest build) is a per-source
+        # error, NOT a run-aborting one.
+        try:
+            sessions, tmpdirs = job.build_sessions()
+        except Exception as exc:  # noqa: BLE001 - per-source, keep going
+            detail = f"{job.key}: {job.prepare_error}: {exc}"
+            report.errors.append(detail)
+            failures.record(failures_dict, job.key, failures.ERROR, detail, model, sha=sha, st=st)
+            emit("source_error", index=index, total=total, source=job.key, error=str(exc), seconds=0.0)
+            continue
+        try:
+            if sessions:
+                outcome = _run_agent_sessions(
+                    sessions, job.key, extra_check=job.extra_check, allow_emptying=job.allow_emptying
+                )
+            else:
+                outcome = _SourceOutcome(True)  # nothing for an agent to do: succeed with no changes
+        except BaseException as exc:  # noqa: BLE001 - Ctrl+C etc.: runner rolled back; captured
+            return exc
+        finally:
+            # Always remove every temp dir the plan produced (success, error, or interrupt).
+            for tmp in tmpdirs:
+                shutil.rmtree(tmp, ignore_errors=True)
+        if not outcome.ok:
+            # Nothing was promoted (the live wiki is untouched) and the source is NOT marked
+            # done, so it is retried next run. Persist the failure for triage.
+            report.errors.extend(outcome.errors)
+            detail = outcome.errors[0] if outcome.errors else f"{job.key}: agent session failed"
+            failures.record(failures_dict, job.key, failures.reason_for(detail), detail, model, sha=sha, st=st)
+            emit(
+                "source_error",
+                index=index,
+                total=total,
+                source=job.key,
+                error=outcome.errors[0] if outcome.errors else "",
+                seconds=outcome.seconds,
+            )
+            continue
+        report.pages_created.extend(outcome.created)
+        report.pages_updated.extend(outcome.updated)
+        report.pages_written.extend(outcome.created + outcome.updated)
+        report.pages_deleted.extend(outcome.deleted)
+        job.on_success()
+        emit(
+            "source_done",
+            index=index,
+            total=total,
+            source=job.key,
+            created=len(outcome.created),
+            updated=len(outcome.updated),
+            deleted=len(outcome.deleted),
+            seconds=outcome.seconds,
+        )
+    return None
 
 
 def _office_write_temp(text: str, name: str, media: list[tuple[str, bytes]] | None = None) -> tuple[str, str]:
@@ -1368,8 +1527,11 @@ def _pending_session(rel_key: str, kind: str, read_key: str | None, segment: tup
         llm.run_ingest_session(rel_key, kind=kind)
 
 
-def ingest(paths: list[str] | None = None, progress=None, full_rescan: bool = False) -> IngestReport:
-    """Run one ingest. Exactly one ``llm.run_ingest_session`` call per pending or deleted source.
+def ingest(
+    paths: list[str] | None = None, progress=None, full_rescan: bool = False, force: bool = False
+) -> IngestReport:
+    """Run one ingest. Exactly one source = one all-or-nothing agent job (a chunked source runs
+    several ``llm.run_ingest_session`` passes inside that one job).
 
     Before the per-source loop, candidates are partitioned (``_partition_sources``) into
     pending / already-ingested / **reorganized** (a file that only moved or is a byte-for-byte
@@ -1381,6 +1543,18 @@ def ingest(paths: list[str] | None = None, progress=None, full_rescan: bool = Fa
     ``--full-rescan`` flag — distrusts that cache and re-hashes everything; sha stays the sole
     arbiter, so unchanged sources are re-stamped, not re-ingested).
 
+    ``force`` (the ``--force`` flag — docs/refactor-plan.md Z4) deliberately re-reads the
+    requested sources even when nothing changed: the quick check AND the sha short-circuit are
+    bypassed, so a sha-matching tracked source lands in pending and runs ``kind="reconcile"``
+    (via the changed-keys logic below — never a page-duplicating plain ingest), a tracked repo
+    at its stored commit runs ``kind="repo-reconcile"`` over a FULL re-digest (no change
+    summary), a persisted UNREADABLE/ERROR failure record is re-evaluated (and cleared on
+    success), and a dedup-dropped key is ingested exactly as requested (the report records the
+    divergence). On success the manifest is re-stamped with the CURRENT model + rules_version —
+    the point of forcing after a model/rules upgrade. The CLI refuses ``--force`` without
+    explicit paths (one agent session per source must never hit the whole corpus by accident),
+    and a path-scoped run never sweeps deletions (``swept_roots=None`` below).
+
     Deletion detection is guarded (docs/refactor-plan.md Z3 — operational safety over
     thoroughness): candidates come from the walked-seen-set diff, each positively confirmed with
     ``.exists()``; any walk error aborts the entire sweep for the run; an unreachable root
@@ -1388,13 +1562,16 @@ def ingest(paths: list[str] | None = None, progress=None, full_rescan: bool = Fa
     workspace-identity mismatch whose keys do not resolve refuses the sweep outright.
 
     Per pending source: run the agent against a per-source STAGING copy of the wiki (a sibling
-    dir), snapshot it before/after, diff to learn what changed, validate + re-stamp the changed
-    pages, repoint any renamed-page links, and — only on a clean session — promote staging onto the
-    live wiki with a non-destructive sync. A source already tracked in the manifest but with new
-    bytes is a re-ingest, run with ``kind="reconcile"`` so the agent UPDATES/REMOVES the stale
-    facts it produced rather than only appending. On a per-source exception (a missing/unusable
-    CLI, a timeout, etc.) — or a Ctrl+C — nothing is promoted, so the live wiki is left exactly as
-    it was and the error is collected, so the source is retried next run.
+    dir), snapshot around every pass, diff to learn what changed, validate + re-stamp the changed
+    pages, repoint any renamed-page links, and — only when EVERY pass is clean — promote staging
+    onto the live wiki ONCE with a non-destructive sync (Z11: a chunked source's segments all
+    fold into that one staging copy, so the live wiki never holds a partially imported source).
+    A source already tracked in the manifest but with new bytes is a re-ingest, run with
+    ``kind="reconcile"`` so the agent UPDATES/REMOVES the stale facts it produced rather than
+    only appending. On a per-source exception (a missing/unusable CLI, a timeout, etc.) — or a
+    Ctrl+C — nothing is promoted, so the live wiki is left exactly as it was and the error is
+    collected, so the source is retried next run (a chunked source from segment 1 — the accepted
+    Z11 trade-off).
 
     Per deleted source (full run only): if any wiki page still cites it, run a ``kind="delete"``
     cleanup session that strips those facts/citations, gated by a post-condition that the wiki no
@@ -1402,6 +1579,10 @@ def ingest(paths: list[str] | None = None, progress=None, full_rescan: bool = Fa
     manifest key. A deleted source nothing cites is simply dropped from the manifest. Finalization
     (rebuild_indexes + find_broken_links + append_log) happens once, if any source was processed,
     reorganized, found unreadable, or removed.
+
+    The per-source loop itself is ONE shared implementation (:class:`_SourceJob` +
+    :func:`_run_source_jobs`): files, repos, and deletion cleanups differ only in how their
+    sessions are planned and in their post-success bookkeeping.
 
     ``progress`` is an optional ``progress(event, data)`` callback (run start, before/after
     each source, before finalization); None for non-interactive callers. A failing callback
@@ -1482,7 +1663,9 @@ def ingest(paths: list[str] | None = None, progress=None, full_rescan: bool = Fa
     swept_roots: list[Path] | None = None
     if paths is None and not workspace_shifted and not walk.errors:
         swept_roots = list(walk.entered_roots)
-    scan = _partition_sources(paths, manifest_dict, failures_dict, full_rescan, walk=walk, swept_roots=swept_roots)
+    scan = _partition_sources(
+        paths, manifest_dict, failures_dict, full_rescan, walk=walk, swept_roots=swept_roots, force=force
+    )
     if scan.mutated:
         # The quick check refreshed/backfilled stat caches on unchanged entries: persist them now
         # so the very next run reads no content for these files, even if nothing else happens.
@@ -1494,7 +1677,7 @@ def ingest(paths: list[str] | None = None, progress=None, full_rescan: bool = Fa
     # its deletion sweep is scoped by the same one swept_roots decision.
     repo_paths = _discover_repos(paths, walk)
     repo_pending, repo_moved, repo_deleted, repo_skipped, repo_out_of_root = _partition_repos(
-        repo_paths, manifest_dict, swept_roots
+        repo_paths, manifest_dict, swept_roots, force=force
     )
     report.skipped = scan.skipped + repo_skipped
     deleted_sources = scan.deleted + repo_deleted
@@ -1596,9 +1779,14 @@ def ingest(paths: list[str] | None = None, progress=None, full_rescan: bool = Fa
     # --- Duplicate document sources: skipped in favor of another same-basename format (config
     # DEDUP_BY_BASENAME). Record them (report + persistent failures, with sha+stat so an unchanged
     # twin is never re-hashed) but do NOT mark them done, so a later run re-evaluates — deleting
-    # the kept file promotes one of these. ---
+    # the kept file promotes one of these. On a FORCED run nothing was dropped (Z4: the requested
+    # file is ingested alongside its kept sibling), so the pair reaches the report purely as the
+    # divergence record naming that sibling — no DUPLICATE failure is persisted (a stale one is
+    # cleared by the successful session below). ---
     for dropped_key, kept_key in scan.duplicates:
         report.duplicates.append((dropped_key, kept_key))
+        if force:
+            continue
         dup_sha, dup_stat = scan.hashed.get(dropped_key, (None, None))
         failures.record(
             failures_dict,
@@ -1619,279 +1807,133 @@ def ingest(paths: list[str] | None = None, progress=None, full_rescan: bool = Fa
         repos=len(repo_pending),
     )
 
-    # A Ctrl+C (or other BaseException) raised mid-loop is captured here, not allowed to
-    # propagate immediately, so finalization still runs for the already-completed sources
-    # before it is re-raised. Without this, the per-source-persisted manifest could outlive a
-    # stale index/log: a later run with nothing pending would never rebuild the derived files.
-    pending_interrupt: BaseException | None = None
-    for index, src in enumerate(scan.pending, 1):
+    # --- The per-source jobs (Z7 SourceJob): files, then repos, then deletion cleanups, each
+    # group with its own index/total counters (frozen progress vocabulary). All three run through
+    # the ONE shared loop (_run_source_jobs) + the ONE all-or-nothing session runner
+    # (_run_agent_sessions); only session planning and post-success bookkeeping differ. ---
+
+    def _file_job(src: Path) -> _SourceJob:
         rel_key = manifest.rel_key(src)
         is_image = src in scan.images
-        # An already-tracked key with new bytes is a re-ingest: reconcile (update/remove stale
-        # facts) rather than only appending. A brand-new key is a plain ingest. Image sources take
-        # the image propagation (the agent VIEWS them) instead of reading text.
+        # An already-tracked key is a re-ingest — new bytes, or a FORCED re-read of unchanged
+        # ones: reconcile (update/remove stale facts) rather than only appending. A brand-new key
+        # is a plain ingest. Image sources take the image propagation (the agent VIEWS them).
         if is_image:
             kind = "image-reconcile" if rel_key in changed_keys else "image"
         else:
             kind = "reconcile" if rel_key in changed_keys else "ingest"
-        emit("source_start", index=index, total=len(scan.pending), source=rel_key)
-
-        # Plan the pass(es): an Office source materializes its extracted text to a temp .md the agent
-        # reads; a source too large for one context is SPLIT into segments (one pass each, each
-        # merging into the pages the earlier passes created); anything else is a single direct read.
-        # A temp-write failure is a per-source error, NOT a run-aborting interrupt.
         office = scan.office_text.get(src)
-        try:
+
+        def build() -> tuple[list, list[str]]:
+            # Plan the pass(es): an Office source materializes its extracted text to a temp .md
+            # the agent reads; a source too large for one context is SPLIT into segments — every
+            # segment folds into the SAME staging copy (each merging into the pages the earlier
+            # passes created there) and the source promotes ONCE after the last one (Z11);
+            # anything else is a single direct read.
             passes, tmpdirs = _prepare_passes(src, office, is_image)
-        except OSError as exc:
-            detail = f"{rel_key}: write source text: {exc}"
-            report.errors.append(detail)
-            err_sha, err_stat = scan.hashed.get(rel_key, (None, None))
-            failures.record(failures_dict, rel_key, failures.ERROR, detail, model, sha=err_sha, st=err_stat)
-            emit("source_error", index=index, total=len(scan.pending), source=rel_key, error=str(exc), seconds=0.0)
-            continue
+            sessions = [
+                (lambda rp=read_key, sg=segment: _pending_session(rel_key, kind, rp, sg))
+                for read_key, segment in passes
+            ]
+            return sessions, tmpdirs
 
-        created: list[str] = []
-        updated: list[str] = []
-        deleted: list[str] = []
-        seconds = 0.0
-        source_ok = True
-        try:
-            for read_key, segment in passes:
-                try:
-                    outcome = _run_one_agent_session(
-                        lambda rk=rel_key, k=kind, rp=read_key, sg=segment: _pending_session(rk, k, rp, sg), rel_key
-                    )
-                except BaseException as exc:  # noqa: BLE001 - Ctrl+C etc.: capture, finalize, re-raise
-                    # The in-flight pass was already rolled back inside the helper's `finally`;
-                    # capture the interrupt, stop taking new sources, and re-raise after finalization.
-                    pending_interrupt = exc
-                    source_ok = False
-                    break
-                seconds += outcome.seconds
-                if not outcome.ok:
-                    # A failed segment leaves earlier promoted segments in the live wiki but does NOT
-                    # mark the source done, so the whole source is re-ingested next run — as a fresh
-                    # `ingest` (the source is not in the manifest), whose search-and-merge step folds
-                    # the retried segments into the partial pages rather than duplicating them.
-                    report.errors.extend(outcome.errors)
-                    detail = outcome.errors[0] if outcome.errors else f"{rel_key}: agent session failed"
-                    err_sha, err_stat = scan.hashed.get(rel_key, (None, None))
-                    failures.record(
-                        failures_dict, rel_key, failures.reason_for(detail), detail, model, sha=err_sha, st=err_stat
-                    )
-                    emit(
-                        "source_error",
-                        index=index,
-                        total=len(scan.pending),
-                        source=rel_key,
-                        error=outcome.errors[0] if outcome.errors else "",
-                        seconds=outcome.seconds,
-                    )
-                    source_ok = False
-                    break
-                created.extend(outcome.created)
-                updated.extend(outcome.updated)
-                deleted.extend(outcome.deleted)
-        finally:
-            # Always remove every extracted-text/segment temp dir (success, error, or interrupt).
-            for tmp in tmpdirs:
-                shutil.rmtree(tmp, ignore_errors=True)
+        def done() -> None:
+            # Thread through the (sha, stat) discovery already took — the source's ONE content
+            # read this run — so mark_done records exactly what was ingested without re-hashing.
+            # On a forced re-read this re-stamps the entry with the CURRENT model + rules_version.
+            done_sha, done_stat = scan.hashed.get(rel_key, (None, None))
+            manifest.mark_done(manifest_dict, src, model, rules_ver, sha=done_sha, st=done_stat)
+            # A source that had failed before (unreadable/errored/duplicate) now succeeded: drop
+            # its persisted failure record.
+            failures.clear(failures_dict, rel_key)
+            # Persist progress immediately after each completed source: a later Ctrl+C (or a
+            # crash) must not erase sources already finished this run.
+            manifest.save(manifest_dict)
+            report.processed.append(rel_key)
 
-        # Record whatever the completed passes promoted — for a multi-pass source that failed or was
-        # interrupted mid-way, earlier segments are ALREADY live, so they are reported and indexed;
-        # only a fully-successful source is marked done and counted as processed below.
-        report.pages_created.extend(created)
-        report.pages_updated.extend(updated)
-        report.pages_written.extend(created + updated)
-        report.pages_deleted.extend(deleted)
-
-        if pending_interrupt is not None:
-            break
-        if not source_ok:
-            continue
-
-        # Thread through the (sha, stat) discovery already took — the source's ONE content read
-        # this run — so mark_done records exactly what was ingested without re-hashing.
-        done_sha, done_stat = scan.hashed.get(rel_key, (None, None))
-        manifest.mark_done(manifest_dict, src, model, rules_ver, sha=done_sha, st=done_stat)
-        # A source that had failed before now succeeded: drop its persisted failure.
-        failures.clear(failures_dict, rel_key)
-        # Persist progress immediately after each completed source: a later Ctrl+C (or a crash)
-        # must not erase sources already finished this run.
-        manifest.save(manifest_dict)
-        report.processed.append(rel_key)
-        emit(
-            "source_done",
-            index=index,
-            total=len(scan.pending),
-            source=rel_key,
-            created=len(created),
-            updated=len(updated),
-            deleted=len(deleted),
-            seconds=seconds,
+        return _SourceJob(
+            key=rel_key,
+            build_sessions=build,
+            on_success=done,
+            prepare_error="write source text",
+            sha_stat=scan.hashed.get(rel_key, (None, None)),
         )
 
-    # --- Repo sources: each git repository under raw/ is folded in by ONE session reading a
-    # deterministic digest of its high-signal files. A re-ingest (a later commit) diffs against the
-    # stored commit so only the changed files are inlined. The wiki edit goes through the same
-    # all-or-nothing helper; on success the manifest records the new commit. Skipped after an
-    # interrupt was captured. ---
-    if pending_interrupt is None:
-        total_repos = len(repo_pending)
-        for index, job in enumerate(repo_pending, 1):
-            repo_key = job.key
-            emit("source_start", index=index, total=total_repos, source=repo_key)
-
-            # On a reconcile, restrict the inlined contents to the files changed since the stored
-            # commit (and tell the agent what changed); a snapshot/unknown base re-digests in full.
+    # Repo sources: each git repository under raw/ is folded in by ONE session reading a
+    # deterministic digest of its high-signal files. A re-ingest (a later commit) diffs against
+    # the stored commit so only the changed files are inlined — except a FORCED re-read, which
+    # re-digests in FULL with no change summary (Z4).
+    def _repo_job(rjob: _RepoJob) -> _SourceJob:
+        def build() -> tuple[list, list[str]]:
             only: list[str] | None = None
             change_summary: str | None = None
-            if job.kind == "repo-reconcile" and job.old_commit:
-                changed = repo.changed_files(job.path, job.old_commit)
+            if rjob.kind == "repo-reconcile" and rjob.old_commit and not rjob.force:
+                changed = repo.changed_files(rjob.path, rjob.old_commit)
                 if changed is not None:
                     only = changed
                     listing = "\n".join(changed) if changed else "(metadata only — no files)"
-                    base = job.old_commit.split("+", 1)[0][:12]
+                    base = rjob.old_commit.split("+", 1)[0][:12]
                     change_summary = f"Changed files since {base}:\n{listing}"
+            # Materialize the digest to a temp file the agent reads (citing the repo folder as
+            # the source of record).
+            digest = repo.build_digest(rjob.path, rjob.key, only=only, change_summary=change_summary)
+            read_key, tmp = _office_write_temp(digest, rjob.path.name)
+            sessions = [lambda rp=read_key: llm.run_ingest_session(rjob.key, kind=rjob.kind, read_path=rp)]
+            return sessions, [tmp]
 
-            # Build the digest and materialize it to a temp file the agent reads (citing the repo
-            # folder as the source of record). A build/temp failure is a per-source error.
-            try:
-                digest = repo.build_digest(job.path, repo_key, only=only, change_summary=change_summary)
-                read_key, repo_tmp = _office_write_temp(digest, job.path.name)
-            except Exception as exc:  # noqa: BLE001 - per-source, keep going
-                detail = f"{repo_key}: build digest: {exc}"
-                report.errors.append(detail)
-                failures.record(failures_dict, repo_key, failures.ERROR, detail, model)
-                emit("source_error", index=index, total=total_repos, source=repo_key, error=str(exc), seconds=0.0)
-                continue
-
-            try:
-                outcome = _run_one_agent_session(
-                    lambda rk=repo_key, k=job.kind, rp=read_key: llm.run_ingest_session(rk, kind=k, read_path=rp),
-                    repo_key,
-                )
-            except BaseException as exc:  # noqa: BLE001 - Ctrl+C: helper rolled back; re-raise later
-                pending_interrupt = exc
-                break
-            finally:
-                shutil.rmtree(repo_tmp, ignore_errors=True)
-
-            if not outcome.ok:
-                # Persist the failure exactly like a failed FILE source: recorded for triage, but
-                # the manifest is left untouched so the repo is retried next run.
-                report.errors.extend(outcome.errors)
-                detail = outcome.errors[0] if outcome.errors else f"{repo_key}: agent session failed"
-                failures.record(failures_dict, repo_key, failures.reason_for(detail), detail, model)
-                emit(
-                    "source_error",
-                    index=index,
-                    total=total_repos,
-                    source=repo_key,
-                    error=outcome.errors[0] if outcome.errors else "",
-                    seconds=outcome.seconds,
-                )
-                continue
-
-            report.pages_created.extend(outcome.created)
-            report.pages_updated.extend(outcome.updated)
-            report.pages_written.extend(outcome.created + outcome.updated)
-            report.pages_deleted.extend(outcome.deleted)
-            manifest_dict[repo_key] = manifest.make_repo_entry(
-                repo.identity(job.path), model, repo.remote_url(job.path), rules_ver
+        def done() -> None:
+            # On success the manifest records the repo's CURRENT commit identity.
+            manifest_dict[rjob.key] = manifest.make_repo_entry(
+                repo.identity(rjob.path), model, repo.remote_url(rjob.path), rules_ver
             )
-            # A repo that had failed before now succeeded: drop its persisted failure.
-            failures.clear(failures_dict, repo_key)
+            failures.clear(failures_dict, rjob.key)
             manifest.save(manifest_dict)
-            report.processed.append(repo_key)
-            emit(
-                "source_done",
-                index=index,
-                total=total_repos,
-                source=repo_key,
-                created=len(outcome.created),
-                updated=len(outcome.updated),
-                deleted=len(outcome.deleted),
-                seconds=outcome.seconds,
-            )
+            report.processed.append(rjob.key)
 
-    # --- Deleted sources: a tracked source vanished from disk (full run only). If any page still
+        return _SourceJob(key=rjob.key, build_sessions=build, on_success=done, prepare_error="build digest")
+
+    # Deleted sources: a tracked source vanished from disk (full run only). If any page still
     # cites it, run a `kind="delete"` cleanup session that strips that provenance, gated by a
     # post-condition that the wiki no longer references it (else the whole cleanup is rolled back
-    # and retried next run); then drop its manifest key. A deletion that nothing cites just loses
-    # its manifest key. Skipped entirely once an interrupt was captured — we are aborting. ---
-    if pending_interrupt is None:
-        total_del = len(deleted_sources)
-        for index, key in enumerate(deleted_sources, 1):
-            emit("source_start", index=index, total=total_del, source=key)
+    # and retried next full run — the manifest key is dropped only on success). A deletion that
+    # nothing cites plans NO session and just loses its manifest key.
+    def _delete_job(key: str) -> _SourceJob:
+        def build() -> tuple[list, list[str]]:
             if not store.find_raw_references(key):
-                # Nothing cites it (e.g. a source that added no facts, or was unreadable): just
-                # forget it so a later run does not re-detect the same deletion.
-                manifest_dict.pop(key, None)
-                failures.clear(failures_dict, key)
-                manifest.save(manifest_dict)
-                report.sources_deleted.append(key)
-                emit(
-                    "source_done",
-                    index=index,
-                    total=total_del,
-                    source=key,
-                    created=0,
-                    updated=0,
-                    deleted=0,
-                    seconds=0.0,
-                )
-                continue
-            try:
-                outcome = _run_one_agent_session(
-                    lambda k=key: llm.run_ingest_session(k, kind="delete"),
-                    key,
-                    extra_check=lambda k=key: [
-                        f"{k}: still cited by {p} after cleanup" for p in store.find_raw_references(k)
-                    ],
-                    # A delete cleanup MAY legitimately remove the last source's only page, leaving
-                    # the wiki empty — so the anti-emptying valve does not apply here.
-                    allow_emptying=True,
-                )
-            except BaseException as exc:  # noqa: BLE001 - Ctrl+C: helper rolled back; re-raise later
-                pending_interrupt = exc
-                break
+                return [], []  # nothing cites it: no cleanup session, just forget it below
+            return [lambda: llm.run_ingest_session(key, kind="delete")], []
 
-            if not outcome.ok:
-                # Persist the failure exactly like a failed FILE source: the manifest key is KEPT
-                # (only success drops it), so the deletion cleanup is retried next full run.
-                report.errors.extend(outcome.errors)
-                detail = outcome.errors[0] if outcome.errors else f"{key}: delete cleanup failed"
-                failures.record(failures_dict, key, failures.reason_for(detail), detail, model)
-                emit(
-                    "source_error",
-                    index=index,
-                    total=total_del,
-                    source=key,
-                    error=outcome.errors[0] if outcome.errors else "",
-                    seconds=outcome.seconds,
-                )
-                continue
-
-            report.pages_created.extend(outcome.created)
-            report.pages_updated.extend(outcome.updated)
-            report.pages_written.extend(outcome.created + outcome.updated)
-            report.pages_deleted.extend(outcome.deleted)
+        def done() -> None:
             manifest_dict.pop(key, None)
             failures.clear(failures_dict, key)
             manifest.save(manifest_dict)
             report.sources_deleted.append(key)
-            emit(
-                "source_done",
-                index=index,
-                total=total_del,
-                source=key,
-                created=len(outcome.created),
-                updated=len(outcome.updated),
-                deleted=len(outcome.deleted),
-                seconds=outcome.seconds,
-            )
+
+        return _SourceJob(
+            key=key,
+            build_sessions=build,
+            on_success=done,
+            prepare_error="plan delete cleanup",
+            extra_check=lambda: [f"{key}: still cited by {p} after cleanup" for p in store.find_raw_references(key)],
+            # A delete cleanup MAY legitimately remove the last source's only page, leaving the
+            # wiki empty — so the anti-emptying valve does not apply here.
+            allow_emptying=True,
+        )
+
+    # A Ctrl+C (or other BaseException) raised mid-loop is captured (returned by
+    # _run_source_jobs), not allowed to propagate immediately, so the remaining groups are
+    # skipped and finalization still runs for the already-completed sources before it is
+    # re-raised. Without this, the per-source-persisted manifest could outlive a stale index/log:
+    # a later run with nothing pending would never rebuild the derived files.
+    pending_interrupt: BaseException | None = None
+    groups = (
+        [_file_job(src) for src in scan.pending],
+        [_repo_job(r) for r in repo_pending],
+        [_delete_job(key) for key in deleted_sources],
+    )
+    for group in groups:
+        if pending_interrupt is None:
+            pending_interrupt = _run_source_jobs(group, emit, report, failures_dict, model)
 
     if workspace_shifted and full_rescan:
         # The guard's advertised remedy must not loop: --full-rescan keeps the sweep refused

@@ -89,6 +89,16 @@ def build_parser() -> argparse.ArgumentParser:
         "decides: an unchanged source is re-stamped, not re-ingested). Use after moving a "
         "workspace or when the cache is suspect.",
     )
+    p_ingest.add_argument(
+        "--force",
+        action="store_true",
+        help="Deliberately re-read the given sources even when already ingested and unchanged: "
+        "each runs a reconcile session (re-verifying the wiki's facts under the current rules) "
+        "and its manifest entry is re-stamped with the current model + rules version; a stuck "
+        "unreadable/errored/duplicate record is retried. Requires explicit paths — refused "
+        "without them, so a whole-corpus re-read (one agent session per source) can never "
+        "happen by accident.",
+    )
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_serve = sub.add_parser("serve", help="Run the MCP stdio server (wiki_search/wiki_read/wiki_index/wiki_ingest).")
@@ -175,8 +185,20 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     ``--verbose`` and ``--log-dir`` flip the observability knobs in ``config`` (read at call time by
     ``llm._run_session``): verbose streams each agent session live to the terminal, and log-dir
     writes a per-source transcript. With ``--verbose`` the spinner is suppressed so the streamed
-    transcript is not overwritten by the in-place progress line."""
+    transcript is not overwritten by the in-place progress line.
+
+    ``--force`` requires explicit paths (docs/refactor-plan.md Z4): a forced re-read runs one
+    agent session per source, so forcing the ENTIRE corpus must never happen by accident — the
+    flag alone is refused with exit 2, before ``ingest.ingest`` is ever called."""
     from . import config, ingest
+
+    if args.force and not args.paths:
+        print(
+            "error: --force requires explicit paths (a forced re-read runs one agent session per "
+            "source; name the files or directories to force, e.g. `citadel ingest --force raw/notes.md`).",
+            file=sys.stderr,
+        )
+        return 2
 
     if args.verbose:
         config.LLM_VERBOSE = True
@@ -193,7 +215,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         # CITADEL_LLM_VERBOSE — not just the --verbose flag — also drops the spinner that would
         # otherwise clobber the streamed transcript.
         progress = ConsoleProgress(spinner=not config.LLM_VERBOSE)
-    report = ingest.ingest(args.paths or None, progress=progress, full_rescan=args.full_rescan)
+    report = ingest.ingest(args.paths or None, progress=progress, full_rescan=args.full_rescan, force=args.force)
     print(report.render())
     # Non-zero on a per-source error OR a structural problem left behind (a broken
     # cross-link the agent introduced) — so ingest gates the wiki's integrity in CI.

@@ -110,6 +110,42 @@ def _seed_cited_deleted_source(seed_page) -> None:
     manifest.save({"raw/gone.md": manifest.make_entry("deadbeef", None)})
 
 
+def test_mixed_run_failed_file_repo_and_delete_all_recorded_then_cleared(repo_wiki, seed_page, fake_agent, make_repo):
+    """SourceJob unification pin (shape-neutral, docs/refactor-plan.md Z7): ONE run in which a
+    FILE source, a REPO source, and a DELETE cleanup all fail must land all three in the failures
+    catalog with reasons — through whatever shared per-source loop drives them — with retry
+    semantics intact (file+repo not marked done; the deleted key kept); a later fully-successful
+    run retries all three and clears the catalog."""
+    raw = repo_wiki.raw
+    (raw / "note.md").write_text("a note\n", encoding="utf-8")
+    make_repo(raw, "svc", {"README.md": "# Svc\n", "app.py": "x\n"})
+    _seed_cited_deleted_source(seed_page)  # raw/gone.md: tracked + cited, not on disk
+
+    fake_agent(error=RuntimeError("boom"))
+    report = ingest.ingest()
+
+    assert report.processed == [] and report.sources_deleted == []
+    recorded = failures.load()
+    assert set(recorded) == {"raw/note.md", "raw/svc", "raw/gone.md"}
+    assert all(entry["reason"] == failures.ERROR for entry in recorded.values())
+    tracked = manifest.load()
+    assert "raw/note.md" not in tracked and "raw/svc" not in tracked  # retried next run
+    assert "raw/gone.md" in tracked  # deletion cleanup retried next full run
+
+    # A later run where every session succeeds clears all three records again.
+    def cleanup(rel_key, kind="ingest", **kwargs):
+        if kind == "delete":
+            for rel in store.find_raw_references(rel_key):
+                (config.WIKI_DIR / rel).unlink(missing_ok=True)
+
+    fake_agent(side_effect=cleanup)
+    second = ingest.ingest()
+
+    assert set(second.processed) == {"raw/note.md", "raw/svc"}
+    assert second.sources_deleted == ["raw/gone.md"]
+    assert failures.load() == {}
+
+
 def test_failed_delete_session_recorded_wiki_untouched_and_retried(tmp_citadel, seed_page, fake_agent):
     """Regression: a delete-propagation session that failed only reached ``report.errors`` —
     never the failures catalog. It must be recorded, the live wiki must be left exactly as it

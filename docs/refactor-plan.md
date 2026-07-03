@@ -286,6 +286,13 @@ citadel/rules/
 - `tasks/reconcile.md` gets a forced-re-read note: "the source may be unchanged — re-verify the
   wiki's facts against it and apply the current rules" (otherwise the agent hunts for a source diff
   that doesn't exist).
+- *(PR5 decisions: (a) `citadel ingest --force` with NO explicit paths is REFUSED (exit 2, ingest
+  never called) — the flag was ambiguous here, and a whole-corpus re-read (one agent session per
+  source) must never happen by accident, so force requires naming the sources (pinned by
+  test_cli.py). (b) The dedup-bypass divergence is recorded through the report's existing
+  `duplicates` channel — the pair names the kept sibling the wiki now deliberately holds alongside;
+  no DUPLICATE failure is persisted for a forced key. (c) No genre stamp, per the PR3 deviation —
+  force re-stamps model + rules_version.)*
 
 ### Z5 — `citadel curate`
 
@@ -456,7 +463,9 @@ Separate verb (GraphRAG/Letta precedent), two layers (Wikipedia-bot model), **no
   source fold into a single staging copy; promotion happens once, after the last segment passes** —
   the live wiki only ever contains fully imported sources. Trade-off accepted and documented: a
   failure at segment N discards N-1 segments' agent work for that run (retry next run); the
-  all-or-nothing guarantee is worth more than salvaged partial passes.
+  all-or-nothing guarantee is worth more than salvaged partial passes. *(Shipped in PR5: one
+  staging copy per source across all segments, validation after every segment (fail fast),
+  exactly one promote after the last.)*
 - **`citadel status`**: one command answering "what state is my corpus in" — per source: ingested
   (date, model, rules_version, genre, segments), failed (reason, attempts), skipped-duplicate (in
   favor of which file), ignored (which pattern), pending. Same data enriches the generated
