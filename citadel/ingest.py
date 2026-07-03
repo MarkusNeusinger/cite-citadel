@@ -1328,7 +1328,7 @@ class _SourceJob:
 
 
 def _run_source_jobs(jobs: list[_SourceJob], emit, report: IngestReport, failures_dict, model) -> BaseException | None:
-    """Drive one GROUP of :class:`_SourceJob`s (files, repos, or deletion cleanups) through the
+    """Drive one GROUP of :class:`_SourceJob`s (deletion cleanups, files, or repos) through the
     ONE shared per-source loop: emit ``source_start``, plan the session(s), run them all-or-nothing
     against a single staging copy, then either record the failure (report + persistent failures
     catalog + ``source_error``) or run the job's success bookkeeping and emit ``source_done``.
@@ -1585,10 +1585,13 @@ def ingest(
     only appending. On a per-source exception (a missing/unusable CLI, a timeout, etc.) — or a
     Ctrl+C — nothing is promoted, the error is collected, and the source is retried next run.
 
-    Per deleted source (full run only): if any wiki page still cites it, run a ``kind="delete"``
-    cleanup session that strips those facts/citations, gated by a post-condition that the wiki no
-    longer references it (else the whole cleanup is rolled back and retried); then drop its
-    manifest key. A deleted source nothing cites is simply dropped from the manifest. Finalization
+    Per deleted source (full run only, run BEFORE the pending sources): if any wiki page still
+    cites it, run a ``kind="delete"`` cleanup session that strips those facts/citations, gated by
+    a post-condition that the wiki no longer references it (else the whole cleanup is rolled back
+    and retried); then drop its manifest key. A deleted source nothing cites is simply dropped
+    from the manifest. Running deletions first means a subsequent pending source's session builds
+    on a wiki whose stale provenance is already gone, so it cannot fail validation on a
+    pre-existing bad citation to the just-deleted source. Finalization
     (rebuild_indexes + find_broken_links + append_log) happens once, if any source was processed,
     reorganized, found unreadable, or removed.
 
@@ -1826,10 +1829,17 @@ def ingest(
         repos=len(repo_pending),
     )
 
-    # --- The per-source jobs (Z7 SourceJob): files, then repos, then deletion cleanups, each
-    # group with its own index/total counters (frozen progress vocabulary). All three run through
-    # the ONE shared loop (_run_source_jobs) + the ONE all-or-nothing session runner
-    # (_run_agent_sessions); only session planning and post-success bookkeeping differ. ---
+    # --- The per-source jobs (Z7 SourceJob): DELETION cleanups first, then files, then repos,
+    # each group with its own index/total counters (frozen progress vocabulary). All three run
+    # through the ONE shared loop (_run_source_jobs) + the ONE all-or-nothing session runner
+    # (_run_agent_sessions); only session planning and post-success bookkeeping differ.
+    # DELETIONS RUN BEFORE the pending sources (corpus-discovered fix, project-history wave 3): a
+    # delete cleanup strips a vanished source's stale provenance FIRST, so a later pending source
+    # whose session touches a page that still cited the deleted source no longer fails validation
+    # (bad_source) on that pre-existing stale citation and roll back fruitlessly — the pending
+    # session now builds on a wiki the deletion already made consistent. Order is safe: every
+    # group's members (incl. the deletion sweep) are computed by _partition_* BEFORE any session
+    # runs, so no group's candidate set depends on another group having executed. ---
 
     def _file_job(src: Path) -> _SourceJob:
         rel_key = manifest.rel_key(src)
@@ -1943,9 +1953,9 @@ def ingest(
     # a later run with nothing pending would never rebuild the derived files.
     pending_interrupt: BaseException | None = None
     groups = (
+        [_delete_job(key) for key in deleted_sources],
         [_file_job(src) for src in scan.pending],
         [_repo_job(r) for r in repo_pending],
-        [_delete_job(key) for key in deleted_sources],
     )
     for group in groups:
         if pending_interrupt is None:

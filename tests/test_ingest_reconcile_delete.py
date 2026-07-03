@@ -96,6 +96,72 @@ def test_deleted_source_drops_one_citation_keeps_corroborated_fact(tmp_citadel, 
     assert store.find_raw_references("raw/gone.md") == []
 
 
+def test_deletion_runs_before_pending_source_touching_stale_page(tmp_citadel, fake_agent, seed_page):
+    """Ordering regression (corpus-discovered, project-history wave 3): within ONE full run the
+    deletion cleanup must run BEFORE the pending sources, so a NEW source whose session edits a
+    page that still cites the just-deleted source does not fail validation on that PRE-EXISTING
+    stale citation. Here systems/komet.md cites both the present raw/keep.md and the vanished
+    raw/gone.md; the delete job strips gone.md's citation FIRST, then raw/portal.md's session
+    appends its own cited fact to the now-consistent page and succeeds — zero errors, both jobs
+    applied. Reverse the group order (pending before delete) and this test FAILS: portal's session
+    touches komet.md while it still cites the missing gone.md -> bad_source -> the whole source
+    rolls back, portal is never applied and report.errors is non-empty. The order pin below (delete
+    call before ingest call) is what makes this the regression's guard."""
+    wiki, raw = tmp_citadel.wiki, tmp_citadel.raw
+    # A still-present corroborating source, and the NEW pending source B.
+    (raw / "keep.md").write_text("keep\n", encoding="utf-8")
+    (raw / "portal.md").write_text("portal kickoff\n", encoding="utf-8")
+    # The page that cites BOTH the present keep.md and the vanished gone.md (its resource stays on
+    # the present source, so only the footnote to gone.md is the stale, validation-tripping cite).
+    seed_page(
+        "systems/komet.md",
+        {"type": "System", "title": "Komet", "description": "d", "tags": ["x"], "resource": "raw/keep.md"},
+        "Komet ships.[^s1][^s2]\n\n## Sources\n\n"
+        "[^s1]: [raw/keep.md](../../raw/keep.md) - k\n"
+        "[^s2]: [raw/gone.md](../../raw/gone.md) - g\n",
+    )
+    # keep.md tracked+unchanged (skipped); gone.md tracked but off disk (a deletion); portal.md new.
+    manifest.save({"raw/keep.md": manifest.file_sha256(raw / "keep.md"), "raw/gone.md": "deadbeef"})
+
+    def fake(rel_key, kind="ingest"):
+        if kind == "delete":
+            assert (rel_key, kind) == ("raw/gone.md", "delete")
+            # Cleanup: drop ONLY gone.md's citation, keep the fact + the keep.md cite.
+            seed_page(
+                "systems/komet.md",
+                {"type": "System", "title": "Komet", "description": "d", "tags": ["x"], "resource": "raw/keep.md"},
+                "Komet ships.[^s1]\n\n## Sources\n\n[^s1]: [raw/keep.md](../../raw/keep.md) - k\n",
+            )
+            return
+        # The new source B (raw/portal.md) edits the SAME page, appending its own cited fact.
+        assert (rel_key, kind) == ("raw/portal.md", "ingest")
+        seed_page(
+            "systems/komet.md",
+            {"type": "System", "title": "Komet", "description": "d", "tags": ["x"], "resource": "raw/keep.md"},
+            "Komet ships.[^s1]\n\nPortal kickoff scheduled.[^s2]\n\n## Sources\n\n"
+            "[^s1]: [raw/keep.md](../../raw/keep.md) - k\n"
+            "[^s2]: [raw/portal.md](../../raw/portal.md) - p\n",
+        )
+
+    agent = fake_agent(side_effect=fake)
+
+    report = ingest.ingest()
+
+    # THE PIN: the deletion cleanup ran FIRST, then the pending file — both applied, zero errors.
+    assert agent.calls == [("raw/gone.md", "delete"), ("raw/portal.md", "ingest")]
+    assert report.errors == []
+    assert report.sources_deleted == ["raw/gone.md"]
+    assert "raw/portal.md" in report.processed
+    assert "systems/komet.md" in report.pages_updated
+
+    text = (wiki / "systems" / "komet.md").read_text(encoding="utf-8")
+    assert "Portal kickoff scheduled." in text and "[^s2]: [raw/portal.md]" in text  # B's fact landed
+    assert "gone.md" not in text  # the deleted source's stale citation is gone
+    assert lint.lint().ok()
+    assert store.find_raw_references("raw/gone.md") == []
+    assert "raw/gone.md" not in tmp_citadel.read_manifest()  # deletion's manifest key dropped
+
+
 def test_deleted_source_with_no_references_just_dropped(tmp_citadel, fake_agent, seed_page):
     """A deleted source nothing cites needs no agent session — its manifest key is simply
     dropped, and an unrelated page citing a still-present source is left untouched."""
