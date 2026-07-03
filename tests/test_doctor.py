@@ -193,11 +193,23 @@ def test_billing_ok_without_api_key(tmp_citadel, monkeypatch):
 
 def test_billing_warn_when_key_shadows_claude_subscription(tmp_citadel, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
     monkeypatch.setattr(config, "LLM_CLI", "claude")
     c = doctor.check_billing_shadow()
     assert c.status == doctor.WARN
     assert "ANTHROPIC_API_KEY" in c.detail
     assert "License & third-party tools" in c.detail
+
+
+def test_billing_ok_when_base_url_redirects_the_key(tmp_citadel, monkeypatch):
+    # A local-model redirect (e.g. Ollama) means the key is never billed by Anthropic -> OK, not WARN.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "ollama")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://localhost:11434")
+    monkeypatch.setattr(config, "LLM_CLI", "claude")
+    c = doctor.check_billing_shadow()
+    assert c.status == doctor.OK
+    assert "http://localhost:11434" in c.detail
+    assert "the key is not sent to Anthropic's API" in c.detail
 
 
 def test_billing_ok_when_key_but_backend_is_not_claude(tmp_citadel, monkeypatch):

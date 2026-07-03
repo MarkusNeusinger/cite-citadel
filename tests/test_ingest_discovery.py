@@ -50,6 +50,25 @@ def test_discovery_skips_os_junk_files_and_dirs(tmp_citadel):
     assert got == {"notes.md", "sub/b.txt"}
 
 
+def test_discovery_skips_wsl_zone_identifier_ads_files(tmp_citadel, fake_agent, transformer_page):
+    """WSL surfaces NTFS Alternate-Data-Stream sidecars as their own files: copying a file in from
+    Windows leaves a `<name>:Zone.Identifier` mark-of-the-web stream (content `[ZoneTransfer]`),
+    which WSL exposes as a real file. It is junk, so discovery skips it entirely while the actual
+    source beside it is ingested — and it never lands in the manifest or the failures catalog."""
+    raw = tmp_citadel.raw
+    fake_agent(transformer_page)
+    (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
+    (raw / "notes.md:Zone.Identifier").write_text("[ZoneTransfer]\nZoneId=3\n", encoding="utf-8")
+
+    got = {str(p.relative_to(raw)).replace("\\", "/") for p in ingest._candidates(None)}
+    assert got == {"notes.md"}  # the ADS sidecar is skipped, the real source kept
+
+    report = ingest.ingest()
+    assert "raw/notes.md" in report.processed
+    assert "raw/notes.md:Zone.Identifier" not in manifest.load()
+    assert "raw/notes.md:Zone.Identifier" not in failures.load()
+
+
 def test_os_junk_not_recorded_in_manifest_or_failures(tmp_citadel, fake_agent, transformer_page):
     """A junk file next to a real source is ignored entirely: NOT ingested, NOT surfaced as
     unreadable, and NOT written into the manifest or the failures catalog (the user's complaint)."""

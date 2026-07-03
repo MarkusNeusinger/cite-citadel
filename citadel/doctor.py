@@ -176,9 +176,20 @@ def check_failures() -> Check:
 def check_billing_shadow() -> Check:
     """WARN when ``ANTHROPIC_API_KEY`` is set while the claude CLI is the backend: the claude CLI may
     then bill the API per-token instead of using the logged-in subscription. Cross-references the
-    README terms section so the subscription-vs-API story is told once."""
+    README terms section so the subscription-vs-API story is told once. When ``ANTHROPIC_BASE_URL``
+    also redirects the CLI at another endpoint (e.g. a local Ollama server), the key is not sent to
+    Anthropic's API, so the subscription-vs-API-key WARN would be misleading — report OK noting the
+    redirect (billing, if any, depends on that endpoint) instead."""
     cli = (config.LLM_CLI or "claude").strip().lower()
     if cli == "claude" and os.environ.get("ANTHROPIC_API_KEY", "").strip():
+        base_url = os.environ.get("ANTHROPIC_BASE_URL", "").strip()
+        if base_url:
+            return Check(
+                OK,
+                "billing",
+                f"ANTHROPIC_BASE_URL redirects requests to {base_url} - the key is not sent to "
+                "Anthropic's API; billing (if any) depends on that endpoint",
+            )
         return Check(
             WARN,
             "billing",

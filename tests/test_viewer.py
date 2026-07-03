@@ -276,6 +276,7 @@ def test_write_viewer_creates_file_and_load_skips(tmp_citadel, seed_page):
 
 def test_view_no_open_returns_zero(tmp_citadel, seed_page, monkeypatch):
     _two_page_wiki(seed_page)
+    monkeypatch.setattr(viewer, "_is_wsl", lambda: False)  # hermetic on a WSL dev box
     calls = []
     monkeypatch.setattr(viewer.webbrowser, "open", lambda *a, **k: calls.append(a))
     rc = viewer.view(open_browser=False)
@@ -286,6 +287,7 @@ def test_view_no_open_returns_zero(tmp_citadel, seed_page, monkeypatch):
 
 def test_view_handles_no_browser(tmp_citadel, seed_page, monkeypatch):
     _two_page_wiki(seed_page)
+    monkeypatch.setattr(viewer, "_is_wsl", lambda: False)  # hermetic on a WSL dev box
 
     def boom(*a, **k):
         raise viewer.webbrowser.Error("no browser")
@@ -294,6 +296,130 @@ def test_view_handles_no_browser(tmp_citadel, seed_page, monkeypatch):
     rc = viewer.view(open_browser=True)  # must not crash
     assert rc == 0
     assert (tmp_citadel.wiki / ".citadel_viewer.html").exists()
+
+
+# --- WSL: open via wslview/explorer.exe and always print a Windows-pasteable path ------------
+# Every seam (WSL detection, wslpath, wslview, explorer.exe, webbrowser) is monkeypatched, so
+# these never spawn a real process even when the suite runs on an actual WSL box.
+
+_WIN_PATH = r"\\wsl.localhost\Ubuntu\home\me\wiki\.citadel_viewer.html"
+
+
+class _FakeProc:
+    def __init__(self, returncode=0, stdout=""):
+        self.returncode = returncode
+        self.stdout = stdout
+
+
+def test_is_wsl_detects_env_and_release(monkeypatch):
+    monkeypatch.delenv("WSL_DISTRO_NAME", raising=False)
+    monkeypatch.setattr(viewer.platform, "release", lambda: "5.15.0-generic")
+    assert viewer._is_wsl() is False
+    monkeypatch.setenv("WSL_DISTRO_NAME", "Ubuntu")
+    assert viewer._is_wsl() is True
+    monkeypatch.delenv("WSL_DISTRO_NAME", raising=False)
+    monkeypatch.setattr(viewer.platform, "release", lambda: "5.15.90.1-microsoft-standard-WSL2")
+    assert viewer._is_wsl() is True
+
+
+def test_wsl_windows_path_uses_wslpath(monkeypatch, tmp_path):
+    monkeypatch.setattr(viewer.shutil, "which", lambda name: "/usr/bin/wslpath")
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen["cmd"] = cmd
+        return _FakeProc(returncode=0, stdout=_WIN_PATH + "\n")
+
+    monkeypatch.setattr(viewer.subprocess, "run", fake_run)
+    p = tmp_path / "v.html"
+    assert viewer._wsl_windows_path(p) == _WIN_PATH
+    assert seen["cmd"] == ["/usr/bin/wslpath", "-w", str(p)]
+
+
+def test_wsl_windows_path_none_when_wslpath_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr(viewer.shutil, "which", lambda name: None)
+    assert viewer._wsl_windows_path(tmp_path / "v.html") is None
+
+
+def test_open_in_browser_wsl_prefers_wslview(monkeypatch, tmp_path):
+    monkeypatch.setattr(viewer, "_is_wsl", lambda: True)
+    monkeypatch.setattr(viewer.shutil, "which", lambda name: "/usr/bin/wslview" if name == "wslview" else None)
+    calls = []
+    monkeypatch.setattr(viewer.subprocess, "run", lambda cmd, **kw: calls.append(cmd) or _FakeProc(returncode=0))
+    wb = []
+    monkeypatch.setattr(viewer.webbrowser, "open", lambda *a, **k: wb.append(a) or True)
+    p = tmp_path / "v.html"
+    p.write_text("x")
+    assert viewer.open_in_browser(p, _WIN_PATH) is True
+    assert calls == [["wslview", str(p)]]  # wslview first, nothing else tried
+    assert wb == []  # webbrowser never reached
+
+
+def test_open_in_browser_wsl_falls_to_explorer(monkeypatch, tmp_path):
+    monkeypatch.setattr(viewer, "_is_wsl", lambda: True)
+    monkeypatch.setattr(viewer.shutil, "which", lambda name: None)  # no wslview on PATH
+    calls = []
+    # explorer.exe exits non-zero even on success — a clean launch must still count.
+    monkeypatch.setattr(viewer.subprocess, "run", lambda cmd, **kw: calls.append(cmd) or _FakeProc(returncode=1))
+    wb = []
+    monkeypatch.setattr(viewer.webbrowser, "open", lambda *a, **k: wb.append(a) or True)
+    p = tmp_path / "v.html"
+    p.write_text("x")
+    assert viewer.open_in_browser(p, _WIN_PATH) is True
+    assert calls == [["explorer.exe", _WIN_PATH]]
+    assert wb == []
+
+
+def test_open_in_browser_wsl_falls_through_to_webbrowser(monkeypatch, tmp_path):
+    monkeypatch.setattr(viewer, "_is_wsl", lambda: True)
+    monkeypatch.setattr(viewer.shutil, "which", lambda name: None)  # no wslview
+
+    def boom(cmd, **kw):
+        raise OSError("explorer.exe unavailable")
+
+    monkeypatch.setattr(viewer.subprocess, "run", boom)
+    wb = []
+    monkeypatch.setattr(viewer.webbrowser, "open", lambda uri, *a, **k: wb.append(uri) or True)
+    p = tmp_path / "v.html"
+    p.write_text("x")
+    assert viewer.open_in_browser(p, _WIN_PATH) is True  # explorer raised → webbrowser fallback
+    assert wb == [p.as_uri()]
+
+
+def test_view_prints_windows_path_on_wsl(tmp_citadel, seed_page, monkeypatch, capsys):
+    _two_page_wiki(seed_page)
+    monkeypatch.setattr(viewer, "_is_wsl", lambda: True)
+    monkeypatch.setattr(viewer, "_wsl_windows_path", lambda path: _WIN_PATH)
+    seen = {}
+
+    def fake_open(path, win_path=None):
+        seen["win"] = win_path
+        return True
+
+    monkeypatch.setattr(viewer, "open_in_browser", fake_open)
+    rc = viewer.view(open_browser=True)
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert _WIN_PATH in out  # pasteable Windows path printed alongside the file:// URI
+    assert seen["win"] == _WIN_PATH  # and threaded into the opener for explorer.exe
+    assert "could not launch a browser" not in out
+
+
+def test_view_non_wsl_never_prints_windows_path_or_calls_wslpath(tmp_citadel, seed_page, monkeypatch, capsys):
+    _two_page_wiki(seed_page)
+    monkeypatch.setattr(viewer, "_is_wsl", lambda: False)
+
+    def fail(*a, **k):
+        raise AssertionError("wslpath must not be probed off WSL")
+
+    monkeypatch.setattr(viewer, "_wsl_windows_path", fail)
+    opened = []
+    monkeypatch.setattr(viewer.webbrowser, "open", lambda uri, *a, **k: opened.append(uri) or True)
+    rc = viewer.view(open_browser=True)
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "wsl.localhost" not in out
+    assert opened  # plain webbrowser path, untouched
 
 
 def test_empty_wiki(tmp_citadel):

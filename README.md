@@ -9,18 +9,16 @@
 > every fact is attested to its source, nothing is invented.
 
 An LLM-maintained personal wiki in Google's [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) (OKF),
-with an **MCP server** so an AI can search and read it — a KISS, pure-Python 3.12 take on Andrej
-Karpathy's [LLM-Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f).
+with an **MCP server** (and a CLI that mirrors every MCP tool) so an AI can search and read it —
+a KISS, pure-Python 3.12 take on Andrej Karpathy's [LLM-Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f).
 
-Drop arbitrary files into `raw/` (markdown, code, JSON/CSV, PDF, PowerPoint/Word/Excel —
-`.pptx`/`.docx`/`.xlsx` and legacy `.ppt`/`.doc`/`.xls` — even images, in any sub-folder). One
-agentic CLI session per source folds it into a cross-linked OKF wiki under `wiki/` — **routing each
-fact to the page it best fits** and splitting/merging pages as the corpus grows, rather than making
-one page per file. Office files have their text extracted automatically; images are read *visually*;
-a file too big for one context window is folded in over several passes; the same document in two
-formats (`report.pdf` + `report.pptx`) is ingested once; and any source that can't be ingested is
-recorded (with the reason) in `wiki/sources/index.md`. Every fact is cited back to its `raw/`
-source, and the model uses **only** what is in `raw/`. An AI client then queries the synthesized
+Drop arbitrary files into `raw/`, in any sub-folder — **if the agent CLI you use can open it, citadel
+can ingest it** (few exceptions). One agentic CLI session per source folds it into a cross-linked OKF
+wiki under `wiki/`, **routing each fact to the page it best fits** and splitting/merging pages as the
+corpus grows rather than making one page per file. Built-in helpers cover the rest: Office text
+extraction, visual image reading, multi-pass folding for oversized files, duplicate-format dedup, and a
+record (with the reason) in `wiki/sources/index.md` for anything that can't be read. Every fact cites its
+`raw/` source and the model uses **only** what is in `raw/`; an AI client then queries the synthesized
 wiki over MCP instead of re-reading your notes.
 
 The CLI is **`citadel`**; the PyPI package is **`cite-citadel`**. The `wiki/` directory **is** the
@@ -39,30 +37,30 @@ that usage is under your account and your provider's terms (see
 - **Honest provenance** — raw facts are restated faithfully and cite their source as `[^sN]`. A fact
   the model adds from its own knowledge must be labeled `[^llmN]`, never disguised as a raw citation.
 
-## Install
-
-```bash
-uv add cite-citadel            # add to a project
-uv tool install cite-citadel   # or install a global `citadel` CLI
-pip install cite-citadel       # or plain pip
-```
-
 ## Quickstart
 
 Ingest runs through a coding-agent CLI you already have — no API key, just your existing subscription.
 
-1. **`citadel init my-wiki && cd my-wiki`** — scaffolds the workspace (the `citadel.toml` marker, a
-   `.env`, and empty `raw/` + `wiki/`).
-2. **Fill in the generated `.env`.** At minimum set the coding-agent CLI to shell out to —
-   `CITADEL_LLM_CLI=claude | copilot | gemini` — which must be installed and logged in (no API key
-   needed); optionally pin a model with `CITADEL_INGEST_MODEL`. Every other knob is documented
-   inline in that same file.
-3. **Drop any text-bearing files into `raw/`** — markdown, code, PDF, Office, images, in any sub-folder.
-4. **`citadel ingest`** — one agent session per source folds it into the cross-linked, cited wiki.
-5. **Use it** — `citadel search "caffeine"` (also `read`, `status`, `doctor`, `curate`, `view`,
-   `lint`, `check`, `tags`) from the shell, or `citadel serve` to expose the wiki to any AI over MCP.
-   **Everything the MCP server offers, the CLI offers too** — an AI without MCP access can drive
-   citadel through equivalent shell commands.
+```bash
+uv init my-wiki && cd my-wiki
+uv add cite-citadel
+uv run citadel init
+nano .env                 # pick your agent CLI (claude | copilot) — must be logged in
+cp ~/notes/* raw/         # drop in anything your agent can open
+uv run citadel ingest     # one agent session per source builds the cited wiki
+uv run citadel view       # browse it offline
+```
+
+Every other knob is documented inline in the generated `.env`. A global install (`uv tool install
+cite-citadel`; plain `pip install cite-citadel` works too) drops the `uv run` prefixes. On Windows,
+use `uv run python -m citadel` — the `uv run citadel` shorthand can be antivirus-blocked (see the
+contributor note below). `citadel serve` exposes the wiki to any AI over MCP — and **everything the
+MCP server offers, the CLI offers too** (`search`, `read`, `status`, …), so an AI without MCP access
+can drive citadel through equivalent shell commands.
+
+**Local models.** For a fully private wiki, point the same agent CLI at a local model (Ollama) so
+nothing you ingest ever leaves your machine or LAN — see
+[Local models (Ollama)](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/configuration.md#local-models-ollama).
 
 > **Contributing?** Run from a checkout: `uv sync`, then the portable `uv run python -m citadel
 > <subcommand>` (identical on Linux/macOS/Windows and needs no `.exe` — on Windows, antivirus can
@@ -81,8 +79,7 @@ authoritative rules, which the ingest agent reads — referenced by path — eve
 3. **[`citadel/rules/`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/citadel/rules/README.md)** — the schema/rules layer: `schema.md` (the
    format contract) + `core.md` (agent behavior) + per-lifecycle `tasks/`, per-file-type
    `formats/`, and agent-judged `genres/` briefs. Editing them changes how the wiki is built with
-   **no code change**. The rules live in the package so a pip install carries them; the repo-root
-   `SCHEMA.md`/`AGENT_INGEST.md` are just pointer stubs.
+   **no code change**. The rules live in the package so a pip install carries them.
 
 **Per-fact provenance** is the load-bearing rule. Every factual sentence ends with a GitHub-Flavored
 Markdown footnote, defined in a trailing `## Sources` section that links to the originating `raw/`
@@ -156,7 +153,7 @@ pull full cited context — answering from your synthesized wiki instead of re-r
   [`core.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/citadel/rules/core.md) (operational behavior), plus the `tasks/`, `formats/`, and
   `genres/` briefs.
 - [`citadel/templates/env.example`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/citadel/templates/env.example) — every configuration knob
-  (the `citadel init` `.env` template; the repo-root `.env.example` is a pointer stub).
+  (the `citadel init` `.env` template).
 - [`docs/karpathy-llm-wiki.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/karpathy-llm-wiki.md) ·
   [`docs/okf-reference.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/okf-reference.md) — the pattern and the format.
 - [`docs/configuration.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/configuration.md) — every `CITADEL_*` config knob.

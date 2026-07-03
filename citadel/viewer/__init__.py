@@ -37,14 +37,18 @@ this module (``template.html`` / ``app.css`` / ``app.js``) and read at build tim
 
 Public surface: ``build_bundle`` (pure data, the test seam), ``build_html`` (the document),
 ``write_viewer`` (writes ``wiki/.citadel_viewer.html``), and ``view`` (CLI entry — write, open,
-print the path; degrades gracefully when no browser is available, e.g. under WSL).
+print the path; on WSL it opens via ``wslview``/``explorer.exe`` and always prints a
+Windows-pasteable path, and everywhere it degrades gracefully when no browser is available).
 """
 
 from __future__ import annotations
 
 import json
 import os
+import platform
 import re
+import shutil
+import subprocess
 import webbrowser
 from importlib import resources
 from pathlib import Path
@@ -319,9 +323,68 @@ def write_viewer(out_path=None, pages=None) -> Path:
     return out_path.resolve()
 
 
-def open_in_browser(path: Path) -> bool:
+# Auto-open must never hang the command on a wedged opener — a few seconds is plenty for a
+# fire-and-forget launcher to hand off.
+_OPEN_TIMEOUT = 5
+
+
+def _is_wsl() -> bool:
+    """True when running under Windows Subsystem for Linux, where Python's ``webbrowser`` finds no
+    Linux browser to launch and a ``file://`` Linux path is useless to paste into a Windows
+    browser — so ``view`` reaches to the Windows side instead."""
+    if os.environ.get("WSL_DISTRO_NAME"):
+        return True
+    try:
+        return "microsoft" in platform.release().lower()
+    except Exception:  # noqa: BLE001 - detection must never crash the command
+        return False
+
+
+def _wsl_windows_path(path: Path) -> str | None:
+    """Best-effort ``wslpath -w`` — the Windows form (e.g.
+    ``\\\\wsl.localhost\\Ubuntu\\home\\me\\wiki\\.citadel_viewer.html``) of a WSL Linux path, so a
+    printed link is pasteable straight into a Windows browser. None on any failure."""
+    wslpath = shutil.which("wslpath")
+    if not wslpath:
+        return None
+    try:
+        proc = subprocess.run(
+            [wslpath, "-w", str(path)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=_OPEN_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip() or None
+
+
+def _run_opener(cmd: list[str], *, require_zero: bool = True) -> bool:
+    """Best-effort external opener. Returns True if it launched: with ``require_zero`` it demands a
+    zero exit (``wslview`` reports real codes); without it a clean start counts (``explorer.exe``
+    exits non-zero even on success). Never raises."""
+    try:
+        proc = subprocess.run(cmd, capture_output=True, timeout=_OPEN_TIMEOUT)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return proc.returncode == 0 if require_zero else True
+
+
+def open_in_browser(path: Path, win_path: str | None = None) -> bool:
     """Open ``path`` in the default browser; return True if a browser was launched. Never
-    raises (a headless/WSL box with no browser returns False instead of crashing)."""
+    raises (a headless box with no browser returns False instead of crashing). On WSL, Python's
+    ``webbrowser`` finds no Linux browser, so try the Windows side first — ``wslview`` (from wslu,
+    purpose-built) then ``explorer.exe`` on the ``wslpath -w`` Windows path (opens the default
+    Windows browser via file association) — before falling back to ``webbrowser``."""
+    if _is_wsl():
+        if shutil.which("wslview") and _run_opener(["wslview", str(path)]):
+            return True
+        if win_path and _run_opener(["explorer.exe", win_path], require_zero=False):
+            return True
     try:
         return bool(webbrowser.open(path.as_uri()))
     except Exception:  # noqa: BLE001 - a missing browser must not crash the command
@@ -352,7 +415,12 @@ def view(out=None, open_browser: bool = True, obsidian: bool = False) -> int:
     path = write_viewer(out)
     print(f"wrote {path}")
     print(f"  {path.as_uri()}")
-    if open_browser and not open_in_browser(path):
+    # On WSL the file:// Linux path is useless to paste into a Windows browser, so always also
+    # print the Windows form — a failed auto-open still leaves a working, pasteable link.
+    win_path = _wsl_windows_path(path) if _is_wsl() else None
+    if win_path:
+        print(f"  {win_path}")
+    if open_browser and not open_in_browser(path, win_path):
         print("  (could not launch a browser — open the file above manually)")
     return 0
 

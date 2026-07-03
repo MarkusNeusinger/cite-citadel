@@ -73,8 +73,6 @@ exclude = [
     "/.github",              # workflows + copilot-instructions
     "/uv.lock",              # dev lockfile
     "/CLAUDE.md",            # contributor architecture notes
-    "/citadel.cmd",          # dev-checkout wrapper (Windows cmd)
-    "/citadel.ps1",          # dev-checkout wrapper (PowerShell)
     "/docs/refactor-plan.md", # internal refactor design doc
 ]
 

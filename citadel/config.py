@@ -587,8 +587,9 @@ CURATE_PAGE_HARD_LINES: int = 800
 
 # OS/system junk files & folders to IGNORE entirely during a raw/ scan — never ingested, never
 # recorded in the manifest or the failures catalog. These are noise a file manager or the OS drops
-# into folders (Windows thumbnail caches / desktop.ini, macOS .DS_Store / resource forks, Office
-# ~$ lock files, editor swap & backup files) that carry no wiki-worthy content — folding each into a
+# into folders (Windows thumbnail caches / desktop.ini, WSL-surfaced NTFS Zone.Identifier streams,
+# macOS .DS_Store / resource forks, Office ~$ lock files, editor swap & backup files) that carry no
+# wiki-worthy content — folding each into a
 # "could not ingest" entry only clutters wiki/sources/index.md. Each pattern is a shell-style glob
 # matched case-insensitively against a file OR directory BASENAME (fnmatch), so `*.tmp` and `~$*`
 # work. Hidden dotfiles/dirs are already skipped separately, so these mainly cover the NON-hidden
@@ -602,6 +603,11 @@ _DEFAULT_IGNORE_PATTERNS: tuple[str, ...] = (
     "desktop.ini",
     "$RECYCLE.BIN",
     "System Volume Information",
+    # NTFS Alternate-Data-Stream sidecars surfaced as real files under WSL: copying a file in from
+    # Windows leaves a `<name>:Zone.Identifier` mark-of-the-web stream (content: `[ZoneTransfer]`),
+    # which WSL exposes as its own file. Colon-specific (a legit Linux name like `notes:v2.md` must
+    # NOT be swallowed, so we do NOT use the generic `*:*`).
+    "*:Zone.Identifier",
     # macOS Finder noise
     ".DS_Store",
     "._*",
