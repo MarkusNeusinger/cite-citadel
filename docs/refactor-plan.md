@@ -333,8 +333,8 @@ Separate verb (GraphRAG/Letta precedent), two layers (Wikipedia-bot model), **no
   IMPORTING session ran under"; curate operates on pages, not imports), so a `rules_version_drift`
   cluster re-plans until a real reconcile/`--force` re-ingest — mitigated by the mandatory
   improve-or-NOOP (a second clean pass is a NOOP, no wiki churn); the stale×in-degree re-verify
-  SAMPLING and the `oversized misc/` re-sort variant are not yet wired (`reverify_candidates` ships
-  as a tested pure function).)*
+  sampling IS wired (reason "reverify", top-K by staleness × in-degree+1); only the
+  `oversized misc/` re-sort variant remains unwired.)*
 
 ### Z6 — Provenance precision: citation locators now, evidence quotes later
 
