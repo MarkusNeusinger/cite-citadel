@@ -237,10 +237,10 @@ def _workspace_stamp() -> str:
     return config._safe_resolve(Path(config.WORKSPACE_ROOT)).as_posix()
 
 
-# The ``meta`` section of the most recently load()ed manifest ({} when the file was missing,
-# corrupt, or a legacy flat mapping). ONE json parse serves both the load itself and ingest's
-# stamped-workspace probe (:func:`stamped_workspace_mismatch`), which must read the stamp as it
-# was BEFORE this run's saves re-stamp the file.
+# The ``meta`` section of the most recently load()ed / inspect()ed manifest ({} when the file was
+# missing, corrupt, or a legacy flat mapping). ONE json parse serves both the read itself and the
+# stamped-workspace probe (:func:`stamped_workspace_mismatch`) — ingest's, which must read the stamp
+# as it was BEFORE this run's saves re-stamp the file, and doctor's.
 _last_meta: dict = {}
 
 
@@ -280,6 +280,24 @@ def _check_workspace(meta: dict) -> None:
     )
 
 
+def _read() -> tuple[object, str | None]:
+    """Read + JSON-parse MANIFEST_PATH ONCE, returning ``(parsed, error)``: the decoded top-level
+    JSON value and None on success, else ``(None, code)`` with ``code`` one of ``"missing"`` (no
+    file), ``"empty"`` (present but blank), or ``"corrupt"`` (unparseable JSON). The single reader
+    both :func:`load` and :func:`inspect` share, so neither re-reads the file."""
+    path = config.MANIFEST_PATH
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, FileNotFoundError):
+        return None, "missing"
+    if not text.strip():
+        return None, "empty"
+    try:
+        return json.loads(text), None
+    except (ValueError, TypeError):
+        return None, "corrupt"
+
+
 def load() -> dict[str, Entry]:
     """The flat ``{source key: entry}`` dict from MANIFEST_PATH, or {} if missing/empty/corrupt.
 
@@ -289,17 +307,7 @@ def load() -> dict[str, Entry]:
     from the current one triggers one stderr warning."""
     global _last_meta
     _last_meta = {}
-    path = config.MANIFEST_PATH
-    try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, FileNotFoundError):
-        return {}
-    if not text.strip():
-        return {}
-    try:
-        data = json.loads(text)
-    except (ValueError, TypeError):
-        return {}
+    data, _error = _read()
     if not isinstance(data, dict):
         return {}
     if isinstance(data.get("sources"), dict):
@@ -311,14 +319,46 @@ def load() -> dict[str, Entry]:
     return data  # legacy flat manifest: the whole mapping IS the sources dict
 
 
+def inspect() -> tuple[int | None, int, str | None]:
+    """Read-only probe of the on-disk manifest for ``citadel doctor``, on ONE json parse.
+
+    Returns ``(format, count, error)``:
+    - ``format``: the stored ``meta.format`` int, or None for a legacy flat / meta-less file (and
+      for every error state);
+    - ``count``: the number of tracked source entries (0 for every error state);
+    - ``error``: None when the file parsed as a manifest, else one of the sentinel codes ``"missing"``
+      (no file yet), ``"empty"`` (present but blank), or ``"corrupt"`` (unparseable JSON) — doctor
+      renders each on its own line, preserving the corrupt-vs-empty distinction.
+
+    Shares :func:`load`'s single parse via :func:`_read` and, like it, stashes the parsed ``meta``
+    into ``_last_meta`` so a following :func:`stamped_workspace_mismatch` reads the SAME parse (no
+    second read). Unlike :func:`load` it does NOT emit the dual-mount stderr warning — a probe stays
+    silent."""
+    global _last_meta
+    _last_meta = {}
+    data, error = _read()
+    if error is not None or not isinstance(data, dict):
+        return None, 0, error
+    sources = data.get("sources")
+    if isinstance(sources, dict):
+        meta = data.get("meta")
+        fmt: int | None = None
+        if isinstance(meta, dict):
+            _last_meta = meta
+            raw_fmt = meta.get("format")
+            fmt = raw_fmt if isinstance(raw_fmt, int) else None
+        return fmt, len(sources), None
+    return None, len(data), None  # legacy flat manifest: the whole mapping IS the sources dict
+
+
 def stamped_workspace_mismatch() -> str | None:
     """The workspace root the manifest was stamped by, WHEN it differs from the current one —
     else None (no manifest, no stamp, or a matching stamp). Reads the ``meta`` the most recent
-    :func:`load` stashed — ONE json parse per read, not a second parse of the same file — so
-    call it right after ``load()`` and before anything ``save()``s (a save re-stamps the FILE
-    with the CURRENT root, and a later load would then read the fresh stamp). Ingest's
-    workspace-identity hard guard reads this to decide whether the manifest's key space can be
-    trusted for a deletion sweep."""
+    :func:`load` / :func:`inspect` stashed — ONE json parse per read, not a second parse of the same
+    file — so call it right after ``load()``/``inspect()`` and before anything ``save()``s (a save
+    re-stamps the FILE with the CURRENT root, and a later load would then read the fresh stamp).
+    Ingest's workspace-identity hard guard reads this to decide whether the manifest's key space can
+    be trusted for a deletion sweep."""
     stamped = _stamped_workspace(_last_meta)
     if not stamped or stamped == _workspace_stamp():
         return None

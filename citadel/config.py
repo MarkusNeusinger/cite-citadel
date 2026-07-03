@@ -65,23 +65,40 @@ def _find_marker_root(start: Path) -> Path | None:
     return None
 
 
-def _resolve_workspace(cwd: Path | None = None) -> Path | None:
-    """Resolve the workspace root per the module-docstring order (env override > nearest marker >
-    env-dirs pair), or None when NO workspace resolved. Pure and never raises — callers (and
-    tests) may pass an explicit ``cwd``; the import-time call uses the process CWD."""
+def _resolve_workspace_with_mechanism(cwd: Path | None = None) -> tuple[Path | None, str]:
+    """The workspace root AND a short label for the discovery rule that resolved it, from ONE walk
+    of the module-docstring order (env override > nearest marker > env-dirs pair > none). The
+    SINGLE owner of that order: :func:`_resolve_workspace` and :func:`workspace_mechanism` both read
+    it, so the order lives in exactly one place. Pure and never raises — callers (and tests) may pass
+    an explicit ``cwd``; the import-time call uses the process CWD."""
     try:
         cwd = cwd if cwd is not None else Path.cwd()
         env = os.environ.get("CITADEL_WORKSPACE", "").strip()
         if env:
-            return _safe_resolve(Path(env).expanduser())
+            return _safe_resolve(Path(env).expanduser()), "CITADEL_WORKSPACE env"
         marker_root = _find_marker_root(cwd)
         if marker_root is not None:
-            return marker_root
+            return marker_root, f"{WORKSPACE_MARKER} marker"
         if os.environ.get("CITADEL_WIKI_DIR", "").strip() and os.environ.get("CITADEL_RAW_DIR", "").strip():
-            return _safe_resolve(cwd)
-        return None
+            return _safe_resolve(cwd), "CITADEL_WIKI_DIR/CITADEL_RAW_DIR"
+        return None, "none (cwd fallback)"
     except OSError:  # e.g. the CWD vanished — nothing can resolve; fail loud later, not here
-        return None
+        return None, "none (cwd fallback)"
+
+
+def _resolve_workspace(cwd: Path | None = None) -> Path | None:
+    """Resolve the workspace root per the module-docstring order, or None when NO workspace
+    resolved. Thin wrapper over :func:`_resolve_workspace_with_mechanism` (the order's one owner)."""
+    return _resolve_workspace_with_mechanism(cwd)[0]
+
+
+def workspace_mechanism() -> str:
+    """The discovery rule that resolves the workspace, as a short label — one of
+    ``"CITADEL_WORKSPACE env"``, ``"citadel.toml marker"``, ``"CITADEL_WIKI_DIR/CITADEL_RAW_DIR"``,
+    or ``"none (cwd fallback)"``. Re-resolves cheaply through the single discovery-order owner
+    (:func:`_resolve_workspace_with_mechanism`), so ``citadel doctor`` can name HOW the workspace was
+    found without a second copy of the order (reads env + CWD at call time, like discovery itself)."""
+    return _resolve_workspace_with_mechanism()[1]
 
 
 def _load_dotenv(root: Path) -> None:

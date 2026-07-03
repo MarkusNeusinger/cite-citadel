@@ -9,15 +9,10 @@ defaults). This page is the reference for pip users who never see the template f
 
 ## Bring your own CLI — your account, your provider's terms
 
-Ingest runs *your* authenticated coding-agent CLI under *your* account, and that usage is governed by
-**that provider's** terms, not by cite-citadel — [Anthropic Consumer](https://www.anthropic.com/legal/consumer-terms)
-/ [Commercial Terms](https://www.anthropic.com/legal/commercial-terms), the
-[GitHub Copilot product-specific terms](https://docs.github.com/en/site-policy/github-terms/github-copilot-product-specific-terms),
-and the [Gemini Code Assist / Gemini API terms](https://developers.google.com/gemini-code-assist/resources/terms-of-service).
-cite-citadel calls the official binary only — it does not proxy, store, or transmit your credentials.
-Heavy, unattended, or CI ingest against a **consumer subscription** may hit rate limits or a
-provider's automated-use expectations; for that scale prefer the tier the provider designates for
-programmatic use. See [`NOTICE.md`](../NOTICE.md) and [`SECURITY.md`](../SECURITY.md).
+Ingest runs *your* authenticated coding-agent CLI under *your* account, governed by **that
+provider's** terms. The full note (provider-terms links, credential handling, subscription-vs-API)
+lives once in the README:
+[License & third-party tools](https://github.com/MarkusNeusinger/cite-citadel/blob/main/README.md#license--third-party-tools).
 
 ## Backend selection
 

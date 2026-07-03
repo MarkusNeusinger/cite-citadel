@@ -28,11 +28,9 @@ the workspace guard (``needs_workspace=False``) precisely so it can diagnose a M
 
 from __future__ import annotations
 
-import json
 import os
 from collections import Counter
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from . import config, failures, manifest
 
@@ -70,21 +68,6 @@ class DoctorReport:
         return "\n".join(lines).rstrip() + "\n"
 
 
-def _workspace_mechanism() -> str:
-    """Which discovery rule resolved the workspace (mirrors ``config._resolve_workspace`` order):
-    the env override, the nearest marker, or the env-dirs pair — for the OK line's explanation."""
-    if os.environ.get("CITADEL_WORKSPACE", "").strip():
-        return "CITADEL_WORKSPACE env"
-    try:
-        if config._find_marker_root(Path.cwd()) is not None:
-            return f"{config.WORKSPACE_MARKER} marker"
-    except OSError:
-        pass
-    if os.environ.get("CITADEL_WIKI_DIR", "").strip() and os.environ.get("CITADEL_RAW_DIR", "").strip():
-        return "CITADEL_WIKI_DIR + CITADEL_RAW_DIR"
-    return "resolved"
-
-
 def check_workspace() -> Check:
     """FAIL when no workspace resolved (the fail-loud guard would stop every other command); else OK
     with the resolved root and the mechanism that found it."""
@@ -92,7 +75,7 @@ def check_workspace() -> Check:
         return Check(
             FAIL, "workspace", "no workspace found - run `citadel init [DIR]`, cd into one, or set CITADEL_WORKSPACE"
         )
-    return Check(OK, "workspace", f"{config.WORKSPACE_ROOT} (via {_workspace_mechanism()})")
+    return Check(OK, "workspace", f"{config.WORKSPACE_ROOT} (via {config.workspace_mechanism()})")
 
 
 def check_rules() -> Check:
@@ -157,21 +140,19 @@ def check_raw_roots() -> Check:
 def check_manifest() -> Check:
     """OK when there is no manifest yet (nothing ingested) or it parses with a matching workspace
     stamp; WARN when it is unparseable JSON (treated as empty) or its stamp names another workspace
-    (keys may not line up). Reports the format version and source count."""
+    (keys may not line up). Reports the format version and source count.
+
+    Reads the manifest through :func:`manifest.inspect` — ONE parse that also stashes the stamp for
+    the mismatch probe below, so doctor never re-reads the file or reaches into manifest internals."""
     path = config.MANIFEST_PATH
-    try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, FileNotFoundError):
+    fmt, count, error = manifest.inspect()
+    if error == "missing":
         return Check(OK, "manifest", f"no manifest yet ({path.name}) - nothing ingested")
-    if not text.strip():
+    if error == "empty":
         return Check(OK, "manifest", f"empty manifest ({path.name})")
-    try:
-        json.loads(text)
-    except (ValueError, TypeError):
+    if error is not None:  # "corrupt"
         return Check(WARN, "manifest", f"{path} is not valid JSON - treated as empty; re-ingest to rebuild")
-    sources = manifest.load()  # also stashes meta for the stamp probe below
-    fmt = manifest._last_meta.get("format", "legacy/none")
-    base = f"{len(sources)} source(s), format {fmt}"
+    base = f"{count} source(s), format {fmt if fmt is not None else 'legacy/none'}"
     mismatch = manifest.stamped_workspace_mismatch()
     if mismatch:
         return Check(

@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased] — 0.2.0
 
+> **Before flipping the repo public:** maintainer review of `NOTICE.md` and the README
+> "License & third-party tools" wording (see `SECURITY.md` / `NOTICE.md`).
+
 ### Added
 
 - **`citadel ingest --force`** — deliberately re-read an already-ingested source and reconcile the
@@ -14,9 +17,8 @@ All notable changes to this project are documented here. The format is based on
 - **Multi-root raw** via `CITADEL_RAW_DIRS`, and **`citadel ingest --full-rescan`** to distrust the
   scan cache and rehash everything.
 - **`citadel curate`** — a second lifecycle that re-verifies facts, splits overlong pages, and
-  re-sorts information without re-ingesting from zero. Offline detectors recompute the work list each
-  run; staged page-cluster agent sessions apply improve-or-NOOP fixes. Flags: `--dry-run`, `--limit`,
-  `--stale-rules`, `--diff`; model knob `CITADEL_CURATE_MODEL`.
+  re-sorts information without re-ingesting from zero. Flags: `--dry-run`, `--limit`, `--stale-rules`,
+  `--diff`; model knob `CITADEL_CURATE_MODEL`.
 - **`citadel status`** — per-source state (ingested with model + rules version, failed with reason +
   attempts, skipped-duplicate, ignored, pending) from the manifest and failures catalog, no re-hash.
 - **Full CLI ↔ MCP parity** — new `citadel read` / `citadel index` / `citadel sources` subcommands,
@@ -33,18 +35,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
-- **Incremental discovery** — the manifest doubles as the scan cache (size + mtime_ns + ctime
-  fast-path); a single `os.scandir` walk replaces the double `os.walk`. An unchanged corpus now does
-  **zero content reads**.
-- **Deletion is safe by construction** — candidates get positive `.exists()` confirmation, any walk
-  error aborts the sweep, and out-of-root keys are never swept (an unreachable share can't read as
-  mass deletion).
-- **Segmented sources promote once** — all segments of one large source fold into a single staging
-  copy and promote only after the last passes, so the live wiki never holds a half-folded source.
-- **Store hygiene** — `store` is now a thin facade over four focused modules; index rebuilds are
-  single-pass (much faster); `write_page` gained a reserved-name guard.
-- Packaging: the sdist now **excludes** the test corpora, CI/agent config, and dev-only files; the
-  wheel is unchanged. The pyproject `description` is vendor-neutral (pinned by a packaging guard).
+- **Incremental discovery** — the manifest doubles as the scan cache, so an unchanged corpus now
+  does **zero content reads**.
+- **Deletion is safe by construction** — an unreachable share or a walk error can never read as mass
+  deletion, and out-of-root keys are never swept.
+- **Segmented sources promote once** — a large source's passes fold into one staging copy and promote
+  together, so the live wiki never holds a half-folded source.
+- **Store hygiene** — index rebuilds are single-pass (much faster) and `write_page` gained a
+  reserved-name guard.
+- Packaging: the sdist now **excludes** the test corpora, CI/agent config, and dev-only files (the
+  wheel is unchanged); the pyproject `description` is vendor-neutral.
 
 ### Fixed
 

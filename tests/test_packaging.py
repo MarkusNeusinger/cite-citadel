@@ -67,6 +67,31 @@ def test_sdist_excludes_dev_and_corpora_trees():
         assert expected in exclude, f"{expected} must be excluded from the sdist"
 
 
+def test_configuration_doc_covers_every_env_knob():
+    """Mechanical drift guard replacing the prose-only 'keep this page in sync' promise: the
+    `CITADEL_*` knobs the packaged env.example ASSIGNS and the ones docs/configuration.md documents
+    must be the SAME set. A knob added to one but not the other fails HERE. Liberal in extraction
+    (any assignment line, commented defaults included; any `CITADEL_*` mention in the doc), strict in
+    comparison (set equality, modulo an explicit allowlist)."""
+    env_text = (ROOT / "citadel" / "templates" / "env.example").read_text(encoding="utf-8")
+    # Env knobs = lines that ASSIGN a CITADEL_* var (commented-out defaults included); tolerant of
+    # leading indent / `#` / spacing around `=` so reformatting the template never breaks the guard.
+    env_knobs = set(re.findall(r"^\s*#?\s*(CITADEL_[A-Z_]+)\s*=", env_text, re.MULTILINE))
+
+    doc_text = (ROOT / "docs" / "configuration.md").read_text(encoding="utf-8")
+    # Doc knobs = every CITADEL_* mention (inline code, heading, or prose) — deliberately liberal.
+    doc_knobs = set(re.findall(r"CITADEL_[A-Z_]+", doc_text))
+
+    # CITADEL_WORKSPACE is DOC-ONLY on purpose: it points a launcher (e.g. an MCP host) AT a
+    # workspace, so it belongs in that process's env, never inside a workspace's own .env template.
+    DOC_ONLY = {"CITADEL_WORKSPACE"}
+
+    assert env_knobs == doc_knobs - DOC_ONLY, {
+        "documented but missing from env.example": sorted(doc_knobs - DOC_ONLY - env_knobs),
+        "in env.example but undocumented": sorted(env_knobs - doc_knobs),
+    }
+
+
 def test_readme_links_are_absolute_for_pypi():
     """README.md ships as the PyPI long-description, where relative repo links 404 (owner report
     on the v0.1.0 release page). Every markdown link outside fenced code blocks must be absolute

@@ -168,15 +168,6 @@ plus a one-line status ("CI green, Copilot review addressed, ready for review").
 
 - **`gh pr checks` has no `--json`.** Parse its table, or switch to `gh pr view --json
   statusCheckRollup` for structured status.
-- **Empty-checks window.** Right after `git push`/`gh pr create` the checks have not registered;
-  `gh pr checks --watch` then "passes" on zero checks. Always wait for at least one check to appear
-  first (the `until` loop in §7).
-- **CRLF warnings are noise.** `warning: LF will be replaced by CRLF` on `git add` is a line-ending
-  notice, not an error — the repo is byte-identical across OSes on purpose.
-- **Never pipe `pytest` through `tail` in an `&&` chain.** `uv run pytest -q | tail && …` reports the
-  pipe's exit status (tail's), so a failing suite reads as green. Run `pytest` as its own command.
-- **Copilot is a bot reviewer.** `gh pr create --reviewer copilot-...` is rejected; add it via the
-  `requested_reviewers` API with the login `copilot-pull-request-reviewer[bot]` (§6).
 - **The beverages lint needs its own workspace.** Plain `citadel lint` from the checkout root lints
   the dev workspace, not the showcase; `CITADEL_WORKSPACE=corpora/beverages` selects the nested
   marker, matching CI.
