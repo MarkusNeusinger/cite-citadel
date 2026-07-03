@@ -78,7 +78,7 @@ _REASON_ORDER = [
 
 # How many times a failing curate cluster is attempted before it is skipped (never auto-retried).
 # The failures-catalog ``attempts`` counter increments per run; once it reaches this cap the cluster
-# is left alone until an explicit retry (``curate(force=True)`` / the CLI's retry flag).
+# is left alone until an explicit retry (``curate(force=True)`` / the CLI's ``citadel curate --retry``).
 ATTEMPT_CAP = 2
 
 # How many pages the rolling fact re-verification samples PER RUN (docs/refactor-plan.md Z5). Kept

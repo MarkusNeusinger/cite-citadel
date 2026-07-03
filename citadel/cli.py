@@ -133,6 +133,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="Write a per-page change report (unified diffs) for this run to PATH.",
     )
+    p_curate.add_argument("--retry", action="store_true", help="include attempt-capped clusters in this run")
     p_curate.set_defaults(func=cmd_curate)
 
     p_status = sub.add_parser(
@@ -280,10 +281,13 @@ def cmd_ingest(args: argparse.Namespace) -> int:
 def cmd_curate(args: argparse.Namespace) -> int:
     """Run one curate pass and print the report (docs/refactor-plan.md Z5). ``--dry-run`` recomputes
     the plan and runs zero sessions; ``--limit``/``--stale-rules`` shape the plan; ``--diff`` writes a
-    change report. Returns 1 when a cluster failed its gate (surfaced for CI), else 0."""
+    change report; ``--retry`` includes attempt-capped clusters (maps to ``curate(force=True)``).
+    Returns 1 when a cluster failed its gate (surfaced for CI), else 0."""
     from . import curate
 
-    report = curate.curate(dry_run=args.dry_run, limit=args.limit, stale_rules=args.stale_rules, diff=args.diff)
+    report = curate.curate(
+        dry_run=args.dry_run, limit=args.limit, stale_rules=args.stale_rules, diff=args.diff, force=args.retry
+    )
     print(report.render())
     return 1 if report.failed else 0
 

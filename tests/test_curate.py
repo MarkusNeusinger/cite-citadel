@@ -333,6 +333,12 @@ def test_failed_cluster_is_attempt_capped_across_runs(tmp_citadel, seed_page, fa
     assert "concepts/alice.md" not in _plan_pages(dry.plan)
     assert "concepts/alice.md" in dry.skipped
 
+    # `citadel curate --retry` (force=True) is the documented escape hatch: the capped cluster
+    # reappears as a runnable plan item instead of being skipped.
+    retried = curate.curate(dry_run=True, force=True)
+    assert "concepts/alice.md" in _plan_pages(retried.plan)
+    assert "concepts/alice.md" not in retried.skipped
+
 
 # --- transparency side-effects: log.md edit summary + --diff report --------------------------
 
@@ -424,7 +430,30 @@ def test_every_mcp_tool_has_a_cli_counterpart():
         assert subcommand in commands, f"MCP {tool} has no CLI counterpart {subcommand!r}"
 
 
-def test_wiki_lint_tool_never_raises(tmp_citadel, monkeypatch):
+def test_curate_retry_flag_maps_to_force(tmp_citadel, monkeypatch):
+    """The `citadel curate --retry` CLI flag reaches ``curate`` as ``force=True`` — the documented
+    retry path for attempt-capped clusters. Without it, ``force`` stays False."""
+    from citadel import curate
+
+    class _Report:
+        failed: list[str] = []
+
+        def render(self) -> str:
+            return ""
+
+    seen: list[dict] = []
+
+    def spy(*_args, **kwargs):
+        seen.append(kwargs)
+        return _Report()
+
+    monkeypatch.setattr(curate, "curate", spy)
+
+    assert cli.main(["curate", "--retry"]) == 0
+    assert seen[-1].get("force") is True
+
+    assert cli.main(["curate"]) == 0
+    assert seen[-1].get("force") is False
     """The new wiki_lint MCP tool honors the server's never-raise contract: an internal failure
     comes back as a clear error STRING, not an exception, so the server stays up."""
     wiki_lint = server.wiki_lint  # the never-raise MCP tool
@@ -488,3 +517,46 @@ def test_lint_flags_missing_heading_locator(tmp_citadel, seed_page):
     report = lint.lint()
     issues = report.locator_issues  # AttributeError until Z6 lands
     assert any("concepts/topic.md" == rel for rel, _detail in issues)
+
+
+def test_lint_flags_prose_text_locator_that_is_not_a_heading(tmp_citadel, seed_page):
+    """A `§ …` locator naming text that appears only in PROSE (never as a markdown heading) is
+    flagged: the candidate set is restricted to real heading lines, so prose text can no longer
+    smuggle a `§` locator past the check (the Copilot-review fix)."""
+    (tmp_citadel.raw / "spec.md").write_text("# Real Heading\n\nDeep dive into the details\n", encoding="utf-8")
+    seed_page(
+        "concepts/topic.md",
+        {"type": "Concept", "title": "Topic", "description": "d", "tags": ["t"], "resource": "raw/spec.md"},
+        "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/spec.md](../../raw/spec.md), § Deep dive into the details - x\n",
+    )
+
+    report = lint.lint()
+    assert any("concepts/topic.md" == rel for rel, _detail in report.locator_issues)
+
+
+def test_lint_passes_genuine_heading_locator(tmp_citadel, seed_page):
+    """A `§ Heading` locator that names a real markdown heading in its text source raises no
+    locator warning — the restricted candidate set still recognizes true headings."""
+    (tmp_citadel.raw / "spec.md").write_text("# Overview\n\n## Real Heading\n\nprose\n", encoding="utf-8")
+    seed_page(
+        "concepts/topic.md",
+        {"type": "Concept", "title": "Topic", "description": "d", "tags": ["t"], "resource": "raw/spec.md"},
+        "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/spec.md](../../raw/spec.md), § Real Heading - x\n",
+    )
+
+    report = lint.lint()
+    assert not any("concepts/topic.md" == rel for rel, _detail in report.locator_issues)
+
+
+def test_lint_flags_fenced_pseudo_heading_locator(tmp_citadel, seed_page):
+    """A `# heading` line that lives inside a ``` code fence is literal text, not a heading, so a
+    `§` locator naming it is flagged (fence-aware candidate collection)."""
+    (tmp_citadel.raw / "spec.md").write_text("# Real Heading\n\n```\n# Fenced Pseudo Heading\n```\n", encoding="utf-8")
+    seed_page(
+        "concepts/topic.md",
+        {"type": "Concept", "title": "Topic", "description": "d", "tags": ["t"], "resource": "raw/spec.md"},
+        "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/spec.md](../../raw/spec.md), § Fenced Pseudo Heading - x\n",
+    )
+
+    report = lint.lint()
+    assert any("concepts/topic.md" == rel for rel, _detail in report.locator_issues)

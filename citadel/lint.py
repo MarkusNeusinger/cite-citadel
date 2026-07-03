@@ -493,10 +493,11 @@ def _heading_candidates(text: str):
 def _locator_problem(page_rel: str, target: str, tail: str, cache: dict[str, str | None]) -> str | None:
     """Verify ONE locator ``tail`` against its text source, returning a human-readable problem or
     None. A line range (matched as a prefix, so a trailing description is ignored) is checked against
-    the file's line count; ``§ Heading`` against the source's headings (a heading = a line matching a
-    candidate once its leading ``#``/space is stripped, case-folded). ``p. 12`` / ``pp. 3-5`` page
-    locators (and any unrecognized form) are agent-verified — skipped. ``cache`` is the per-run
-    source-text memo threaded through :func:`_read_source_text`."""
+    the file's line count; ``§ Heading`` against the source's headings (a heading = a markdown
+    heading line — its left-stripped text starts with ``#``, outside code fences — with the leading
+    ``#``/space stripped, case-folded; a ``# comment`` inside a ``` fence is prose, not a heading).
+    ``p. 12`` / ``pp. 3-5`` page locators (and any unrecognized form) are agent-verified — skipped.
+    ``cache`` is the per-run source-text memo threaded through :func:`_read_source_text`."""
     lines_m = _LOC_LINES_RE.match(tail)
     if lines_m:
         text = _read_source_text(page_rel, target, cache)
@@ -512,7 +513,11 @@ def _locator_problem(page_rel: str, target: str, tail: str, cache: dict[str, str
         text = _read_source_text(page_rel, target, cache)
         if text is None:
             return None
-        headings = {line.strip().lstrip("#").strip().lower() for line in text.splitlines()}
+        headings = {
+            line.lstrip().lstrip("#").strip().lower()
+            for line, in_code in grammar.iter_lines(text)
+            if not in_code and line.lstrip().startswith("#")
+        }
         wanted = tail[1:].strip()
         if not wanted:
             return None
