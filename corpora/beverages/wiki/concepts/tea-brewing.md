@@ -7,7 +7,7 @@ tags:
 - tea
 - brewing
 - measurement
-resource: corpora/beverages/raw/tea-guide.md
+resource: raw/tea-guide.md
 timestamp: '2026-07-03T13:41:55Z'
 ---
 

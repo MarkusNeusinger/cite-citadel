@@ -1589,14 +1589,13 @@ def ingest(
     cites it, run a ``kind="delete"`` cleanup session that strips those facts/citations, gated by
     a post-condition that the wiki no longer references it (else the whole cleanup is rolled back
     and retried); then drop its manifest key. A deleted source nothing cites is simply dropped
-    from the manifest. Running deletions first means a subsequent pending source's session builds
-    on a wiki whose stale provenance is already gone, so it cannot fail validation on a
-    pre-existing bad citation to the just-deleted source. Finalization
+    from the manifest. Running deletions first is load-bearing (the per-source-job group-order
+    comment in the body carries the full why). Finalization
     (rebuild_indexes + find_broken_links + append_log) happens once, if any source was processed,
     reorganized, found unreadable, or removed.
 
     The per-source loop itself is ONE shared implementation (:class:`_SourceJob` +
-    :func:`_run_source_jobs`): files, repos, and deletion cleanups differ only in how their
+    :func:`_run_source_jobs`): deletion cleanups, files, and repos differ only in how their
     sessions are planned and in their post-success bookkeeping.
 
     ``progress`` is an optional ``progress(event, data)`` callback (run start, before/after

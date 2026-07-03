@@ -7,7 +7,7 @@ tags:
 - coffee
 - roasting
 - cold-brew
-resource: corpora/beverages/raw/cold-brew-notes.md
+resource: raw/cold-brew-notes.md
 timestamp: '2026-07-03T13:17:00Z'
 ---
 

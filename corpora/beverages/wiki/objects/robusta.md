@@ -8,7 +8,7 @@ tags:
 - robusta
 - botany
 - agriculture
-resource: corpora/beverages/raw/coffee-guide.md
+resource: raw/coffee-guide.md
 timestamp: '2026-07-03T13:23:54Z'
 ---
 

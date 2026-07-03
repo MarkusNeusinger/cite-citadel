@@ -8,7 +8,7 @@ tags:
 - espresso
 - brewing
 - caffeine
-resource: corpora/beverages/raw/espresso-and-cafe-culture.md
+resource: raw/espresso-and-cafe-culture.md
 timestamp: '2026-07-03T13:23:54Z'
 ---
 

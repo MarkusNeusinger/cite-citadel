@@ -6,7 +6,7 @@ description: Mei Lin's recipe book for Thornbury & Lin, recording not just blend
 tags:
 - tea
 - trade
-resource: corpora/beverages/raw/thornbury-tea-blog.md
+resource: raw/thornbury-tea-blog.md
 timestamp: '2026-07-03T14:08:42Z'
 ---
 

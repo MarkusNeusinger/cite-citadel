@@ -7,7 +7,7 @@ tags:
 - coffee
 - brewing
 - ritual
-resource: corpora/beverages/raw/aurora-coffee-blog.md
+resource: raw/aurora-coffee-blog.md
 timestamp: '2026-07-03T13:06:17Z'
 ---
 

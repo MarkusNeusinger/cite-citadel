@@ -6,7 +6,7 @@ description: The post-harvest methods — washed, natural, and honey — used to
 tags:
 - coffee
 - processing
-resource: corpora/beverages/raw/coffee-guide.md
+resource: raw/coffee-guide.md
 timestamp: '2026-07-03T12:42:54Z'
 ---
 

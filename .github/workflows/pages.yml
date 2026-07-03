@@ -36,11 +36,10 @@ jobs:
         run: uv sync --dev
 
       - name: Generate the offline wiki viewer
-        # The committed showcase wiki lives at corpora/beverages/ (repo-root raw/ + wiki/ are now a
-        # gitignored user workspace); point the marker workspace at it via the CITADEL_*_DIR overrides.
+        # The committed showcase wiki lives at corpora/beverages/, which is its own self-contained
+        # workspace (a nested citadel.toml marker with plain raw/X keys); point discovery at it.
         env:
-          CITADEL_RAW_DIR: corpora/beverages/raw
-          CITADEL_WIKI_DIR: corpora/beverages/wiki
+          CITADEL_WORKSPACE: corpora/beverages
         run: uv run python -m citadel view --no-open --out _site/index.html
 
       - name: Upload Pages artifact

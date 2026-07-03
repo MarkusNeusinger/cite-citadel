@@ -10,7 +10,7 @@ tags:
 - coffee
 - brewing
 - measurement
-resource: corpora/beverages/raw/coffee-guide.md
+resource: raw/coffee-guide.md
 timestamp: '2026-07-03T13:17:00Z'
 ---
 

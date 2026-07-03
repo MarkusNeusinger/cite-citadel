@@ -50,12 +50,11 @@ jobs:
         run: uv run pytest -q
 
       - name: Lint the showcase wiki (structural health check)
-        # The checkout root carries a citadel.toml marker, so the repo itself is a valid workspace;
-        # the CITADEL_*_DIR overrides point that workspace at the committed beverages showcase corpus
-        # (repo-root raw/ + wiki/ are now a gitignored user workspace — see corpora/beverages/).
+        # The committed beverages showcase is its own self-contained workspace (it carries its own
+        # nested citadel.toml marker with plain raw/X keys); point discovery straight at it. The
+        # checkout root's marker only wins from the root — this env override selects the nested one.
         env:
-          CITADEL_RAW_DIR: corpora/beverages/raw
-          CITADEL_WIKI_DIR: corpora/beverages/wiki
+          CITADEL_WORKSPACE: corpora/beverages
         run: uv run python -m citadel lint
 
   lint:

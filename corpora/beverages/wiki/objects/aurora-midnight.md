@@ -6,7 +6,7 @@ tags:
 - coffee
 - roasting
 - caffeine
-resource: corpora/beverages/raw/aurora-coffee-blog.md
+resource: raw/aurora-coffee-blog.md
 timestamp: '2026-07-03T13:23:54Z'
 ---
 

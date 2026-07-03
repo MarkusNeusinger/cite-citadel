@@ -7,7 +7,7 @@ tags:
 - tea
 - matcha
 - preparation
-resource: corpora/beverages/raw/matcha-and-preparation.md
+resource: raw/matcha-and-preparation.md
 timestamp: '2026-07-03T13:41:55Z'
 ---
 

@@ -7,7 +7,7 @@ tags:
 - coffee
 - health
 - physiology
-resource: corpora/beverages/raw/coffee-health-faq.md
+resource: raw/coffee-health-faq.md
 timestamp: '2026-07-03T13:17:00Z'
 ---
 

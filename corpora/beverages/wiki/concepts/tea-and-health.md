@@ -8,7 +8,7 @@ tags:
 - tea
 - health
 - physiology
-resource: corpora/beverages/raw/tea-health-faq.md
+resource: raw/tea-health-faq.md
 timestamp: '2026-07-03T13:49:43Z'
 ---
 

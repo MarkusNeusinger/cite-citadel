@@ -276,16 +276,16 @@ See also: [abbreviations](abbreviations/index.md) · [concepts](concepts/index.m
 
 10 ingested raw source(s) — full catalog with the importing model in [sources/index.md](sources/index.md).
 
-- [corpora/beverages/raw/aurora-coffee-blog.md](../raw/aurora-coffee-blog.md) — cited by 5 pages
-- [corpora/beverages/raw/coffee-guide.md](../raw/coffee-guide.md) — cited by 10 pages
-- [corpora/beverages/raw/coffee-health-faq.md](../raw/coffee-health-faq.md) — cited by 6 pages
-- [corpora/beverages/raw/cold-brew-notes.md](../raw/cold-brew-notes.md) — cited by 6 pages
-- [corpora/beverages/raw/espresso-and-cafe-culture.md](../raw/espresso-and-cafe-culture.md) — cited by 6 pages
-- [corpora/beverages/raw/matcha-and-preparation.md](../raw/matcha-and-preparation.md) — cited by 3 pages
-- [corpora/beverages/raw/tea-guide.md](../raw/tea-guide.md) — cited by 10 pages
-- [corpora/beverages/raw/tea-health-faq.md](../raw/tea-health-faq.md) — cited by 5 pages
-- [corpora/beverages/raw/tea-history-and-trade.md](../raw/tea-history-and-trade.md) — cited by 6 pages
-- [corpora/beverages/raw/thornbury-tea-blog.md](../raw/thornbury-tea-blog.md) — cited by 7 pages
+- [raw/aurora-coffee-blog.md](../raw/aurora-coffee-blog.md) — cited by 5 pages
+- [raw/coffee-guide.md](../raw/coffee-guide.md) — cited by 10 pages
+- [raw/coffee-health-faq.md](../raw/coffee-health-faq.md) — cited by 6 pages
+- [raw/cold-brew-notes.md](../raw/cold-brew-notes.md) — cited by 6 pages
+- [raw/espresso-and-cafe-culture.md](../raw/espresso-and-cafe-culture.md) — cited by 6 pages
+- [raw/matcha-and-preparation.md](../raw/matcha-and-preparation.md) — cited by 3 pages
+- [raw/tea-guide.md](../raw/tea-guide.md) — cited by 10 pages
+- [raw/tea-health-faq.md](../raw/tea-health-faq.md) — cited by 5 pages
+- [raw/tea-history-and-trade.md](../raw/tea-history-and-trade.md) — cited by 6 pages
+- [raw/thornbury-tea-blog.md](../raw/thornbury-tea-blog.md) — cited by 7 pages
 
 ## Open Points
 

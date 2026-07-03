@@ -90,9 +90,8 @@ uv run python -m citadel ingest
 uv run python -m citadel ingest --force "$RAW/2024-03-05-minutes-kickoff.md"
 ```
 
-Expected session kinds are enumerated in the wave protocol of `project-history/ground-truth.md`
-(wave 2: 1 reconcile + 3 ingest + 5 NOOP; wave 3: 1 delete + 3 ingest + rest NOOP). Watch the report
-per wave.
+Expected session kinds per wave are enumerated in the wave protocol of
+`project-history/ground-truth.md` (authoritative). Watch the report per wave.
 
 ## Mode B — grade-only (`--grade-only`)
 
@@ -117,27 +116,13 @@ grade; the structural break is the finding.
 using the evidence greps the key itself carries (it enumerates every planted item with a greppable
 value and expected citation). Grade by **content, not filename** — page names are LLM-chosen and vary
 run to run. Wiki text may wrap; if a scoped grep misses, flatten first
-(`tr '\n' ' '`) before calling it a miss. A compact starter battery per corpus — the ground-truth has
-the complete list:
+(`tr '\n' ' '`) before calling it a miss. ONE illustrative grep per corpus below — the corpus's
+ground-truth carries the complete per-section battery:
 
 ```bash
-# --- beverages (§A single-source, §B merges, §C contradictions, §D false claim, §E subtle, §F bridges, §H abbrevs)
-grep -rn "CONTRADICTION" "$WIKI" | grep -v index.md          # C: >=2 of 4 good, 4/4 great
-grep -rni "caffeine-free\|burns off" "$WIKI"                 # D: the false claim must be present…
-grep -rn  "\[\^llm" "$WIKI"                                  # …ideally with an [^llm] caveat near it
-grep -rni "cold brew" "$WIKI" | grep -iE "higher|more caffeine"   # E: the subtle "don't drop me" fact
-
-# --- counterfactual-atlas (§D is the point: planted-present, true-value-only-as-[^llm])
-grep -rinE "312[, ]?000" "$WIKI"                             # planted must hit
-grep -rinE "299[ ,.]?792|300[, ]?000" "$WIKI"                # true value: every hit MUST be [^llm]-labeled; bare = FAIL
-grep -rinE "299[ ,.]?792|300[, ]?000" "$RAW"                 # authoring invariant: NO output (else the trap is void)
-grep -rin "KSB" "$WIKI"                                      # §H: never expanded with [^sN] (fabrication)
-
-# --- project-history (final state after wave 3)
-grep -rn '18,000\|02:00\|memo-brandt-komet-operating-costs' "$WIKI"   # D1 delete: all THREE must be empty
-grep -rn '310,000' "$WIKI"                                   # …but the co-cited €310k KEEPS (attributed to Brandt)
-grep -rniE 'wurde|sowie|beträgt|beschlossen' "$WIKI"         # WIKI_LANG=en: no German content pages
-grep -rn 'BasaltDB' "$WIKI"; grep -rn 'KorallenDB' "$WIKI"   # T2: BasaltDB current, KorallenDB only superseded
+grep -rn "CONTRADICTION" "$WIKI" | grep -v index.md   # beverages §C: conflicts must surface, not silently resolve
+grep -rinE "312[, ]?000" "$WIKI"                      # counterfactual-atlas §D: planted value present (true value only as [^llm])
+grep -rn '18,000\|02:00' "$WIKI"                      # project-history D1: the deleted memo's facts must be gone
 ```
 
 Then walk the ground-truth's own per-section grep tables (counterfactual-atlas §D has all seven
@@ -148,19 +133,8 @@ pages carrying `[^llm]` facts and undefined abbreviations — a quick index for 
 
 Report a table of **hard gates** (all must hold) and **soft checks** (report caught / partial /
 missed — do not hard-fail a single soft miss; ingest is non-deterministic). The exact hard/soft split
-is the **Scoring** section at the bottom of each corpus's ground-truth — use it verbatim. In short:
-
-- **beverages** — hard: check 0 / lint OK / §A single-source facts / §D false claim present+attributed
-  (not silently corrected) / §E subtle fact / §F not two islands / §B not one-page-per-file. Soft: §C
-  contradiction callouts (≥2), §D `[^llm]` caveat, §B tidiness, §H TDS/EGCG carried + EY surfaced.
-- **counterfactual-atlas** — hard: §G structural / §D all seven traps (planted present+cited, true
-  value nowhere un-`[^llm]`) / §A / §E patent clause / §C both conflict values / §F1 temporal both
-  states dated / §F2 no fused-sense fabrication / §F3 graph connected / §H no `[^sN]` KSB expansion.
-  Soft: contradiction callouts, merge tidiness, Change-Log form, honest `[^llm]` asides.
-- **project-history** — hard: §G after **every** wave / every `T*` old value superseded not erased /
-  `D1` delete complete with €310k surviving / `C1`/`C2` counterfactuals kept / `Q1`/`Q2` attributed to
-  the original author / `O1`/`O2` never world facts / `S1` pilot vs portal not merged / §A / §E.
-  Soft: M1/M2 callouts, tidy change-logs, AP-1 thread, abbreviation pages, style-profile entries.
+is the **Scoring** section at the bottom of each corpus's ground-truth — read it and use it verbatim
+(it is the single authority for that corpus's hard/soft split; do not restate it here).
 
 End with a one-line verdict per corpus and, on any hard fail, the specific guarantee it breaks
 (organized / links / provenance / temporal) and the file+fact involved.
@@ -171,13 +145,25 @@ Run the three corpora **sequentially**, each in its own sandbox (never share a w
 then print one aggregate table: corpus × {phase-1 check, phase-1 lint, hard-gate verdict, soft
 caught/total}. `all` passes only if every corpus passes its hard gates.
 
-## Keep or discard the beverages build
+## Discard a grading sandbox vs regenerate the committable showcase
 
-The `beverages` sandbox wiki is the **showcase** — the committed one lives at `corpora/beverages/wiki`
-and the GitHub Pages viewer is built from it. To refresh the showcase, copy a clean beverages build
-over it: `rm -rf "$REPO/corpora/beverages/wiki" && cp -r "$SANDBOX/wiki" "$REPO/corpora/beverages/wiki"`,
-then re-run phase 1 against `corpora/beverages` before committing. The other two sandboxes are
-throwaways — `rm -rf "$SANDBOX"` when done.
+Two different things, kept apart on purpose:
+- **Grading sandboxes are throwaways.** atlas and project-history are graded ONLY in a mktemp
+  sandbox (`rm -rf "$SANDBOX"`); beverages may be graded that way too. Nothing under a sandbox is committed.
+- **Regenerating the committed showcase is NOT a sandbox copy.** The committed `corpora/beverages/wiki`
+  (the GitHub Pages viewer's source) must carry plain `raw/X` keys. Get that by building **inside
+  `corpora/beverages/` itself** — its own self-contained workspace (a nested `citadel.toml` marker),
+  so its keys come out `raw/X` with no rewrite:
+
+  ```bash
+  export CITADEL_WORKSPACE="$REPO/corpora/beverages"   # the nested marker → committable raw/X keys
+  export CITADEL_INGEST_MODEL=sonnet
+  rm -rf "$REPO/corpora/beverages/wiki"/* && uv run python -m citadel ingest
+  uv run python -m citadel check && uv run python -m citadel lint   # phase 1, same workspace
+  ```
+
+  **Never `cp` a sandbox wiki over it** — a sandbox bakes its own `CITADEL_WORKSPACE` (an absolute
+  machine path) into the manifest/index, which must never be committed.
 
 ## Gotchas
 
@@ -208,3 +194,6 @@ throwaways — `rm -rf "$SANDBOX"` when done.
   `ls "$WIKI"/**/*.md` shows pages and that the build actually processed every source.
 - project-history wave 3 still shows the memo's facts → the delete session did not run or did not
   promote; a full run is required for deletion detection, and `D1`'s three ∅-greps are the probe.
+- project-history wave 3 rolls a *pending* source back with a `bad_source` error while the retracted
+  memo is itself deletable → points at deletions-before-pending ORDERING (the delete must strip the
+  stale citation FIRST so the pending session builds on a consistent wiki), not delete propagation.

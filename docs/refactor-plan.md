@@ -383,7 +383,9 @@ Separate verb (GraphRAG/Letta precedent), two layers (Wikipedia-bot model), **no
 ### Z8 — Packaging / CI / OSS
 
 - pyproject: PEP 639 license, dynamic version, 3.14 classifier, drop the duplicated dev-deps table,
-  sdist excludes (.claude/, .github/, uv.lock, demo wiki, CLAUDE.md, wrapper scripts).
+  sdist excludes (.claude/, .github/, uv.lock, CLAUDE.md, wrapper scripts, and the whole `corpora/`
+  test-corpora tree — explicitly including the committed `corpora/beverages/wiki` showcase and its
+  `.citadel_ingested.json` manifest; none of it belongs in the distributed package).
 - CI adds: **wheel-smoke job** (uv build → twine check → clean venv → `citadel --version` +
   `citadel init` + `citadel check` from a temp CWD — the regression test for the whole
   phantom-workspace bug class), **windows-latest + macos-latest runners** (the SMB/Windows

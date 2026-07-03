@@ -7,7 +7,7 @@ tags:
 - tea
 - trade
 - history
-resource: corpora/beverages/raw/tea-history-and-trade.md
+resource: raw/tea-history-and-trade.md
 timestamp: '2026-07-03T14:08:42Z'
 ---
 

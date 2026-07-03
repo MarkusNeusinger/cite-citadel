@@ -6,7 +6,7 @@ description: The application of heat that transforms green coffee seeds into bro
 tags:
 - coffee
 - roasting
-resource: corpora/beverages/raw/coffee-guide.md
+resource: raw/coffee-guide.md
 timestamp: '2026-07-03T12:42:54Z'
 ---
 

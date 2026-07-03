@@ -8,7 +8,7 @@ tags:
 - physiology
 - sleep
 - chemistry
-resource: corpora/beverages/raw/coffee-health-faq.md
+resource: raw/coffee-health-faq.md
 timestamp: '2026-07-03T12:54:53Z'
 ---
 
