@@ -1,5 +1,10 @@
 # **cite**-citadel
 
+[![CI](https://img.shields.io/github/actions/workflow/status/MarkusNeusinger/cite-citadel/ci.yml?branch=main&label=CI)](https://github.com/MarkusNeusinger/cite-citadel/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/cite-citadel)](https://pypi.org/project/cite-citadel/)
+[![Python versions](https://img.shields.io/pypi/pyversions/cite-citadel)](https://pypi.org/project/cite-citadel/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/MarkusNeusinger/cite-citadel/blob/main/LICENSE)
+
 > **A fortress of cited knowledge.** An LLM-maintained, fully-cited personal wiki —
 > every fact is attested to its source, nothing is invented.
 
@@ -20,7 +25,9 @@ wiki over MCP instead of re-reading your notes.
 
 The CLI is **`citadel`**; the PyPI package is **`cite-citadel`**. The `wiki/` directory **is** the
 database — no SQLite, no vector store. Ingest runs through a **coding-agent CLI you already have**
-(`claude`, `copilot`, or `gemini`), so it uses your existing subscription and **needs no API key**.
+(`claude`, `copilot`, or `gemini`), so it uses your existing subscription and **needs no API key** —
+that usage is under your account and your provider's terms (see
+[License & third-party tools](#license--third-party-tools)).
 
 **Three guarantees that hold as the wiki grows** (full rules in
 [`citadel/rules/schema.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/citadel/rules/schema.md)):
@@ -52,8 +59,8 @@ Ingest runs through a coding-agent CLI you already have — no API key, just you
    inline in that same file.
 3. **Drop any text-bearing files into `raw/`** — markdown, code, PDF, Office, images, in any sub-folder.
 4. **`citadel ingest`** — one agent session per source folds it into the cross-linked, cited wiki.
-5. **Use it** — `citadel search "caffeine"` (also `read`, `status`, `curate`, `view`, `lint`,
-   `check`, `tags`) from the shell, or `citadel serve` to expose the wiki to any AI over MCP.
+5. **Use it** — `citadel search "caffeine"` (also `read`, `status`, `doctor`, `curate`, `view`,
+   `lint`, `check`, `tags`) from the shell, or `citadel serve` to expose the wiki to any AI over MCP.
    **Everything the MCP server offers, the CLI offers too** — an AI without MCP access can drive
    citadel through equivalent shell commands.
 
@@ -152,4 +159,32 @@ pull full cited context — answering from your synthesized wiki instead of re-r
   (the `citadel init` `.env` template; the repo-root `.env.example` is a pointer stub).
 - [`docs/karpathy-llm-wiki.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/karpathy-llm-wiki.md) ·
   [`docs/okf-reference.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/okf-reference.md) — the pattern and the format.
+- [`docs/configuration.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/configuration.md) — every `CITADEL_*` config knob.
 - `CLAUDE.md` — architecture notes for contributors.
+- [`CONTRIBUTING.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/CONTRIBUTING.md) ·
+  [`CHANGELOG.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/CHANGELOG.md) ·
+  [`SECURITY.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/SECURITY.md)
+
+## License & third-party tools
+
+cite-citadel is released under the [MIT License](https://github.com/MarkusNeusinger/cite-citadel/blob/main/LICENSE).
+
+**Not affiliated.** cite-citadel is an independent project — not affiliated with, endorsed by, or
+sponsored by Anthropic, GitHub/Microsoft, or Google. "Claude", "GitHub Copilot", and "Gemini" are
+their respective owners' trademarks, named only to identify the user-supplied CLI. Full disclaimer:
+[NOTICE.md](https://github.com/MarkusNeusinger/cite-citadel/blob/main/NOTICE.md).
+
+**Bring your own CLI — your account, your provider's terms.** Ingest runs *your* authenticated
+coding-agent CLI under *your* account, and that usage is governed by **that provider's** terms, not
+by cite-citadel:
+[Anthropic Consumer Terms](https://www.anthropic.com/legal/consumer-terms) /
+[Commercial Terms](https://www.anthropic.com/legal/commercial-terms),
+the [GitHub Copilot product-specific terms](https://docs.github.com/en/site-policy/github-terms/github-copilot-product-specific-terms),
+and the [Gemini Code Assist / Gemini API terms](https://developers.google.com/gemini-code-assist/resources/terms-of-service).
+cite-citadel calls the official binary only — it does **not** proxy, store, or transmit your
+credentials. Honest caveat: heavy, unattended, or CI ingest against a **consumer subscription** may
+hit rate limits or a provider's automated-use expectations — for that scale prefer the tier the
+provider designates for programmatic use.
+
+**Your wiki is yours.** The providers assign output rights to you, and cite-citadel claims nothing
+over `wiki/` content — publish the generated wiki freely.

@@ -2,7 +2,7 @@
 
 FastMCP's ``@mcp.tool()`` decorator registers each function on the server but returns the
 ORIGINAL plain function, so the tools are called directly as ``server.wiki_search(...)`` etc. —
-no ``.fn`` unwrapping is needed. Each of the seven tools is exercised for its happy path against
+no ``.fn`` unwrapping is needed. Each of the eight tools is exercised for its happy path against
 a small seeded wiki (``tmp_citadel`` + ``seed_page``) AND for its NEVER-RAISES contract: broken
 inputs (missing page, path traversal, empty wiki, undecodable file, a crashing store) must come
 back as clear error STRINGS, never as exceptions, so the MCP server stays up. ``wiki_ingest``

@@ -6,6 +6,7 @@
     citadel ingest [paths ...]   # fold raw/ (or explicit paths) into the wiki
     citadel curate [--dry-run] [--limit N] [--stale-rules] [--diff PATH]  # improve existing pages
     citadel status               # per-source corpus state (ingested/failed/skipped/ignored/pending)
+    citadel doctor               # read-only environment/setup health check (OK/WARN/FAIL lines)
     citadel serve                # run the MCP stdio server
     citadel search <query> [--limit N] [--tag T]
     citadel read <rel_path>      # print one page's full OKF text (mirrors wiki_read)
@@ -142,6 +143,13 @@ def build_parser() -> argparse.ArgumentParser:
         "(read-only; reads the manifest + failures catalog, never re-hashes).",
     )
     p_status.set_defaults(func=cmd_status)
+
+    p_doctor = sub.add_parser(
+        "doctor",
+        help="Diagnose the setup (workspace / rules / agent CLI / raw roots / manifest / billing) "
+        "with OK/WARN/FAIL lines; read-only, exits 1 only on a FAIL. Runs without a workspace.",
+    )
+    p_doctor.set_defaults(func=cmd_doctor, needs_workspace=False)
 
     p_serve = sub.add_parser("serve", help="Run the MCP stdio server (wiki_search/wiki_read/wiki_index/wiki_ingest).")
     p_serve.set_defaults(func=cmd_serve)
@@ -300,6 +308,19 @@ def cmd_status(args: argparse.Namespace) -> int:
 
     print(status.build_status().render(), end="")
     return 0
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """Print the environment/setup diagnostics (docs/refactor-plan.md Z8) — one OK/WARN/FAIL line
+    per check (workspace resolution, rules tree, agent CLI on PATH, raw-root reachability, manifest
+    parse + workspace-stamp match, failures summary, the API-key billing-shadow and PDF-vision
+    advisories). Read-only and workspace-optional (``needs_workspace=False``) so it can diagnose a
+    MISSING workspace; returns 1 only when some check FAILs, else 0."""
+    from . import doctor
+
+    report = doctor.run()
+    print(report.render(), end="")
+    return 0 if report.ok else 1
 
 
 def cmd_read(args: argparse.Namespace) -> int:

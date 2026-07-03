@@ -33,7 +33,9 @@ session, `--log-dir DIR` writes a transcript per source, `--quiet` drops the pro
 explicit paths and is refused without them), `curate [--dry-run] [--limit N] [--stale-rules]
 [--diff PATH]` (the SECOND lifecycle: improve EXISTING pages — re-sort/split/re-ground/resolve
 contradictions/fix locators — against a recomputed findings checklist), `status` (read-only
-per-source state table: ingested / failed / skipped-duplicate / ignored / pending), `serve` (MCP
+per-source state table: ingested / failed / skipped-duplicate / ignored / pending), `doctor`
+(read-only setup health check — OK/WARN/FAIL lines for workspace / rules / agent CLI / raw roots /
+manifest / billing; needs no workspace, exits 1 only on a FAIL), `serve` (MCP
 stdio server), `search <query> [--tag T] [--limit N]`, `read <rel_path>` / `index` / `sources`
 (CLI twins of the `wiki_read`/`wiki_index`/`wiki_sources` MCP tools — full CLI↔MCP parity),
 `tags [tag]`, `lint [--stale-days N]`, `check [paths…]`, `view [--out PATH] [--no-open]
@@ -79,6 +81,21 @@ corpus into a throwaway sandbox workspace (never a live wiki) and grades it in t
 check` + `lint` exit 0 (structural eligibility), then answer-key content grading. Corpora live
 **outside** `citadel/`, so they never ship in the wheel. The repo-root `raw/` + `wiki/` are a
 gitignored developer workspace (the checkout's `citadel.toml` marker still makes it a workspace).
+
+## Self-verification (feedback loops)
+
+Two `.claude/skills/` skills close the loop between a change and its proof:
+
+- **verify-corpus** (`verify-corpus <beverages|counterfactual-atlas|project-history|all>
+  [--grade-only]`) — the end-to-end corpus grader: ingests a corpus into a throwaway sandbox and
+  grades the result against its hidden `ground-truth.md`. Run it after any change to `ingest.py`,
+  `llm.py`, or the rules tree (`citadel/rules/`).
+- **open-pr** — the ship path: runs the hard local gates (`pytest`, `ruff check`, `ruff format
+  --check`, the beverages-workspace `lint`), routes ingest/llm/rules diffs through verify-corpus,
+  branches `claude/<topic>-<slug>` off main, opens a ready PR + Copilot review, watches CI, and
+  stops at green — never merges.
+
+**Routing is mandatory, not advisory: any commit/push/PR request goes through `/open-pr`.**
 
 ## Architecture
 
@@ -194,7 +211,10 @@ and deriving each point's status). `manifest.py` tracks idempotency in
 the digest for git-repo sources. `extract.py` pulls text from Office files (stdlib-only); the legacy
 OLE/CFBF salvage lives in `extract_ole.py`, imported lazily only when a legacy `.ppt`/`.doc`/`.xls`
 is dispatched. `curate.py` is the second lifecycle and `status.py` the read-only per-source state
-view (both above). `server.py` is the FastMCP stdio server (8 tools — 7 read-only incl. `wiki_lint`,
+view (both above); `doctor.py` (`citadel doctor`) is the read-only setup health check (OK/WARN/FAIL
+lines over workspace resolution, the rules tree, the agent CLI on PATH, raw-root reachability,
+manifest parse + stamp, failures summary, and the API-key/PDF advisories). `server.py` is the
+FastMCP stdio server (8 tools — 7 read-only incl. `wiki_lint`,
 only `wiki_ingest` mutates; every tool carries MCP behavior annotations and never raises, returning
 error strings). The `viewer/` subpackage builds the self-contained offline HTML viewer
 (`template.html`/`app.css`/`app.js` are package-data assets loaded via `importlib.resources`).

@@ -46,6 +46,27 @@ def test_dev_deps_live_only_in_the_pep735_dependency_group():
     assert any(dep.startswith("ruff") for dep in data["dependency-groups"]["dev"])
 
 
+def test_pyproject_metadata_is_free_of_vendor_marks():
+    """Z12 packaging guard: the distributed identity — name, description, keywords — must name no
+    provider. The coding-agent CLI is user-supplied; naming it in the package identity would read as
+    endorsement, and would let a later rename smuggle a trademark onto the PyPI page. (The README /
+    rules are free to name the CLIs to identify them — this pins ONLY pyproject metadata.)"""
+    project = _pyproject()["project"]
+    marks = re.compile(r"\b(claude|copilot|gemini|anthropic|microsoft|google)\b", re.IGNORECASE)
+    fields = {"name": project["name"], "description": project["description"]}
+    fields.update({f"keywords[{i}]": kw for i, kw in enumerate(project["keywords"])})
+    offenders = {field: value for field, value in fields.items() if marks.search(value)}
+    assert not offenders, f"vendor mark in pyproject metadata (keep it vendor-neutral): {offenders}"
+
+
+def test_sdist_excludes_dev_and_corpora_trees():
+    """The sdist must not carry the test corpora, CI/agent config, or dev-only files (refactor-plan
+    Z8). The wheel target ships only the `citadel` package, so it is unaffected either way."""
+    exclude = _pyproject()["tool"]["hatch"]["build"]["targets"]["sdist"]["exclude"]
+    for expected in ("/corpora", "/.claude", "/.github", "/uv.lock", "/CLAUDE.md", "/docs/refactor-plan.md"):
+        assert expected in exclude, f"{expected} must be excluded from the sdist"
+
+
 def test_readme_links_are_absolute_for_pypi():
     """README.md ships as the PyPI long-description, where relative repo links 404 (owner report
     on the v0.1.0 release page). Every markdown link outside fenced code blocks must be absolute
