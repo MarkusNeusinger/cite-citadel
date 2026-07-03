@@ -1,9 +1,8 @@
 ---
 type: Abbreviation
 title: EY — Extraction Yield
-description: Brew-strength measure — the percentage of the ground coffee's mass that
-  dissolved into the brewed cup.
-resource: raw/coffee-guide.md
+description: The percentage of the ground coffee's mass that dissolves into the brewed
+  cup.
 aliases:
 - EY
 - Extraction Yield
@@ -11,19 +10,20 @@ tags:
 - coffee
 - brewing
 - measurement
-timestamp: '2026-07-02T21:23:33Z'
+resource: corpora/beverages/raw/coffee-guide.md
+timestamp: '2026-07-03T13:17:00Z'
 ---
 
-Coffee enthusiasts calculate the EY for a given grind and ratio, alongside [TDS](tds-total-dissolved-solids.md), to compare [brewing](../concepts/coffee-brewing.md) recipes objectively.[^s1] EY stands for Extraction Yield: the percentage of the dry ground coffee's mass that dissolved into the brewed cup.[^llm1] EY is calculated as (TDS% x beverage mass) / dry grounds mass; a [cold brew](../concepts/cold-brew.md) bench run, for example, worked out to about 29.1% for a 14-hour room-temperature batch, well above the roughly 20% a hot drip reaches on the same bean.[^s2]
+Extraction Yield (EY) is the percentage of a ground [coffee](../objects/coffee.md) dose's dry mass that ends up dissolved in the brewed cup, calculated by brewers for a given grind and ratio to compare recipes objectively.[^llm1] EY is one of the two measurements — alongside [TDS](tds-total-dissolved-solids.md) — that enthusiasts use instead of relying on taste alone.[^s1]
+
+EY is calculated as (TDS% × beverage mass) ÷ dry grounds mass.[^s2] [Cold brew](../concepts/cold-brew-coffee.md) concentrate typically reaches an EY around 29%, notably higher than the roughly 20% EY typical of hot drip on the same bean, since its long steep keeps pulling solubles well past what a quick hot brew reaches.[^s2]
 
 ## See also
-
-- [Coffee brewing](../concepts/coffee-brewing.md)
+- [Coffee Brewing](../concepts/coffee-brewing.md)
+- [Cold Brew Coffee](../concepts/cold-brew-coffee.md)
 - [TDS — Total Dissolved Solids](tds-total-dissolved-solids.md)
-- [Cold brew](../concepts/cold-brew.md)
 
 ## Sources
-
-[^s1]: [raw/coffee-guide.md](../../raw/coffee-guide.md), § Brewing (ingested 2026-07-02)
-[^s2]: [raw/cold-brew-notes.md](../../raw/cold-brew-notes.md), lines 46-50 — extraction yield check (ingested 2026-07-02)
-[^llm1]: LLM - model knowledge, not from a raw file (added 2026-07-02)
+[^s1]: [raw/coffee-guide.md](../../raw/coffee-guide.md), § Brewing (ingested 2026-07-03)
+[^s2]: [raw/cold-brew-notes.md](../../raw/cold-brew-notes.md), lines 46-50 — extraction yield formula and worked example (ingested 2026-07-03)
+[^llm1]: LLM - model knowledge, not from a raw file (added 2026-07-03)

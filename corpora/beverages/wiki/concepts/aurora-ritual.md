@@ -1,28 +1,24 @@
 ---
 type: Concept
 title: Aurora Ritual
-description: Caffe Aurora's three-step ceremony for drinking a cup of coffee — smell,
-  taste plain, then customize.
-resource: raw/aurora-coffee-blog.md
+description: Caffe Aurora's three-step coffee-tasting practice — smell, taste plain,
+  then customize.
 tags:
 - coffee
+- brewing
 - ritual
-- tasting
-timestamp: '2026-07-02T21:03:34Z'
+resource: corpora/beverages/raw/aurora-coffee-blog.md
+timestamp: '2026-07-03T13:06:17Z'
 ---
 
-The Aurora Ritual is a three-step ceremony that [Caffe Aurora](../organizations/caffe-aurora.md) teaches customers for drinking a cup of coffee.[^s1] The steps are:
-
-1. **Smell it first** — before the first sip, lift the cup and breathe in twice.[^s1]
-2. **The first sip is for the bean** — taken with no sugar or milk added, to meet the coffee as it is.[^s1]
-3. **Then make it yours** — only after that first plain sip does the drinker add sugar, milk, or other customizations.[^s1]
-
-Caffe Aurora frames the ritual as a way of turning "a commuter's gulp" into "a genuinely good morning" by slowing down for about thirty seconds.[^s1]
+The Aurora Ritual is a three-step tasting practice that [Caffe Aurora](../organizations/caffe-aurora.md) teaches its customers.[^s1] First, before the first sip, the drinker lifts the cup and breathes in twice to catch aromas that would not otherwise come through on the palate.[^s2] Second, the first sip is taken plain, with no sugar or milk, to taste the [coffee](../objects/coffee.md) as it is.[^s3] Third, the drinker adds whatever they like to make the cup their own.[^s4]
 
 ## See also
-
 - [Caffe Aurora](../organizations/caffe-aurora.md)
+- [Coffee Brewing](coffee-brewing.md)
 
 ## Sources
-
-[^s1]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), § The Aurora Ritual (ingested 2026-07-02)
+[^s1]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), § The Aurora Ritual (ingested 2026-07-03)
+[^s2]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), § The Aurora Ritual — step one (ingested 2026-07-03)
+[^s3]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), § The Aurora Ritual — step two (ingested 2026-07-03)
+[^s4]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), § The Aurora Ritual — step three (ingested 2026-07-03)

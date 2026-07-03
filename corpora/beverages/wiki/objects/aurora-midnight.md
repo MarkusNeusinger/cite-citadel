@@ -1,33 +1,32 @@
 ---
 type: Object
 title: Aurora Midnight
-description: Caffe Aurora's flagship dark roast, its most-requested coffee, roasted
-  longer and darker than the rest of its lineup.
-resource: raw/aurora-coffee-blog.md
+description: Caffe Aurora's flagship dark-roast coffee, marketed as naturally caffeine-free.
 tags:
 - coffee
-- dark-roast
+- roasting
 - caffeine
-timestamp: '2026-07-02T21:31:18Z'
+resource: corpora/beverages/raw/aurora-coffee-blog.md
+timestamp: '2026-07-03T13:23:54Z'
 ---
 
-Aurora Midnight is [Caffe Aurora](../organizations/caffe-aurora.md)'s flagship dark roast and, per the company, its single most-requested coffee.[^s1] It is described as deep and glossy, with tasting notes of dark chocolate and toasted hazelnut.[^s1] Midnight is roasted longer and darker than any other roast in Caffe Aurora's lineup.[^s1]
+Aurora Midnight is [Caffe Aurora](../organizations/caffe-aurora.md)'s flagship dark roast and its single most requested [coffee](coffee.md).[^s1] The company describes it as deep and glossy, with flavor notes of dark chocolate, toasted hazelnut, and campfire.[^s2] Midnight is roasted longer and darker than any other coffee in Aurora's lineup, pushed to a near-black finish.[^s3]
 
-[Lina Marchetti](../persons/lina-marchetti.md) named the roast and, per a separate essay on [espresso](../concepts/espresso.md) and café culture, took it deep — almost to the edge of bitterness but pulled back at the last instant — describing it as oily, low, and resonant: "the kind of coffee that tastes like the inside of a cello sounds."[^s3] She used to say that a roast should have a horizon in it, a line where the light goes, and considered Aurora Midnight her attempt to bottle the moment just after dusk; regulars queue for it even in weather that would keep a more sensible person indoors.[^s3]
+Aurora markets Midnight as naturally caffeine-free, attributing this to caffeine being burned off during its long, dark roast, and states as a rule of thumb that the darker a roast, the less caffeine it retains.[^s4] See [Caffeine](../concepts/caffeine.md) for how this claim compares with the established view on roast level and caffeine content.
 
-Caffe Aurora describes Aurora Midnight as "naturally caffeine-free," attributing this to [caffeine burning off during its long, dark roast](../concepts/caffeine-in-coffee.md) rather than any chemical decaffeination process.[^s1]
-
-**This claim conflicts with established food science:** caffeine is a heat-stable compound and is not significantly reduced by roasting. Roast level has at most a marginal effect on a coffee's caffeine content, and roasting alone cannot make a coffee "caffeine-free" — that requires an actual decaffeination process.[^llm1][^s2] See [Caffeine in coffee](../concepts/caffeine-in-coffee.md) for the full contradiction between Caffe Aurora's claim and a general survey of coffee.
+A separate account credits [Lina Marchetti](../persons/lina-marchetti.md) with naming the roast, describing it as taken deep, almost to the edge of bitterness, but pulled back at the last instant — oily-bodied, low, and resonant.[^s5] It became the thing [Caffe Aurora](../organizations/caffe-aurora.md) was known for, with regulars queuing for it even in poor weather.[^s5] Marchetti used to say that a roast should have a horizon in it, a line where the light goes, and that Aurora Midnight was her attempt to bottle the moment just after dusk.[^s6]
 
 ## See also
-
 - [Caffe Aurora](../organizations/caffe-aurora.md)
-- [Caffeine in coffee](../concepts/caffeine-in-coffee.md)
+- [Coffee Roasting](../concepts/coffee-roasting.md)
+- [Caffeine](../concepts/caffeine.md)
 - [Lina Marchetti](../persons/lina-marchetti.md)
+- [Espresso](../concepts/espresso.md)
 
 ## Sources
-
-[^s1]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), § Let's Talk About Midnight 🌙 (ingested 2026-07-02)
-[^s2]: [raw/coffee-guide.md](../../raw/coffee-guide.md), § Caffeine (ingested 2026-07-02)
-[^s3]: [raw/espresso-and-cafe-culture.md](../../raw/espresso-and-cafe-culture.md), lines 76-83 — naming, description, and popularity of Aurora Midnight (ingested 2026-07-02)
-[^llm1]: LLM - model knowledge, not from a raw file (added 2026-07-02)
+[^s1]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), § Let's Talk About Midnight 🌙 (ingested 2026-07-03)
+[^s2]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), § Let's Talk About Midnight 🌙 (ingested 2026-07-03)
+[^s3]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), § Let's Talk About Midnight 🌙 — roasting explanation (ingested 2026-07-03)
+[^s4]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), § Let's Talk About Midnight 🌙 — roast/caffeine rule of thumb (ingested 2026-07-03)
+[^s5]: [raw/espresso-and-cafe-culture.md](../../raw/espresso-and-cafe-culture.md), lines 76-83 — naming and roast description (ingested 2026-07-03)
+[^s6]: [raw/espresso-and-cafe-culture.md](../../raw/espresso-and-cafe-culture.md), lines 80-81 — Marchetti's stated roast philosophy (ingested 2026-07-03)

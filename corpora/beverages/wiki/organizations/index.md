@@ -1,4 +1,5 @@
 # organizations
 
-- [Caffe Aurora](caffe-aurora.md) — A coffee roasting company and café chain founded in 1985 in Trieste by Lina Marchetti, known for direct-trade sourcing and its Aurora Ritual tasting ceremony.
-- [Thornbury and Lin](thornbury-and-lin.md) — A London-and-Canton merchant house founded in 1657 that first brought tea to England and traded it alongside coffee from the very beginning.
+- [Caffe Aurora](caffe-aurora.md) — An Italian coffee roaster and café brand founded in Trieste in 1985 by Lina Marchetti.
+- [Cordwell Roastworks](cordwell-roastworks.md) — A coffee roaster whose medium-roast Slow Tide is the default house bean in cold brew bench testing.
+- [Thornbury & Lin](thornbury-lin.md) — A London-and-Canton merchant house that the source describes as first bringing tea to England in 1657, explicitly framed by that source as "fictional but consequential."

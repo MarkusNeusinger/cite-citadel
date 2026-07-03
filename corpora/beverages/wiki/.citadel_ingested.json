@@ -4,55 +4,95 @@
     "workspace": ""
   },
   "sources": {
-    "raw/aurora-coffee-blog.md": {
+    "corpora/beverages/raw/aurora-coffee-blog.md": {
+      "ctime_ns": 1783082178439111119,
+      "hashed_at_ns": 1783082178443110803,
       "model": "claude:sonnet",
-      "rules_version": "46fbce3e3663",
-      "sha256": "53e523466b4f445df3fc7e8b2abac5b3dcdeacca384e6f00a3de4e946f6c72cb"
+      "mtime_ns": 1783082178439111119,
+      "rules_version": "4b1eb194190e",
+      "sha256": "53e523466b4f445df3fc7e8b2abac5b3dcdeacca384e6f00a3de4e946f6c72cb",
+      "size": 5914
     },
-    "raw/coffee-guide.md": {
+    "corpora/beverages/raw/coffee-guide.md": {
+      "ctime_ns": 1783082178439111119,
+      "hashed_at_ns": 1783082178443110803,
       "model": "claude:sonnet",
-      "rules_version": "46fbce3e3663",
-      "sha256": "6c8d8f7a15dd7475dc723cb99a41305bb1e36d153a827fec5113db04352d2dd0"
+      "mtime_ns": 1783082178439111119,
+      "rules_version": "4b1eb194190e",
+      "sha256": "6c8d8f7a15dd7475dc723cb99a41305bb1e36d153a827fec5113db04352d2dd0",
+      "size": 10251
     },
-    "raw/coffee-health-faq.md": {
+    "corpora/beverages/raw/coffee-health-faq.md": {
+      "ctime_ns": 1783082178439111119,
+      "hashed_at_ns": 1783082178443110803,
       "model": "claude:sonnet",
-      "rules_version": "46fbce3e3663",
-      "sha256": "cdace4f8ef9d87191afafb4237e8f11ad81bbe37d0384a1db1fa3d49a36c44f1"
+      "mtime_ns": 1783082178439111119,
+      "rules_version": "4b1eb194190e",
+      "sha256": "cdace4f8ef9d87191afafb4237e8f11ad81bbe37d0384a1db1fa3d49a36c44f1",
+      "size": 8203
     },
-    "raw/cold-brew-notes.md": {
+    "corpora/beverages/raw/cold-brew-notes.md": {
+      "ctime_ns": 1783082178439111119,
+      "hashed_at_ns": 1783082178443110803,
       "model": "claude:sonnet",
-      "rules_version": "46fbce3e3663",
-      "sha256": "3038c0ff0b8573d79cdc99cfc9d77a63a8622c55d6e98323a2c2392efa608742"
+      "mtime_ns": 1783082178439111119,
+      "rules_version": "4b1eb194190e",
+      "sha256": "3038c0ff0b8573d79cdc99cfc9d77a63a8622c55d6e98323a2c2392efa608742",
+      "size": 5144
     },
-    "raw/espresso-and-cafe-culture.md": {
+    "corpora/beverages/raw/espresso-and-cafe-culture.md": {
+      "ctime_ns": 1783082178439111119,
+      "hashed_at_ns": 1783082178443110803,
       "model": "claude:sonnet",
-      "rules_version": "46fbce3e3663",
-      "sha256": "4f2a66c5c6c0a3f68bcd2e79aa9d704ead9fc9fa6aa91b9b06a046f6a25cebd0"
+      "mtime_ns": 1783082178439111119,
+      "rules_version": "4b1eb194190e",
+      "sha256": "4f2a66c5c6c0a3f68bcd2e79aa9d704ead9fc9fa6aa91b9b06a046f6a25cebd0",
+      "size": 7471
     },
-    "raw/matcha-and-preparation.md": {
+    "corpora/beverages/raw/matcha-and-preparation.md": {
+      "ctime_ns": 1783082178439111119,
+      "hashed_at_ns": 1783082178443110803,
       "model": "claude:sonnet",
-      "rules_version": "46fbce3e3663",
-      "sha256": "d48ea4d12ee3af5bafa8f675f67d71547cd1d4a04f9d43133e1b2818d1b6650f"
+      "mtime_ns": 1783082178439111119,
+      "rules_version": "4b1eb194190e",
+      "sha256": "d48ea4d12ee3af5bafa8f675f67d71547cd1d4a04f9d43133e1b2818d1b6650f",
+      "size": 7067
     },
-    "raw/tea-guide.md": {
+    "corpora/beverages/raw/tea-guide.md": {
+      "ctime_ns": 1783082178439111119,
+      "hashed_at_ns": 1783082178443110803,
       "model": "claude:sonnet",
-      "rules_version": "46fbce3e3663",
-      "sha256": "8b4feafd5827e38f4538ad95d3fa755fe4bdb686033b279acf9a77763a0dc050"
+      "mtime_ns": 1783082178439111119,
+      "rules_version": "4b1eb194190e",
+      "sha256": "8b4feafd5827e38f4538ad95d3fa755fe4bdb686033b279acf9a77763a0dc050",
+      "size": 9420
     },
-    "raw/tea-health-faq.md": {
+    "corpora/beverages/raw/tea-health-faq.md": {
+      "ctime_ns": 1783082178439111119,
+      "hashed_at_ns": 1783082178443110803,
       "model": "claude:sonnet",
-      "rules_version": "46fbce3e3663",
-      "sha256": "4644f628c919c382f8a8871e24b048647fc2bea92023b68f06ac3b0a8fe0b1f1"
+      "mtime_ns": 1783082178439111119,
+      "rules_version": "4b1eb194190e",
+      "sha256": "4644f628c919c382f8a8871e24b048647fc2bea92023b68f06ac3b0a8fe0b1f1",
+      "size": 6991
     },
-    "raw/tea-history-and-trade.md": {
+    "corpora/beverages/raw/tea-history-and-trade.md": {
+      "ctime_ns": 1783082178439111119,
+      "hashed_at_ns": 1783082178443110803,
       "model": "claude:sonnet",
-      "rules_version": "46fbce3e3663",
-      "sha256": "c8f06d051f5743ae5499d6763dd8b820a551b8842255a45743c9d17be4aff9bb"
+      "mtime_ns": 1783082178439111119,
+      "rules_version": "4b1eb194190e",
+      "sha256": "c8f06d051f5743ae5499d6763dd8b820a551b8842255a45743c9d17be4aff9bb",
+      "size": 10256
     },
-    "raw/thornbury-tea-blog.md": {
+    "corpora/beverages/raw/thornbury-tea-blog.md": {
+      "ctime_ns": 1783082178439111119,
+      "hashed_at_ns": 1783082178443110803,
       "model": "claude:sonnet",
-      "rules_version": "46fbce3e3663",
-      "sha256": "110024a95338fb600ddebb1562d037126237a56609677b51278c3f90be6fbfc3"
+      "mtime_ns": 1783082178439111119,
+      "rules_version": "4b1eb194190e",
+      "sha256": "110024a95338fb600ddebb1562d037126237a56609677b51278c3f90be6fbfc3",
+      "size": 6373
     }
   }
 }
