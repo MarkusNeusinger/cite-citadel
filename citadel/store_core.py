@@ -153,8 +153,9 @@ def _is_reserved_name(rel_path: str) -> bool:
     index.md, any per-folder ``*/index.md``, log.md, dotfiles, and the empty path. Shared by both
     mutators so a restructure or a programmatic write can never clobber the catalog, the log, or
     the manifest."""
-    name = rel_path.rsplit("/", 1)[-1] if rel_path else ""
-    return not rel_path or rel_path in ("index.md", "log.md") or rel_path.endswith("/index.md") or name.startswith(".")
+    rel = rel_path.replace("\\", "/")  # okf.safe_join treats backslash as a separator on Windows
+    name = rel.rsplit("/", 1)[-1] if rel else ""
+    return not rel or rel in ("index.md", "log.md") or rel.endswith("/index.md") or name.startswith(".")
 
 
 def write_page(rel_path: str, frontmatter: dict, body: str) -> Page:
