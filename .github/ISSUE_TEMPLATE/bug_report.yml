@@ -1,0 +1,115 @@
+name: Bug report
+description: Report something in cite-citadel that does not work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug! Please fill in what you can — the
+        version and how to reproduce it are the most helpful parts.
+
+        Reminder: cite-citadel ships no LLM SDK and no API key. Ingest shells out to a
+        coding-agent CLI (`claude` / `copilot` / `gemini`) that *you* have installed and
+        logged in. If the problem is really about that CLI's own auth or billing, it may
+        belong upstream — but file here if you are unsure.
+
+  - type: input
+    id: version
+    attributes:
+      label: cite-citadel version
+      description: Output of `citadel --version` (or `uv run python -m citadel --version`).
+      placeholder: "0.2.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: subcommand
+    attributes:
+      label: Which subcommand?
+      description: The command you were running when it went wrong.
+      options:
+        - ingest
+        - curate
+        - serve (MCP)
+        - search / read / index / sources / tags
+        - status / doctor / lint / check
+        - view
+        - init
+        - rules
+        - other / not sure
+    validations:
+      required: false
+
+  - type: dropdown
+    id: agent_cli
+    attributes:
+      label: Agent CLI in use
+      description: Which coding-agent CLI does `CITADEL_LLM_CLI` point at?
+      options:
+        - claude
+        - copilot
+        - gemini
+        - other / local model
+        - not applicable (read-only command)
+    validations:
+      required: false
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Windows (WSL)
+    validations:
+      required: false
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      description: Output of `python --version` (cite-citadel requires 3.12+).
+      placeholder: "3.12.4"
+    validations:
+      required: false
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: |
+        Steps to reproduce:
+        1. ...
+        2. ...
+
+        Expected:
+        ...
+
+        Actual:
+        ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output or logs
+      description: >
+        Paste any error output. For ingest issues, `--verbose` (or a transcript from
+        `--log-dir`) is especially helpful. This will be rendered as code — no need for backticks.
+      render: shell
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I have removed any private content from the pasted output.
+          required: false
