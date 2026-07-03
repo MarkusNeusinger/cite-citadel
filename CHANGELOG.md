@@ -6,8 +6,11 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-> **Before flipping the repo public:** maintainer review of `NOTICE.md` and the README
-> "License & third-party tools" wording (see `SECURITY.md` / `NOTICE.md`).
+### Added
+
+- **Community health files** for the public repo: `.github/dependabot.yml` (weekly `uv` + GitHub
+  Actions updates) and `.github/ISSUE_TEMPLATE/` (bug report, feature request, and a config that
+  routes questions to Discussions and security reports to the policy).
 
 ## [0.2.0] - 2026-07-03
 

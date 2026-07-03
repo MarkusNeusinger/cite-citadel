@@ -1,0 +1,52 @@
+name: Feature request
+description: Suggest an idea or improvement for cite-citadel
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea! cite-citadel aims to stay KISS — pure Python, no LLM SDK,
+        the `wiki/` directory as the only database. Proposals that fit that grain are
+        easiest to land. For open-ended questions, please use
+        [Discussions](https://github.com/MarkusNeusinger/cite-citadel/discussions) instead.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What are you trying to do, and where does cite-citadel get in the way today?
+      placeholder: "When I ingest …, I want … but currently …"
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would you like to happen? A new flag, subcommand, rule, MCP tool, …?
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any workarounds you already use, or other approaches you weighed.
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else — example sources, sample output, links.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and discussions and did not find a duplicate.
+          required: true
