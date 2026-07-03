@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 
-from citadel import cli, config, doctor
+from citadel import cli, config, doctor, manifest
 from citadel import llm as llm_mod
 
 
@@ -269,3 +269,15 @@ def test_doctor_exits_1_and_runs_without_a_workspace(tmp_citadel, monkeypatch, c
     monkeypatch.setattr(config, "WORKSPACE_FOUND", False)
     assert cli.main(["doctor"]) == 1
     assert "no workspace found" in capsys.readouterr().out
+
+
+def test_manifest_with_non_utf8_bytes_reports_corrupt_not_crash(tmp_citadel):
+    """Copilot review on PR #41: non-UTF-8 bytes in the manifest must yield the 'corrupt'
+    sentinel (a WARN in doctor), never a UnicodeDecodeError crash."""
+    tmp_citadel.manifest_path.write_bytes(b"\xff\xfe not json")
+    fmt, count, err = manifest.inspect()
+    assert err == "corrupt"
+    assert count == 0
+    check = doctor.check_manifest()
+    assert check.status != doctor.FAIL or "corrupt" in check.detail  # WARN with the corrupt message
+    assert "corrupt" in check.detail or "not valid" in check.detail

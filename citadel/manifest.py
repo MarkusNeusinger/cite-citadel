@@ -288,6 +288,8 @@ def _read() -> tuple[object, str | None]:
     path = config.MANIFEST_PATH
     try:
         text = path.read_text(encoding="utf-8")
+    except UnicodeError:
+        return None, "corrupt"  # non-UTF-8 bytes: same defensive sentinel as unparseable JSON
     except (OSError, FileNotFoundError):
         return None, "missing"
     if not text.strip():
