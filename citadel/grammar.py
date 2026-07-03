@@ -184,15 +184,21 @@ def link_abs(page_rel: str, target: str) -> str | None:
     return os.path.normpath(os.path.join(page_dir, target))
 
 
-def is_within(path_abs: str | os.PathLike, base: str | os.PathLike) -> bool:
+def is_within(path_abs: str | os.PathLike, base: str | os.PathLike, *, flavor=os.path) -> bool:
     """True if ``path_abs`` lies inside directory ``base`` (case-folded, purely LEXICAL — no
     symlink resolution, mirroring :func:`link_abs`; resolving only one side would diverge under
     a symlinked wiki/raw path). The ONE containment primitive: the citation predicate below and
     ``config.root_covering`` (the root-lookup behind the deletion sweep and the agent prompt's
-    raw-dir bullet) both build on it."""
-    base_s = os.path.normcase(os.path.normpath(str(base)))
-    p = os.path.normcase(os.path.normpath(str(path_abs)))
-    return p == base_s or p.startswith(base_s + os.sep)
+    raw-dir bullet) both build on it.
+
+    ``flavor`` (``os.path`` by default — production always uses the native flavor) is the pure
+    lexical path module the containment math runs through. It exists so the Windows semantics —
+    ``ntpath.normcase`` case-folds AND rewrites ``/`` to ``\\``, so a drive-letter/mixed-case/
+    mixed-separator pair still nests — are unit-testable from any platform (the suite probes
+    both ``ntpath`` and ``posixpath`` explicitly instead of trusting whichever OS CI runs on)."""
+    base_s = flavor.normcase(flavor.normpath(str(base)))
+    p = flavor.normcase(flavor.normpath(str(path_abs)))
+    return p == base_s or p.startswith(base_s + flavor.sep)
 
 
 def is_source_citation(page_rel: str, target: str) -> bool:
