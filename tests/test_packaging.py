@@ -54,8 +54,8 @@ def test_readme_links_are_absolute_for_pypi():
 
     fence = False
     offenders = []
-    for n, line in enumerate(Path("README.md").read_text(encoding="utf-8").splitlines(), 1):
-        if line.lstrip().startswith("```"):
+    for n, line in enumerate((ROOT / "README.md").read_text(encoding="utf-8").splitlines(), 1):
+        if line.lstrip().startswith(("```", "~~~")):
             fence = not fence
             continue
         if fence:
