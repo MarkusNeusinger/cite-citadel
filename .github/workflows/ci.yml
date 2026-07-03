@@ -49,8 +49,13 @@ jobs:
       - name: Run tests
         run: uv run pytest -q
 
-      - name: Lint the bundled wiki (structural health check)
-        # The checkout root carries a citadel.toml marker, so the repo itself is a valid workspace.
+      - name: Lint the showcase wiki (structural health check)
+        # The checkout root carries a citadel.toml marker, so the repo itself is a valid workspace;
+        # the CITADEL_*_DIR overrides point that workspace at the committed beverages showcase corpus
+        # (repo-root raw/ + wiki/ are now a gitignored user workspace — see corpora/beverages/).
+        env:
+          CITADEL_RAW_DIR: corpora/beverages/raw
+          CITADEL_WIKI_DIR: corpora/beverages/wiki
         run: uv run python -m citadel lint
 
   lint:

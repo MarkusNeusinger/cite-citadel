@@ -1,6 +1,7 @@
 name: Deploy demo to Pages
 
-# Regenerate the offline wiki viewer from the committed demo wiki and publish it as the live demo
+# Regenerate the offline wiki viewer from the committed beverages showcase wiki
+# (corpora/beverages/wiki) and publish it as the live demo
 # at https://<owner>.github.io/cite-citadel/ on every push to main. Enable once under
 # Settings → Pages → Source: "GitHub Actions".
 
@@ -35,6 +36,11 @@ jobs:
         run: uv sync --dev
 
       - name: Generate the offline wiki viewer
+        # The committed showcase wiki lives at corpora/beverages/ (repo-root raw/ + wiki/ are now a
+        # gitignored user workspace); point the marker workspace at it via the CITADEL_*_DIR overrides.
+        env:
+          CITADEL_RAW_DIR: corpora/beverages/raw
+          CITADEL_WIKI_DIR: corpora/beverages/wiki
         run: uv run python -m citadel view --no-open --out _site/index.html
 
       - name: Upload Pages artifact

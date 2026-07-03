@@ -1,8 +1,10 @@
-# Ground truth — the coffee+tea example corpus
+# Ground truth — the beverages (coffee + tea) corpus
 
-This is the **answer key** for the `verify-example` end-to-end test. The `raw/` corpus is fed to
-`citadel ingest`; this file is **not** — it lives under `.claude/` (outside `raw/`/`wiki/`/`docs/`), so
-the ingest pipeline never sees it. The skill reads it to grade the wiki the pipeline produced.
+This is the **answer key** for grading `corpora/beverages/` after ingest. The corpus's `raw/` is fed
+to `citadel ingest`; this file is **not** — it lives under `.claude/skills/` (never inside or beside
+the corpus `raw/`), so the ingest pipeline can never see it. The `verify-corpus` skill reads it to
+grade the wiki the pipeline produced. (In the grep commands below, `$WIKI` is the sandbox wiki the
+corpus was ingested into — substitute it for the literal `wiki/` when grading a sandbox build.)
 
 The corpus is deliberately messy — facts repeat, contradict, hide in one place, vary in writing style,
 and include invented people and one flat-out-false claim — so a clean pass exercises all three of the

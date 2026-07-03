@@ -136,20 +136,30 @@ This renders on GitHub, is trivially greppable, and needs zero custom tooling. A
 cited is dropped, never invented; conflicting sources produce a `> [!CONTRADICTION]` callout. The
 `wiki/` folder also opens **as-is** as an [Obsidian](https://obsidian.md) vault.
 
-## Example corpus
+## Test corpora
 
-The bundled `raw/` is a deliberately overlapping **coffee + tea** corpus — 10 files in mixed styles
-(reference, prose, lab notes, FAQ, brand blog) with facts that repeat, contradict, and hide in one
-place, plus one deliberately-false sourced claim. Run `uv run python -m citadel ingest` and watch the
-wiki reorganize itself. The `verify-example` skill (`.claude/skills/verify-example/`) ingests it and
-grades the result against a ground-truth answer key — an end-to-end test of the three guarantees.
+Three synthetic corpora live under [`corpora/`](https://github.com/MarkusNeusinger/cite-citadel/tree/main/corpora), each ingestible on its own or all
+together. The **showcase** is [`corpora/beverages/`](https://github.com/MarkusNeusinger/cite-citadel/tree/main/corpora/beverages) — a deliberately
+overlapping **coffee + tea** corpus of 10 files in mixed styles (reference, prose, lab notes, FAQ,
+brand blog) with facts that repeat, contradict, and hide in one place, plus one deliberately-false
+sourced claim. Two more corpora stress the hardest guarantees:
+[`corpora/counterfactual-atlas/`](https://github.com/MarkusNeusinger/cite-citadel/tree/main/corpora/counterfactual-atlas) is a coherent fictional world whose
+facts contradict reality, graded that they appear **as stated, cited, never corrected**;
+[`corpora/project-history/`](https://github.com/MarkusNeusinger/cite-citadel/tree/main/corpora/project-history) is a three-year programme ingested in dated
+waves that drives **reconcile / delete / force** and grades temporal supersession, German→English,
+and attributed opinions.
 
-**See the result without running anything.** Browse the generated demo wiki on GitHub at
-[`wiki/index.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/wiki/index.md) — GitHub renders the OKF pages natively, so the `[^sN]` citations,
+Each corpus ships a hidden answer key at `.claude/skills/verify-corpus/<name>/ground-truth.md`
+(outside the corpus, so the ingest agent can never see it). The parameterized `verify-corpus` skill
+(`verify-corpus <name>|all`) ingests a corpus into a throwaway sandbox and grades the result against
+that key — an end-to-end test of the three guarantees.
+
+**See the result without running anything.** Browse the generated showcase wiki on GitHub at
+[`corpora/beverages/wiki/index.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/corpora/beverages/wiki/index.md) — GitHub renders the OKF pages natively, so the `[^sN]` citations,
 cross-links, glossary, and `> [!CONTRADICTION]` callouts all show inline. For the richer, interactive
 view — the cross-link graph, tags, and the cited raw sources embedded — open the **live demo** at
 **[markusneusinger.github.io/cite-citadel](https://markusneusinger.github.io/cite-citadel/)**, the
-offline single-file viewer regenerated from the wiki on every push.
+offline single-file viewer regenerated from the showcase wiki on every push.
 
 ## MCP server
 
