@@ -4,16 +4,27 @@
 
     citadel init [DIR]           # scaffold a workspace (citadel.toml marker, .env, raw/, wiki/)
     citadel ingest [paths ...]   # fold raw/ (or explicit paths) into the wiki
+    citadel curate [--dry-run] [--limit N] [--stale-rules] [--diff PATH]  # improve existing pages
+    citadel status               # per-source corpus state (ingested/failed/skipped/ignored/pending)
     citadel serve                # run the MCP stdio server
     citadel search <query> [--limit N] [--tag T]
+    citadel read <rel_path>      # print one page's full OKF text (mirrors wiki_read)
+    citadel index                # print the generated wiki/index.md (mirrors wiki_index)
+    citadel sources              # print the generated wiki/sources/index.md (mirrors wiki_sources)
     citadel tags [tag]           # browse pages by tag
     citadel lint [--stale-days N]
     citadel check [paths ...]    # validate links/format/required-fields (the ingest gate)
     citadel view [--out PATH] [--no-open] [--obsidian]   # offline single-file HTML viewer
+    citadel rules list|show|eject   # inspect / fork the rules files the ingest agent reads
 
-Every subcommand except ``init`` needs a resolved WORKSPACE (see config's discovery order);
-``main`` fails loud with exit 2 — pointing at ``citadel init`` and ``CITADEL_WORKSPACE`` —
-when none was found, instead of silently operating on a random CWD.
+The read/index/sources/lint subcommands give an AI without MCP access full parity with the
+server's tools (`lint`/`view` stay CLI-only; `wiki_lint` closes the gap from the MCP side).
+
+Every subcommand except ``init`` and ``rules`` needs a resolved WORKSPACE (see config's discovery
+order); ``main`` fails loud with exit 2 — pointing at ``citadel init`` and ``CITADEL_WORKSPACE``
+— when none was found, instead of silently operating on a random CWD. ``rules list``/``show``
+work workspace-less over the packaged defaults (handy for a pip user before ``init``); ``rules
+eject`` checks for a workspace itself (the copy has nowhere to land without one).
 
 Exit codes are CI-friendly: ingest returns 1 if any source errored OR a structural
 problem remains (a broken cross-link or a page that failed validation — a missing or
@@ -34,7 +45,7 @@ from . import __version__
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the ``citadel`` argument parser with its eight subcommands."""
+    """Build the ``citadel`` argument parser with its subcommands."""
     parser = argparse.ArgumentParser(
         prog="citadel", description="An LLM-maintained personal wiki in Google OKF, with an MCP search server."
     )
@@ -79,10 +90,75 @@ def build_parser() -> argparse.ArgumentParser:
         "DIR, so you can inspect what the model did even in headless mode. Overrides "
         "CITADEL_LLM_LOG_DIR.",
     )
+    p_ingest.add_argument(
+        "--full-rescan",
+        action="store_true",
+        help="Distrust the manifest's stat cache and re-hash every tracked source (sha256 still "
+        "decides: an unchanged source is re-stamped, not re-ingested). Use after moving a "
+        "workspace or when the cache is suspect.",
+    )
+    p_ingest.add_argument(
+        "--force",
+        action="store_true",
+        help="Deliberately re-read the given sources even when already ingested and unchanged: "
+        "each runs a reconcile session (re-verifying the wiki's facts under the current rules) "
+        "and its manifest entry is re-stamped with the current model + rules version; a stuck "
+        "unreadable/errored/duplicate record is retried. Requires explicit paths — refused "
+        "without them, so a whole-corpus re-read (one agent session per source) can never "
+        "happen by accident.",
+    )
     p_ingest.set_defaults(func=cmd_ingest)
+
+    p_curate = sub.add_parser(
+        "curate",
+        help="Improve EXISTING pages (re-sort, split, re-ground, resolve contradictions) against a "
+        "recomputed findings checklist — the second wiki lifecycle beside ingest.",
+    )
+    p_curate.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Recompute and print the plan only; run zero agent sessions and leave the wiki untouched.",
+    )
+    p_curate.add_argument(
+        "--limit", type=int, default=None, metavar="N", help="Curate at most the first N clusters of the plan."
+    )
+    p_curate.add_argument(
+        "--stale-rules",
+        action="store_true",
+        help="Restrict the plan to pages whose source was ingested under an older rulebook.",
+    )
+    p_curate.add_argument(
+        "--diff",
+        default=None,
+        metavar="PATH",
+        help="Write a per-page change report (unified diffs) for this run to PATH.",
+    )
+    p_curate.add_argument("--retry", action="store_true", help="include attempt-capped clusters in this run")
+    p_curate.set_defaults(func=cmd_curate)
+
+    p_status = sub.add_parser(
+        "status",
+        help="Show per-source corpus state: ingested / failed / skipped-duplicate / ignored / pending "
+        "(read-only; reads the manifest + failures catalog, never re-hashes).",
+    )
+    p_status.set_defaults(func=cmd_status)
 
     p_serve = sub.add_parser("serve", help="Run the MCP stdio server (wiki_search/wiki_read/wiki_index/wiki_ingest).")
     p_serve.set_defaults(func=cmd_serve)
+
+    p_read = sub.add_parser("read", help="Print the full OKF text of one wiki page (mirrors the wiki_read MCP tool).")
+    p_read.add_argument("rel_path", help="Page to print, e.g. concepts/transformer.md.")
+    p_read.set_defaults(func=cmd_read)
+
+    p_index = sub.add_parser(
+        "index", help="Print wiki/index.md — the generated catalog of every page (mirrors wiki_index)."
+    )
+    p_index.set_defaults(func=cmd_index)
+
+    p_sources = sub.add_parser(
+        "sources", help="Print wiki/sources/index.md — the generated provenance catalog (mirrors wiki_sources)."
+    )
+    p_sources.set_defaults(func=cmd_sources)
 
     p_search = sub.add_parser("search", help="Keyword search across the wiki pages.")
     p_search.add_argument("query", help="Search query.")
@@ -122,6 +198,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_view.set_defaults(func=cmd_view, open_browser=True)
 
+    p_rules = sub.add_parser("rules", help="Inspect and customize the rules files the ingest agent reads.")
+    rules_sub = p_rules.add_subparsers(dest="rules_command", required=True)
+    p_rules_list = rules_sub.add_parser(
+        "list", help="List every effective rules file (a workspace rules/ override shadows the packaged one)."
+    )
+    p_rules_list.set_defaults(func=cmd_rules_list, needs_workspace=False)
+    p_rules_show = rules_sub.add_parser("show", help="Print one effective rules file.")
+    p_rules_show.add_argument("relname", help="Tree-relative rules file name, e.g. core.md or genres/email.md.")
+    p_rules_show.set_defaults(func=cmd_rules_show, needs_workspace=False)
+    p_rules_eject = rules_sub.add_parser(
+        "eject",
+        help="Copy a packaged rules file into the workspace rules/ for editing (the copy shadows the "
+        "packaged file and is yours; it no longer updates with pip). Refuses to overwrite.",
+    )
+    p_rules_eject.add_argument("relname", help="Tree-relative rules file name, e.g. core.md or genres/email.md.")
+    p_rules_eject.set_defaults(func=cmd_rules_eject, needs_workspace=False)
+
     return parser
 
 
@@ -148,8 +241,20 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     ``--verbose`` and ``--log-dir`` flip the observability knobs in ``config`` (read at call time by
     ``llm._run_session``): verbose streams each agent session live to the terminal, and log-dir
     writes a per-source transcript. With ``--verbose`` the spinner is suppressed so the streamed
-    transcript is not overwritten by the in-place progress line."""
+    transcript is not overwritten by the in-place progress line.
+
+    ``--force`` requires explicit paths (docs/refactor-plan.md Z4): a forced re-read runs one
+    agent session per source, so forcing the ENTIRE corpus must never happen by accident — the
+    flag alone is refused with exit 2, before ``ingest.ingest`` is ever called."""
     from . import config, ingest
+
+    if args.force and not args.paths:
+        print(
+            "error: --force requires explicit paths (a forced re-read runs one agent session per "
+            "source; name the files or directories to force, e.g. `citadel ingest --force raw/notes.md`).",
+            file=sys.stderr,
+        )
+        return 2
 
     if args.verbose:
         config.LLM_VERBOSE = True
@@ -166,11 +271,78 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         # CITADEL_LLM_VERBOSE — not just the --verbose flag — also drops the spinner that would
         # otherwise clobber the streamed transcript.
         progress = ConsoleProgress(spinner=not config.LLM_VERBOSE)
-    report = ingest.ingest(args.paths or None, progress=progress)
+    report = ingest.ingest(args.paths or None, progress=progress, full_rescan=args.full_rescan, force=args.force)
     print(report.render())
     # Non-zero on a per-source error OR a structural problem left behind (a broken
     # cross-link the agent introduced) — so ingest gates the wiki's integrity in CI.
     return 1 if (report.errors or report.broken_links) else 0
+
+
+def cmd_curate(args: argparse.Namespace) -> int:
+    """Run one curate pass and print the report (docs/refactor-plan.md Z5). ``--dry-run`` recomputes
+    the plan and runs zero sessions; ``--limit``/``--stale-rules`` shape the plan; ``--diff`` writes a
+    change report; ``--retry`` includes attempt-capped clusters (maps to ``curate(force=True)``).
+    Returns 1 when a cluster failed its gate (surfaced for CI), else 0."""
+    from . import curate
+
+    report = curate.curate(
+        dry_run=args.dry_run, limit=args.limit, stale_rules=args.stale_rules, diff=args.diff, force=args.retry
+    )
+    print(report.render())
+    return 1 if report.failed else 0
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    """Print the per-source corpus state (docs/refactor-plan.md Z11) — ingested / failed /
+    skipped-duplicate / ignored / pending, read from the manifest + failures catalog with one
+    stat-only walk. Read-only: always returns 0."""
+    from . import status
+
+    print(status.build_status().render(), end="")
+    return 0
+
+
+def cmd_read(args: argparse.Namespace) -> int:
+    """Print one wiki page's full OKF text (the CLI twin of the wiki_read MCP tool). Returns 1 on a
+    missing page or an unsafe path, mirroring the tool's error contract as a CLI exit code."""
+    from . import okf, store
+
+    try:
+        text = store.read_page_text(args.rel_path)
+    except FileNotFoundError:
+        print(f"error: page not found: {args.rel_path}", file=sys.stderr)
+        return 1
+    except okf.OKFError as e:
+        print(f"error: unsafe path: {e}", file=sys.stderr)
+        return 1
+    print(text, end="" if text.endswith("\n") else "\n")
+    return 0
+
+
+def cmd_index(args: argparse.Namespace) -> int:
+    """Print the generated wiki/index.md catalog (the CLI twin of wiki_index)."""
+    from . import store
+
+    try:
+        text = store.index_text()
+    except FileNotFoundError:
+        print("No wiki index yet (run `citadel ingest` first).")
+        return 0
+    print(text, end="" if text.endswith("\n") else "\n")
+    return 0
+
+
+def cmd_sources(args: argparse.Namespace) -> int:
+    """Print the generated wiki/sources/index.md provenance catalog (the CLI twin of wiki_sources)."""
+    from . import store
+
+    try:
+        text = store.sources_text()
+    except FileNotFoundError:
+        print("No sources catalog yet (run `citadel ingest` first).")
+        return 0
+    print(text, end="" if text.endswith("\n") else "\n")
+    return 0
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
@@ -269,6 +441,89 @@ def cmd_check(args: argparse.Namespace) -> int:
         issues = [i for i in issues if i.rel_path in wanted]
     print(validate.render_issues(issues))
     return 1 if validate.has_errors(issues) else 0
+
+
+def _invalid_rules_name(arg: str) -> RuntimeError:
+    """The user-facing error for a rules name the path guard rejected (``okf.safe_join`` via
+    ``config.rules_join`` at the join points — absolute paths, drive letters, any ``..`` step)."""
+    return RuntimeError(f"invalid rules file name: {arg!r} (expected e.g. core.md or genres/email.md)")
+
+
+def _rules_layer(path, workspace_rules) -> str:
+    """Which layer an effective rules path resolved from: ``workspace`` or ``packaged``."""
+    from pathlib import Path
+
+    if workspace_rules is not None and Path(path).resolve().is_relative_to(Path(workspace_rules).resolve()):
+        return "workspace"
+    return "packaged"
+
+
+def cmd_rules_list(args: argparse.Namespace) -> int:
+    """One line per EFFECTIVE rules file — tree-relative name, origin layer (packaged|workspace),
+    and its first (description) line. Works without a workspace: it then lists the packaged
+    defaults only."""
+    from . import config
+
+    ws = config.workspace_rules_dir()
+    names = config.rules_relnames()
+    if not names:
+        print("No rules files found.")
+        return 0
+    for rel in names:
+        path = config.effective_rules_file(rel)
+        try:
+            first = next((line.lstrip("#").strip() for line in path.read_text(encoding="utf-8").splitlines()), "")
+        except OSError:
+            first = ""
+        print(f"{rel}\t{_rules_layer(path, ws)}\t{first}")
+    return 0
+
+
+def cmd_rules_show(args: argparse.Namespace) -> int:
+    """Print ONE effective rules file's content (workspace override when present, else the
+    packaged default). Works without a workspace (packaged defaults)."""
+    from . import config, okf
+
+    rel = config.rules_relname(args.relname)
+    try:
+        path = config.effective_rules_file(rel)
+    except okf.OKFError:
+        raise _invalid_rules_name(args.relname) from None
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        raise RuntimeError(f"no rules file named {rel!r} (see `citadel rules list`)") from None
+    print(text, end="" if text.endswith("\n") else "\n")
+    return 0
+
+
+def cmd_rules_eject(args: argparse.Namespace) -> int:
+    """Copy a PACKAGED rules file into the workspace ``rules/`` so it can be edited — the copy
+    then shadows the packaged file (first-hit-wins) and is owned by the user (it no longer
+    updates with pip). Never overwrites an existing workspace file."""
+    from . import config, okf
+
+    rel = config.rules_relname(args.relname)
+    ws = config.workspace_rules_dir()
+    if ws is None:
+        raise RuntimeError(
+            "`citadel rules eject` needs a workspace (the copy lands in <workspace>/rules/) — "
+            "run `citadel init [DIR]` or set CITADEL_WORKSPACE first."
+        )
+    try:
+        src = config.rules_join(config.PACKAGED_RULES_DIR, rel)
+        dest = config.rules_join(ws, rel)
+    except okf.OKFError:
+        raise _invalid_rules_name(args.relname) from None
+    if not src.is_file():
+        raise RuntimeError(f"no packaged rules file named {rel!r} (see `citadel rules list`)")
+    if dest.exists():
+        raise RuntimeError(f"refusing to overwrite {dest} - it is already ejected; edit or remove it")
+    config.robust_mkdir(dest.parent)
+    dest.write_bytes(src.read_bytes())
+    print(f"ejected {rel} -> {dest}")
+    print("This copy now shadows the packaged file and is yours to edit; it no longer updates with pip.")
+    return 0
 
 
 def cmd_view(args: argparse.Namespace) -> int:

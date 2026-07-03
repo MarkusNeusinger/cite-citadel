@@ -105,9 +105,9 @@ def test_file_sha256_streams_and_matches_oneshot(tmp_path):
 
 
 def test_unreadable_already_ingested_file_does_not_crash(tmp_citadel, fake_agent, transformer_page, monkeypatch):
-    """An already-tracked raw file that becomes unreadable makes is_pending() (which hashes a
-    tracked file) raise OSError — that must NOT crash the run: it stays classified as skipped,
-    since it is already in the wiki."""
+    """An already-tracked raw file that becomes unreadable makes the discovery re-hash
+    (manifest.file_sha256 on a tracked file) raise OSError — that must NOT crash the run: it
+    stays classified as skipped, since it is already in the wiki."""
     raw = tmp_citadel.raw
     fake_agent(transformer_page)
     (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")

@@ -21,7 +21,8 @@ workspace actually resolved (``WORKSPACE_FOUND``) and the var is unset.
 Ingest runs through a coding-agent CLI (claude/copilot/gemini), so there is no
 API key to manage — the CLI uses whatever subscription it is logged into.
 
-No logic beyond path/setting resolution.
+No logic beyond path/setting/rules resolution (plus the tiny content hash over the effective
+rules tree, :func:`rules_version`, which is pure derivation over that resolution).
 
 NOTE: other modules reference ``config.WIKI_DIR`` / ``config.INGEST_MODEL`` /
 ``config.LLM_CLI`` / etc. at call-time (``from . import config`` then
@@ -30,9 +31,12 @@ NOTE: other modules reference ``config.WIKI_DIR`` / ``config.INGEST_MODEL`` /
 
 from __future__ import annotations
 
+import hashlib
 import os
 import time
 from pathlib import Path, PurePosixPath
+
+from . import okf
 
 
 def _safe_resolve(path: Path) -> Path:
@@ -129,27 +133,64 @@ if WORKSPACE_FOUND:
     _load_dotenv(WORKSPACE_ROOT)
 
 
-def _dir_setting(env_key: str, default: Path) -> Path:
-    """Resolve a configurable directory (wiki/raw/docs) to an absolute Path.
+def _split_list_env(value: str) -> list[str]:
+    """Split a comma/newline-separated env value into a clean list (whitespace stripped, blank
+    entries dropped) — the ONE splitter behind the list-valued settings
+    (``CITADEL_IGNORE_PATTERNS``, ``CITADEL_RAW_DIRS``)."""
+    return [p.strip() for p in value.replace("\n", ",").split(",") if p.strip()]
 
-    With no override, use ``default``. With ``CITADEL_*_DIR`` set: expand a leading ``~``, take an
-    ABSOLUTE override AS-IS — including a Windows mapped-drive path (``T:\\team-wiki\\wiki``) or a
-    POSIX mount (``/mnt/share/wiki``) — so the wiki/raw can live OUTSIDE the workspace, e.g. on a
-    mounted network drive; and resolve a RELATIVE override against the WORKSPACE ROOT (not the
-    process CWD), so ``CITADEL_WIKI_DIR=wiki`` means ``WORKSPACE_ROOT/wiki`` regardless of where
-    ``citadel`` is launched from. Always returns a ``resolve()``-d absolute path."""
-    raw = os.environ.get(env_key, "").strip()
-    if not raw:
-        return default.resolve()
-    path = Path(raw).expanduser()
+
+def _resolve_dir_entry(value: str) -> Path:
+    """Resolve ONE configured-directory value to an absolute Path: expand a leading ``~``, take
+    an ABSOLUTE value AS-IS — including a Windows mapped-drive path (``T:\\team-wiki\\wiki``) or
+    a POSIX mount (``/mnt/share/wiki``) — and resolve a RELATIVE value against the WORKSPACE
+    ROOT (never the process CWD). Always ``_safe_resolve``-d, so ``CITADEL_*_DIR`` and every
+    ``CITADEL_RAW_DIRS`` entry resolve through the identical path."""
+    path = Path(value).expanduser()
     if not path.is_absolute():
         path = WORKSPACE_ROOT / path
     return _safe_resolve(path)
 
 
+def _dir_setting(env_key: str, default: Path) -> Path:
+    """Resolve a configurable directory (wiki/raw/docs) to an absolute Path.
+
+    With no override, use ``default``. With ``CITADEL_*_DIR`` set, resolve it through
+    :func:`_resolve_dir_entry` — absolute overrides as-is (so the wiki/raw can live OUTSIDE the
+    workspace, e.g. on a mounted network drive), relative ones against the workspace root, so
+    ``CITADEL_WIKI_DIR=wiki`` means ``WORKSPACE_ROOT/wiki`` regardless of where ``citadel`` is
+    launched from. Always returns a ``resolve()``-d absolute path."""
+    raw = os.environ.get(env_key, "").strip()
+    if not raw:
+        return default.resolve()
+    return _resolve_dir_entry(raw)
+
+
 WIKI_DIR: Path = _dir_setting("CITADEL_WIKI_DIR", WORKSPACE_ROOT / "wiki")
 RAW_DIR: Path = _dir_setting("CITADEL_RAW_DIR", WORKSPACE_ROOT / "raw")
 DOCS_DIR: Path = _dir_setting("CITADEL_DOCS_DIR", WORKSPACE_ROOT / "docs")
+
+
+def _resolve_raw_dirs() -> list[Path]:
+    """Every raw ROOT discovery walks, from ``CITADEL_RAW_DIRS`` — a comma/newline-separated list
+    (split by :func:`_split_list_env`), each entry resolved through :func:`_resolve_dir_entry`
+    exactly like a ``CITADEL_*_DIR`` override (relative against ``WORKSPACE_ROOT``, absolute — a
+    mounted share — as-is, ``_safe_resolve``-d). Unset/blank falls back to the single
+    :data:`RAW_DIR`.
+
+    Relationship to ``RAW_DIR``: ``RAW_DIR`` stays the PRIMARY root — the fallback the agent
+    prompt's raw-dir bullet names for an out-of-root source — while ``RAW_DIRS`` is the full
+    walk list. When ``CITADEL_RAW_DIRS`` is set it REPLACES the list, so include the primary
+    root explicitly if it should still be scanned. Root-membership consumers iterate the deduped
+    union of both via :func:`source_roots`."""
+    raw_env = os.environ.get("CITADEL_RAW_DIRS", "").strip()
+    if not raw_env:
+        return [Path(RAW_DIR)]
+    return [_resolve_dir_entry(item) for item in _split_list_env(raw_env)]
+
+
+# Read at call time by discovery/grammar/llm (tests monkeypatch this list directly, like RAW_DIR).
+RAW_DIRS: list[Path] = _resolve_raw_dirs()
 
 
 def rel_or_abs_posix(path: Path | str) -> str:
@@ -178,6 +219,39 @@ def source_path_for_key(key: str) -> Path:
     return p if p.is_absolute() else WORKSPACE_ROOT / key
 
 
+def source_roots() -> list[Path]:
+    """Every directory that counts as a RAW SOURCE ROOT: the multi-root walk list
+    (:data:`RAW_DIRS`) plus the primary :data:`RAW_DIR` (kept alongside for layouts whose
+    ``CITADEL_RAW_DIRS`` replaces the list without re-listing the primary), de-duplicated in
+    that order. The one union every root-membership consumer iterates — citation containment
+    (``grammar.is_source_citation``), display collapsing (:func:`display_key`), the agent-CLI
+    directory grants (``llm._external_dirs``), and the repo corpus-root guard
+    (``ingest._is_repo_source``). Read at call time so tests can monkeypatch either attribute."""
+    roots: list[Path] = []
+    seen: set[str] = set()
+    for root in (*RAW_DIRS, RAW_DIR):
+        ident = os.path.normcase(os.path.normpath(str(root)))
+        if ident not in seen:
+            seen.add(ident)
+            roots.append(Path(root))
+    return roots
+
+
+def root_covering(path: Path | str) -> Path | None:
+    """The configured raw root (:data:`RAW_DIRS`, the walk list — read at call time) that
+    lexically contains ``path``, or None for a path under NO configured root (an explicit
+    out-of-root ingest, a root removed from the config). Containment is ``grammar.is_within`` —
+    purely lexical, no ``resolve()`` — so a lookup never blocks on a dead mount. Config owns the
+    roots: the deletion sweep's root scoping and the agent prompt's raw-dir bullet both go
+    through this one lookup."""
+    from . import grammar  # call-time import: grammar depends on config, not the other way round
+
+    for root in RAW_DIRS:
+        if grammar.is_within(path, root):
+            return root
+    return None
+
+
 def display_key(key: str) -> str:
     """A short, human-facing rendering of a source key for the ingest CONSOLE output.
 
@@ -203,7 +277,7 @@ def display_key(key: str) -> str:
         # Resolve an ABSOLUTE key through the same normalization the roots use, so the two compare in
         # one space; leave a relative (in-repo) key alone — resolving it would bind it to the CWD.
         kp = PurePosixPath(_safe_resolve(p).as_posix()) if p.is_absolute() else PurePosixPath(text)
-        for root in (RAW_DIR, DOCS_DIR):
+        for root in (*source_roots(), DOCS_DIR):
             base = PurePosixPath(_safe_resolve(root).as_posix())
             try:
                 rel = kp.relative_to(base)
@@ -256,14 +330,130 @@ def robust_mkdir(path: Path | str, attempts: int = 5) -> None:
             time.sleep(0.2 * (attempt + 1))
 
 
-# The rules layer the agentic CLI reads (by path) each run — packaged with the wheel so a
-# pip-installed citadel carries its own rules. Python does not read these files; they MUST be
-# real files on disk (the agent opens them by path), so they resolve directly off this module's
-# location — absolute, readable from ANY CWD, in a checkout and in site-packages alike.
+# The rules layer the agentic CLI reads (by path) each run — a TREE of markdown files packaged
+# with the wheel (citadel/rules/: schema.md + core.md read every session, tasks/ per lifecycle,
+# formats/ per Python-detectable source format, genres/ applied by the agent's own content
+# judgment; see citadel/rules/README.md) so a pip-installed citadel carries its own rules. Python
+# never reads them to build prompts; they MUST be real files on disk (the agent opens them by
+# path), so they resolve directly off this module's location — absolute, readable from ANY CWD,
+# in a checkout and in site-packages alike. A workspace may OVERRIDE any file with
+# rules/<same tree-relative name> (first-hit-wins per filename; see :func:`effective_rules_file`)
+# and APPEND house rules as rules/local.md (:func:`local_rules_file`).
 PACKAGED_RULES_DIR: Path = Path(__file__).resolve().parent / "rules"
-SCHEMA_PATH: Path = PACKAGED_RULES_DIR / "SCHEMA.md"
-AGENT_RULES_PATH: Path = PACKAGED_RULES_DIR / "AGENT_INGEST.md"
+
+
+def workspace_rules_dir() -> Path | None:
+    """The workspace rules overlay directory (``WORKSPACE_ROOT/rules``), or None when no workspace
+    resolved — the bare-CWD fallback is NOT a workspace, so a stray ``./rules`` in some random
+    directory is never consulted. Read at call time so tests can monkeypatch the layout."""
+    if not WORKSPACE_FOUND:
+        return None
+    return Path(WORKSPACE_ROOT) / "rules"
+
+
+def rules_relname(name: str) -> str:
+    """Normalize a (possibly user-supplied) tree-relative rules name: backslashes (Windows input)
+    become forward slashes, surrounding whitespace is stripped. Normalization ONLY — validation
+    lives at the join points (:func:`rules_join`)."""
+    return str(name).replace("\\", "/").strip()
+
+
+def rules_join(base: Path, relname: str) -> Path:
+    """Join a tree-relative rules name under ``base`` through ``okf.safe_join`` — the
+    non-negotiable path guard — so ``rules show``/``rules eject``/prompt composition can never
+    reach outside a rules tree. Additionally rejects a Windows drive-letter name
+    (``C:/evil.md``), which POSIX path math would otherwise read as a harmless relative
+    segment. Raises :class:`okf.OKFError` on any unsafe name; returns the resolved Path."""
+    if ":" in relname:
+        raise okf.OKFError(f"unsafe path: {relname!r}")
+    return okf.safe_join(Path(base), relname)
+
+
+def effective_rules_file(relname: str) -> Path:
+    """Resolve ONE rules file by its tree-relative name (``core.md``, ``tasks/ingest.md``, …),
+    first-hit-wins per filename: a workspace ``rules/<relname>`` shadows the packaged
+    ``citadel/rules/<relname>``. Falls back to the packaged path (which may not exist for a bogus
+    name — callers that need existence check it). Both joins go through :func:`rules_join`
+    (``okf.safe_join``), so a traversal/absolute/drive-letter name raises ``okf.OKFError``
+    instead of resolving outside the rules trees. Read at call time."""
+    relname = rules_relname(relname)
+    ws = workspace_rules_dir()
+    if ws is not None:
+        candidate = rules_join(ws, relname)
+        try:
+            if candidate.is_file():
+                return candidate
+        except OSError:
+            pass
+    return rules_join(PACKAGED_RULES_DIR, relname)
+
+
+def effective_genres() -> list[Path]:
+    """Every effective genre brief, sorted by filename: the ``genres/<name>.md`` DIRECT children
+    (no deeper nesting) of :func:`rules_relnames` — the one union walk over the packaged
+    ``genres/`` starter set and the workspace ``rules/genres/`` overlay (a workspace file shadows
+    the packaged same-name via :func:`effective_rules_file`). The ingest prompt enumerates
+    exactly this list, so a genre file dropped into the workspace participates with no code
+    change."""
+    return [effective_rules_file(rel) for rel in rules_relnames() if rel.startswith("genres/") and rel.count("/") == 1]
+
+
+def local_rules_file() -> Path | None:
+    """The workspace ``rules/local.md`` when present, else None. Always APPENDED as one more path
+    to every session's rules list — the additive, upgrade-safe home for house rules (a forked
+    default goes through ``citadel rules eject`` instead)."""
+    ws = workspace_rules_dir()
+    if ws is None:
+        return None
+    candidate = ws / "local.md"
+    try:
+        return _safe_resolve(candidate) if candidate.is_file() else None
+    except OSError:
+        return None
+
+
+def rules_relnames() -> list[str]:
+    """Sorted tree-relative names of every EFFECTIVE rules file: the union of ``*.md`` files under
+    the packaged tree and the workspace ``rules/`` overlay (each name resolves through
+    :func:`effective_rules_file`). Drives :func:`rules_version` and ``citadel rules list``."""
+    names: set[str] = set()
+    ws = workspace_rules_dir()
+    roots = [PACKAGED_RULES_DIR] + ([ws] if ws is not None else [])
+    for root in roots:
+        try:
+            names.update(p.relative_to(root).as_posix() for p in root.rglob("*.md") if p.is_file())
+        except OSError:
+            continue
+    return sorted(names)
+
+
+def rules_version() -> str:
+    """A short content hash of the effective rules tree: sha256 over the sorted
+    (tree-relative name, bytes) of every effective rules file, truncated to 12 hex chars.
+    Stamped per source into the ingest manifest (``rules_version``) so a later
+    ``curate --stale-rules`` can find sources ingested under older rules. Zero manual
+    maintenance — editing ANY effective file (packaged, workspace override, an added genre,
+    ``rules/local.md``) changes it. Cheap (the tree is a few KB): compute once per ingest run,
+    not per source."""
+    h = hashlib.sha256()
+    for rel in rules_relnames():
+        try:
+            data = effective_rules_file(rel).read_bytes()
+        except OSError:
+            continue
+        h.update(rel.encode("utf-8"))
+        h.update(b"\x00")
+        h.update(data)
+        h.update(b"\x00")
+    return h.hexdigest()[:12]
+
+
 INDEX_PATH: Path = WIKI_DIR / "index.md"
+# The generated provenance catalog wiki/sources/index.md (mirrors INDEX_PATH). The ONE filesystem
+# path for it — store.rebuild_indexes, the MCP wiki_sources tool, and the CLI `sources` subcommand
+# all resolve it here rather than re-joining the "sources"/"index.md" literal. (store keeps the
+# wiki-relative "sources/index.md" string for the catalog's own link math.)
+SOURCES_INDEX_PATH: Path = WIKI_DIR / "sources" / "index.md"
 LOG_PATH: Path = WIKI_DIR / "log.md"
 MANIFEST_PATH: Path = WIKI_DIR / ".citadel_ingested.json"
 # Persistent record of raw sources that could NOT be ingested — a binary/unsupported file, or a
@@ -276,6 +466,13 @@ FAILURES_PATH: Path = WIKI_DIR / ".citadel_failures.json"
 # CLI) which model alias/id to pass. No API key is used.
 LLM_CLI: str = os.environ.get("CITADEL_LLM_CLI", "claude")
 INGEST_MODEL: str = os.environ.get("CITADEL_INGEST_MODEL", "sonnet")
+# The model `citadel curate` sessions run under. Curate is a bounded cleanup pass (re-sort, split,
+# re-ground) that can run on a cheaper/faster model than a full ingest — set CITADEL_CURATE_MODEL to
+# choose it. Empty (the default) falls back to INGEST_MODEL, so a workspace that never sets it
+# curates on the same model it ingests with. Only the claude backend is passed --model, so this
+# knob is authoritative there; copilot/gemini run their own model regardless (see
+# ingest_model_label). Read at call time / swapped in by curate.py so tests can monkeypatch it.
+CURATE_MODEL: str = os.environ.get("CITADEL_CURATE_MODEL", "").strip()
 LLM_TIMEOUT: int = int(os.environ.get("CITADEL_LLM_TIMEOUT", "1200"))
 
 # Observability for the otherwise-headless agent session — by default the CLI's stdout/stderr is
@@ -318,6 +515,28 @@ IMAGE_SUPPORT: bool = os.environ.get("CITADEL_IMAGE_SUPPORT", "1").strip().lower
     "",
 )
 
+# The wiki's TARGET LANGUAGE (BCP 47-ish code, default "en"): all wiki prose, titles, headings,
+# descriptions, and tags are written in it REGARDLESS of the raw sources' languages (including a
+# mixed-language corpus). Two provenance-honoring exceptions live in the rules (schema.md § Wiki
+# language): verbatim quotes stay in their original language, and proper nouns are never
+# translated. Passed to the agent as a run-instruction bullet; purely advisory to lint (no
+# offline language detection).
+WIKI_LANG: str = os.environ.get("CITADEL_WIKI_LANG", "").strip() or "en"
+
+# PDF reading mode (formats/pdf.md): "text" (default) ingests the body text only; "images"
+# additionally has the agent LOOK AT the pages' figures/diagrams/charts and capture what they
+# show. Anything unrecognized falls back to text. The knob only selects which mode the run
+# instruction names — the behavior itself lives in the rules file.
+PDF_MODE: str = "images" if os.environ.get("CITADEL_PDF_MODE", "").strip().lower() == "images" else "text"
+
+# Persona/style capture (genres/first-person.md) — OPT-IN, default OFF. When on, first-person
+# sources (interviews, memos, letters, diaries) additionally yield the person's opinions/
+# preferences as attributed, dated, cited statements and a per-person style profile backed by
+# verbatim cited examples. Off (the default), such sources still yield facts and load-bearing
+# attributed positions, but no style profiling — in a many-person corpus every second document
+# has a different, irrelevant style. Truthy: 1/true/yes/on.
+STYLE_PROFILES: bool = os.environ.get("CITADEL_STYLE_PROFILES", "").strip().lower() in ("1", "true", "yes", "on")
+
 # Same-basename document dedup. When on (default), if two or more raw files in the SAME folder
 # share a basename and are all document-export formats (a deck saved as both report.pptx AND
 # report.pdf, say — set below), only ONE is ingested and the rest are skipped as duplicates (the
@@ -341,6 +560,13 @@ DEDUP_BY_BASENAME: bool = os.environ.get("CITADEL_DEDUP_BY_BASENAME", "1").strip
 # only genuinely large sources are split; lower it for a small-context backend, raise it (or set 0
 # to disable) for a very large one.
 MAX_SOURCE_CHARS: int = int(os.environ.get("CITADEL_MAX_SOURCE_CHARS", "300000"))
+
+# Curate page-length thresholds, measured in BODY lines (docs/refactor-plan.md Z5). `citadel lint`
+# only WARNS at the soft threshold; `citadel curate` ACTS (plans a topic split, every fact keeping
+# its citation) at the hard one. Deliberately module constants, not env knobs — one KISS default the
+# rules-tree page-shape guidance is written around, not a per-workspace dial.
+CURATE_PAGE_SOFT_LINES: int = 400
+CURATE_PAGE_HARD_LINES: int = 800
 
 # OS/system junk files & folders to IGNORE entirely during a raw/ scan — never ingested, never
 # recorded in the manifest or the failures catalog. These are noise a file manager or the OS drops
@@ -378,23 +604,18 @@ _DEFAULT_IGNORE_PATTERNS: tuple[str, ...] = (
 )
 
 
-def _parse_ignore_patterns(raw: str) -> list[str]:
-    """Split a comma/newline-separated ignore-pattern string into a clean list (whitespace stripped,
-    blank entries dropped)."""
-    return [p.strip() for p in raw.replace("\n", ",").split(",") if p.strip()]
-
-
 def _resolve_ignore_patterns() -> list[str]:
-    """Build the effective ignore list from the built-in defaults and ``CITADEL_IGNORE_PATTERNS``:
-    unset/blank keeps the defaults; a value with a leading ``+`` is ADDED to them (e.g.
-    ``+*.bak,~backup*``); any other value REPLACES them (set it to a pattern that matches nothing to
-    effectively disable — though ignoring these is almost always wanted)."""
+    """Build the effective ignore list from the built-in defaults and ``CITADEL_IGNORE_PATTERNS``
+    (split by the shared :func:`_split_list_env`): unset/blank keeps the defaults; a value with a
+    leading ``+`` is ADDED to them (e.g. ``+*.bak,~backup*``); any other value REPLACES them (set
+    it to a pattern that matches nothing to effectively disable — though ignoring these is almost
+    always wanted)."""
     raw = os.environ.get("CITADEL_IGNORE_PATTERNS", "").strip()
     if not raw:
         return list(_DEFAULT_IGNORE_PATTERNS)
     if raw.startswith("+"):
-        return list(_DEFAULT_IGNORE_PATTERNS) + _parse_ignore_patterns(raw[1:])
-    return _parse_ignore_patterns(raw)
+        return list(_DEFAULT_IGNORE_PATTERNS) + _split_list_env(raw[1:])
+    return _split_list_env(raw)
 
 
 # Read at call time by ingest's discovery walk (tests monkeypatch this list directly).

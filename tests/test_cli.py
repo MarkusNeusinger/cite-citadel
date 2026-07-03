@@ -24,18 +24,21 @@ from citadel.progress import ConsoleProgress
 
 
 class IngestSpy:
-    """Stands in for ``ingest.ingest``: records (paths, progress), returns a canned report."""
+    """Stands in for ``ingest.ingest``: records (paths, progress, extra kwargs such as
+    ``full_rescan``), returns a canned report."""
 
     def __init__(self, report: IngestReport):
         self.report = report
         self.called = False
         self.paths = None
         self.progress = None
+        self.kwargs: dict = {}
 
-    def __call__(self, paths=None, progress=None):
+    def __call__(self, paths=None, progress=None, **kwargs):
         self.called = True
         self.paths = paths
         self.progress = progress
+        self.kwargs = kwargs
         return self.report
 
 
@@ -156,9 +159,42 @@ def test_ingest_dispatches_prints_report_and_returns_0(ingest_spy, capsys):
     assert "Ingest complete" in capsys.readouterr().out
 
 
+def test_ingest_full_rescan_flag_reaches_ingest(ingest_spy):
+    """``--full-rescan`` hands ``full_rescan=True`` through to ``ingest.ingest`` (the flag must
+    actually reach discovery); without it the kwarg is False."""
+    assert cli.main(["ingest", "--quiet"]) == 0
+    assert ingest_spy.kwargs["full_rescan"] is False
+    assert cli.main(["ingest", "--quiet", "--full-rescan"]) == 0
+    assert ingest_spy.kwargs["full_rescan"] is True
+
+
 def test_ingest_forwards_explicit_paths(ingest_spy):
     assert cli.main(["ingest", "raw/a.md", "raw/b.md", "--quiet"]) == 0
     assert ingest_spy.paths == ["raw/a.md", "raw/b.md"]
+
+
+def test_ingest_force_flag_reaches_ingest(ingest_spy):
+    """``--force`` hands ``force=True`` through to ``ingest.ingest`` alongside the explicit paths
+    (docs/refactor-plan.md Z4); without the flag the kwarg defaults to False."""
+    assert cli.main(["ingest", "--quiet", "raw/a.md"]) == 0
+    assert ingest_spy.kwargs["force"] is False
+    assert cli.main(["ingest", "--quiet", "--force", "raw/a.md"]) == 0
+    assert ingest_spy.kwargs["force"] is True
+    assert ingest_spy.paths == ["raw/a.md"]
+
+
+def test_ingest_force_without_paths_is_rejected(ingest_spy):
+    """PLAN PIN (Z4 leaves this open, so the SAFER semantics are pinned here — noted for
+    docs/refactor-plan.md Z4): ``citadel ingest --force`` with NO explicit paths is refused with a
+    non-zero exit and ``ingest.ingest`` is never called. Forcing the ENTIRE corpus would re-run
+    one agent session per source; that must never happen by accident — force requires explicit
+    paths (``cmd_ingest`` refuses with exit 2 before ``ingest.ingest`` is reached)."""
+    try:
+        rc = cli.main(["ingest", "--quiet", "--force"])
+    except SystemExit as exc:  # an argparse-level rejection is an acceptable implementation too
+        rc = exc.code
+    assert rc not in (0, None)
+    assert not ingest_spy.called
 
 
 def test_ingest_source_error_exits_1(ingest_spy):

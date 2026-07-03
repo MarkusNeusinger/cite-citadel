@@ -27,15 +27,23 @@ uv run python -m citadel <subcommand>
 
 Subcommands: `init [DIR]` (scaffold a workspace: `citadel.toml` marker, `.env`, `raw/`, `wiki/`;
 idempotent), `ingest [paths…]` (fold raw/ into the wiki; `--verbose`/`-v` streams the agent
-session, `--log-dir DIR` writes a transcript per source, `--quiet` drops the progress spinner),
-`serve` (MCP stdio server), `search <query> [--tag T] [--limit N]`, `tags [tag]`,
-`lint [--stale-days N]`, `check [paths…]`, `view [--out PATH] [--no-open] [--obsidian]`.
-`citadel --version` prints the version and (like `--help`) needs no workspace.
+session, `--log-dir DIR` writes a transcript per source, `--quiet` drops the progress spinner,
+`--full-rescan` distrusts the manifest's stat cache and re-hashes every tracked source,
+`--force <paths>` deliberately re-reads already-ingested sources as a reconcile — it requires
+explicit paths and is refused without them), `curate [--dry-run] [--limit N] [--stale-rules]
+[--diff PATH]` (the SECOND lifecycle: improve EXISTING pages — re-sort/split/re-ground/resolve
+contradictions/fix locators — against a recomputed findings checklist), `status` (read-only
+per-source state table: ingested / failed / skipped-duplicate / ignored / pending), `serve` (MCP
+stdio server), `search <query> [--tag T] [--limit N]`, `read <rel_path>` / `index` / `sources`
+(CLI twins of the `wiki_read`/`wiki_index`/`wiki_sources` MCP tools — full CLI↔MCP parity),
+`tags [tag]`, `lint [--stale-days N]`, `check [paths…]`, `view [--out PATH] [--no-open]
+[--obsidian]`, `rules list|show|eject`. `citadel --version` prints the version and (like `--help`)
+needs no workspace.
 
 Tests (pytest, all offline — no CLI/network is ever spawned):
 
 ```bash
-uv run pytest -q                                    # whole suite (~420 tests, ~3s)
+uv run pytest -q                                    # whole suite (~570 tests, ~3s)
 uv run pytest tests/test_ingest_core.py -q          # one file
 uv run pytest tests/test_ingest_core.py::test_ingest_creates_pages   # one test
 ```
@@ -62,17 +70,19 @@ Python 3.12+ is required. There is no separate build step — `pytest` and `ruff
 Pages are markdown files with YAML frontmatter; everything (search, index, graph, provenance) is
 recomputed from them in memory.
 
-**Three layers** (the README and `citadel/rules/SCHEMA.md` are authoritative):
+**Three layers** (the README and `citadel/rules/schema.md` are authoritative):
 1. `raw/` — immutable sources the agent reads but never edits.
 2. `wiki/` — the LLM-owned OKF bundle: pages routed *by kind* into `concepts/`, `objects/`,
    `systems/`, `persons/`, `organizations/`, `projects/`, `abbreviations/`, `misc/` (see
    `okf.folder_for_type`), cross-linked with relative markdown links, each fact carrying a footnote
    citation.
-3. `citadel/rules/SCHEMA.md` + `citadel/rules/AGENT_INGEST.md` — the schema/rules layer,
-   packaged with the wheel (the repo-root `SCHEMA.md`/`AGENT_INGEST.md` are thin pointers). These
-   are **read by the ingest agent at run time** (referenced by absolute path via
-   `config.SCHEMA_PATH`/`config.AGENT_RULES_PATH`), so editing them changes how the wiki is built
-   with **no code change**. Treat them as part of the program.
+3. `citadel/rules/` — the schema/rules tree, packaged with the wheel (index:
+   `citadel/rules/README.md`; the repo-root `SCHEMA.md`/`AGENT_INGEST.md` are thin pointers):
+   `schema.md` (format contract) + `core.md` (agent behavior) are read every session, plus one
+   lifecycle brief from `tasks/`, any file-type brief from `formats/`, and the agent-judged
+   `genres/` briefs. These are **read by the ingest agent at run time** (referenced by path in the
+   prompt), so editing them changes how the wiki is built with **no code change**. Treat them as
+   part of the program.
 
 **Everything operates on a WORKSPACE**, not the repo checkout: a directory holding a
 `citadel.toml` marker (a pure marker, never config — scaffold one with `citadel init [DIR]`).
@@ -85,35 +95,67 @@ it is itself a workspace.
 **Ingest is the heart of the system** (`ingest.py` → `llm.py`). The flow per source:
 - `ingest.ingest()` partitions candidates into pending / already-ingested (sha match) / reorganized
   (moved-or-duplicate) / unreadable (binary) / deleted (vanished from disk, full runs only).
+  `ingest --force <paths>` bypasses the sha short-circuit: the named sources land in pending as
+  reconciles (a repo re-digests in full), and the manifest is re-stamped with the current model +
+  rules version.
+- **Discovery is incremental and deletion-safe**: one `os.scandir` walk over every
+  `CITADEL_RAW_DIRS` root; the manifest doubles as the scan cache (an entry's
+  `size`/`mtime_ns`/`ctime_ns`/`hashed_at_ns` are a skip-hint — sha256 stays the sole arbiter of
+  "changed"; `--full-rescan` distrusts the cache). Deletion candidates come from the
+  walked-seen-set diff and each is positively confirmed with `.exists()`; any walk error aborts
+  the whole sweep, an unreachable root contributes no candidates, keys under no configured root
+  are logged and never swept, and a workspace-identity mismatch whose keys do not resolve refuses
+  the sweep. A flaky share or unmounted root must NEVER read as mass deletion — don't weaken
+  these guards.
 - For each pending source it runs the agent against a **per-source staging copy** of the wiki (a
   sibling dir, never the live wiki), then snapshots before/after and **diffs by content hash** to
   learn what the agent created/updated/deleted — the agent has no return value, its file edits *are*
   the result.
 - It then re-imposes invariants on every changed page (`validate.validate_page` + `store.write_page`
-  to canonicalize YAML and stamp the timestamp), repairs renamed-page links, and **only on a fully
-  clean session promotes staging onto the live wiki** with a non-destructive copy-over-then-prune.
-  Any failure/timeout/Ctrl+C leaves the live wiki exactly as it was; the source is retried next run.
-  This all-or-nothing + network-share-hardened machinery (`_robust_*`, `robust_mkdir`) is load-bearing
-  — don't simplify it away.
+  to canonicalize YAML and stamp the timestamp) after **every** agent pass, repairs renamed-page
+  links, and **only on a fully clean source promotes staging onto the live wiki — exactly once per
+  source** — with a non-destructive copy-over-then-prune. A chunked large source folds ALL its
+  segments into that one staging copy before the single promote (refactor-plan Z11: the live wiki
+  never holds a partially imported source; the accepted trade-off is that a failure at segment N
+  discards the earlier segments' work and the source retries from segment 1 next run). Any
+  failure/timeout/Ctrl+C leaves the live wiki exactly as it was; the source is retried next run.
+  Files, repos, and deletion cleanups all drive this through ONE shared per-source loop
+  (`_SourceJob` + `_run_source_jobs`). This all-or-nothing + network-share-hardened machinery
+  (`_robust_*`, `robust_mkdir`) is load-bearing — don't simplify it away.
 
 **`llm.py` is the ONLY place that talks to an LLM**, and it does so by shelling out to a CLI in
 agentic mode (`cwd` = workspace root, autonomous file tools). The prompt is **paths-only** — it references
 the source and rules by path, never embeds file content — which keeps argv tiny (the Windows
-`WinError 206` fix). `kind` selects the propagation: `ingest` (new), `reconcile` (changed source —
-update/remove stale facts, don't just append), `delete` (source removed — strip its provenance),
-`repo`/`repo-reconcile` (a whole git repo folded as one digest). `run_ingest_session` is the single
-seam tests monkeypatch.
+`WinError 206` fix). One per-kind spec table (`_KIND_SPECS`) maps each `kind` to its task-rule
+file, whether it reads a source, and its format policy; an unknown kind fails loud. `kind` selects
+the propagation: `ingest` (new), `reconcile` (changed source — update/remove stale facts, don't
+just append), `delete` (source removed — strip its provenance), `repo`/`repo-reconcile` (a whole
+git repo folded as one digest), `image`/`image-reconcile` (an image read visually), and `curate`
+(improve an existing page cluster against a findings file read by path, not a raw source).
+`run_ingest_session` is the single seam tests monkeypatch.
 
 **Two checking layers, one implementation** (`validate.py`):
 - `citadel check` / `wiki_validate` — the **strict per-page gate** (required fields, honest/defined
   citations, relative non-broken links, no `[[wikilinks]]`). The ingest agent self-runs it; ingest
   re-runs it and fails the source on any error.
 - `citadel lint` (`lint.py`) — a **pure offline health check** (contradictions, orphans, missing
-  cites, broken links, stale, fabricated sources, undefined abbreviations). Only *structural*
-  problems (missing type, broken links, bad sources, wikilinks) flip its non-zero exit; the rest are
-  advisory. Both layers parse citations/links/fences through `grammar.py`, so lint and `citadel
-  check` agree by construction: a citation into `raw/` or `docs/` is legal provenance (never a
-  broken link), and a link inside a ``` code fence is literal text.
+  cites, broken links, stale, fabricated sources, undefined abbreviations, and **Z6 locator issues**
+  — an out-of-range `lines A-B` range or a missing `§ Heading`, via `lint.check_locators`, shared
+  with curate). Only *structural* problems (missing type, broken links, bad sources, wikilinks) flip
+  its non-zero exit; the rest — locator issues included — are advisory. Both layers parse
+  citations/links/fences through `grammar.py`, so lint and `citadel check` agree by construction: a
+  citation into `raw/` or `docs/` is legal provenance (never a broken link), and a link inside a
+  ``` code fence is literal text.
+
+**Curate is the second wiki lifecycle** (`curate.py`, `citadel curate`) — **no persisted queue**:
+the plan is recomputed from offline detectors (`rules_version_drift`, `page_length_hard`,
+`contradiction`, `orphan`, `llm_drift`, `resort` via `okf.folder_for_type`, `locator`) each run.
+Each page CLUSTER runs ONE staged `kind="curate"` session over ingest's staging machinery; **the
+staging diff-by-hash is the single result arbiter** (empty = NOOP, clean = applied, fail =
+revert-and-stop → attempt-capped failures-catalog record). `--dry-run`/`--limit`/`--stale-rules`/
+`--diff` shape the run; sessions use `CITADEL_CURATE_MODEL` (falls back to the ingest model).
+`status.py` (`citadel status`) is the read-only per-source state view (manifest + failures + one
+stat-only walk; never re-hashes).
 
 **Other modules:** `okf.py` is the OKF format core (parse/dump, type→folder routing, link math, and
 the non-negotiable `safe_join` path guard — reuse it for any wiki-relative path). `grammar.py` is
@@ -127,10 +169,14 @@ manifest), and the deterministic link-rewrite safety nets (`rewrite_links`, `rew
 `wiki/.citadel_ingested.json` (per source: sha256 or git commit + importing model). `repo.py` builds
 the digest for git-repo sources. `extract.py` pulls text from Office files (stdlib-only); the legacy
 OLE/CFBF salvage lives in `extract_ole.py`, imported lazily only when a legacy `.ppt`/`.doc`/`.xls`
-is dispatched. `server.py` is the FastMCP stdio server (7 tools; only `wiki_ingest` mutates; tools
-never raise — they return error strings). The `viewer/` subpackage builds the self-contained offline
-HTML viewer (`template.html`/`app.css`/`app.js` are package-data assets loaded via `importlib.resources`). `config.py`
-resolves all paths/settings. `cli.py` mirrors the MCP tools as subcommands.
+is dispatched. `curate.py` is the second lifecycle and `status.py` the read-only per-source state
+view (both above). `server.py` is the FastMCP stdio server (8 tools — 7 read-only incl. `wiki_lint`,
+only `wiki_ingest` mutates; every tool carries MCP behavior annotations and never raises, returning
+error strings). The `viewer/` subpackage builds the self-contained offline HTML viewer
+(`template.html`/`app.css`/`app.js` are package-data assets loaded via `importlib.resources`).
+`config.py` resolves all paths/settings. `cli.py` mirrors the MCP tools as subcommands with full
+parity (`read`/`index`/`sources` twin the readers; `lint`/`view` stay CLI-only, `wiki_lint` closes
+the gap from the MCP side).
 
 ## Conventions specific to this codebase
 
@@ -154,5 +200,9 @@ resolves all paths/settings. `cli.py` mirrors the MCP tools as subcommands.
   Windows/SMB failures.
 - Config knobs live in the workspace-root `.env` (auto-loaded, gitignored; template:
   `citadel/templates/env.example`): `CITADEL_LLM_CLI`,
-  `CITADEL_INGEST_MODEL`, `CITADEL_LLM_TIMEOUT`, `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,
-  `CITADEL_REPO_SUPPORT`, the `CITADEL_*_DIR` path overrides, and `*_CLI_PATH` binary overrides.
+  `CITADEL_INGEST_MODEL`, `CITADEL_CURATE_MODEL` (model for `citadel curate`; falls back to the
+  ingest model), `CITADEL_LLM_TIMEOUT`, `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,
+  `CITADEL_REPO_SUPPORT`, `CITADEL_WIKI_LANG` (target language of all wiki prose, default `en`),
+  `CITADEL_PDF_MODE` (`text` | `images`), `CITADEL_STYLE_PROFILES` (opt-in style capture, default
+  `0`), the `CITADEL_*_DIR` path overrides, `CITADEL_RAW_DIRS` (multi-root: a comma/newline-separated
+  list of raw roots discovery walks), and `*_CLI_PATH` binary overrides.

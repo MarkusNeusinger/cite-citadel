@@ -15,7 +15,7 @@ from typing import Any, Callable
 
 import pytest
 
-from citadel import config, llm, okf, repo
+from citadel import config, llm, manifest, okf, repo, store
 
 
 # --- layout wiring -----------------------------------------------------------------------
@@ -26,6 +26,11 @@ from citadel import config, llm, okf, repo
 # stays paths-only (never embeds file content). 8000 leaves ~4x margin while absorbing long CI
 # runner tmp paths and the absolute packaged-rules paths.
 PROMPT_CHAR_BUDGET = 8000
+
+# The REAL packaged rules tree (citadel/rules/ in this checkout / site-packages), captured at
+# import time — BEFORE any fixture monkeypatches config.PACKAGED_RULES_DIR onto a stub tree.
+# Content tests (what the rulebook must keep teaching) read from here.
+REAL_RULES_DIR = config.PACKAGED_RULES_DIR
 
 
 @pytest.fixture(autouse=True)
@@ -54,9 +59,11 @@ class CitadelTmp:
     raw: Path  # config.RAW_DIR
     docs: Path  # config.DOCS_DIR
     index_path: Path  # config.INDEX_PATH
+    sources_index_path: Path  # config.SOURCES_INDEX_PATH
     log_path: Path  # config.LOG_PATH
     manifest_path: Path  # config.MANIFEST_PATH
     failures_path: Path  # config.FAILURES_PATH
+    packaged_rules: Path  # config.PACKAGED_RULES_DIR (a stub tree at <root>/citadel/rules)
 
     def read_manifest(self) -> dict:
         """The manifest's flat ``{source key: entry}`` dict, read from THIS layout's live
@@ -92,10 +99,29 @@ def make_citadel(tmp_path: Path, monkeypatch) -> Callable[..., CitadelTmp]:
         for d in (root, wiki, raw, docs):
             d.mkdir(parents=True, exist_ok=True)
 
-        # A SCHEMA.md so anything reading config.SCHEMA_PATH works (llm is faked, but be safe).
-        schema_path = root / "SCHEMA.md"
-        schema_path.write_text("# SCHEMA\n\ntest schema\n", encoding="utf-8")
-        rules_path = root / "AGENT_INGEST.md"  # not written — llm is always faked
+        # A minimal STUB packaged-rules tree at <root>/citadel/rules — mirroring the dev-checkout
+        # shape — so prompt builders resolve short, workspace-relative rule paths, _external_dirs
+        # stays empty for the default layout, and nothing depends on where the REAL checkout lives
+        # on disk. llm is always faked in ingest tests; these files only need to exist (and hash
+        # stably for config.rules_version). Tests about the real rulebook's CONTENT read the real
+        # packaged tree explicitly (it is captured before this patch, e.g. in test_llm.py).
+        packaged_rules = root / "citadel" / "rules"
+        for rel in (
+            "schema.md",
+            "core.md",
+            "tasks/ingest.md",
+            "tasks/reconcile.md",
+            "tasks/delete.md",
+            "tasks/curate.md",
+            "formats/repo.md",
+            "formats/image.md",
+            "formats/pdf.md",
+            "formats/office.md",
+            "genres/prose.md",
+        ):
+            stub = packaged_rules / rel
+            stub.parent.mkdir(parents=True, exist_ok=True)
+            stub.write_text(f"# {rel} (test stub)\n", encoding="utf-8")
 
         cit = CitadelTmp(
             root=root,
@@ -103,9 +129,11 @@ def make_citadel(tmp_path: Path, monkeypatch) -> Callable[..., CitadelTmp]:
             raw=raw,
             docs=docs,
             index_path=wiki / "index.md",
+            sources_index_path=wiki / "sources" / "index.md",
             log_path=wiki / "log.md",
             manifest_path=wiki / ".citadel_ingested.json",
             failures_path=wiki / ".citadel_failures.json",
+            packaged_rules=packaged_rules,
         )
         # raising=True (the default): every one of these attributes exists in config today, so
         # a PR that renames the config internals makes this seam fail LOUD instead of silently
@@ -113,10 +141,13 @@ def make_citadel(tmp_path: Path, monkeypatch) -> Callable[..., CitadelTmp]:
         monkeypatch.setattr(config, "WORKSPACE_ROOT", cit.root)
         monkeypatch.setattr(config, "WIKI_DIR", cit.wiki)
         monkeypatch.setattr(config, "RAW_DIR", cit.raw)
+        # The multi-root walk list mirrors the single-root default ([RAW_DIR]); multi-root tests
+        # re-patch it with their extra roots.
+        monkeypatch.setattr(config, "RAW_DIRS", [cit.raw])
         monkeypatch.setattr(config, "DOCS_DIR", cit.docs)
-        monkeypatch.setattr(config, "SCHEMA_PATH", schema_path)
-        monkeypatch.setattr(config, "AGENT_RULES_PATH", rules_path)
+        monkeypatch.setattr(config, "PACKAGED_RULES_DIR", cit.packaged_rules)
         monkeypatch.setattr(config, "INDEX_PATH", cit.index_path)
+        monkeypatch.setattr(config, "SOURCES_INDEX_PATH", cit.sources_index_path)
         monkeypatch.setattr(config, "LOG_PATH", cit.log_path)
         monkeypatch.setattr(config, "MANIFEST_PATH", cit.manifest_path)
         monkeypatch.setattr(config, "FAILURES_PATH", cit.failures_path)
@@ -188,14 +219,23 @@ def seed_page() -> Callable[..., Path]:
 
 
 def _cite_page(rel_path: str, rel_key: str, body_fact: str) -> None:
-    """Write a minimal valid OKF page that cites ``rel_key`` once (for use inside fake sessions)."""
-    depth = "../../"
+    """Write a minimal valid OKF page that cites ``rel_key`` once (for use inside fake sessions).
+    A workspace-relative key is cited with a relative link; an absolute (out-of-workspace) key by
+    its absolute posix path — the Z3 cross-root citation form.
+
+    Absoluteness is decided with the NATIVE ``Path`` flavor (the same discipline as
+    ``config.source_path_for_key``), never ``PurePosixPath``: keys are produced by
+    ``config.rel_or_abs_posix`` on the platform under test, and a Windows drive-letter key
+    (``C:/Users/...``) is NOT posix-absolute — ``PurePosixPath("C:/x").is_absolute()`` is False —
+    which would emit a broken ``../../C:/...`` link and fail every fake session for an
+    out-of-workspace source on Windows."""
+    link = rel_key if Path(rel_key).is_absolute() else f"../../{rel_key}"
     target = config.WIKI_DIR / rel_path
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
         okf.dump(
             {"type": "Note", "title": "Fact", "description": "d", "tags": ["t"], "resource": rel_key},
-            f"{body_fact}[^s1]\n\n## Sources\n\n[^s1]: [{rel_key}]({depth}{rel_key}) - src (ingested 2026-06-21)\n",
+            f"{body_fact}[^s1]\n\n## Sources\n\n[^s1]: [{rel_key}]({link}) - src (ingested 2026-06-21)\n",
         ),
         encoding="utf-8",
     )
@@ -207,6 +247,34 @@ def cite_page() -> Callable[[str, str, str], None]:
     fact)`` writes one valid page whose single fact cites ``rel_key``. Reads ``config.WIKI_DIR``
     at call time, so inside a session it lands in ingest's per-source staging copy."""
     return _cite_page
+
+
+@pytest.fixture
+def seed_cited_deleted_source(seed_page) -> Callable[[], None]:
+    """Seed the canonical VANISHED-source setup shared across suites: one wiki page
+    (``concepts/topic.md``) citing ``raw/gone.md`` plus a manifest entry for it, with NO file on
+    disk — so the next full run detects the deletion and must run a ``kind="delete"`` cleanup
+    session. Updates the manifest in place (load-save), composing with already-tracked sources."""
+
+    def _seed() -> None:
+        seed_page(
+            "concepts/topic.md",
+            {"type": "Concept", "title": "Topic", "description": "d", "tags": ["x"], "resource": "raw/gone.md"},
+            "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/gone.md](../../raw/gone.md) - g\n",
+        )
+        tracked = manifest.load()
+        tracked["raw/gone.md"] = manifest.make_entry("dd" * 32, None)
+        manifest.save(tracked)
+
+    return _seed
+
+
+def delete_citing_pages(rel_key: str) -> None:
+    """The ``kind="delete"`` fake-session idiom shared across suites: remove every page citing
+    ``rel_key`` from the CONFIGURED wiki — ingest's per-source staging copy at call time, exactly
+    like the real agent's file edits — enough to satisfy the delete post-condition."""
+    for rel in store.find_raw_references(rel_key):
+        (Path(config.WIKI_DIR) / rel).unlink(missing_ok=True)
 
 
 def _make_pptx(path: Path, slides: list[list[str]]) -> None:

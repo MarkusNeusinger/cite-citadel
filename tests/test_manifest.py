@@ -42,18 +42,6 @@ def test_model_of_lookups():
     assert manifest.model_of(m, "raw/missing.md") is None
 
 
-def test_is_pending_compares_sha_for_both_forms(tmp_citadel):
-    src = tmp_citadel.raw / "notes.md"
-    src.write_text("hello\n", encoding="utf-8")
-    sha = manifest.file_sha256(src)
-    key = manifest.rel_key(src)
-
-    assert manifest.is_pending({}, src) is True  # untracked
-    assert manifest.is_pending({key: {"sha256": sha, "model": "m"}}, src) is False
-    assert manifest.is_pending({key: sha}, src) is False  # legacy bare-string still matches
-    assert manifest.is_pending({key: {"sha256": "other"}}, src) is True  # changed bytes
-
-
 def test_mark_done_records_model_and_roundtrips(tmp_citadel):
     src = tmp_citadel.raw / "notes.md"
     src.write_text("hello\n", encoding="utf-8")
@@ -61,7 +49,8 @@ def test_mark_done_records_model_and_roundtrips(tmp_citadel):
     m: dict = {}
     manifest.mark_done(m, src, "claude:opus")
     key = manifest.rel_key(src)
-    assert m[key] == {"sha256": manifest.file_sha256(src), "model": "claude:opus"}
+    assert m[key]["sha256"] == manifest.file_sha256(src)
+    assert m[key]["model"] == "claude:opus"
 
     manifest.save(m)
     reread = manifest.load()
@@ -69,6 +58,41 @@ def test_mark_done_records_model_and_roundtrips(tmp_citadel):
     # save() writes the stamped format: the record sits under the top-level "sources" section.
     on_disk = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))["sources"]
     assert on_disk[key]["sha256"] == manifest.file_sha256(src)
+
+
+# --- PR4 (docs/refactor-plan.md Z3): the manifest is the scan cache ----------------------
+
+
+def test_mark_done_records_scan_cache_stat_fields(tmp_citadel):
+    """``mark_done`` records the source's (size, mtime_ns) as the quick-check skip hint plus
+    ``hashed_at_ns`` — the SOURCE file's clock at hash time, feeding the racy-timestamp guard —
+    alongside sha/model/rules_version, and ``save``/``load`` round-trips the entry. mtime_ns is
+    an opaque equality token: stored exactly as stat reports it, never truncated or ordered."""
+    src = tmp_citadel.raw / "notes.md"
+    src.write_text("hello\n", encoding="utf-8")
+
+    m: dict = {}
+    manifest.mark_done(m, src, "claude:opus", "rules123")
+    st = src.stat()
+    entry = m[manifest.rel_key(src)]
+    assert entry["sha256"] == manifest.file_sha256(src)
+    assert entry["model"] == "claude:opus"
+    assert entry["size"] == st.st_size
+    assert entry["mtime_ns"] == st.st_mtime_ns
+    assert isinstance(entry["hashed_at_ns"], int)
+
+    manifest.save(m)
+    assert manifest.load()[manifest.rel_key(src)] == entry
+
+
+def test_entry_helpers_accept_stat_extended_records():
+    """The entry helpers keep working on a stat-extended record (forward compatibility: a PR4
+    manifest read by code that only knows sha/model must not choke on the extra fields)."""
+    record = {"sha256": "abc", "model": "m", "rules_version": "r", "size": 6, "mtime_ns": 1, "hashed_at_ns": 2}
+    assert manifest.entry_sha(record) == "abc"
+    assert manifest.entry_model(record) == "m"
+    assert manifest.entry_rules_version(record) == "r"
+    assert not manifest.is_repo_entry(record)
 
 
 # --- config.ingest_model_label resolution ----------------------------------------------

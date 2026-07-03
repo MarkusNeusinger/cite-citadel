@@ -160,6 +160,9 @@ citadel/rules/
     (today's "judged from CONTENT, not name" rule, generalized). No applies-to glob engine, no
     per-path override table. The chosen genre is **stamped into the manifest at first ingest and
     reused on reconcile/force**, so later sessions can't silently reclassify and churn pages.
+    *(PR3 deviation: no manifest genre stamp shipped — the agent has no return channel to report
+    its judgment; instead `tasks/reconcile.md` instructs keeping the genre treatment already
+    visible in the wiki, which serves the same no-churn goal.)*
   - **The shipped genre files are examples, not a fixed taxonomy** (owner clarification): the
     prompt enumerates whatever the *effective* `genres/` directory contains at prompt-build time —
     a genre file dropped into the workspace `rules/genres/` participates automatically, no code
@@ -200,7 +203,9 @@ citadel/rules/
 - Config knobs select *which* rule file/section is referenced, never templating:
   - `CITADEL_PDF_MODE=text|images` (images degrades to text with a logged warning on CLIs without
     PDF vision). PDFs remain unchunked by design — agent-side reading; document the practical size
-    ceiling in formats/pdf.md.
+    ceiling in formats/pdf.md. *(PR3 deviation: the degrade-warning is deliberately not implemented —
+    there is no reliable capability probe for a CLI's PDF vision; formats/pdf.md and env.example
+    document the caveat instead, and a doctor advisory lands in PR9.)*
   - `CITADEL_REPO_MODE=summary|full` — **full mode is deferred** (post-roadmap). Design sketch when
     it comes: digest without the scoring cutoff, mandatory multi-segment folding via the existing
     segment machinery, same repo-reconcile diff behavior. Summary stays the default; repo.py's
@@ -234,8 +239,20 @@ citadel/rules/
   minus a 3s SMB/FAT window. mtime compared as an opaque equality token, never ordered. No inode,
   no ctime (unstable on SMB — document with the restic/borg references). No file watcher —
   inotify/SMB CHANGE_NOTIFY can't be trusted; document why.
+  *(PR4 deviation on ctime: a freshly-ingested file is by definition inside the racy window
+  (hashed moments after its last write), so the pure window rule would re-hash every new corpus
+  once per run forever — "0 reads on an unchanged corpus" is unsatisfiable under it. The shipped
+  guard records `ctime_ns` as ONE MORE OPAQUE EQUALITY token (git's own index does the same):
+  ctime equality — which userspace cannot forge on POSIX — proves nothing changed since the hash
+  and short-circuits the window; entries without a recorded ctime (hand-seeded/pre-PR4) fall back
+  to the pure `hashed_at` window. Still never ordered, still no inode; an unstable SMB ctime
+  degrades to a harmless re-hash because sha remains the sole arbiter. Windows caveat, same as
+  git there: `st_ctime` is creation time, so a backdated same-size rewrite is invisible to stat —
+  `--full-rescan` or any real mtime change surfaces it.)*
 - Multi-root: `CITADEL_RAW_DIRS` (list env var); keys use the existing rel-or-abs discipline;
-  deletion sweep scoped per root. The five hardcoded `'raw'`/`'docs'` literals (store.py:175/207,
+  deletion sweep scoped per root. *(PR4 addition: a byte-identical file in a second root is
+  recognized as a duplicate against the SAME RUN's pending set too — one agent session, both keys
+  tracked — extending the manifest-only move/duplicate detection to the cross-root drop case.)* The five hardcoded `'raw'`/`'docs'` literals (store.py:175/207,
   lint.py:180, viewer, config.display_key) collapse into one config-aware `is_source_citation`
   predicate (lives in grammar.py, see Z7; refined during PR3.5 into the config-aware predicate
   plus its config-free lexical twin `resolves_to_source` for the byte-stable rewriters — do not
@@ -269,6 +286,13 @@ citadel/rules/
 - `tasks/reconcile.md` gets a forced-re-read note: "the source may be unchanged — re-verify the
   wiki's facts against it and apply the current rules" (otherwise the agent hunts for a source diff
   that doesn't exist).
+- *(PR5 decisions: (a) `citadel ingest --force` with NO explicit paths is REFUSED (exit 2, ingest
+  never called) — the flag was ambiguous here, and a whole-corpus re-read (one agent session per
+  source) must never happen by accident, so force requires naming the sources (pinned by
+  test_cli.py). (b) The dedup-bypass divergence is recorded through the report's existing
+  `duplicates` channel — the pair names the kept sibling the wiki now deliberately holds alongside;
+  no DUPLICATE failure is persisted for a forced key. (c) No genre stamp, per the PR3 deviation —
+  force re-stamps model + rules_version.)*
 
 ### Z5 — `citadel curate`
 
@@ -299,6 +323,18 @@ Separate verb (GraphRAG/Letta precedent), two layers (Wikipedia-bot model), **no
 - MCP: add `wiki_lint` (the curate driver is genuinely useful to external clients) and tool
   behavior annotations. The raw-source reader / per-page validate / force flag move to a small
   follow-up PR — the curate agent is a CLI session with file tools and reads raw/ directly.
+- *(Shipped in PR6: detectors + recompute-per-run plan (`curate.py`), the `--dry-run`/`--limit`/
+  `--stale-rules`/`--diff` driver, attempt-capped revert-and-stop cluster sessions on the existing
+  staging machinery, `CITADEL_CURATE_MODEL`, and the Z6 `locator` detector (via
+  `lint.check_locators`, shared with `citadel lint`). `wiki_lint` + `readOnlyHint`/`destructiveHint`/
+  `idempotentHint`/`openWorldHint` annotations on all eight MCP tools, and the CLI
+  `read`/`index`/`sources` parity subcommands + parity test, ship here too. Deviations: `curate`
+  does NOT re-stamp a re-grounded source's manifest `rules_version` (that field means "rules the
+  IMPORTING session ran under"; curate operates on pages, not imports), so a `rules_version_drift`
+  cluster re-plans until a real reconcile/`--force` re-ingest — mitigated by the mandatory
+  improve-or-NOOP (a second clean pass is a NOOP, no wiki churn); the stale×in-degree re-verify
+  sampling IS wired (reason "reverify", top-K by staleness × in-degree+1); only the
+  `oversized misc/` re-sort variant remains unwired.)*
 
 ### Z6 — Provenance precision: citation locators now, evidence quotes later
 
@@ -439,13 +475,21 @@ Separate verb (GraphRAG/Letta precedent), two layers (Wikipedia-bot model), **no
   source fold into a single staging copy; promotion happens once, after the last segment passes** —
   the live wiki only ever contains fully imported sources. Trade-off accepted and documented: a
   failure at segment N discards N-1 segments' agent work for that run (retry next run); the
-  all-or-nothing guarantee is worth more than salvaged partial passes.
+  all-or-nothing guarantee is worth more than salvaged partial passes. *(Shipped in PR5: one
+  staging copy per source across all segments, validation after every segment (fail fast),
+  exactly one promote after the last.)*
 - **`citadel status`**: one command answering "what state is my corpus in" — per source: ingested
   (date, model, rules_version, genre, segments), failed (reason, attempts), skipped-duplicate (in
   favor of which file), ignored (which pattern), pending. Same data enriches the generated
   `sources/index.md` ("Could not ingest" already exists; add the positive side: every ingested
   source with its provenance stamp). The PR1 failures-catalog fix (repo/delete sessions) feeds
-  this.
+  this. *(Shipped in PR6: `status.py` renders ingested — model + rules_version + a `(stale)` flag
+  when the stamp predates the current rulebook — / failed — reason + attempts — / skipped-duplicate
+  / ignored / pending, from the manifest + failures catalog + one stat-only walk, never re-hashing.
+  Deviation: the `date` / `genre` / `segments` / forced-alongside columns are NOT shown — the
+  manifest records neither an ingest wall-clock time nor a segment count nor a genre stamp, so they
+  are omitted rather than fabricated; the `sources/index.md` enrichment is left as a later cheap
+  add.)*
 - **Full MCP↔CLI parity (goal 8)**: verified gaps — `wiki_read`, `wiki_index`, `wiki_sources`
   have no CLI counterpart today. Add `citadel read <page>`, `citadel index`, `citadel sources`
   (thin wrappers over store, like the existing subcommands), so an AI without MCP access can do
@@ -455,6 +499,88 @@ Separate verb (GraphRAG/Letta precedent), two layers (Wikipedia-bot model), **no
 - **Windows = Linux everywhere**: already a convention (UTF-8 forcing, ASCII progress, robust_*);
   the Windows CI runner (Z8) makes it enforced instead of promised. New code (locators, status,
   scandir walk, init) lands with Windows-path tests.
+
+### Z12 — Licensing, third-party-CLI terms & OSS legal hygiene
+
+Prompted by the public-release / PyPI question: *can shelling out to `claude`/`copilot`/`gemini`
+create a licensing problem?* **Assessment (engineering, not legal advice — see the disclaimer at the
+end of this section): the risk looks low because the shell-out design steers clear of what the
+CLIs' terms actually restrict, so the work here is docs/metadata with zero product code.** The
+load-bearing part is a set of **verifiable technical facts** (checked against `llm.py`), not a legal
+opinion: cite-citadel bundles no provider code and no LLM SDK (runtime deps are only `mcp` +
+`pyyaml`), embeds no credentials, reimplements no backend endpoint, and never reads or forwards an
+OAuth token — it does `shutil.which(<cli>)` + `subprocess` on the **official binary** the user
+installed and logged into, with a paths-only prompt. Those facts line up with the two things the
+vendor terms restrict — *redistributing the CLI's code* and *extracting its token for a third-party
+client* — neither of which cite-citadel does; calling a vendor's own CLI programmatically is the use
+each ships it for (scripted / CI). We keep **MIT** (a subprocess call to a user-installed binary is
+ordinary interop, not the kind of bundling that would pull another license in). Definitive licensing
+conclusions across jurisdictions are for counsel, not this doc. **Everything in this section — and
+the notices it plans — is informational, not legal advice; the release checklist includes a
+maintainer (and, if warranted, counsel) review of the final wording before the repo goes public.**
+
+**Deliverables (all documentation/metadata; fold into PR9, gate-free — not a blocker for the v0.1.0
+wheel, but MUST land before the repo is flipped public / announced):**
+
+- **Affiliation & trademark disclaimer** — a `NOTICE.md` at repo root plus a "License & third-party
+  tools" section in the README (the README ships as the PyPI long-description, so the notice reaches
+  PyPI without touching `license-files`, which stays LICENSE-only). Text: not affiliated with,
+  endorsed by, or sponsored by Anthropic, GitHub/Microsoft, or Google; "Claude", "GitHub Copilot",
+  and "Gemini" are the respective owners' trademarks, named only to identify the user-supplied CLI.
+  **Packaging guard**: keep `cite-citadel`/`citadel` and the pyproject `name`/`description`/`keywords`
+  free of any vendor mark (they already are) — a one-line test asserts it so a later rename can't
+  smuggle one in.
+- **Bring-your-own-CLI terms note** — one paragraph in the README and `docs/configuration.md`:
+  ingest runs *your* authenticated CLI under *your* account, and that usage is governed by that
+  provider's terms (Anthropic Consumer/Commercial Terms, GitHub Copilot Product-Specific Terms,
+  Google Gemini / Code Assist ToS), not by cite-citadel; cite-citadel calls the official binary only
+  and does not proxy, store, or transmit credentials. Include the honest caveat: heavy / unattended
+  / CI ingest against a **consumer subscription** may hit rate limits or a provider's automated-use
+  expectations — for that scale prefer the tier the provider designates for programmatic use. Refine
+  the current README line ("uses your existing subscription … needs no API key") to link this note
+  rather than stand alone.
+- **Output-ownership one-liner** — README: the generated `wiki/` is the user's; Anthropic (and
+  peers) assign output rights to the user, and cite-citadel claims nothing over wiki content —
+  reassurance for anyone publishing the resulting wiki.
+- **SECURITY.md data-flow note** (extends the Z9 SECURITY.md): cite-citadel spawns the CLI as a
+  subprocess in the workspace; raw content is read by your CLI under your account and travels
+  wherever that provider's terms say (some CLIs may retain prompts/logs per provider terms — the
+  linked terms note carries the specifics, kept out of this durable doc so a provider policy change
+  can't date it). cite-citadel itself reads, logs, or transmits no secret. Privacy heads-up: a
+  `CITADEL_LLM_LOG_DIR` transcript can contain source content — it is local-only; recommend keeping
+  it out of version control.
+- **`.env.example` header pointer** — one comment line: ingest uses your logged-in CLI under your
+  account; see the README "License & third-party tools" section for terms.
+- **`citadel doctor` cross-ref** (the Z8 billing-shadow warning): doctor already warns when a
+  provider API key sits in the environment while `CITADEL_LLM_CLI=claude` (ingest may then bill the
+  API instead of the subscription) — cross-reference the terms note so the subscription-vs-API story
+  is told once.
+
+**Rounding out the public-release legal surface (still all docs/metadata):**
+
+- **Dependency-license check** — confirm the whole shipped tree is permissive so nothing copyleft
+  rides along under the MIT wheel: runtime `mcp` (MIT) + `pyyaml` (MIT), dev-only `pytest`/`ruff`
+  (MIT). An optional `pip-licenses` / uv-based CI step documents it (KISS: a one-off manual check is
+  enough for now). Note that `mcp` is the **open** Model Context Protocol SDK, not a proprietary
+  Anthropic client — depending on it creates no vendor-ToS tie.
+- **Example-corpus & docs provenance — mostly already clean; verify it stays.** The demo `raw/` is
+  synthetic (fictional brands — `aurora-coffee`, `thornbury-tea` — plus generic coffee/tea guides),
+  safe to publish. `docs/okf-reference.md` and `docs/karpathy-llm-wiki.md` already carry
+  "Source / attribution" blocks (Google's OKF blog; Karpathy's gist) framing themselves as
+  paraphrases — **keep those blocks intact** when the docs move/update. Keep any new corpora (Z9's
+  counterfactual-atlas / project-history) original/synthetic so nothing third-party-copyrighted ever
+  ships in `raw/`.
+- **CONTRIBUTING: inbound = outbound** — state that contributions are accepted under the same MIT
+  license (a one-line inbound=outbound clause; optionally a DCO `Signed-off-by`). KISS — no CLA.
+- **Data-governance caveat (strengthen the terms note + SECURITY.md)** — because ingest sends raw
+  content to the user's CLI/provider, warn against ingesting confidential/regulated material on a
+  plan whose terms permit training on inputs; the user picks the plan/tier appropriate to their data
+  sensitivity. This is the user-facing complement to the "cite-citadel transmits no secret itself"
+  fact.
+
+**Roadmap:** no new PR — appended to **PR9 (OSS polish + skills)**; no code, no test gate, no effect
+on the v0.1.0/v0.2.0 tags beyond "the public-repo flip waits on the disclaimer + terms note
+existing".
 
 ---
 
@@ -472,7 +598,7 @@ Separate verb (GraphRAG/Letta precedent), two layers (Wikipedia-bot model), **no
 | 6 | **curate v1 + surface parity** | Detectors (incl. re-sort), recompute-per-run plan, agent layer on staging machinery, --dry-run/--limit/--stale-rules/--diff, failures-catalog attempt caps, `wiki_lint` MCP tool, **`citadel status` + CLI parity subcommands (`read`/`index`/`sources`) + parity test, locator lint checks** (Z11/Z6). Gate: verify-example + project-history if it exists yet. |
 | 7 | **Store/viewer hygiene** | store split, index single-pass, write_page guard, viewer subpackage + golden test, extract isolation, cleanups. (Truly parallel-safe parts only — grammar.py already landed as 3.5.) |
 | 8 | **Corpora** | Demo move + fresh regeneration (+ ci.yml lint step + Pages + gitignore flip, same PR), counterfactual-atlas, project-history with stages/ (incl. first-person opinion/style traps), per-corpus ground-truth description files (hidden from ingest), verify-corpus skill. |
-| 9 | **OSS polish + skills** | README/badges/CONTRIBUTING/CHANGELOG/SECURITY/docs-config, doctor, open-pr skill + CLAUDE.md routing section, sdist excludes. **tag v0.2.0.** |
+| 9 | **OSS polish + skills** | README/badges/CONTRIBUTING/CHANGELOG/SECURITY/docs-config, doctor, open-pr skill + CLAUDE.md routing section, sdist excludes. **Licensing/third-party-CLI hygiene (Z12): NOTICE.md + affiliation/trademark disclaimer, bring-your-own-CLI terms note, output-ownership line, SECURITY.md data-flow note, no-vendor-mark packaging guard** — the public-repo flip gates on these existing. **tag v0.2.0.** |
 | 10 | **Evidence quotes** | Optional; go/no-go per Z6 after corpora data exists. |
 
 ## Greenfield policy & operational safety

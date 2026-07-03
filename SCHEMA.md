@@ -1,3 +1,5 @@
 # SCHEMA.md — moved
 
-Moved to [citadel/rules/SCHEMA.md](citadel/rules/SCHEMA.md) — packaged with the wheel; edit there.
+The schema was split into the packaged rules tree: see
+[citadel/rules/README.md](citadel/rules/README.md) for the index (the format contract itself is
+[citadel/rules/schema.md](citadel/rules/schema.md)). Edit there.

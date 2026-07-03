@@ -5,7 +5,10 @@ the CLI is pointed at the workspace (``cwd`` = the workspace root) with autonomo
 reads the raw source and the existing wiki itself, and **edits the wiki page files directly**. We
 pass only a short instruction that references files BY PATH — never file content — so the argv
 stays tiny (this is what kills the old Windows ``WinError 206`` argv-length limit) and the
-agent can handle an arbitrarily large raw file.
+agent can handle an arbitrarily large raw file. Everything the agent must KNOW lives in the
+rules tree (``citadel/rules/``, overridable per file from the workspace ``rules/``): the prompt
+is only the code-invariant frame — the rules read list ``kind`` maps onto, the session variables,
+and the operational invariants (see :func:`_build_instruction`).
 
 - Pick the backend with ``CITADEL_LLM_CLI`` (``claude`` | ``copilot`` | ``gemini``; default
   ``claude``), read via ``config.LLM_CLI``.
@@ -31,6 +34,7 @@ import subprocess
 import sys
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import config
@@ -72,22 +76,27 @@ def _agent_path(path: Path) -> str:
 def _external_dirs(rel_key: str, read_path: str | None = None) -> list[str]:
     """OS-native paths of the directories the agent must read/write that live OUTSIDE the
     workspace, so the CLI can be granted access to them (claude ``--add-dir``, gemini
-    ``--include-directories``; copilot needs nothing — it runs with ``--allow-all-paths``). The
+    ``--include-directories`` — both grant RECURSIVELY, so one grant of a rules root covers its
+    tasks/formats/genres subdirs; copilot needs nothing — it runs with ``--allow-all-paths``). The
     agent's ``cwd`` is the workspace root, so this returns — de-duplicated and sorted — only the
-    out-of-workspace members of {wiki dir (written), raw dir, docs dir, the packaged rules dirs the
-    prompt references (``config.SCHEMA_PATH`` / ``config.AGENT_RULES_PATH`` — under site-packages
-    for a pip install, hence never inside a user workspace and ALWAYS granted there), the source
+    out-of-workspace members of {wiki dir (written), every raw source root
+    (``config.source_roots()``), docs dir, every directory that can
+    hold a referenced rules file (the packaged ``config.PACKAGED_RULES_DIR`` — under site-packages
+    for a pip install, hence never inside a user workspace and ALWAYS granted there — plus the
+    workspace ``rules/`` overlay, which lives under cwd and therefore filters out), the source
     file's own parent, and — for an Office source — the temp dir holding its extracted text}.
     Empty for the all-under-workspace dev-checkout layout (cwd already covers the rules), so that
     invocation is byte-for-byte unchanged."""
     candidates = [
         config.WIKI_DIR,
-        config.RAW_DIR,
+        *config.source_roots(),  # every raw source root (multi-root: an out-of-workspace root needs a grant)
         config.DOCS_DIR,
-        Path(config.SCHEMA_PATH).parent,
-        Path(config.AGENT_RULES_PATH).parent,
+        config.PACKAGED_RULES_DIR,
         config.source_path_for_key(rel_key).parent,
     ]
+    ws_rules = config.workspace_rules_dir()
+    if ws_rules is not None:
+        candidates.append(ws_rules)
     if read_path:
         # The extracted-text file lives in a system temp dir (outside the workspace); the agent
         # must be granted access so it can read what to ingest.
@@ -99,260 +108,233 @@ def _external_dirs(rel_key: str, read_path: str | None = None) -> list[str]:
     return sorted(out)
 
 
+@dataclass(frozen=True)
+class _KindSpec:
+    """The per-kind prompt-composition spec — the ONE table that replaces the scattered ``kind``
+    checks. The EXTERNAL kind strings are the stable API (ingest.py, the manifest, and the tests
+    keep them); only their mapping onto prompt SHAPE lives here. Columns:
+
+    - ``task_file`` — the tree-relative ``tasks/*.md`` brief this kind reads.
+    - ``reads_source`` — whether the session reads a raw SOURCE for content. It gates the two
+      content-only frame parts: the genre enumeration (the agent judges genre FROM the source's
+      text) and the fallback-date bullet (the source file's own date). ``delete`` (the file is
+      gone) and ``curate`` (it improves EXISTING pages, not a source) read no source.
+    - ``format_policy`` — how the format brief is chosen: ``"source"`` (an Office extract arrives
+      via ``read_path`` → ``formats/office.md``; a large-source slice is covered by the task brief;
+      else a PDF is magic-sniffed → ``formats/pdf.md`` — the ingest/reconcile axis), ``"repo"``,
+      ``"image"``, or ``"none"``. ``"none"`` attaches NO format brief EVEN when a ``read_path`` is
+      present — curate's findings file arrives via ``read_path`` and must never pull in
+      ``formats/office.md``.
+    - ``subject_prefix`` — the ``- <prefix>: <key>`` session bullet naming what the session acts on.
+    """
+
+    task_file: str
+    reads_source: bool
+    format_policy: str
+    subject_prefix: str
+
+
+# kind -> its composition spec. ingest/image/repo are all "fold a NEW source in" lifecycles (the
+# format policy carries what differs); the *-reconcile kinds re-fold a changed/forced source;
+# delete strips a removed source's provenance; curate (PR6) re-reads the run's findings file and
+# improves EXISTING pages. An unknown kind is a FAIL-LOUD programming error (see _spec_for_kind).
+_KIND_SPECS: dict[str, _KindSpec] = {
+    "ingest": _KindSpec("tasks/ingest.md", True, "source", "Source (the source of record)"),
+    "image": _KindSpec("tasks/ingest.md", True, "image", "Source (the source of record)"),
+    "repo": _KindSpec("tasks/ingest.md", True, "repo", "Source (the source of record)"),
+    "reconcile": _KindSpec("tasks/reconcile.md", True, "source", "Source (the source of record)"),
+    "image-reconcile": _KindSpec("tasks/reconcile.md", True, "image", "Source (the source of record)"),
+    "repo-reconcile": _KindSpec("tasks/reconcile.md", True, "repo", "Source (the source of record)"),
+    "delete": _KindSpec("tasks/delete.md", False, "none", "Source (REMOVED from disk — do not open it)"),
+    "curate": _KindSpec("tasks/curate.md", False, "none", "Page to curate (the cluster anchor)"),
+}
+
+
+def _spec_for_kind(kind: str) -> _KindSpec:
+    """The composition spec for ``kind`` — FAIL LOUD (``ValueError``) on an unknown kind (a typo,
+    or a new lifecycle that forgot to register here) instead of silently defaulting to an ingest
+    brief and folding a source under the wrong task."""
+    try:
+        return _KIND_SPECS[kind]
+    except KeyError:
+        raise ValueError(f"unknown ingest kind {kind!r} (known: {', '.join(sorted(_KIND_SPECS))})") from None
+
+
+def _is_pdf_source(rel_key: str) -> bool:
+    """True when the source is a PDF, flagged exactly like ingest flags them — by the ``%PDF-``
+    magic header (``ingest._is_ingestible`` / ``_read_source_text``) — with the ``.pdf`` suffix as
+    the fallback when the file cannot be read (a vanished file, a unit test's phantom key)."""
+    try:
+        with open(config.source_path_for_key(rel_key), "rb") as fh:
+            return fh.read(5) == b"%PDF-"
+    except OSError:
+        return rel_key.lower().endswith(".pdf")
+
+
+def _format_brief(rel_key: str, kind: str, read_path: str | None, segment: tuple[int, int] | None) -> str | None:
+    """The tree-relative FORMAT brief for this session, or None when no format applies — decided by
+    the kind's ``format_policy`` (the ONE spec table). Formats are the structurally
+    Python-detectable axis (repo markers, image magic, Office extraction, PDF magic); code selects
+    the brief, genres stay the agent's content judgment.
+
+    - ``repo``/``image`` policies carry their format in the kind itself.
+    - ``none`` (delete, curate) attaches NO brief — even with a ``read_path`` present (curate's
+      findings file must not pull in ``formats/office.md``).
+    - ``source`` (ingest/reconcile): a ``read_path`` WITHOUT a segment is a pre-extracted Office
+      source (``formats/office.md``); WITH a segment it is a large-source slice covered by the task
+      brief's Large-sources rules (a slice is not an Office extract, even when the source was one);
+      otherwise a direct read, and a PDF (magic-sniffed) reads ``formats/pdf.md``."""
+    policy = _spec_for_kind(kind).format_policy
+    if policy == "repo":
+        return "formats/repo.md"
+    if policy == "image":
+        return "formats/image.md"
+    if policy == "none":
+        return None
+    if read_path:
+        return None if segment is not None else "formats/office.md"
+    if _is_pdf_source(rel_key):
+        return "formats/pdf.md"
+    return None
+
+
+def _referenced_rules(
+    rel_key: str, kind: str = "ingest", read_path: str | None = None, segment: tuple[int, int] | None = None
+) -> list[tuple[str, Path]]:
+    """Every RESOLVED rules file the prompt for this session references, as ``(role, path)``
+    entries in the prompt's TRUE READ ORDER — the CANONICAL order, which
+    :func:`_build_instruction` renders its rules lines from (single composition owner, so the
+    two can never drift): ``schema`` and ``core`` (every session), the ``task`` brief for
+    ``kind``, the ``format`` brief when one applies, the workspace ``local`` house rules when
+    present, and finally one ``genre`` entry per effective genre brief (agent-judged; only when
+    the kind READS a source — ``delete``/``curate`` have no source content to judge). The single
+    source of truth the prompt-validation tests check against (every path must exist and be
+    reachable)."""
+    spec = _spec_for_kind(kind)
+    files: list[tuple[str, Path]] = [
+        ("schema", config.effective_rules_file("schema.md")),
+        ("core", config.effective_rules_file("core.md")),
+        ("task", config.effective_rules_file(spec.task_file)),
+    ]
+    fmt = _format_brief(rel_key, kind, read_path, segment)
+    if fmt:
+        files.append(("format", config.effective_rules_file(fmt)))
+    local = config.local_rules_file()
+    if local is not None:
+        files.append(("local", local))
+    if spec.reads_source:
+        files.extend(("genre", g) for g in config.effective_genres())
+    return files
+
+
+# role -> prompt line for the non-genre rules entries; genres render as ONE enumerating line.
+_RULES_LINE = {
+    "schema": "- Format contract: {}",
+    "core": "- How you work: {}",
+    "task": "- Task brief (what THIS session does): {}",
+    "format": "- Format brief (how to read THIS source): {}",
+    "local": "- Workspace house rules: {}",
+}
+
+
 def _build_instruction(
     rel_key: str, kind: str = "ingest", read_path: str | None = None, segment: tuple[int, int] | None = None
 ) -> str:
-    """The short, paths-only agent prompt. References the rules and the raw source BY PATH
-    (the agent opens them with its own tools), so it never embeds file content and stays paths-only
-    — at most a couple thousand chars regardless of raw-file size, the WinError 206 fix. The rules
-    are named by their RESOLVED locations (``config.SCHEMA_PATH`` / ``config.AGENT_RULES_PATH``,
-    rendered through the same :func:`config.rel_or_abs_posix` discipline as every other path):
-    workspace-relative in the dev checkout, ABSOLUTE site-packages paths for a pip install (which
-    :func:`_external_dirs` grants to the CLI). ``rel_key`` is the source key (a workspace-relative
-    posix path like ``raw/notes.md`` for an in-workspace source, or an ABSOLUTE posix path for an
-    out-of-workspace source on a mounted drive); ``cwd`` is the workspace root, so an in-workspace
-    path is named relative to it and an out-of-workspace path absolutely. The wiki/raw
-    directory names are read from config (``CITADEL_WIKI_DIR`` / ``CITADEL_RAW_DIR``) at CALL time via
-    :func:`_agent_path`, so a custom layout — a renamed in-workspace dir (``CITADEL_WIKI_DIR=wikiET``) or a
-    network-drive path (``CITADEL_WIKI_DIR=T:\\team-wiki\\wiki``) — is searched and written correctly
-    instead of a hardcoded ``wiki/``.
+    """The short, paths-only agent prompt: ONLY the code-invariant frame. Everything the agent
+    must KNOW lives in the rules tree (``citadel/rules/``, see its README) and is referenced BY
+    PATH — the prompt never embeds file content, so it stays at most a couple thousand chars
+    regardless of raw-file size (the WinError 206 fix). The frame is:
 
-    ``kind`` selects which propagation the agent performs:
+    1. the rules read list — rendered from :func:`_referenced_rules` (the single composition
+       owner) in its canonical order: schema.md + core.md (every session), the task brief
+       ``kind`` maps to, the format brief when one applies, the workspace ``rules/local.md``
+       when present, and ONE line enumerating the effective genre briefs for the agent to judge
+       from the source's CONTENT (none for ``delete`` — it never reads the source);
+    2. the session VARIABLES as bullets — the source key (verbatim), the configured wiki/raw
+       directories, the prepared read path (an Office extract / segment slice / repo digest),
+       the segment position, the source file's own date as the content-date fallback, the target
+       wiki language (``CITADEL_WIKI_LANG``), the PDF mode (``CITADEL_PDF_MODE``, PDF sources
+       only), and the style-profiling switch (``CITADEL_STYLE_PROFILES``, only when ON);
+    3. the operational invariants ingest enforces mechanically: the off-limits generated files,
+       and the run-``citadel check``-before-finishing gate.
 
-    - ``"ingest"`` (default) — fold a NEW raw source into the wiki.
-    - ``"reconcile"`` — the source CHANGED since it was last ingested; re-read it and UPDATE
-      or REMOVE the now-stale facts it had produced, not merely append new ones.
-    - ``"image"`` / ``"image-reconcile"`` — ``rel_key`` is an IMAGE (screenshot/scan/diagram);
-      the agent VIEWS it with its file reader and transcribes the facts it shows.
-    - ``"delete"`` — the source was REMOVED from disk; strip the facts/citations that came
-      only from it (this is the only prompt that must NOT try to open ``rel_key``).
+    Rules are named by their RESOLVED effective locations (workspace ``rules/`` overlay >
+    packaged ``citadel/rules/``), rendered through the same :func:`config.rel_or_abs_posix`
+    discipline as every other path: workspace-relative in the dev checkout, ABSOLUTE
+    site-packages paths for a pip install (which :func:`_external_dirs` grants to the CLI).
+    ``rel_key`` is the source key (workspace-relative posix for an in-workspace source, ABSOLUTE
+    posix for one on a mounted drive); every directory name is read from config at CALL time so a
+    custom layout (``CITADEL_WIKI_DIR=wikiET``, a ``T:\\team-wiki\\wiki`` network path) is named
+    correctly instead of a hardcoded ``wiki/``.
 
-    ``read_path`` (ingest/reconcile only) is set when ``rel_key`` is a binary Office file the agent
-    cannot open: ingest has extracted its text to that path, so the agent is told to READ
-    ``read_path`` for content while still citing ``rel_key`` as the source of record.
-
-    ``segment`` is ``(part, total)`` when a LARGE source is ingested in several sequential passes:
-    ``read_path`` then holds this segment's slice, and the prompt tells the agent to MERGE later
-    segments into the pages earlier segments created (rather than duplicate them).
-    """
+    The external ``kind`` strings (``ingest`` / ``reconcile`` / ``delete`` / ``repo`` /
+    ``repo-reconcile`` / ``image`` / ``image-reconcile``) are the stable API; they map internally
+    onto (task brief, format brief). ``read_path`` is the prepared file for a pre-extracted
+    Office source, one segment's slice of a large source (with ``segment=(part, total)``), or a
+    repo digest — the agent reads it for content while citing ``rel_key`` as the source of
+    record (per the task/format briefs)."""
     wiki_rel = _agent_path(config.WIKI_DIR)
-    raw_rel = _agent_path(config.RAW_DIR)
-    # The rules ship as package data (citadel/rules/), so they are named by their RESOLVED paths —
-    # NOT assumed to sit in the current directory (they don't, for a pip install).
-    schema_ref = config.rel_or_abs_posix(config.SCHEMA_PATH)
-    rules_ref = config.rel_or_abs_posix(config.AGENT_RULES_PATH)
-    header = (
-        "You are the ingest engine for a self-structuring wiki in Google's Open Knowledge "
-        f"Format. Read the rules in {schema_ref} and {rules_ref} and "
-        "follow them exactly.\n\n"
-    )
+    # The raw-dir bullet names the root that COVERS this source (in a multi-root corpus a
+    # second-root source must not be pointed at the primary); an out-of-root explicit path
+    # falls back to the primary RAW_DIR. Lexical lookup — no disk access, delete-safe.
+    raw_root = config.root_covering(config.source_path_for_key(rel_key)) or config.RAW_DIR
+    raw_rel = _agent_path(raw_root)
+    spec = _spec_for_kind(kind)  # the ONE table: subject bullet + whether a source is read
+    fmt = _format_brief(rel_key, kind, read_path, segment)  # for the PDF-mode bullet below
 
-    if kind == "delete":
-        # The source no longer exists, so the agent must NOT open it — it greps the wiki for
-        # the provenance that pointed at it and removes/repoints it. The post-run check in
-        # ingest re-runs find_raw_references and rolls back unless every reference is gone.
-        return (
-            header + f"The raw source {rel_key} was DELETED and no longer exists on disk. Do NOT try "
-            "to open it. Remove the provenance that depended on it by EDITING FILES DIRECTLY:\n"
-            f"1. Search {wiki_rel}/ (Grep/Glob/Read) for every page that cites {rel_key}: a "
-            f"`resource: {rel_key}` frontmatter field, or a `[^sN]` footnote whose `## Sources` "
-            f"definition links to it (e.g. `](../../{rel_key})`).\n"
-            "2. For each fact whose ONLY source was that file, delete the sentence, its `[^sN]` "
-            "marker, and its `## Sources` definition. If the SAME fact also carries another "
-            "`[^sN]` source, keep the fact and remove ONLY this file's marker and definition.\n"
-            f"3. If a page's `resource:` named {rel_key}, repoint it to another raw file the "
-            "page still cites; if no cited source remains, the page is unsupported — delete it "
-            "and repoint or remove inbound relative links to it.\n"
-            "4. Never invent replacement facts. Never edit index.md, log.md, any */index.md, or "
-            f"any dotfile, and make no changes outside {wiki_rel}/.\n"
-            "5. Before finishing, run `citadel check` (or `uv run python -m citadel check`) "
-            f"and fix every error. When you are done, NO page may reference {rel_key}."
-        )
-
-    if kind in ("repo", "repo-reconcile"):
-        # rel_key is a whole GIT REPOSITORY (a folder under raw/), not a single file. Its
-        # high-signal files were pre-digested to read_path; the agent reads THAT and folds the repo
-        # into a few pages + a `type: System` page per external system. ~99% of code is irrelevant,
-        # so the brief is deliberately about USE/WHAT/HOW/OUTPUT, not a transcription.
-        reconcile_note = ""
-        if kind == "repo-reconcile":
-            reconcile_note = (
-                f"NOTE: {rel_key} is a repo that CHANGED since it was last ingested (new commits) "
-                "— this is a RE-INGEST. The digest's 'What changed' section lists the changed "
-                "files. UPDATE the facts those changes affect (a changed command, mapping, table, "
-                "or output), remove facts the repo no longer supports, and leave unaffected facts "
-                "and facts from OTHER sources intact. Do not merely append.\n\n"
-            )
-        return (
-            header + reconcile_note + f"The raw source {rel_key} is a GIT REPOSITORY (a whole code repo), not a single "
-            f"file. A DIGEST of its high-signal files has been prepared at {read_path} — read THAT "
-            f"for the content. Treat {rel_key} (the repo folder) as the source of record: set "
-            f"`resource: {rel_key}` and cite {rel_key} in `## Sources` (the relative link points at "
-            "the repo folder). Fold it into the wiki by EDITING FILES DIRECTLY:\n"
-            "1. Assume ~99% of the code is irrelevant to a knowledge wiki. For the repo, capture as "
-            "cited facts only:\n"
-            "   a. HOW TO USE IT — how to run/call it, how to connect to the API/service/DB, the "
-            "key command(s) to transform the data, and the env vars / config it needs.\n"
-            "   b. WHAT IT DOES — its purpose.\n"
-            "   c. HOW IT DOES IT — the data flow / pipeline steps at a readable level (NOT line by "
-            "line, NOT one note per function).\n"
-            "   d. WHAT COMES OUT — the output / result form.\n"
-            "   You MAY include a SHORT verbatim code excerpt (a few lines) when the code itself IS "
-            "the fact — a connection/auth call, the key transform command, an env var, a SQL query; "
-            "cite it like any fact. Do NOT paste large code blocks.\n"
-            "2. For every EXTERNAL SYSTEM the repo touches — a database, API, service, queue, or "
-            "tool (e.g. SAP, PLM, Postgres) — create or UPDATE a page with `type: System` (it routes "
-            f"to {wiki_rel}/systems/), tags marking its kind (database/api/service/tool), describing "
-            "the system and how this repo uses it (tables/endpoints, access method, auth). These "
-            "pages ACCUMULATE across sources — search for an existing one and extend it before "
-            "creating a new one. Link the repo's pages to the System pages.\n"
-            f"3. Search {wiki_rel}/ (Grep/Glob/Read) before writing — prefer extending/merging over "
-            "new pages. Set frontmatter type, title, description, tags (>=1 lowercase), and resource "
-            "(verbatim); do NOT set timestamp. Cross-link densely with relative markdown links.\n"
-            f"4. Never edit {wiki_rel}/index.md, {wiki_rel}/log.md, any */index.md, or any dotfile. "
-            f"Make no changes outside {wiki_rel}/. When you delete/rename a page, repoint inbound "
-            "links.\n"
-            "5. Before finishing, run `citadel check` (or `uv run python -m citadel check`) and "
-            f"fix every reported error.\nIf {rel_key} adds nothing new, make no edits and stop."
-        )
-
-    multi_segment = segment is not None and segment[1] > 1
-    note = ""
-    if kind in ("reconcile", "image-reconcile") and not multi_segment:
-        # Re-ingest of a CHANGED source: the wiki already holds facts it produced, so the agent
-        # must reconcile (update/remove), not blindly append — otherwise a corrected number
-        # leaves the stale one behind next to the new one.
-        note = (
-            f"NOTE: {rel_key} CHANGED since it was last ingested — this is a RE-INGEST, not a "
-            "first ingest, and the wiki already cites it. As you fold in its CURRENT contents, "
-            "UPDATE facts whose numbers/names/claims changed. For a fact the current file no "
-            "longer supports, remove THIS source's `[^sN]` marker and its `## Sources` "
-            "definition, and drop the whole sentence ONLY if no other `[^sN]` source remains on "
-            "it (a co-cited fact stays — just remove this marker). Do not merely append, and "
-            "leave facts from OTHER raw sources and their citations intact.\n\n"
-        )
-    elif kind in ("reconcile", "image-reconcile") and multi_segment:
-        # A CHANGED source that is ALSO large enough to be split: the agent sees only ONE segment
-        # per pass, so it must NOT do the blanket "remove facts the file no longer supports" of a
-        # normal reconcile — a fact missing from THIS segment may live in another segment of the
-        # same source, and deleting it would lose valid content. Update-in-place only; the segment
-        # note below handles merging.
-        note = (
-            f"NOTE: {rel_key} CHANGED since it was last ingested AND is being re-ingested in "
-            f"{segment[1]} segments, so you see only PART of it this pass. UPDATE facts from THIS "
-            "segment whose numbers/names/claims changed, but do NOT delete facts you cannot see in "
-            "this segment — they may belong to another segment of the same source. Do not merely "
-            "append.\n\n"
-        )
-
-    # A large source is ingested in several sequential passes (see ingest chunking): each pass reads
-    # ONE segment (materialized to read_path) but cites the whole source. The note tells the agent
-    # where it is in the sequence so later passes MERGE into the pages earlier passes created.
-    seg_note = ""
-    if segment is not None and segment[1] > 1:
-        part, total = segment
-        if part == 1:
-            seg_note = (
-                f"NOTE: {rel_key} is LARGE and is being ingested in {total} sequential SEGMENTS to "
-                f"fit context. This is segment 1 of {total} — the FIRST; later segments of the SAME "
-                "source will follow and EXTEND these pages, so capture this segment's facts now and "
-                "expect to add more.\n\n"
-            )
+    lines = [
+        "You are the ingest engine for a self-structuring wiki in Google's Open Knowledge Format.",
+        "Read these rules files FIRST and follow them exactly:",
+    ]
+    genres: list[Path] = []
+    for role, path in _referenced_rules(rel_key, kind, read_path, segment):
+        if role == "genre":
+            genres.append(path)  # last in the canonical order — collected onto one line below
         else:
-            seg_note = (
-                f"NOTE: {rel_key} is LARGE and is being ingested in {total} sequential SEGMENTS to "
-                f"fit context. This is segment {part} of {total}; segments 1..{part - 1} were "
-                "ALREADY folded into the wiki in prior passes. ADD this segment's facts, MERGING "
-                "into the existing pages for this source — do not duplicate pages or restate facts "
-                "already captured. More segments may follow.\n\n"
-            )
-
-    if kind in ("image", "image-reconcile"):
-        # rel_key is an image file. The agentic CLI's reader can DISPLAY images, so the agent views
-        # it and transcribes the facts it shows (text/labels/diagram/table/chart), citing the image.
-        read_step = (
-            f"1. The raw source {rel_key} is an IMAGE (screenshot, scan, diagram, chart, or photo). "
-            "OPEN AND VIEW it — your file reader can display images — and read the information it "
-            "shows: any text/labels, the diagram or table contents, chart values and axes, and what "
-            "it depicts. Transcribe the meaningful FACTS (cite them like any raw fact); do not "
-            "describe pixels, colors, or styling. If it shows no usable information, make no edits.\n"
-        )
-    elif segment is not None and read_path:
-        # A segment (slice) of a large source, written to read_path. Same-source-of-record rule as
-        # the Office path, but the wording tells the agent this is a partial view.
-        read_step = (
-            f"1. The raw source {rel_key} is too large for one pass, so it was SPLIT: segment "
-            f"{segment[0]} of {segment[1]} has been written to {read_path} — read THAT for this "
-            f"segment's content. Treat {rel_key} as the source of record: set `resource: {rel_key}` "
-            f"and cite {rel_key} (NOT the segment file) in `## Sources`. Ingest only what THIS "
-            "segment contains; do not invent continuations.\n"
-        )
-    elif read_path:
-        # rel_key is a binary Office file (pptx/docx/xlsx); its text was pre-extracted to read_path.
-        # The agent reads THAT for content but must cite the original rel_key as the source of record.
-        # Its embedded images (if any) were extracted to a `media/` folder beside read_path — the
-        # agent should VIEW the informative ones (diagrams/charts the text extractor cannot capture).
-        read_step = (
-            f"1. The raw source {rel_key} is a binary Office file (PowerPoint/Word/Excel) you cannot "
-            f"open directly. Its text has been EXTRACTED to {read_path} — read THAT for the content, "
-            "and VIEW any images in the `media/` folder beside it (diagrams/charts/screenshots carry "
-            f"facts too; ignore icons/logos). Treat {rel_key} as the source of record: set "
-            f"`resource: {rel_key}` and cite {rel_key} (NOT the extracted files) in `## Sources`. If "
-            "it holds no usable content, make no edits.\n"
-        )
-    else:
-        read_step = (
-            f"1. Open and read the raw source file: {rel_key}. It may be ANY text-bearing file type "
-            "(markdown, plain text, code such as .py/.sql, JSON/CSV, PDF, ...) — extract its text "
-            "and ingest the facts. For a PDF, also LOOK AT the pages' figures, diagrams, and charts "
-            "(not just the body text) and capture what they show. For CODE/config/data, capture its "
-            "PURPOSE, BEHAVIOR and the external systems it touches (which database and HOW), NOT its "
-            "structure — see 'Code & structured sources' in SCHEMA.md. If it holds no usable text, "
-            "make no edits.\n"
+            lines.append(_RULES_LINE[role].format(_agent_path(path)))
+    if genres:
+        lines.append(
+            "Judge the source's genre from its CONTENT; if it reads like one of these, ALSO read "
+            "and follow the matching file: " + ", ".join(_agent_path(g) for g in genres) + "."
         )
 
-    # Fallback date for time-anchored (threaded) sources: the raw file's own modification date,
-    # used only when the source's CONTENT states no date. Computed here (guarded) so the paths-only
-    # prompt can name it without changing run_ingest_session's signature. time.gmtime avoids a
-    # datetime import; a missing file (e.g. in a unit test) simply yields no hint.
+    lines += ["", "Session variables (use these paths verbatim):"]
+    lines.append(f"- {spec.subject_prefix}: {rel_key}")
+    lines.append(f"- Wiki directory: {wiki_rel}/")
+    lines.append(f"- Raw directory: {raw_rel}/")
+    if read_path:
+        lines.append(f"- Prepared file — read THIS for the source's content: {read_path}")
+    if segment is not None:
+        lines.append(f"- Segment: part {segment[0]} of {segment[1]}")
+    # Fallback date for time-anchored sources: the raw file's own modification date, used only
+    # when the source's CONTENT states no date (genres/meeting-minutes.md § Dates). Only for kinds
+    # that READ a source (delete/curate have none), and guarded so a missing file (a repo folder,
+    # a unit test's phantom key) yields no bullet.
     fallback_date = ""
-    with contextlib.suppress(OSError):
-        src = config.source_path_for_key(rel_key)
-        if src.is_file():
-            fallback_date = time.strftime("%Y-%m-%d", time.gmtime(src.stat().st_mtime))
-    date_hint = (
-        f" If the source itself states no date, use this source's file date as the fallback: {fallback_date}."
-        if fallback_date
-        else ""
-    )
+    if spec.reads_source:
+        with contextlib.suppress(OSError):
+            src = config.source_path_for_key(rel_key)
+            if src.is_file():
+                fallback_date = time.strftime("%Y-%m-%d", time.gmtime(src.stat().st_mtime))
+    if fallback_date:
+        lines.append(
+            "- Fallback date — the source file's own date, used only when the source's content "
+            f"states no date: {fallback_date}"
+        )
+    lines.append(f"- Wiki language: {config.WIKI_LANG}")
+    if fmt == "formats/pdf.md":
+        lines.append(f"- PDF mode: {'images' if config.PDF_MODE == 'images' else 'text'}")
+    if config.STYLE_PROFILES:
+        lines.append("- Style profiling: ON")
 
-    return (
-        header
-        + note
-        + seg_note
-        + "Fold ONE raw source into the wiki by EDITING FILES DIRECTLY:\n"
-        + read_step
-        + f"2. The wiki is under {wiki_rel}/ (raw sources under {raw_rel}/). Search and read "
-        "existing pages (Grep/Glob/Read) before writing — prefer extending or merging into an "
-        "existing page over creating a new one.\n"
-        f"3. Create/update/merge/split page files under {wiki_rel}/ so every fact from {rel_key} "
-        "is captured, cited ([^sN] for raw facts / [^llmN] for model facts, defined in a "
-        "trailing ## Sources section), and densely cross-linked with relative markdown links. "
-        "Set frontmatter type, title, description, tags (>=1 lowercase), and resource (verbatim); "
-        "do NOT set timestamp.\n"
-        f"3b. If {rel_key} is a TIME-ANCHORED tracking artifact (meeting minutes, status update, "
-        "open-points/action list, changelog — judged from CONTENT, not name), ALSO maintain dated "
-        "`## Open Points` threads (and `## Change Log`) per the 'Threaded sources' rules in "
-        "AGENT_INGEST.md: fan facts out as normal, then append a dated `[^sN]` bullet to the "
-        "matching `id: op-<slug>` (never rewriting a past bullet; status is derived, not stored). "
-        "Date entries from the source." + date_hint + "\n"
-        f"4. Never edit {wiki_rel}/index.md, {wiki_rel}/log.md, any */index.md, or any dotfile. "
-        f"Make no changes outside {wiki_rel}/.\n"
-        "5. When you delete or rename a page, repoint inbound relative links to it.\n"
-        "6. Before finishing, run `citadel check` (or `uv run python -m citadel check`) and "
-        "fix every reported error.\n"
-        f"If {rel_key} adds nothing new, make no edits and stop."
-    )
+    lines += [
+        "",
+        f"Do what the task brief says by EDITING FILES DIRECTLY under {wiki_rel}/. "
+        f"Never create or edit {wiki_rel}/index.md, {wiki_rel}/log.md, any */index.md, or any "
+        f"dotfile, and make no changes outside {wiki_rel}/. Before finishing, run `citadel check` "
+        "(or `uv run python -m citadel check`) and fix every reported error.",
+    ]
+    return "\n".join(lines)
 
 
 def _build_invocation(

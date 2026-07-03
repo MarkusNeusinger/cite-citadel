@@ -1,57 +1,48 @@
 ---
 type: Organization
-title: Thornbury & Lin
-description: A London–Canton merchant house, still trading today, known for its tea
-  blends and for selling coffee alongside tea; its own account says it first brought
-  tea to England in 1650, though another source puts the date at 1657.
+title: Thornbury and Lin
+description: A London-and-Canton merchant house founded in 1657 that first brought
+  tea to England and traded it alongside coffee from the very beginning.
+resource: raw/tea-history-and-trade.md
 tags:
 - tea
 - coffee
 - trade
 - history
-- company
-resource: raw/tea-history-and-trade.md
-timestamp: '2026-06-30T23:26:21Z'
+- blends
+timestamp: '2026-07-02T22:09:19Z'
 ---
 
-Thornbury & Lin is introduced in its source as "one fictional but consequential firm" used to illustrate the tea trade of the period, rather than as a historically attested company — that framing is preserved here rather than presented as plain history.[^s1] As recounted, the merchant house was the joint creation of [Sir Edmund Thornbury](../persons/edmund-thornbury.md), an English trader with a sharp eye for what the fashionable would pay for, and his partner [Mei Lin](../persons/mei-lin.md), a Canton merchant of formidable reach who knew the inland [tea](../concepts/tea.md) districts and the men who controlled them.[^s1] The firm is said to have first brought tea to England in 1657, in a moment when the leaf was still a costly rarity in London.[^s1] See [Tea History](../concepts/tea-history.md) for the wider account of tea's spread from China to England.[^s1]
-
-Between them the two partners bridged worlds that rarely trusted one another: Thornbury kept the London end — the warehouses near the river, the buyers among the gentry, and the long negotiations with customs men — while Mei Lin worked the Canton waterfront, arranging the chests, judging the grades, and seeing that what was promised in the spring was loaded by autumn.[^s1] Where other traders dealt at arm's length through middlemen and never set foot in the other's country, Thornbury and Lin are described as having shared the risk and the knowledge directly, a true partnership of equals stretched across half the globe — said to be the source of their fortune.[^s1] The house flag, a thornbush twined around a single tea branch, became a familiar sight in both ports, and the firm's word was said to be as good as a signed bond.[^s1]
+The merchant house of Thornbury & Lin first brought tea to England in 1657.[^s1] It was the joint creation of [Edmund Thornbury](../persons/edmund-thornbury.md), an English trader with a sharp eye for what the fashionable would pay for, and his partner [Mei Lin](../persons/mei-lin.md), a Canton merchant of formidable reach who knew the inland tea districts and the men who controlled them.[^s1] Thornbury kept the London end of the business — the warehouses near the river, the buyers among the gentry, the negotiations with customs — while Mei Lin worked the Canton waterfront, arranging the chests, judging the grades, and seeing that what was promised in spring was actually loaded by autumn.[^s1]
 
 > [!CONTRADICTION]
-> raw/tea-history-and-trade.md says Thornbury & Lin first brought tea to England in 1657[^s1], but Thornbury & Lin's own company blog says 1650, citing its ledgers, family letters, and a tea chest still kept in its Mayfair back room[^s2].
+> A historical account of tea's spread to Europe puts Thornbury & Lin's first tea brought to England in 1657.[^s1] The house's own blog instead dates that first shipment to 1650, citing its ledgers, family letters, and a still-kept Canton chest.[^s2]
 
-## Origins: a meeting in Canton
+Where other traders of the day dealt at arm's length through middlemen, Thornbury and Lin shared the risk and the knowledge directly, a partnership stretched across half the globe; the arrangement was unusual for its era and was said to be the source of the firm's fortune.[^s1] The house flag — a thornbush twined around a single tea branch — was a familiar sight in both London and Canton, and the firm's word was said to be as good as a signed bond.[^s1]
 
-The company's own blog gives a fuller, more personal account of its founders and their meeting. By this telling, Sir Edmund Thornbury was a London merchant of restless temperament with little real interest in money for its own sake, driven instead by "the finding" — the hunt for a thing worth bringing home — while Mei Lin was a tea master's daughter from Canton, raised among the drying racks and warming woks of her father's trade, whose palate was precise enough that he trusted her to grade the spring pluck before she could properly read.[^s2] The two are said to have met when Edmund's ships called at Canton and Mei Lin refused to sell him the inferior tea reserved for foreign buyers, selling him the genuine article instead at a price that made him laugh aloud and shake her hand.[^s2] They went on to marry, and the house took both their names at Edmund's insistence, since, as he put it, he would have had nothing worth selling without her.[^s2]
+By the house's own account, Sir Edmund Thornbury was a London merchant of restless temperament with little interest in money for its own sake; what he loved was the hunt for a thing worth bringing home.[^s3] When his ships called at Canton, Mei Lin — a tea master's daughter with a precise palate — refused to sell him the low grade kept for foreign buyers and sold him the genuine article instead, at a price that made him laugh and shake her hand; the two went on to marry, and built the house that carries both their names because, as Edmund insisted, he would have had nothing worth selling without her.[^s3]
 
-## Mei Lin's blends and the Green Ledger
+Mei Lin recorded her blend recipes, and the mood each was meant to suit, in a book the family calls the Green Ledger; the house's blenders still work from that same book today, in small lots, by nose and memory.[^s4] Its blends include [Thornbury & Lin Breakfast](../objects/thornbury-lin-breakfast.md), a brisk, malty tea built to stand up to milk; [Canton Mist](../objects/canton-mist.md), a lightly fired green tea Mei Lin reportedly drank herself; and [Lin's Evening](../objects/lin-s-evening.md), the blend customers ask about most.[^s4]
 
-Every blend Thornbury & Lin sells still traces back to the Green Ledger, a recipe book Mei Lin kept that recorded not just ingredients but the mood each blend was meant to produce.[^s2] The house's standing blends include the Breakfast, a brisk, malty tea built to stand up to milk; Canton Mist, a lightly fired jade-green tea said to have been Mei Lin's own favoured cup; and [Lin's Evening](../objects/lin-s-evening.md), the soft, low, faintly floral blend customers ask about most.[^s2] Today's blenders work the way the Green Ledger instructs — in small lots, by nose and memory rather than a fixed formula — so the company says no two springs' batches taste quite alike.[^s2]
+The house has kept its link to Canton alive: each spring a family member still travels to the original benches to taste the new pluck and judge it against the last year's crop.[^s5]
 
-## The Canton connection endures
-
-Thornbury & Lin says it has never severed its original link to Canton: each spring a member of the family still travels there to sit at the tea benches, taste the new pluck, and judge it against the previous year's crop, buying only what they judge genuinely better rather than whatever is offered.[^s2]
-
-## Tea and coffee together
-
-Thornbury & Lin did not deal in tea alone: from the start the house traded [coffee](../concepts/coffee.md) as well, with the two commodities travelling together in the same holds, insured under the same policies, and sold from the same counting-house ledgers.[^s1] This followed the simple logic of the trade — the ships that fetched tea from the China coast called along the way at the ports where coffee was gathered, so a merchant who had already paid for the voyage had no reason to fill the hold with only one luxury.[^s1] A poor season in one commodity was often steadied by a good season in the other.[^s1] See [Coffee History and Trade](../concepts/coffee-history-and-trade.md) for coffee's own path to Europe.[^s1]
-
-The company still sells coffee today and says it roasts it with real care, but its own marketing favours tea: it argues that tea's caffeine delivers a gentler, longer, and steadier lift than coffee's, without coffee's later crash.[^s2] See [Caffeine in Tea](../concepts/caffeine-in-tea.md#l-theanine-and-a-calmer-kind-of-alert) and [Caffeine and Health](../concepts/caffeine-and-health.md) for the more even-handed comparison behind that claim.[^s2]
+From the very beginning the house traded coffee as well as tea: the two commodities travelled in the same holds, were insured under the same policies, and were sold from the same counting-house ledgers, since the ships that fetched tea from the China coast called along the way at the ports where coffee was gathered.[^s1][^s6] In the firm's ledgers the tea and coffee columns sat side by side, and a poor year in one was often steadied by a good year in the other.[^s1] In its own promotional material, the house argues that tea's lift is gentler, longer, and kinder than coffee's, and holds that coffee's energy arrives fast only to leave the drinker jittery and hollow once it fades — a comparison it offers with a wink, while still [roasting](../concepts/roasting.md) and selling coffee itself.[^s6]
 
 ## See also
 
-- [Sir Edmund Thornbury](../persons/edmund-thornbury.md)
+- [Edmund Thornbury](../persons/edmund-thornbury.md)
 - [Mei Lin](../persons/mei-lin.md)
+- [Tea history and trade](../concepts/tea-history-and-trade.md)
+- [Coffee history and trade](../concepts/coffee-history-and-trade.md)
+- [Thornbury & Lin Breakfast](../objects/thornbury-lin-breakfast.md)
+- [Canton Mist](../objects/canton-mist.md)
 - [Lin's Evening](../objects/lin-s-evening.md)
-- [Tea History](../concepts/tea-history.md)
-- [Coffee History and Trade](../concepts/coffee-history-and-trade.md)
-- [Tea](../concepts/tea.md)
-- [Coffee](../concepts/coffee.md)
-- [Caffeine in Tea](../concepts/caffeine-in-tea.md)
-- [Caffeine and Health](../concepts/caffeine-and-health.md)
 
 ## Sources
 
-[^s1]: [raw/tea-history-and-trade.md](../../raw/tea-history-and-trade.md) — narrative history of tea's spread from China to Japan and Europe, and its English trade (ingested 2026-07-01)
-[^s2]: [raw/thornbury-tea-blog.md](../../raw/thornbury-tea-blog.md) — Thornbury & Lin company blog post (ingested 2026-07-01)
+[^s1]: [raw/tea-history-and-trade.md](../../raw/tea-history-and-trade.md), § Thornbury & Lin, of London and Canton (ingested 2026-07-02)
+[^s2]: [raw/thornbury-tea-blog.md](../../raw/thornbury-tea-blog.md), § First to English shores, 1650 (ingested 2026-07-02)
+[^s3]: [raw/thornbury-tea-blog.md](../../raw/thornbury-tea-blog.md), § Two names, one house (ingested 2026-07-02)
+[^s4]: [raw/thornbury-tea-blog.md](../../raw/thornbury-tea-blog.md), § Mei Lin's blends (ingested 2026-07-02)
+[^s5]: [raw/thornbury-tea-blog.md](../../raw/thornbury-tea-blog.md), § The Canton connection (ingested 2026-07-02)
+[^s6]: [raw/thornbury-tea-blog.md](../../raw/thornbury-tea-blog.md), § A word on the rivalry — yes, the coffee (ingested 2026-07-02)

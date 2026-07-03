@@ -4,6 +4,8 @@ ASCII-only console renderer. ``llm.run_ingest_session`` is replaced by ``fake_ag
 
 from __future__ import annotations
 
+from conftest import delete_citing_pages
+
 from citadel import ingest
 
 
@@ -27,6 +29,66 @@ def test_ingest_emits_progress_events(tmp_citadel, fake_agent, transformer_page)
     assert done["index"] == 1 and done["total"] == 1
     assert done["created"] == 1 and done["updated"] == 0
     assert "seconds" in done
+
+
+def test_mixed_run_progress_vocabulary_and_order_are_pinned(
+    repo_wiki, fake_agent, seed_cited_deleted_source, make_repo, cite_page
+):
+    """SourceJob unification pin (docs/refactor-plan.md Z7): the progress-event vocabulary for a
+    MIXED run — one pending file + one repo + one deleted source — is frozen exactly as it is
+    today, so collapsing the three per-source loops behind one job loop cannot change what a
+    progress consumer sees: the event names and order (files, then repos, then deletions), the
+    exact payload keys of every event, and the per-GROUP index/total counters that restart at 1
+    for each source kind."""
+    raw = repo_wiki.raw
+    (raw / "note.md").write_text("a note\n", encoding="utf-8")
+    make_repo(raw, "svc", {"README.md": "# Svc\n", "app.py": "x\n"})
+    # A tracked source that vanished from disk, still cited -> one delete-cleanup session.
+    seed_cited_deleted_source()
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+        if kind == "delete":
+            delete_citing_pages(rel_key)
+            return
+        slug = rel_key.rsplit("/", 1)[-1].replace(".", "-")
+        cite_page(f"misc/{slug}.md", rel_key, "A fact.")
+
+    fake_agent(side_effect=fake)
+    events: list[tuple[str, dict]] = []
+    ingest.ingest(progress=lambda ev, data: events.append((ev, dict(data))))
+
+    assert [e for e, _ in events] == [
+        "start",
+        "source_start",
+        "source_done",  # the pending file
+        "source_start",
+        "source_done",  # the repo
+        "source_start",
+        "source_done",  # the deletion cleanup
+        "finalize",
+        "done",
+    ]
+    assert events[0][1] == {"pending": 1, "skipped": 0, "moved": 0, "unreadable": 0, "deleted": 1, "repos": 1}
+    # Files first, then repos, then deletions — and per-GROUP counters restarting at 1/1.
+    assert [d["source"] for e, d in events if e == "source_start"] == ["raw/note.md", "raw/svc", "raw/gone.md"]
+    for event, data in events:
+        if event == "source_start":
+            assert set(data) == {"index", "total", "source"}
+            assert data["index"] == 1 and data["total"] == 1
+        elif event == "source_done":
+            assert set(data) == {"index", "total", "source", "created", "updated", "deleted", "seconds"}
+    done = events[-1][1]
+    assert set(done) == {
+        "processed",
+        "created",
+        "updated",
+        "deleted",
+        "broken",
+        "moved",
+        "unreadable",
+        "sources_deleted",
+    }
+    assert done["processed"] == 2 and done["sources_deleted"] == 1 and done["broken"] == 0
 
 
 def test_ingest_progress_default_is_silent(tmp_citadel, fake_agent, transformer_page):

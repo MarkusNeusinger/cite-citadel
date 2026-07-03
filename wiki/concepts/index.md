@@ -1,21 +1,22 @@
 # concepts
 
-- [Arabica and Robusta](arabica-and-robusta.md) — The two coffee species that account for nearly all commercial production, contrasted by growing conditions, flavor, and caffeine content.
+- [Arabica and Robusta](arabica-and-robusta.md) — The two Coffea species behind almost all commercial coffee production, and how they differ in growing conditions, yield, and flavor.
 - [Aurora Ritual](aurora-ritual.md) — Caffe Aurora's three-step ceremony for drinking a cup of coffee — smell, taste plain, then customize.
-- [Brewing Ratios](brewing-ratios.md) — How coffee-to-water ratio, grind size, and contact time determine the strength and balance of brewed coffee.
-- [Caffeine and Health](caffeine-and-health.md) — How caffeine affects the body — the adenosine mechanism, half-life, safe limits, tolerance and withdrawal, and the evidence (and myths) around coffee and health.
-- [Caffeine in Coffee](caffeine-in-coffee.md) — How much caffeine coffee contains, what drives the differences between cups, and why roast level barely affects it.
-- [Caffeine in Tea](caffeine-in-tea.md) — How much caffeine the different tea types contain, why white tea is not caffeine-free despite being the least processed, and how tea's caffeine compares to coffee's and affects sleep and hydration.
-- [Coffee History and Trade](coffee-history-and-trade.md) — Coffee's spread from Ethiopia through Yemen and Europe to global cultivation, and today's leading producing countries.
-- [Coffee Processing](coffee-processing.md) — The washed, natural, and honey methods of extracting and drying coffee seeds after harvest, and how each shapes flavor.
-- [Coffee](coffee.md) — A brewed beverage made from the roasted, ground seeds of the Coffea plant, valued as a stimulant and for its varied sensory flavor.
-- [Cold Brew](cold-brew.md) — An immersion method that steeps coarse coffee grounds in room-temp or cold water for 12-18 hours to make a concentrate, diluted to taste before serving.
-- [Espresso](espresso.md) — A concentrated coffee brewing method made by forcing hot water through finely ground coffee under pressure, and the bar ritual built around it.
-- [Matcha](matcha.md) — Shade-grown green tea, dried and stone-ground into a fine powder that is whisked whole into hot water rather than steeped and discarded.
-- [Roasting](roasting.md) — The application of heat that transforms green coffee seeds into brown, aromatic beans, and how roast level from light to dark shapes flavor.
-- [Tea Antioxidants and Tannins](tea-antioxidants-and-tannins.md) — The catechins, tannins, and other compounds beyond caffeine that shape tea's taste and its reputation as a healthful drink.
-- [Tea Brewing Temperature and Time](tea-brewing-temperature-and-time.md) — Why different tea types need different water temperatures, and how steeping time shapes strength, sweetness, and astringency.
-- [Tea Growing and Harvesting](tea-growing-and-harvesting.md) — How Camellia sinensis is cultivated, the prized young "flush," and the two principal varieties, China and Assam.
-- [Tea History](tea-history.md) — Tea's legendary discovery in China and its spread to Japan and Europe along trade and religious routes.
-- [Tea Types and Oxidation](tea-types-and-oxidation.md) — How white, green, oolong, black, and pu-erh tea are made from the same plant but differ along the oxidation spectrum.
-- [Tea](tea.md) — An infusion brewed from the leaves of Camellia sinensis, second only to water as the most consumed beverage on the planet by volume.
+- [Caffeine in coffee](caffeine-in-coffee.md) — How caffeine content in coffee relates to species, brewing, and roast level — including Caffe Aurora's roast-burns-off-caffeine claim, which contradicts a general survey of coffee.
+- [Caffeine in tea](caffeine-in-tea.md) — How caffeine content in tea varies by type, including the common misconception that white tea is caffeine-free.
+- [Caffeine](caffeine.md) — A central-nervous-system stimulant that blocks adenosine receptors and clears the body over roughly a five-hour half-life, with dosing guidance for safety, pregnancy, and sleep.
+- [Coffee brewing](coffee-brewing.md) — How brew ratio, grind size, water temperature, and contact time determine the strength and balance of brewed coffee.
+- [Coffee history and trade](coffee-history-and-trade.md) — How coffee cultivation spread from its origin in Ethiopia through Yemen and Europe to today's major producing countries, and its trade history intertwined with tea's.
+- [Coffee processing](coffee-processing.md) — The washed, natural, and honey methods for extracting and drying coffee seeds after harvest, and how each shapes flavor.
+- [Coffee](coffee.md) — A brewed beverage prepared from the roasted, ground seeds of the Coffea plant, valued as both a stimulant and a sensory product.
+- [Cold brew](cold-brew.md) — A long-steep, coarse-grind coffee immersion method that produces a concentrate diluted to taste, including the house's locked recipe, its extraction yield, and its counterintuitively high caffeine content.
+- [Espresso](espresso.md) — A concentrated coffee shot brewed by forcing hot water through finely tamped grounds at high pressure, drunk fast at a bar as much for its ritual as its taste.
+- [L-theanine](l-theanine.md) — A calming amino acid nearly unique to the tea plant that, paired with caffeine, produces steady, focused alertness without the jitters.
+- [Matcha](matcha.md) — A shade-grown, stone-ground green tea powder that is whisked whole into hot water rather than steeped, served plain as ceremonial-grade usucha or blended into culinary-grade lattes.
+- [Roasting](roasting.md) — How heat transforms green coffee seeds into roasted beans, and how roast level from light to dark shapes flavor.
+- [Tea antioxidants and tannins](tea-antioxidants-and-tannins.md) — The catechins (led by EGCG) and tannins that give tea its healthful reputation, astringency, and interaction with milk and iron.
+- [Tea brewing](tea-brewing.md) — How water temperature and steeping time differ by tea type, from cool 70-80°C water for green tea to a near-boil for black tea.
+- [Tea growing and harvesting](tea-growing-and-harvesting.md) — The climate Camellia sinensis needs, the prized "flush" harvest, and the China and Assam varieties that dominate cultivation.
+- [Tea history and trade](tea-history-and-trade.md) — Tea's spread from China and Japan to Europe, its adoption in England through firms like Thornbury & Lin, and its trade history intertwined with coffee's.
+- [Tea types and oxidation](tea-types-and-oxidation.md) — How oxidation, the enzymatic reaction triggered when tea leaves are bruised, separates white, green, oolong, black, and pu-erh tea from a single starting leaf.
+- [Tea](tea.md) — An infusion brewed from the leaves of Camellia sinensis, distinct from herbal tisanes, whose many forms arise from how the leaf is processed after picking.
