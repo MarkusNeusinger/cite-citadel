@@ -1,5 +1,7 @@
 # concepts
 
+The pages in this folder. Generated — do not edit.
+
 - [Arabica and Robusta](arabica-and-robusta.md) — The two Coffea species behind almost all commercial coffee production, and how they differ in growing conditions, yield, and flavor.
 - [Aurora Ritual](aurora-ritual.md) — Caffe Aurora's three-step ceremony for drinking a cup of coffee — smell, taste plain, then customize.
 - [Caffeine in coffee](caffeine-in-coffee.md) — How caffeine content in coffee relates to species, brewing, and roast level — including Caffe Aurora's roast-burns-off-caffeine claim, which contradicts a general survey of coffee.

@@ -212,7 +212,8 @@ citadel/rules/
     scoring policy prose moves into formats/repo.md.
   - Office-embedded-image viewing decoupled from `CITADEL_IMAGE_SUPPORT`.
 - Repo-root SCHEMA.md/AGENT_INGEST.md become thin pointers for GitHub readers (or are deleted);
-  README/CLAUDE.md updated. Open-Points status vocabulary (hardcoded EN/DE regexes) moves to rules.
+  README/CLAUDE.md updated. Open-Points status vocabulary (hardcoded EN/DE regexes) moves to rules
+  *(as of PR7 the regexes live in open_points.py; the rules-tree migration is still open)*.
 
 ### Z3 — Discovery: incremental scan + multi-root
 

@@ -28,7 +28,7 @@ from pathlib import Path
 import pytest
 from conftest import _cite_page, delete_citing_pages, errors_of
 
-from citadel import config, failures, grammar, ingest, lint, manifest, okf, store, validate
+from citadel import config, failures, grammar, ingest, linkgraph, lint, manifest, okf, store, validate
 
 
 # --- shared helpers ------------------------------------------------------------------------
@@ -846,11 +846,11 @@ def test_spacey_source_key_round_trips_through_page_link(tmp_citadel):
     emit for a spacey key is angle-wrapped, so it parses back through split_link_target and still
     resolves to the key — a spacey key round-trips through every emitter."""
     key = "raw/my report.pdf"
-    link = store._source_key_to_page_link(store.SOURCES_INDEX_REL, key)
+    link = store.source_key_to_page_link(store.SOURCES_INDEX_REL, key)
     assert link.startswith("<") and link.endswith(">")
     path, suffix = grammar.split_link_target(link)
     assert suffix == ""
-    assert store._link_points_at_key(store.SOURCES_INDEX_REL, path, key)
+    assert linkgraph._link_points_at_key(store.SOURCES_INDEX_REL, path, key)
     # A space-free key stays a bare target (identity), byte-for-byte as before.
     assert grammar.format_link_target("../../raw/plain.md") == "../../raw/plain.md"
 

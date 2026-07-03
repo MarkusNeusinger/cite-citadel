@@ -174,11 +174,16 @@ skipped-duplicate, ignored (pattern), pending.
 the non-negotiable `safe_join` path guard — reuse it for any wiki-relative path). `grammar.py` is
 the **single home of the markdown grammar** (link/footnote/fence/Sources-heading parsing and the
 source-citation predicates) that `store`, `validate`, `lint`, and the viewer all parse through;
-never re-define any of it locally. `store.py` is the
-"database": `load()`, the single swappable `search()` seam, `rebuild_indexes()` (regenerates
-`index.md`, per-folder `index.md`, and `sources/index.md` mechanically from frontmatter +
-manifest), and the deterministic link-rewrite safety nets (`rewrite_links`, `rewrite_raw_references`,
-`find_raw_references`, `find_broken_links`), all fence-aware via `grammar.py`. `manifest.py` tracks idempotency in
+never re-define any of it locally. `store.py` is a thin **facade** re-exporting the "database"
+API, split by responsibility into four sibling modules (import them through `store`, not directly):
+`store_core.py` (`load()`, the single swappable `search()` seam, `read/write/delete_page` — both
+mutators share the reserved-name guard that refuses `index.md`/`*/index.md`/`log.md`/dotfiles —
+plus the CLI/MCP text providers and the `log.md` writer); `linkgraph.py` (the deterministic
+link-rewrite safety nets `rewrite_links`, `rewrite_raw_references`, `find_raw_references`,
+`find_broken_links`, and the `inbound_map` backlink graph, all fence-aware via `grammar.py`);
+`catalogs.py` (`rebuild_indexes()`, which regenerates `index.md`, per-folder `index.md`,
+`sources/index.md`, and `open-points/index.md` mechanically from frontmatter + manifest); and
+`open_points.py` (parsing `## Open Points` threads and deriving each point's status). `manifest.py` tracks idempotency in
 `wiki/.citadel_ingested.json` (per source: sha256 or git commit + importing model). `failures.py`
 persists the sources that could NOT be ingested (`wiki/.citadel_failures.json`: unreadable /
 errored / timed-out, with a reason), surfaced by `store` under a "Could not ingest" section of
