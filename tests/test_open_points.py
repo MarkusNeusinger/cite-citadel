@@ -69,6 +69,40 @@ id: op-flaky
     assert pt.last_date == "2026-03-01"
 
 
+def test_wrapped_bullet_joins_continuation_lines():
+    # The ingest agent naturally hard-wraps long prose across several indented continuation
+    # lines. The parser must fold them into ONE full bullet (whitespace normalized) so neither
+    # the per-page parse nor the derived index truncates at the first physical line.
+    body = """## Open Points
+
+### Full staff MFA coverage
+id: op-mfa-full-coverage
+- 2025-09-12: 92% of staff accounts covered; remaining 8% are shared operational accounts
+  needing a hardware-token path rather than an app; target for full coverage end of October
+  2025 (reported by Devin Osei). [^s1]
+
+## See also
+
+- x
+"""
+    (pt,) = store.parse_open_points(_page("projects/mfa.md", body))
+    assert len(pt.bullets) == 1
+    date, text = pt.bullets[0]
+    assert date == "2025-09-12"
+    # the complete, single-spaced sentence — not truncated at "... needing a"
+    assert text == (
+        "92% of staff accounts covered; remaining 8% are shared operational accounts needing a "
+        "hardware-token path rather than an app; target for full coverage end of October 2025 "
+        "(reported by Devin Osei). [^s1]"
+    )
+    # and the derived catalog entry carries the whole sentence (footnote marker dropped)
+    catalog = catalogs._render_open_points_catalog(
+        store.collect_open_points([_page("projects/mfa.md", body)]), {"projects/mfa.md": "MFA Rollout"}
+    )
+    assert "target for full coverage end of October 2025 (reported by Devin Osei)." in catalog
+    assert "[^s1]" not in catalog
+
+
 def test_no_section_returns_empty():
     assert store.parse_open_points(_page("systems/x.md", "Just a fact.[^s1]\n\n## See also\n")) == []
 

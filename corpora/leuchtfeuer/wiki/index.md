@@ -1,5 +1,7 @@
 # Wiki Index
 
+The wiki's home index: every page grouped by type (with backlinks), plus tags and the source/open-point catalogs. Generated — do not edit.
+
 See also: [abbreviations](abbreviations/index.md) · [objects](objects/index.md) · [organizations](organizations/index.md) · [persons](persons/index.md) · [projects](projects/index.md) · [systems](systems/index.md) · [sources](sources/index.md) · [open points](open-points/index.md)
 
 ## Abbreviation

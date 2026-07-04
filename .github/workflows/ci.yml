@@ -52,18 +52,30 @@ jobs:
       - name: Lint every committed showcase wiki (structural health check)
         # Each committed showcase (corpora/<name>/) is its own self-contained workspace with a nested
         # citadel.toml marker (plain raw/X keys); CITADEL_WORKSPACE selects the nested one over the
-        # checkout root's marker. The loop is unconditional over all five corpora; a corpus whose
-        # showcase wiki is not yet committed is skipped gracefully — by merge time all five exist.
+        # checkout root's marker. The loop is unconditional over all five corpora: every PRESENT
+        # showcase is linted and a MISSING one is a FAILURE (all five must be committed). Failures
+        # — missing wiki OR a lint failure — are COLLECTED across the whole loop (no early bail) and
+        # reported together, so one red run names every corpus that needs fixing.
         run: |
           rc=0
+          failures=""
           for c in beverages kelvarra leuchtfeuer pemberley injection-resistance; do
             if [ -f "corpora/$c/wiki/index.md" ]; then
               echo "== lint $c =="
-              CITADEL_WORKSPACE="corpora/$c" uv run python -m citadel lint || rc=1
+              if ! CITADEL_WORKSPACE="corpora/$c" uv run python -m citadel lint; then
+                echo "::error::lint failed for corpora/$c"
+                failures="$failures $c(lint)"
+                rc=1
+              fi
             else
-              echo "== corpora/$c/wiki not committed yet — skipping =="
+              echo "::error::corpora/$c/wiki/index.md is missing — all five committed showcases must be present"
+              failures="$failures $c(missing)"
+              rc=1
             fi
           done
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::showcase lint gate failed for:$failures"
+          fi
           exit $rc
 
   lint:

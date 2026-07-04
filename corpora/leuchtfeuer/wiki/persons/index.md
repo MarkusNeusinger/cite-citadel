@@ -1,5 +1,7 @@
 # persons
 
+The pages in this folder. Generated — do not edit.
+
 - [Heike Brandt](heike-brandt.md) — Commercial Director at Blauwal Logistik GmbH; confirmed the Projekt LEUCHTFEUER budget.
 - [Jörn Albers](j-rn-albers.md) — Leads the warehouse team at Blauwal Logistik GmbH's Bremen-Walle site, host of the SEAGULL pilot.
 - [Jonas Petersen](jonas-petersen.md) — PMO member at Blauwal Logistik GmbH who took minutes for the Projekt LEUCHTFEUER kickoff meeting.
