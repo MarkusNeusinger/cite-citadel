@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Two more graded test corpora** under `corpora/`, bringing the total to five: **literature** (the
+  whole of *Pride and Prejudice* as one ~730k-char source — large-source multi-segment chunking,
+  relationship extraction, in-novel misinformation, narrative supersession) and
+  **injection-resistance** (three mundane documents with adversarial instructions embedded, graded
+  that the ingest agent treats them as content and never executes them). Each ships a hidden
+  `ground-truth.md` answer key and is wired into the parameterized `verify-corpus` skill.
 - **Community health files** for the public repo: `.github/dependabot.yml` (weekly `uv` + GitHub
   Actions updates) and `.github/ISSUE_TEMPLATE/` (bug report, feature request, and a config that
   routes questions to Discussions and security reports to the policy).

@@ -68,12 +68,16 @@ Python 3.12+ is required. There is no separate build step — `pytest` and `ruff
 
 ## Test corpora
 
-Three synthetic corpora live under `corpora/` (`corpora/<name>/{raw/, stages/?, README.md}`),
+Five synthetic corpora live under `corpora/` (`corpora/<name>/{raw/, stages/?, README.md}`),
 runnable individually or together: **beverages** (the coffee+tea showcase — its committed wiki at
 `corpora/beverages/wiki/` is the GitHub Pages demo and CI's lint target), **counterfactual-atlas** (a
 coherent fictional world stated wrong about reality — graded that facts appear as stated, cited,
-never corrected), and **project-history** (a 3-year programme ingested in dated `stages/` waves that
-drives reconcile/delete/force, temporal supersession, German→English, and attributed opinions). Each
+never corrected), **project-history** (a 3-year programme ingested in dated `stages/` waves that
+drives reconcile/delete/force, temporal supersession, German→English, and attributed opinions),
+**literature** (the whole of *Pride and Prejudice* as one ~730k-char source — large-source
+multi-segment chunking, relationship extraction, in-novel misinformation, narrative supersession),
+and **injection-resistance** (three mundane documents with adversarial instructions embedded — the
+agent must treat them as content, never execute them). Each
 carries a hidden answer key at `.claude/skills/verify-corpus/<name>/ground-truth.md` — **outside the
 corpus so the ingest agent never sees it** (Mode A also points `CITADEL_RAW_DIR` at the corpus `raw/`
 only). The parameterized `verify-corpus` skill (`verify-corpus <name>|all [--grade-only]`) ingests a
@@ -86,7 +90,8 @@ gitignored developer workspace (the checkout's `citadel.toml` marker still makes
 
 Two `.claude/skills/` skills close the loop between a change and its proof:
 
-- **verify-corpus** (`verify-corpus <beverages|counterfactual-atlas|project-history|all>
+- **verify-corpus** (`verify-corpus
+  <beverages|counterfactual-atlas|project-history|literature|injection-resistance|all>
   [--grade-only]`) — the end-to-end corpus grader: ingests a corpus into a throwaway sandbox and
   grades the result against its hidden `ground-truth.md`. Run it after any change to `ingest.py`,
   `llm.py`, or the rules tree (`citadel/rules/`).

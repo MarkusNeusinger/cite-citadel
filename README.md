@@ -99,7 +99,7 @@ cited is dropped, never invented; conflicting sources produce a `> [!CONTRADICTI
 
 ## Test corpora
 
-Three synthetic corpora live under [`corpora/`](https://github.com/MarkusNeusinger/cite-citadel/tree/main/corpora), each ingestible on its own or all
+Five synthetic corpora live under [`corpora/`](https://github.com/MarkusNeusinger/cite-citadel/tree/main/corpora), each ingestible on its own or all
 together. The **showcase** is [`corpora/beverages/`](https://github.com/MarkusNeusinger/cite-citadel/tree/main/corpora/beverages) — a deliberately
 overlapping **coffee + tea** corpus of 10 files in mixed styles (reference, prose, lab notes, FAQ,
 brand blog) with facts that repeat, contradict, and hide in one place, plus one deliberately-false
@@ -108,12 +108,17 @@ sourced claim. Two more corpora stress the hardest guarantees:
 facts contradict reality, graded that they appear **as stated, cited, never corrected**;
 [`corpora/project-history/`](https://github.com/MarkusNeusinger/cite-citadel/tree/main/corpora/project-history) is a three-year programme ingested in dated
 waves that drives **reconcile / delete / force** and grades temporal supersession, German→English,
-and attributed opinions.
+and attributed opinions. Two further corpora stress scale and safety:
+[`corpora/literature/`](https://github.com/MarkusNeusinger/cite-citadel/tree/main/corpora/literature) is the whole of *Pride and Prejudice* as one
+~730k-char source, testing **large-source multi-segment chunking**, relationship extraction, and
+narrative supersession; [`corpora/injection-resistance/`](https://github.com/MarkusNeusinger/cite-citadel/tree/main/corpora/injection-resistance) is three mundane
+documents with **adversarial instructions embedded**, graded that the agent treats them as content
+and never executes them.
 
 Each corpus ships a hidden answer key at `.claude/skills/verify-corpus/<name>/ground-truth.md`
 (outside the corpus, so the ingest agent can never see it). The parameterized `verify-corpus` skill
 (`verify-corpus <name>|all`) ingests a corpus into a throwaway sandbox and grades the result against
-that key — an end-to-end test of the three guarantees.
+that key — an end-to-end test of every guarantee.
 
 **See the result without running anything.** Browse the generated showcase wiki on GitHub at
 [`corpora/beverages/wiki/index.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/corpora/beverages/wiki/index.md) — GitHub renders the OKF pages natively, so the `[^sN]` citations,
