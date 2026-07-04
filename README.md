@@ -1,6 +1,7 @@
 # **cite**-citadel
 
 [![CI](https://img.shields.io/github/actions/workflow/status/MarkusNeusinger/cite-citadel/ci.yml?branch=main&label=CI)](https://github.com/MarkusNeusinger/cite-citadel/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/github/MarkusNeusinger/cite-citadel/graph/badge.svg)](https://codecov.io/github/MarkusNeusinger/cite-citadel)
 [![PyPI](https://img.shields.io/pypi/v/cite-citadel)](https://pypi.org/project/cite-citadel/)
 [![Python versions](https://img.shields.io/pypi/pyversions/cite-citadel)](https://pypi.org/project/cite-citadel/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/MarkusNeusinger/cite-citadel/blob/main/LICENSE)

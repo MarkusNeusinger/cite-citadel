@@ -35,10 +35,10 @@ jobs:
         # One shell on every OS (git-bash on Windows) so steps stay byte-identical across the matrix.
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
@@ -47,7 +47,20 @@ jobs:
         run: uv sync --dev
 
       - name: Run tests
-        run: uv run pytest -q
+        run: uv run pytest -q --cov=citadel --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        # One upload per PR/push is enough — send it from the ubuntu 3.12 cell only,
+        # and skip fork PRs (CODECOV_TOKEN is not exposed to them). fail_ci_if_error
+        # stays false so a missing token / codecov hiccup never reds CI.
+        if: >-
+          matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' &&
+          (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          fail_ci_if_error: false
 
       - name: Lint every committed showcase wiki (structural health check)
         # Each committed showcase (corpora/<name>/) is its own self-contained workspace with a nested
@@ -81,10 +94,10 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
           enable-cache: true
@@ -121,10 +134,10 @@ jobs:
         # git-bash on Windows: globs, mktemp and `source` behave the same as on ubuntu.
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
           enable-cache: true
