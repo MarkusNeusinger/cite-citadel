@@ -97,7 +97,7 @@ def test_deleted_source_drops_one_citation_keeps_corroborated_fact(tmp_citadel, 
 
 
 def test_deletion_runs_before_pending_source_touching_stale_page(tmp_citadel, fake_agent, seed_page):
-    """Ordering regression (corpus-discovered, project-history wave 3): within ONE full run the
+    """Ordering regression (corpus-discovered, leuchtfeuer wave 3): within ONE full run the
     deletion cleanup must run BEFORE the pending sources, so a NEW source whose session edits a
     page that still cites the just-deleted source does not fail validation on that PRE-EXISTING
     stale citation. Here systems/komet.md cites both the present raw/keep.md and the vanished

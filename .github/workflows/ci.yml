@@ -49,13 +49,22 @@ jobs:
       - name: Run tests
         run: uv run pytest -q
 
-      - name: Lint the showcase wiki (structural health check)
-        # The committed beverages showcase is its own self-contained workspace (it carries its own
-        # nested citadel.toml marker with plain raw/X keys); point discovery straight at it. The
-        # checkout root's marker only wins from the root — this env override selects the nested one.
-        env:
-          CITADEL_WORKSPACE: corpora/beverages
-        run: uv run python -m citadel lint
+      - name: Lint every committed showcase wiki (structural health check)
+        # Each committed showcase (corpora/<name>/) is its own self-contained workspace with a nested
+        # citadel.toml marker (plain raw/X keys); CITADEL_WORKSPACE selects the nested one over the
+        # checkout root's marker. The loop is unconditional over all five corpora; a corpus whose
+        # showcase wiki is not yet committed is skipped gracefully — by merge time all five exist.
+        run: |
+          rc=0
+          for c in beverages kelvarra leuchtfeuer pemberley injection-resistance; do
+            if [ -f "corpora/$c/wiki/index.md" ]; then
+              echo "== lint $c =="
+              CITADEL_WORKSPACE="corpora/$c" uv run python -m citadel lint || rc=1
+            else
+              echo "== corpora/$c/wiki not committed yet — skipping =="
+            fi
+          done
+          exit $rc
 
   lint:
     runs-on: ubuntu-latest

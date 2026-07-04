@@ -1832,7 +1832,7 @@ def ingest(
     # each group with its own index/total counters (frozen progress vocabulary). All three run
     # through the ONE shared loop (_run_source_jobs) + the ONE all-or-nothing session runner
     # (_run_agent_sessions); only session planning and post-success bookkeeping differ.
-    # DELETIONS RUN BEFORE the pending sources (corpus-discovered fix, project-history wave 3): a
+    # DELETIONS RUN BEFORE the pending sources (corpus-discovered fix, leuchtfeuer wave 3): a
     # delete cleanup strips a vanished source's stale provenance FIRST, so a later pending source
     # whose session touches a page that still cited the deleted source no longer fails validation
     # (bad_source) on that pre-existing stale citation and roll back fruitlessly — the pending

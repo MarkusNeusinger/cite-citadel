@@ -41,7 +41,7 @@ def test_mixed_run_progress_vocabulary_and_order_are_pinned(
     per-GROUP index/total counters that restart at 1 for each source kind.
 
     The group ORDER is DELETIONS first, then files, then repos (corpus-discovered fix,
-    project-history wave 3): a delete cleanup must strip a vanished source's stale provenance
+    leuchtfeuer wave 3): a delete cleanup must strip a vanished source's stale provenance
     BEFORE a pending source's session touches a page that still cites it, or that pre-existing
     stale citation fails the pending session's validation (bad_source) and rolls it back
     fruitlessly. The event VOCABULARY is unchanged — only the deliberate order is."""
