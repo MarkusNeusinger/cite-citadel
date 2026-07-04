@@ -1,0 +1,22 @@
+# Codecov configuration — https://docs.codecov.com/docs/codecov-yaml
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: 80%
+
+# Coverage is measured for the package only (`pytest --cov=citadel`); these are
+# never part of the shipped importable code.
+ignore:
+  - "tests/"
+  - "corpora/"
+  - "docs/"
+
+comment:
+  layout: "reach,diff,files"
+  behavior: default
+  require_changes: false

@@ -47,7 +47,17 @@ jobs:
         run: uv sync --dev
 
       - name: Run tests
-        run: uv run pytest -q
+        run: uv run pytest -q --cov=citadel --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        # One upload per PR/push is enough — send it from the ubuntu 3.12 cell only.
+        # fail_ci_if_error stays false so a missing token / codecov hiccup never reds CI.
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          fail_ci_if_error: false
 
       - name: Lint the showcase wiki (structural health check)
         # The committed beverages showcase is its own self-contained workspace (it carries its own
