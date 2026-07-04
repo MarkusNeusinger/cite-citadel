@@ -27,6 +27,13 @@ section.
 cite-citadel itself is licensed under the [MIT License](LICENSE). The generated `wiki/` content is
 yours; the project claims nothing over it.
 
+## Bundled test data
+
+The `corpora/pemberley/` test corpus contains the full text of Jane Austen's *Pride and Prejudice*
+(1813), a **public-domain** work, derived from Project Gutenberg eBook #1342 with all Project
+Gutenberg boilerplate (the `*** START/END OF …***` markers and any surrounding trademark/licence
+text) removed; Project Gutenberg is not affiliated with this project.
+
 ## Dependency licenses
 
 The distributed wheel contains only cite-citadel's own MIT-licensed code — it bundles no third-party

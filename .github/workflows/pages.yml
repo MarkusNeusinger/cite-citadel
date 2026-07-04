@@ -1,8 +1,8 @@
-name: Deploy demo to Pages
+name: Deploy demo gallery to Pages
 
-# Regenerate the offline wiki viewer from the committed beverages showcase wiki
-# (corpora/beverages/wiki) and publish it as the live demo
-# at https://<owner>.github.io/cite-citadel/ on every push to main. Enable once under
+# Regenerate one offline wiki viewer per committed showcase corpus (corpora/<name>/wiki) and publish
+# them as a gallery at https://<owner>.github.io/cite-citadel/ on every push to main: a lean landing
+# page (.github/pages-index.html) links each corpus's viewer at site/<name>/. Enable once under
 # Settings → Pages → Source: "GitHub Actions".
 
 on:
@@ -35,17 +35,37 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
-      - name: Generate the offline wiki viewer
-        # The committed showcase wiki lives at corpora/beverages/, which is its own self-contained
-        # workspace (a nested citadel.toml marker with plain raw/X keys); point discovery at it.
-        env:
-          CITADEL_WORKSPACE: corpora/beverages
-        run: uv run python -m citadel view --no-open --out _site/index.html
+      - name: Build the gallery (landing page + one viewer per corpus)
+        # Each committed showcase (corpora/<name>/) is its own self-contained workspace (a nested
+        # citadel.toml marker with plain raw/X keys); CITADEL_WORKSPACE points discovery at it while
+        # the CWD stays the repo root, so `view --out site/<name>/index.html` writes under ./site.
+        # The loop is unconditional over all five corpora and a MISSING showcase wiki FAILS the
+        # build (all five committed showcases must be present, so an incomplete gallery never
+        # deploys); missing corpora are collected and reported together, not bailed on one-by-one.
+        run: |
+          mkdir -p site
+          cp .github/pages-index.html site/index.html
+          missing=""
+          for c in beverages kelvarra leuchtfeuer pemberley injection-resistance; do
+            if [ -f "corpora/$c/wiki/index.md" ]; then
+              echo "building viewer for $c"
+              CITADEL_WORKSPACE="corpora/$c" uv run python -m citadel view --no-open --out "site/$c/index.html"
+            else
+              echo "::error::corpora/$c/wiki/index.md is missing — all five committed showcases must be present"
+              missing="$missing $c"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::incomplete gallery — missing corpus wiki(s):$missing"
+            exit 1
+          fi
+          echo "gallery contents:"
+          find site -name index.html | sort
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: _site
+          path: site
 
   deploy:
     needs: build

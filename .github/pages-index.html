@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cite-citadel — example wikis</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem 1rem 3rem;
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1a1a1a; background: #f6f7f9;
+    max-width: 60rem; margin-inline: auto;
+  }
+  header { margin-bottom: 1.5rem; }
+  h1 { font-size: 1.9rem; margin: 0 0 .3rem; letter-spacing: -.01em; }
+  .pitch { margin: 0; color: #555; font-size: 1.05rem; }
+  .disclaimer {
+    margin: 1.4rem 0; padding: .85rem 1rem;
+    border: 1px solid #e6c200; border-left: 4px solid #e6c200;
+    background: #fff9e0; border-radius: 6px;
+    font-size: .9rem; color: #4a3f00;
+  }
+  .disclaimer strong { color: #3a3100; }
+  .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); }
+  .card {
+    display: block; padding: 1.1rem 1.15rem; border-radius: 8px;
+    background: #fff; border: 1px solid #e2e5ea; text-decoration: none; color: inherit;
+    transition: border-color .12s ease, box-shadow .12s ease, transform .12s ease;
+  }
+  .card:hover { border-color: #b7bcc6; box-shadow: 0 3px 12px rgba(0,0,0,.07); transform: translateY(-1px); }
+  .card h2 { margin: 0 0 .35rem; font-size: 1.12rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .card p { margin: 0; font-size: .9rem; color: #555; }
+  .card .go { margin-top: .6rem; font-size: .82rem; color: #2b6cb0; font-weight: 600; }
+  footer { margin-top: 2.5rem; font-size: .82rem; color: #888; }
+  footer a { color: #2b6cb0; }
+  @media (prefers-color-scheme: dark) {
+    body { color: #e6e6e6; background: #16181c; }
+    .pitch, .card p { color: #a9adb5; }
+    .disclaimer { background: #2c2600; border-color: #7a6a00; border-left-color: #c9ad00; color: #e8dfa8; }
+    .disclaimer strong { color: #f3ecc4; }
+    .card { background: #1e2127; border-color: #2c303a; }
+    .card:hover { border-color: #454b58; box-shadow: 0 3px 12px rgba(0,0,0,.4); }
+    .card .go, footer a { color: #7fb2ee; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>cite-citadel — example wikis</h1>
+  <p class="pitch">An LLM-maintained, fully-cited personal wiki in Open Knowledge Format. Below are the
+    demo wikis built from cite-citadel's test corpora — pick one to browse.</p>
+</header>
+
+<div class="disclaimer">
+  <strong>These are TEST CORPORA</strong> — inputs used to verify cite-citadel's ingest, citation
+  and contradiction-handling behaviour, not reference material. Some deliberately contain planted
+  errors, contradictions, or entirely fictional &ldquo;facts&rdquo; (for example the beverages wiki
+  has intentional mistakes, and kelvarra describes a fictional world that is wrong about reality on
+  purpose). Do not treat any wiki here as a source of real-world knowledge. Every page is
+  machine-generated from the raw sources by an LLM agent.
+</div>
+
+<main class="grid">
+  <a class="card" href="beverages/index.html">
+    <h2>beverages</h2>
+    <p>The everyday coffee &amp; tea showcase: cited facts, merged pages, surfaced contradictions.</p>
+    <div class="go">Open demo &rarr;</div>
+  </a>
+  <a class="card" href="kelvarra/index.html">
+    <h2>kelvarra</h2>
+    <p>A fictional republic whose facts contradict reality, preserved exactly as stated and cited (never &ldquo;corrected&rdquo;).</p>
+    <div class="go">Open demo &rarr;</div>
+  </a>
+  <a class="card" href="leuchtfeuer/index.html">
+    <h2>leuchtfeuer</h2>
+    <p>Three years of a fictional project (minutes, German Protokolle, emails) with supersession, reconciliation and deletions.</p>
+    <div class="go">Open demo &rarr;</div>
+  </a>
+  <a class="card" href="pemberley/index.html">
+    <h2>pemberley</h2>
+    <p>Jane Austen&rsquo;s <em>Pride and Prejudice</em> folded into a relationship/character wiki.</p>
+    <div class="go">Open demo &rarr;</div>
+  </a>
+  <a class="card" href="injection-resistance/index.html">
+    <h2>injection-resistance</h2>
+    <p>Sources that try to hijack the agent; their instructions are quoted, never obeyed.</p>
+    <div class="go">Open demo &rarr;</div>
+  </a>
+</main>
+
+<footer>
+  Built with <a href="https://github.com/MarkusNeusinger/cite-citadel">cite-citadel</a>. Each viewer
+  is a self-contained offline HTML page regenerated from its committed showcase wiki on every push.
+</footer>
+</body>
+</html>

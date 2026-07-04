@@ -101,6 +101,16 @@ def parse_open_points(page: Page) -> list[OpenPoint]:
         m_bullet = _OP_BULLET_RE.match(stripped)
         if m_bullet:
             cur_bullets.append((m_bullet.group(1), m_bullet.group(2).strip()))
+            continue
+        # A hard-wrapped bullet: the ingest agent naturally wraps long prose across several
+        # INDENTED continuation lines. Fold each indented non-blank line back into the last
+        # bullet as ONE item (internal whitespace normalized to single spaces), so the derived
+        # index is never truncated at the first physical line. Only an indented, non-blank line
+        # under an existing bullet is a continuation — a blank line or a new heading/id/bullet is
+        # not, and the single-line path is left untouched.
+        if cur_bullets and stripped and line[:1].isspace():
+            date, text = cur_bullets[-1]
+            cur_bullets[-1] = (date, " ".join(f"{text} {stripped}".split()))
     flush()
     return points
 

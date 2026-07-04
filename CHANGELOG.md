@@ -8,9 +8,33 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Two more graded test corpora** under `corpora/`, bringing the total to five: **pemberley** (the
+  whole of *Pride and Prejudice* as one ~730k-char source — large-source multi-segment chunking,
+  relationship extraction, in-novel misinformation, narrative supersession) and
+  **injection-resistance** (three mundane documents with adversarial instructions embedded, graded
+  that the ingest agent treats them as content and never executes them). Each ships a hidden
+  `ground-truth.md` answer key and is wired into the parameterized `verify-corpus` skill.
+- **A committed, graded showcase wiki for every corpus** (not just beverages): each
+  `corpora/<name>/` is now its own self-contained workspace with a nested `citadel.toml` marker and
+  a lint-clean `wiki/`. CI lints all five.
+- **GitHub Pages gallery.** `.github/workflows/pages.yml` builds one offline single-file viewer per
+  corpus into `site/<name>/` and publishes a lean landing page (`.github/pages-index.html`) — a
+  disclaimer banner plus one card per corpus — that links each demo.
 - **Community health files** for the public repo: `.github/dependabot.yml` (weekly `uv` + GitHub
   Actions updates) and `.github/ISSUE_TEMPLATE/` (bug report, feature request, and a config that
   routes questions to Discussions and security reports to the policy).
+
+### Changed
+
+- **Renamed three corpora** to their in-world names — the fictional-republic corpus is now
+  **`kelvarra`**, the three-year-programme corpus is now **`leuchtfeuer`**, and the *Pride and
+  Prejudice* corpus is now **`pemberley`** (directories, hidden answer-key directories, and every
+  reference across docs, workflows, and the `verify-corpus` skill).
+- **`leuchtfeuer` layout inverted.** Its committed `raw/` now holds the **final** post-wave-3 file
+  set (11 files, cited by the committed wiki); the wave history moved under `stages/` —
+  `stages/initial/` (the 2024 wave-1 originals, charter Rev A + the later-deleted memo), plus the
+  existing `stages/wave2/`/`stages/wave3/` overlays. The sandbox wave protocol now seeds the raw
+  from `stages/initial/`.
 
 ## [0.2.0] - 2026-07-03
 
@@ -35,7 +59,7 @@ All notable changes to this project are documented here. The format is based on
   `CONTRIBUTING.md`, this `CHANGELOG.md`, `SECURITY.md`, `docs/configuration.md`, README badges, and a
   "License & third-party tools" section (bring-your-own-CLI terms + output ownership).
 - **`open-pr` skill** and a mandatory self-verification routing section in `CLAUDE.md`.
-- **Three graded test corpora** under `corpora/` (beverages, counterfactual-atlas, project-history)
+- **Three graded test corpora** under `corpora/` (beverages, kelvarra, leuchtfeuer)
   with hidden answer keys, driven by the parameterized `verify-corpus` skill.
 
 ### Changed
