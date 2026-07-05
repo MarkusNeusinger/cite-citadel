@@ -238,9 +238,10 @@ skipped-duplicate, ignored (pattern), pending.
 
 **Other modules:** `okf.py` is the OKF format core (parse/dump, type→folder routing, link math, and
 the non-negotiable `safe_join` path guard — reuse it for any wiki-relative path). `grammar.py` is
-the **single home of the markdown grammar** (link/footnote/fence/Sources-heading parsing and the
-source-citation predicates) that `store`, `validate`, `lint`, and the viewer all parse through;
-never re-define any of it locally. `store.py` is a thin **facade** re-exporting the "database"
+the **single home of the markdown grammar** (link/footnote/fence/Sources-heading parsing, the
+source-citation predicates, and the `[^sN]` **locator** parser — `parse_locator`/`source_headings`,
+which `lint.check_locators` and curate consume) that `store`, `validate`, `lint`, and the viewer all
+parse through; never re-define any of it locally. `store.py` is a thin **facade** re-exporting the "database"
 API, split by responsibility into four sibling modules (import them through `store`, not directly):
 `store_core.py` (`load()`, the single swappable `search()` seam, `read/write/delete_page` — both
 mutators share the reserved-name guard that refuses `index.md`/`*/index.md`/`log.md`/dotfiles —
