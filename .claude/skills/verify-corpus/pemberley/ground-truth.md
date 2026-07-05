@@ -268,6 +268,30 @@ Elizabeth ironically *advances* the match — it emboldens Darcy to propose a se
 Darcy page `proud`\|`pride`\|`haughty`; Elizabeth page `prejudic`\|`witty`\|`clever`\|`lively`. Id:
 `char-title-flaws` (soft).
 
+## Retrieval battery — find the knowledge like a user (Tier 2)
+
+The grader plays a reader with a question: it runs each `query` **verbatim** through `citadel
+search`, reads the top hits, and grades (a) the `expect` answer is present + correctly cited on a
+surfaced page and (b) it was *findable* within the `find` band. Queries are frozen and answer-blind
+— phrased from the question side, never naming the answer (the partner, the outcome, the true agent)
+and never quoting a verbatim wiki sentence (so they can't game `search`'s substring bonus). There is
+one raw file, so `→§X` points at the lettered section whose grep settles a miss (creation-vs-
+retrieval). Negatives say `NOT the live answer`: the tempting query must not surface the forbidden
+thing — Wickham's slander of Darcy, or Mr. Gardiner credited as Lydia's real rescuer — in the wiki's
+own voice. Ranks are soft/reported; only *unfindable by search+index+tags* is a hard floor.
+
+| id | query | expect | find |
+| -- | ----- | ------ | ---- |
+| `rb-lydia-wickham` | which officer does Lydia Bennet run away with and marry | the youngest sister elopes with, then marries, **George Wickham**, the militia officer (she signs herself "Lydia Wickham"); on Lydia's page, cited `[^sN]`, cross-linked to Wickham →§A2 | rank≤2, 1 read |
+| `rb-eliza-darcy` | who does Elizabeth Bennet fall in love with and marry | the protagonist marries **Mr. Darcy**, master of Pemberley — she accepts his second proposal; on Elizabeth's page, cited. An Elizabeth↔Bingley / Jane↔Darcy pairing = FAIL →§A2 | rank≤2, 1 read |
+| `rb-collins-charlotte` | does Elizabeth accept Mr Collins's offer of marriage | **No — Elizabeth refuses** Collins (against her mother's will); days later **Charlotte Lucas accepts** him for a secure establishment, not love; on Elizabeth's page, cited →§H1 | rank≤2, 1 read |
+| `rb-jane-ill` | why does Jane Bennet fall ill and have to stay at Netherfield | sent to Netherfield **on horseback in the rain** at her mother's contrivance, Jane **catches cold and falls ill**, staying to be nursed by Elizabeth; on Jane's page, cited — proves the **first-third** chunk survived →§E | rank≤2, 1 read |
+| `rb-hunsford-proposal` | what happens when Mr Darcy first proposes to Elizabeth | Darcy's **first proposal, at the Hunsford parsonage** near Rosings — dwelling on the match's "degradation" — is **refused**; on Darcy's/Elizabeth's page, cited — proves the **middle-third** chunk survived →§E | rank≤2, 1 read |
+| `rb-wickham-slander` | did Mr Darcy cheat Wickham out of the inheritance his father left him | **NOT the wiki's own fact.** The living/inheritance grievance appears **as Wickham's claim**, corrected by **Darcy's letter** (Wickham resigned the claim, took £3,000, later demanded it back) inside a `[!CONTRADICTION]`; search must **NOT** surface "Darcy robbed Wickham" as wiki-voice truth →§B | rank≤2, ≤2 reads |
+| `rb-lady-catherine` | what does Lady Catherine demand of Elizabeth when she comes to Longbourn | Lady Catherine arrives unannounced and demands Elizabeth **promise never to marry Darcy**; Elizabeth **refuses** and she leaves in anger; on Elizabeth's/Longbourn's page, cited — proves the **last-third** chunk survived, and Lady Catherine (Rosings) ≠ Kitty →§E,§A1 | rank≤2, 1 read |
+| `rb-darcy-rescue` | who paid off Wickham's debts so that he would marry Lydia | **Mr. Darcy, in secret** — he traced the pair, paid Wickham's debts, settled money on Lydia and bought his commission, **insisting Mr. Gardiner be given the credit**; on Elizabeth's/Darcy's page, cited. The "Mr. Gardiner arranged the settlement" version (the Wickham/Lydia/Longbourn pages) is the **cover story**, **NOT** the true agent →§H2 | rank≤3, ≤2 reads (behind the cover-story hit) |
+| `rb-entail` | can the Bennet daughters inherit Longbourn | **No** — Longbourn is **entailed, in default of male heirs, to Mr. Collins**, so none of the five daughters can inherit; the reason the sisters must marry; on Mr. Bennet's/Longbourn's page, cited →§A4 | rank≤2, 1 read |
+
 ## Scoring
 
 **Hard gates** (must all hold): §F structural — check + lint clean, every `[^sN]` → the novel file,
@@ -291,6 +315,15 @@ plausibility (`lines A-B` pointers landing in the right region with no Z6 range-
 Charlotte's marriage framed as pragmatic (security over love); §H3 the two title flaws (Darcy's
 pride, Elizabeth's prejudice) as character arcs and Lady Catherine's failed intervention ironically
 advancing the match; Mary and Kitty fleshed out beyond a bare mention.
+
+**Findability** (the Retrieval battery — report per row, don't hard-fail a soft rank miss): each
+row's answer surfaces on a correct, correctly-cited page via `citadel search` within its `find`
+band, readable in ≤2 reads; the negatives must not surface as the live answer — `rb-wickham-slander`
+(Darcy cheated Wickham is Wickham's later-refuted claim, never wiki-voice) and `rb-darcy-rescue`
+(Mr. Gardiner is the cover story Darcy imposed, not Lydia's real rescuer). **Hard floor:** a row
+whose answer is unfindable by search *and* `index` *and* `tags` is a hard miss. Route each miss into
+the improvement backlog — fact present-but-unranked → *retrieval* defect (search-tooling lane); fact
+absent/mangled/mis-cited → *creation* defect (wiki-generation lane).
 
 The one-line verdict this corpus exists for: **the whole novel folds in across every segment, the
 relationships come out right, and the story's lies and reversals are recorded as narrated — Wickham's

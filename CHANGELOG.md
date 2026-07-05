@@ -26,6 +26,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **`verify-corpus` now grades retrieval-first.** Phase 2 checks each corpus guarantee the way a user
+  consumes the wiki — driving `citadel search`/`read`/`index`/`tags` to prove the answer is both
+  correct+cited and *findable* (not merely present on disk), and drops to a file-level grep only to
+  classify a miss as a wiki-*creation* defect or a *retrieval* defect. Each corpus's hidden
+  `ground-truth.md` gains a frozen, answer-blind `## Retrieval battery`, and the grade's misses route
+  into two optimization lanes (the ingest/rules generator and the search tools). Test-only — no wiki
+  or corpus content changed.
 - **Renamed three corpora** to their in-world names — the fictional-republic corpus is now
   **`kelvarra`**, the three-year-programme corpus is now **`leuchtfeuer`**, and the *Pride and
   Prejudice* corpus is now **`pemberley`** (directories, hidden answer-key directories, and every

@@ -1,6 +1,6 @@
 ---
 name: verify-corpus
-description: End-to-end test + grader for the citadel ingest pipeline over the shipped test corpora — beverages (coffee+tea showcase), kelvarra (a coherent fictional world whose facts contradict reality), leuchtfeuer (a 3-year programme ingested in dated waves that drives reconcile/delete/force), pemberley (all of Pride and Prejudice as one large-source chunking + narrative stress test), and injection-resistance (mundane documents with adversarial instructions the agent must treat as content). Mode A ingests a corpus into a throwaway SANDBOX workspace (never a live wiki), runs the structural gates (citadel check + lint), then grades the result against that corpus's hidden ground-truth.md answer key (single-source facts, merges, contradictions, counterfactuals kept-as-stated, temporal supersession, delete propagation, cross-links, abbreviations, chunking integrity, injection non-execution). Use whenever the user wants to run the e2e / corpus test, verify or grade a corpus, (re)build the demo/showcase wiki, prove citations and contradictions still surface, or check that a change to ingest, llm, the rules tree (citadel/rules/), the ingest prompts, or the store still folds a corpus correctly — even if they do not say the word "skill". Takes a corpus name (beverages | kelvarra | leuchtfeuer | pemberley | injection-resistance | all) and optional --grade-only.
+description: End-to-end test + grader for the citadel ingest pipeline over the shipped test corpora — beverages (coffee+tea showcase), kelvarra (a coherent fictional world whose facts contradict reality), leuchtfeuer (a 3-year programme ingested in dated waves that drives reconcile/delete/force), pemberley (all of Pride and Prejudice as one large-source chunking + narrative stress test), and injection-resistance (mundane documents with adversarial instructions the agent must treat as content). Mode A ingests a corpus into a throwaway SANDBOX workspace (never a live wiki), runs the structural gates (citadel check + lint), then grades the result the way a user consumes it — driving citadel's own read tools (search/read/index/tags) to check each hidden ground-truth.md guarantee is both correct+cited and easily findable, dropping to a file-level grep only to separate a wiki-creation defect from a retrieval one and route the miss into an improvement backlog (single-source facts, merges, contradictions, counterfactuals kept-as-stated, temporal supersession, delete propagation, cross-links, abbreviations, chunking integrity, injection non-execution). Use whenever the user wants to run the e2e / corpus test, verify or grade a corpus, (re)build the demo/showcase wiki, prove citations and contradictions still surface, or check that a change to ingest, llm, the rules tree (citadel/rules/), the ingest prompts, or the store still folds a corpus correctly — even if they do not say the word "skill". Takes a corpus name (beverages | kelvarra | leuchtfeuer | pemberley | injection-resistance | all) and optional --grade-only.
 ---
 
 # Verify a corpus end-to-end
@@ -139,40 +139,113 @@ A non-zero `lint` (missing type / broken link / fabricated source / `[[wikilink]
 error is an automatic FAIL — the pipeline produced a structurally invalid wiki. Do not proceed to the
 grade; the structural break is the finding.
 
-## Phase 2 — grade against the answer key
+## Phase 2 — grade as a user would (retrieval-first)
 
-**Read `corpora`'s `ground-truth.md` in full**, then judge each lettered section against `$WIKI`
-using the evidence greps the key itself carries (it enumerates every planted item with a greppable
-value and expected citation). Grade by **content, not filename** — page names are LLM-chosen and vary
-run to run. Wiki text may wrap; if a scoped grep misses, flatten first
-(`tr '\n' ' '`) before calling it a miss. ONE illustrative grep per corpus below — the corpus's
-ground-truth carries the complete per-section battery:
+Grade the wiki **through citadel's own read tools** — the way a real user (or an MCP-connected AI) hits
+it — not by grepping the files. CLI and MCP share one search/read core, so the CLI grades exactly the
+retrieval either surface gives. The ground-truth's lettered grep batteries are **kept**, but only as
+the **Tier-3 diagnosis** you drop to when a query misses (below).
+
+**First, aim the tools at the sandbox — not the repo.** `citadel search`/`read`/`index`/`tags` resolve
+the wiki by *workspace discovery*, so a lost export silently grades the repo's OWN wiki (false green).
+Re-export at the top of the grade block and sanity-check before scoring:
 
 ```bash
-grep -rn "CONTRADICTION" "$WIKI" | grep -v index.md   # beverages §C: conflicts must surface, not silently resolve
-grep -rinE "312[, ]?000" "$WIKI"                      # kelvarra §D: planted value present (true value only as [^llm])
-grep -rn '18,000\|02:00' "$WIKI"                      # leuchtfeuer D1: the deleted memo's facts must be gone
+export CITADEL_WORKSPACE="$SANDBOX" CITADEL_WIKI_DIR="$WIKI"
+citadel() { uv run python -m citadel "$@"; }
+citadel index                   # MUST list THIS sandbox's pages — if it shows repo pages, STOP and re-export.
 ```
 
-Then walk the ground-truth's own per-section grep tables (kelvarra §D has all seven
-traps; leuchtfeuer has the full Trap Inventory table). `uv run python -m citadel lint` also lists
-pages carrying `[^llm]` facts and undefined abbreviations — a quick index for §D/§H judgement.
+**Read the ground-truth in full**, then drive its `## Retrieval battery` table one row at a time
+(`id | query | expect | find`). For each row, play the user who typed that query:
+
+```bash
+citadel search "<query, verbatim from the row>" --limit 8   # NEVER reword the query to fit a page
+```
+
+1. **Findability** — `citadel read <rel_path>` the hits top-down; stop at the first page that actually
+   carries the answer. Record `rank` (1-based position of that page) and `reads` (pages you opened).
+   `rank 1 / reads 1` is ideal. **Never grade from the search snippet — it is the head of the body, not
+   the match. Read the page.** If search whiffs, try one reasonable reformulation of your own (a real
+   user rephrases — keep it answer-blind), then fall back to `citadel index` (the `[Title](path) —
+   description` catalog) or `citadel tags <t>`; note which tier found it (search / index / tags).
+2. **Correctness + provenance [hard]** — on that page, is the `expect` answer present *in the page
+   text* and cited as required (`[^sN]` → the right `raw/…`, or `[^llm]` where the row says so)? Judge
+   by content, not filename. Report the rel_path and the cited line you graded on.
+3. **Negative rows** (`expect` says `NOT live …`) — run the tempting query anyway and `read` any hit
+   carrying the forbidden token. The query must **not** surface a page asserting the forbidden thing in
+   wiki voice or as a bare `[^llm]` fact; a hit passes only if, on read, it is attributed exactly as
+   the row demands (dated-as-superseded, or quoted as injected text `[^sN]`). **Existence is settled by
+   the row's `→§X` grep, never by "search found nothing"** — lexical search under-recalls, so a
+   no-match result never proves a fact is absent.
+
+**Findability floor (hard):** if a row's answer is surfaced by neither the query, nor a reasonable
+reformulation, nor `citadel index`, nor `citadel tags`, the knowledge is effectively unfindable → hard
+miss. Rank and
+precision *above* the floor are soft/reported (search is lexical and ingest is non-deterministic — a
+paraphrase whiff on a well-built wiki is texture, not a defect).
+
+### On any miss — classify creation vs retrieval (the grep backstop)
+
+A miss is either a *creation* defect (wiki built wrong) or a *retrieval* defect (fact present, the
+tools couldn't surface it). The row's `→§X` pointer names the lettered section whose grep settles
+presence — flatten with `tr '\n' ' '` on a wrap miss:
+
+```bash
+grep -rinE "<the §X diagnostic pattern>" "$WIKI" | grep -v index.md
+```
+
+|                  | present, correct, **cited** | present-but-wrong / absent |
+| ---------------- | --------------------------- | -------------------------- |
+| **findable**     | PASS                        | **creation defect**        |
+| **not findable** | **retrieval defect**        | **creation defect**        |
+
+- grep finds the value, correctly framed and cited → **retrieval defect**: content is good, search
+  ranked it below the fold / behind noise. The fact IS present.
+- grep misses, or finds it mangled / uncited / mis-attributed / (for a negative) asserted live →
+  **creation defect**: absent, dropped, merged-away, or the injection was obeyed — the serious class.
+  (A bare narrow-regex miss must trigger a semantic `read` of the top hit before you call it absent —
+  a legit paraphrase or unit-conversion, "four seconds" → "4 s", is not a defect.)
+
+A *retrieval defect* requires the fact be present-correct-cited **and** missed by the query, a
+reasonable reformulation, `index`, and `tags`; anything present-but-mis-framed is a *creation* defect,
+not retrieval.
+
+`citadel lint` still lists pages carrying `[^llm]` facts and undefined abbreviations — a quick index
+for the counterfactual/abbreviation rows.
 
 ## Grading output
 
 Report a table of **hard gates** (all must hold) and **soft checks** (report caught / partial /
-missed — do not hard-fail a single soft miss; ingest is non-deterministic). The exact hard/soft split
-is the **Scoring** section at the bottom of each corpus's ground-truth — read it and use it verbatim
-(it is the single authority for that corpus's hard/soft split; do not restate it here).
+missed — do not hard-fail a single soft miss; ingest is non-deterministic). Soft checks now include a
+**findability** bucket: per `## Retrieval battery` row, the rank band (`rank 1` / `top-3` / `top-8` /
+`index-or-tags only` / `unfindable`), `reads`, and the tier that found it. The exact hard/soft split is
+the **Scoring** section at the bottom of each corpus's ground-truth — read it and use it verbatim (it
+is the single authority for that corpus's hard/soft split; do not restate it here).
+
+**The grade is not just pass/fail — its misses are an actionable improvement backlog.** Route every
+miss into one of two lanes so the results feed the next optimization:
+
+- **Wiki-generation** (a *creation* defect — a dropped / mis-routed / over-fragmented / mis-cited fact,
+  or a page whose title/tags/description are too thin to be found): improve how pages are built
+  (`citadel/rules/`, the ingest prompts, `llm.py`).
+- **Retrieval-tooling** (a *retrieval* defect — good, correctly-built content the tools rank poorly or
+  cannot surface): improve the search surface (`store_core.search`, the CLI/MCP tools). Escalate to a
+  **capability-gap** finding when a correctly-built fact is unfindable by any reasonable query **and**
+  better page metadata would not fix it (lexical search has no stemming/synonyms; no tool answers a
+  whole query *shape*) — i.e. "the search primitive/toolset is the limit; consider stemming / FTS5 /
+  semantic ranking, or a new read tool."
 
 End with a one-line verdict per corpus and, on any hard fail, the specific guarantee it breaks
-(organized / links / provenance / temporal) and the file+fact involved.
+(organized / links / provenance / temporal / findable), **whether it is a creation or a retrieval
+defect** (which the grep backstop settled), the lane it routes to, and the file+fact involved.
 
 ## `all`
 
 Run all five corpora **sequentially**, each in its own sandbox (never share a workspace). Grade each,
 then print one aggregate table: corpus × {phase-1 check, phase-1 lint, hard-gate verdict, soft
-caught/total}. `all` passes only if every corpus passes its hard gates. Note that **`pemberley`
+caught/total, findability (green/amber/floor), backlog (creation / retrieval / capability-gap counts)}.
+`all` passes only if every corpus passes its hard gates. Note that **`pemberley`
 dominates the runtime** (hours of chunked passes vs. minutes for the others) — run it last, or skip
 it with an explicit single-corpus subset when you only need a quick pass over the rest.
 
