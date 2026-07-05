@@ -7,10 +7,14 @@ callers use for tag filtering, case handling, and robustness) so a future reimpl
 seeded straight into the temp wiki via ``tmp_citadel`` + ``seed_page``.
 
 Scoring model being pinned: token overlap (lowercased alphanumeric tokens, length >= 2)
-weighted title 3.0 / tags 2.0 / description 1.5 / body 1.0, plus a 0.5 bonus when the raw
+weighted title 3.0 / tags 2.0 / description 1.5 / body 1.0, each token scaled by its IDF
+weight (a rare token outweighs one common to many pages; a token present in every page,
+or in a single-page corpus, weighs exactly 1.0), plus a 0.5 bonus when the raw
 stripped-lowercased query appears as a substring of the title or body. Zero scores are
 dropped; results sort by score descending then rel_path ascending; top ``limit`` returned.
-All expected scores are multiples of 0.5, so exact ``==`` float comparisons are safe.
+In most fixtures here a query token is either in one page or in every matching page (IDF
+weight 1.0), so the expected scores stay multiples of 0.5 and exact ``==`` is safe; the two
+tests that exercise a rarer token assert ordering and bounds instead.
 """
 
 from __future__ import annotations
@@ -78,14 +82,38 @@ def test_title_hit_outranks_body_hit(tmp_citadel, seed_page):
 
 
 def test_multi_token_query_scores_accumulate(tmp_citadel, seed_page):
-    """Each overlapping query token adds its field weight; the substring bonus needs the
-    exact raw phrase: 'Quantum Flux Theory' gets 2*3.0+0.5=6.5, 'Quantum Computing' gets 3.0."""
+    """Each overlapping query token adds its field weight, scaled by IDF: the page with
+    BOTH query tokens outranks the page with one. 'quantum' is on both pages (IDF 1.0) but
+    'flux' is on only one, so IDF lifts both.md ABOVE the plain-overlap 2*3.0+0.5=6.5 it
+    would score without rarity weighting; one.md keeps quantum's lone 3.0."""
     seed_page("concepts/both.md", {"type": "concept", "title": "Quantum Flux Theory"}, "Nothing else.\n")
     seed_page("concepts/one.md", {"type": "concept", "title": "Quantum Computing"}, "Nothing else.\n")
 
     hits = store.search("quantum flux")
 
-    assert [(p.rel_path, s) for p, s in hits] == [("concepts/both.md", 6.5), ("concepts/one.md", 3.0)]
+    assert [p.rel_path for p, _ in hits] == ["concepts/both.md", "concepts/one.md"]
+    both_score, one_score = hits[0][1], hits[1][1]
+    assert one_score == 3.0  # a single common token, idf(quantum)=1.0 -> 3.0
+    assert both_score > 6.5  # the rare 'flux' is IDF-boosted, lifting both.md past plain overlap
+
+
+def test_idf_weights_a_rare_token_above_a_common_one(tmp_citadel, seed_page):
+    """The IDF contract, and a regression lock (the golden-rank test): a rare query token
+    must contribute strictly MORE than a corpus-common one. Ten pages carry 'common' in the
+    body; only one also carries 'rare'. The rare token's IDF-weighted contribution exceeds
+    the common token's whole score — which plain overlap counting (both weigh 1.0) cannot
+    produce, so this test fails the instant the scorer drops IDF."""
+    for i in range(9):
+        seed_page(f"misc/p{i}.md", {"type": "misc", "title": f"P{i}"}, "the common word here\n")
+    seed_page("misc/rare.md", {"type": "misc", "title": "Special"}, "the common word and the rare word\n")
+
+    hits = {p.rel_path: s for p, s in store.search("common rare")}
+
+    common_only = hits["misc/p0.md"]  # body 'common' only
+    rare_page = hits["misc/rare.md"]  # body 'common' + 'rare'
+    assert rare_page > common_only
+    # the rare token's own contribution must exceed the entire common-only score:
+    assert rare_page - common_only > common_only
 
 
 def test_substring_bonus_requires_contiguous_phrase(tmp_citadel, seed_page):
