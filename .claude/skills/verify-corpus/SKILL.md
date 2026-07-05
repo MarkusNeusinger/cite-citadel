@@ -153,7 +153,7 @@ Re-export at the top of the grade block and sanity-check before scoring:
 ```bash
 export CITADEL_WORKSPACE="$SANDBOX" CITADEL_WIKI_DIR="$WIKI"
 citadel() { uv run python -m citadel "$@"; }
-citadel index | head -20        # MUST list THIS sandbox's pages — if it shows repo pages, STOP and re-export.
+citadel index                   # MUST list THIS sandbox's pages — if it shows repo pages, STOP and re-export.
 ```
 
 **Read the ground-truth in full**, then drive its `## Retrieval battery` table one row at a time
