@@ -125,11 +125,15 @@ def search(query: str, pages: list[Page] | None = None, limit: int = 8) -> list[
     computed over the candidate `pages` each call, so a tag-pre-filtered search weighs
     rarity within that subset. (Future: replace this body with SQLite FTS5 bm25 —
     signature + MCP surface stay identical.)"""
+    if limit <= 0:
+        return []
     if pages is None:
         pages = load()
     query_tokens = _tokenize(query)
     raw_query = query.strip().lower()
-    idf = _idf_weights(pages)
+    # Weight by rarity only when there are tokens to weight: an empty or one-char query still
+    # surfaces pages via the substring bonus below, and skips the full-corpus IDF pass.
+    idf = _idf_weights(pages) if query_tokens else None
     scored: list[tuple[Page, float]] = []
     for page in pages:
         score = _score(query_tokens, page, idf)
