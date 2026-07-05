@@ -229,6 +229,9 @@ def test_parse_locator_combined_heading_and_line_splits_both_halves():
     assert (loc.start, loc.end) == (33, 33)
     rng = grammar.parse_locator("§ Making a Matcha Latte, lines 55-59")
     assert rng.heading == "Making a Matcha Latte" and (rng.start, rng.end) == (55, 59)
+    # a trailing ` — description` after the range must not hide it (Copilot review):
+    desc = grammar.parse_locator("§ Real Heading, line 5 — the note")
+    assert desc.heading == "Real Heading" and (desc.start, desc.end) == (5, 5)
 
 
 def test_parse_locator_page_locator_is_other():

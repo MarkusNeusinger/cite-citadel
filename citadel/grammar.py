@@ -186,10 +186,11 @@ _INGESTED_SUFFIX_RE = re.compile(r"\s*\(ingested[^)]*\)\s*$", re.IGNORECASE)
 # A spaced dash (` - ` / ` – ` / ` — `): the description separator, ALSO legal inside a heading, so
 # heading verification tries the full text then progressively drops a trailing `<spaced-dash> …`.
 _SPACED_DASH_RE = re.compile(r"\s[-–—]\s")
-# A `§ Heading` locator's trailing `, line N` / `, lines N-M`: the COMBINED form the ingest agent
-# emits (`§ Making a Matcha Latte, lines 55-59`). Split off so BOTH the heading and the line range
-# verify, instead of the `, line N` tail defeating the heading match.
-_HEADING_LINES_SUFFIX_RE = re.compile(r",\s*lines?\s+(\d+)(?:\s*[-–—]\s*(\d+))?\s*$", re.IGNORECASE)
+# A `§ Heading` locator's `, line N` / `, lines N-M`: the COMBINED form the ingest agent emits
+# (`§ Making a Matcha Latte, lines 55-59`). Split off so BOTH the heading and the line range verify,
+# instead of the `, line N` tail defeating the heading match. The range ends at end-of-string OR a
+# ` — description` separator, so a trailing description (`§ Heading, line 5 — the note`) still splits.
+_HEADING_LINES_SUFFIX_RE = re.compile(r",\s*lines?\s+(\d+)(?:\s*[-–—]\s*(\d+))?(?=\s*$|\s[-–—]\s)", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
