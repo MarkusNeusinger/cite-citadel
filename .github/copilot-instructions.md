@@ -84,8 +84,12 @@ site (`.github/workflows/pages.yml`) builds a **gallery** with one offline viewe
 carries a hidden answer key at `.claude/skills/verify-corpus/<name>/ground-truth.md` — **outside the
 corpus so the ingest agent never sees it** (Mode A also points `CITADEL_RAW_DIR` at the corpus `raw/`
 only). The parameterized `verify-corpus` skill (`verify-corpus <name>|all [--grade-only]`) ingests a
-corpus into a throwaway sandbox workspace (never a live wiki) and grades it in two phases: `citadel
-check` + `lint` exit 0 (structural eligibility), then answer-key content grading. Corpora live
+corpus into a throwaway sandbox workspace (never a live wiki) and grades it the way a user consumes
+the wiki: `citadel check` + `lint` exit 0 (structural eligibility), then a **retrieval-first** content
+grade — driving citadel's own read tools (`search`/`read`/`index`/`tags`) to prove each answer-key
+guarantee is both correct+cited and easily findable, dropping to a file-level grep only to separate a
+wiki-creation defect from a retrieval one (its misses feed two optimization lanes: the ingest/rules
+generator and the search tools). Corpora live
 **outside** `citadel/`, so they never ship in the wheel. The repo-root `raw/` + `wiki/` are a
 gitignored developer workspace (the checkout's `citadel.toml` marker still makes it a workspace).
 
@@ -96,8 +100,10 @@ Two `.claude/skills/` skills close the loop between a change and its proof:
 - **verify-corpus** (`verify-corpus
   <beverages|kelvarra|leuchtfeuer|pemberley|injection-resistance|all>
   [--grade-only]`) — the end-to-end corpus grader: ingests a corpus into a throwaway sandbox and
-  grades the result against its hidden `ground-truth.md`. Run it after any change to `ingest.py`,
-  `llm.py`, or the rules tree (`citadel/rules/`).
+  grades the result against its hidden `ground-truth.md` by querying the wiki through citadel's own
+  read tools like a user (retrieval-first), falling back to file greps only to tell a wiki-creation
+  defect from a retrieval one. Run it after any change to `ingest.py`, `llm.py`, or the rules tree
+  (`citadel/rules/`).
 - **open-pr** — the ship path: runs the hard local gates (`pytest`, `ruff check`, `ruff format
   --check`, the beverages-workspace `lint`), routes ingest/llm/rules diffs through verify-corpus,
   branches `claude/<topic>-<slug>` off main, opens a ready PR + Copilot review, watches CI, and

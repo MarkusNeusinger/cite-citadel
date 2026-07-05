@@ -309,6 +309,32 @@ not retro-write the opinion as "Duszek's plan, which was adopted" or as proof he
 | `G1`–`G4` | german slice | 2009 / ~640 to train / 12,400 shipments / 0.4 % — present, in English, cited to the German files | `2009`, `640`, `12[.,]400`, `0[.,]4` |
 | `D1-retracted-memo` | delete | zero trace of the deleted memo file; €18,000/h and the 02:00–06:00 window gone; €310k survives; the retraction event recorded | `18,000`→∅, `02:00`→∅, `memo-brandt-komet-operating-costs`→∅, `310,000`→present, `retract`→present |
 
+## Retrieval battery — find the knowledge like a user (Tier 2)
+
+The grader plays a user with a question: it runs each `query` **verbatim** through `citadel
+search`, reads the top hits, and grades (a) the `expect` answer is present + correctly cited on a
+surfaced page and (b) it was *findable* within the `find` band. Queries are frozen and answer-blind
+— phrased from the question side, never containing a planted value (a date, a euro figure, an
+abbreviation's expansion, the name being attributed) or a verbatim wiki sentence, so they can't
+game `search`'s substring bonus. `→§X` points at the lettered section or trap-inventory row whose
+grep settles a miss (creation-vs-retrieval). Temporal rows demand the **live** value and reject a
+superseded one dressed as current; the negative (`rb-outage`) says `NONE live` — the tempting query
+must surface no page asserting the deleted memo's figures, and existence is settled by the `→§X`
+grep, not by "search found nothing". Ranks are soft/reported; only *unfindable by
+search+index+tags* is a hard floor.
+
+| id | query | expect | find |
+| -- | ----- | ------ | ---- |
+| `rb-golive` | when did the new warehouse system go live across all sites | live: the full estate went live **17 March 2026** (T1 final), cited to `2026-03-20-email-vogelsang-golive.md`; the chain 1 Oct 2024 → 30 Jun 2025 → Q1 2026 survives only as dated/superseded change-log entries, **NOT** the live answer, and never as a date-vs-date `[!CONTRADICTION]` →§Trap·T1 | rank 1, 1 read |
+| `rb-budget` | what is the current approved budget for the LEUCHTFEUER programme | the reconciled charter figure **EUR 2.4 million** (charter Rev B, raised from the superseded EUR 1.8 million of Rev A), co-cited to the charter and the 10 Feb 2025 steering minutes; 1.8M present only as the dated original envelope, **NOT** current →§Trap·T3, §B | rank 1, 1 read |
+| `rb-database` | which database does the QUAYSTONE platform run on now | current persistence layer **BasaltDB** (decision D-9, Jan 2025, recorded in charter Rev B); **KorallenDB** present only as the dated original choice (kickoff D-4) it superseded, never listed as current →§Trap·T2 | rank 1, 1 read |
+| `rb-licence` | how much does Blauwal pay each year to keep KOMET licensed and supported | **EUR 310,000**/year, attributed to **Heike Brandt** (her quoted 11 Mar 2024 mail) and cited to `2024-03-12-email-duszek-komet-assessment.md` — **NOT** to the email's sender Duszek; the co-cited fact survives the wave-3 memo delete →§I·Q1 | rank≤2, 1 read |
+| `rb-vendor` | why does KOMET no longer receive any vendor support or updates | its original vendor **Werftmann & Partner went insolvent in 2017**, no vendor support since — one merged statement co-cited across the Duszek email (EN) and the German Protokoll (DE), **NOT** one isolated page per source →§A, §B | rank≤2, ≤2 reads |
+| `rb-firstweek` | how did the first week on the new system at the Walle warehouse go | **12,400 shipments** processed at **0.4 % error rate** in week one (G3/G4) — German-sourced facts from `2025-06-30-protokoll-uebergabe-walle.md` carried through in **English** prose, cited to the German file →§A, §G | rank 1, 1 read |
+| `rb-outage` | what does an hour of unplanned KOMET downtime cost and when is the maintenance window | **NONE live** — the ~EUR 18,000/hour outage estimate and the Sunday 02:00–06:00 maintenance window rode the memo **deleted in wave 3**; search must surface no page asserting them, only the recorded 15 Apr 2026 retraction. Existence is the ∅-greps (`18,000`/`02:00`/the memo filename), not "no matches" →§Trap·D1, §E | figures ∅; retraction only |
+| `rb-seagull` | what is the customer self-service portal Blauwal is building | the **2026 SEAGULL customer-portal programme** (product owner Yasmin Okafor, launch Q2 2027, on QUAYSTONE APIs) on its **own** page, kept apart from and cross-linked to the closed 2024–25 pilot-rollout SEAGULL — portal facts must **NOT** land on the pilot record →§F·S1 | rank 1, 1 read |
+| `rb-uptime` | who reported how long BasaltDB had run without an unplanned outage | **47 consecutive weeks** without an unplanned restart, from **Marek Duszek**'s 12 Jan 2026 status note (quoted in Vogelsang's go-live announcement) — attributed to **Duszek**, not the announcement's author Vogelsang; cited to `2026-03-20-email-vogelsang-golive.md` →§I·Q2 | rank 1, 1 read |
+
 ## Scoring
 
 **Hard gates** (must all hold): §G structural after every wave; every `T*` old value superseded —
@@ -323,3 +349,15 @@ one side* of either is a hard fail); the T-chains rendered as tidy dated change-
 scattered dated facts; AP-1 as a single open-points thread; §B co-citation tidiness; §H
 abbreviation pages; style-profile entries for the three voices; an `[^llm]` correction note on
 the counterfactuals (nice, not required).
+
+**Findability** (the Retrieval battery — report per row, don't hard-fail a soft rank miss): each
+row's answer surfaces on a correct, correctly-cited page via `citadel search` within its `find`
+band, readable in ≤2 reads; the temporal rows (`rb-golive`, `rb-budget`, `rb-database`) must return
+the **live** value with the superseded one only dated, `rb-licence`/`rb-uptime` must attribute the
+figure to Brandt/Duszek (not the email sender), and the negative `rb-outage` must surface **no**
+page asserting the deleted memo's ~EUR 18,000/hour or 02:00–06:00 figures (settled by the `D1`
+∅-greps, not by a no-match). **Hard floor:** a row whose answer is unfindable by search *and*
+`index` *and* `tags` is a hard miss. Route each miss into the improvement backlog — fact
+present-but-unranked → *retrieval* defect (search-tooling lane); fact absent/mangled/mis-cited/
+mis-attributed, or a superseded/deleted value surfacing as current → *creation* defect
+(wiki-generation lane).

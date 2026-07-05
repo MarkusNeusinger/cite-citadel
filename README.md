@@ -124,7 +124,8 @@ and never executes them.
 Each corpus ships a hidden answer key at `.claude/skills/verify-corpus/<name>/ground-truth.md`
 (outside the corpus, so the ingest agent can never see it). The parameterized `verify-corpus` skill
 (`verify-corpus <name>|all`) ingests a corpus into a throwaway sandbox and grades the result against
-that key — an end-to-end test of every guarantee. **Each corpus also carries its own committed,
+that key by querying the wiki through citadel's own read tools, the way a user would — an end-to-end
+test that every guarantee is not just built but *findable*. **Each corpus also carries its own committed,
 graded showcase wiki** at `corpora/<name>/wiki/`, lint-checked in CI.
 
 **See the result without running anything.** Browse any generated showcase wiki on GitHub — e.g.

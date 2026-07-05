@@ -245,6 +245,28 @@ The enrichment adds more glossary / undefined-abbreviation material:
 - `EY` stays **never** spelled out in any raw file: the enrichment writes "extraction yield" in full and
   never pairs it with the acronym, so §H's EY undefined-abbreviation expectation is **unchanged**.
 
+## Retrieval battery — find the knowledge like a user (Tier 2)
+
+The grader plays a user with a question: it runs each `query` **verbatim** through `citadel search`,
+reads the top hits, and grades (a) the `expect` answer is present + correctly cited on a surfaced page
+and (b) it was *findable* within the `find` band. Queries are frozen and answer-blind — phrased from
+the question side, never containing the planted value or a verbatim wiki sentence (so they can't game
+`search`'s substring bonus). `→§X` points at the lettered section whose grep settles a miss
+(creation-vs-retrieval). Negatives say `NOT the live answer`: the tempting query must not surface the
+forbidden thing as wiki-voice truth. Ranks are soft/reported; only *unfindable by search+index+tags* is
+a hard floor.
+
+| id | query | expect | find |
+| -- | ----- | ------ | ---- |
+| `rb-espresso` | how is espresso pulled and how much caffeine is in a shot | ~9 bar, ~25–30 s, ~18 g in → ~36 g out, crema, ~63 mg/shot; cited to `espresso-and-cafe-culture.md` →§A | rank≤2, 1 read |
+| `rb-coldbrew` | does cold brew coffee have more or less caffeine than hot drip | cold brew is often **higher** in caffeine than hot drip (concentrated ratio + long steep); cited to `cold-brew-notes.md`. Any Aurora "cold brew is lowest" claim must be a `[!CONTRADICTION]`/co-cite, **NOT** the live answer →§E,§K | rank≤2, 1 read |
+| `rb-midnight-price` | current price of an Aurora Midnight 250 g bag | live: **€16.00**, cited to `aurora-bulletin-2026.md`; the €13.50 spring-2024 price present only as dated/superseded (Change Log), **NOT** the live answer, no date-vs-date contradiction →§J | rank≤2, 1 read |
+| `rb-darkroast` | is dark roast coffee caffeine free | the "dark roast burns off caffeine → caffeine-free" claim appears **attributed** to `aurora-coffee-blog.md`, questioned by an `[^llm]` note or a `[!CONTRADICTION]`; search must **NOT** surface "dark roast is caffeine-free" as unqualified wiki-voice truth →§D | rank≤3, ≤2 reads |
+| `rb-aurora-founded` | when was Caffe Aurora founded | the founding year surfaces as a `[!CONTRADICTION]` — 1985 (`aurora-coffee-blog.md`) vs 1987 (`espresso-and-cafe-culture.md`), both cited, neither silently dropped →§C | rank≤2, 1 read |
+| `rb-caffeine-fades` | does coffee lose its caffeine as it gets old | the "coffee loses caffeine with age" claim appears **attributed** to `aurora-bulletin-2024.md`, questioned (caffeine is stable — staling loses aroma, not caffeine); **NOT** stated as wiki-voice truth →§L | rank≤3, ≤2 reads |
+| `rb-tds` | what does TDS stand for in coffee brewing | the expansion **Total Dissolved Solids** is carried (inline and/or a `type: Abbreviation` page) so lint does not flag TDS undefined →§H | rank≤4, ≤2 reads |
+| `rb-goldencup` | SCA golden cup extraction strength and brew temperature target | extraction **18–22 %**, strength **1.15–1.35 % TDS**, brew temp ~**93 °C** (90.5–96); the true SCA values, cited to `brewing-science-notes.md` →§I | rank≤3, ≤2 reads |
+
 ## Scoring
 
 **Hard gates** (must all hold): §G structural, §A single-source facts all present, §D claim present +
@@ -260,3 +282,11 @@ callouts (target ≥2 of 4, stretch 4/4), §K contradiction-cluster callouts (ta
 (TDS/EGCG/SCA/GH/KH/PPO carried in with their expansion and NOT flagged undefined; EY surfaced by lint's
 undefined-abbreviations check). Report each soft check as caught/partial/missed so regressions are visible
 across runs.
+
+**Findability** (the Retrieval battery — report per row, don't hard-fail a soft rank miss): each row's
+answer surfaces on a correct, correctly-cited page via `citadel search` within its `find` band, readable
+in ≤2 reads; the negatives (`rb-midnight-price` €13.50, `rb-darkroast`, `rb-caffeine-fades`) must not
+surface as the live answer. **Hard floor:** a row whose answer is unfindable by search *and* `index`
+*and* `tags` is a hard miss. Route each miss into the improvement backlog — fact present-but-unranked →
+*retrieval* defect (search-tooling lane); fact absent/mangled/mis-cited → *creation* defect
+(wiki-generation lane).

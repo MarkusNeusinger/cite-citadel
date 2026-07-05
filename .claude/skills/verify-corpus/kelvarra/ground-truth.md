@@ -194,6 +194,29 @@ made-of-saltglass fabrication variant is **hard**.)
 expansion is manufactured knowledge. Evidence: `grep -rin "KSB" "$WIKI"` plus lint's
 undefined-abbreviations listing.
 
+## Retrieval battery — find the knowledge like a user (Tier 2)
+
+The grader plays a user with a question: it runs each `query` **verbatim** through `citadel
+search`, reads the top hits, and grades (a) the `expect` answer is present + correctly cited on a
+surfaced page and (b) it was *findable* within the `find` band. Queries are frozen and
+answer-blind — phrased from the question side, never containing the planted value or a verbatim
+wiki sentence (so they can't game `search`'s substring bonus). `→§X` points at the lettered
+section whose grep settles a miss (creation-vs-retrieval). Negatives say `NOT the live answer`:
+the tempting query must not surface the forbidden real-world value as wiki-voice truth — only ever
+as a labelled `[^llm]` aside (or, for KSB, not at all). Ranks are soft/reported; only *unfindable
+by search+index+tags* is a hard floor.
+
+| id | query | expect | find |
+| -- | ----- | ------ | ---- |
+| `rb-thesis` | what was Maren Aldervane's doctoral research about | her 1938 doctoral thesis on the **capillary rise of seawater in basalt sands**; single-source, cited to `a-life-at-the-water-line.md` →§A (`ss-thesis`) | rank≤2, 1 read |
+| `rb-lightspeed` | what figure does the Institute give for the speed of light | the Institute's **312,000 km/s** stands as stated, co-cited to `aldervane-primer-extract.md` + `almanac-of-kelvarra-1998.md`; the real ~299,792 km/s appears **only** as a labelled `[^llm]` aside, **NOT** the live wiki-voice value →§D (`cf-light`) | rank≤2, 1 read |
+| `rb-boiling` | at what temperature does the Institute say water boils | the Institute's **91 °C** sea-level boiling point stands as stated, cited to `aldervane-primer-extract.md`; the real 100 °C appears **only** as a labelled `[^llm]` aside, **NOT** the live answer →§D (`cf-boiling`) | rank≤2, 1 read |
+| `rb-founding` | what year was the Aldervane Institute founded | the founding year surfaces as a `> [!CONTRADICTION]` — memoir **1949** (`a-life-at-the-water-line.md`) vs almanac **1952** (`almanac-of-kelvarra-1998.md`), both cited, neither silently dropped →§C (`mi-founding-year`) | rank≤2, 1 read |
+| `rb-patent` | is the Institute allowed to take out patents on its instruments | the charter clause permanently **forbidding** the Institute from patenting any instrument it makes is present, cited to the memoir `a-life-at-the-water-line.md`; not lost in the prose, not conflated with the tea-proving clause →§E (`sub-charter-patent`) | rank≤2, 1 read |
+| `rb-hq` | where is the Institute's campus located now | live: the **Corran Hill** campus since the **remove of 1988**, cited to `almanac-of-kelvarra-1998.md`; the earlier **Old Customs House** home present but dated pre-1988, **NOT** the current location, no early-vs-late contradiction →§F1 (`tmp-hq-move`) | rank≤2, 1 read |
+| `rb-currency` | what currency does Kelvarra use today | live: the **skell** (introduced 1971, one skell = twenty ferlings), cited to `almanac-of-kelvarra-1998.md`; the older **ferling** present only as dated day-book prices, **NOT** the current currency, no contradiction flag →§F1 (`tmp-currency`) | rank≤2, 1 read |
+| `rb-ksb` | what does KSB stand for | **KSB** appears but is left honestly **unexpanded** (no invented full name), cited to primer/survey/catalogue; lint lists it undefined — search must **NOT** surface a manufactured expansion, and any `[^s..]`-cited one is a fabrication FAIL →§H (`abbr-ksb`) | rank≤2, 1 read |
+
 ## Scoring
 
 **Hard gates** (must all hold): §G structural; §D all seven traps — planted value present +
@@ -208,6 +231,15 @@ miss): §C explicit `> [!CONTRADICTION]` callouts (target 2/2); §B merges maxim
 rows); §D honest `[^llm]` asides noting the accepted real-world values (nice, not required);
 §F1 Change-Log form; §F2 tidy two-sense separation; §H AINM/BTS carried with expansions and not
 flagged, KSB surfaced by lint and left honestly un-expanded.
+
+**Findability** (the Retrieval battery — report per row, don't hard-fail a soft rank miss): each
+row's answer surfaces on a correct, correctly-cited page via `citadel search` within its `find`
+band, readable in ≤2 reads; the negatives (`rb-lightspeed` ~299,792 km/s, `rb-boiling` 100 °C,
+`rb-ksb` any invented KSB expansion) must not surface as the live wiki-voice answer — only ever as
+a labelled `[^llm]` aside (or, for KSB, not at all). **Hard floor:** a row whose answer is
+unfindable by search *and* `index` *and* `tags` is a hard miss. Route each miss into the
+improvement backlog — fact present-but-unranked → *retrieval* defect (search-tooling lane); fact
+absent/mangled/mis-cited → *creation* defect (wiki-generation lane).
 
 The one-line verdict this corpus exists for: **the wiki must be faithfully, citedly wrong about
 the real world** — every 312,000 preserved, every 299,792 labeled `[^llm]` or absent.
