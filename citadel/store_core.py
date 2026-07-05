@@ -11,6 +11,7 @@ modules (:mod:`citadel.linkgraph`, :mod:`citadel.catalogs`, :mod:`citadel.open_p
 
 from __future__ import annotations
 
+import math
 import os
 import re
 from datetime import datetime, timezone
@@ -69,39 +70,73 @@ def _tokenize(text: str) -> set[str]:
     return {tok for tok in _TOKEN_RE.findall(text.lower()) if len(tok) >= 2}
 
 
-def _score(query_tokens: set[str], page: Page) -> float:
-    """Token-overlap score. title 3.0, tags 2.0, description 1.5, body 1.0, plus a
-    0.5 substring bonus if the raw lowercased query appears in title/body. 0.0 == no
-    match. (Note: the raw-query substring bonus is applied in search(), which knows
-    the original query string; this helper handles the token-overlap weights.)"""
+def _idf_weights(pages: list[Page]) -> dict[str, float]:
+    """Smoothed inverse document frequency per token across `pages`. A token appearing in
+    every page weighs 1.0; a token in just one weighs more, so a rare, discriminating term
+    (e.g. an acronym or a proper noun) outranks one common to the whole corpus (e.g. the
+    corpus's own topic word). idf = log((N+1)/(1+df)) + 1 — smoothed so the weight never
+    drops below 1.0 (a match is never penalized) while rare tokens are amplified. Recomputed
+    per search over the candidate set, holding to 'the wiki IS the database' (no persisted
+    index)."""
+    n = len(pages)
+    if n == 0:
+        return {}
+    df: dict[str, int] = {}
+    for page in pages:
+        tokens = (
+            _tokenize(page.title) | _tokenize(" ".join(page.tags)) | _tokenize(page.description) | _tokenize(page.body)
+        )
+        for tok in tokens:
+            df[tok] = df.get(tok, 0) + 1
+    return {tok: math.log((n + 1) / (1 + d)) + 1.0 for tok, d in df.items()}
+
+
+def _score(query_tokens: set[str], page: Page, idf: dict[str, float] | None = None) -> float:
+    """Token-overlap score. Each matching query token contributes its field weight —
+    title 3.0, tags 2.0, description 1.5, body 1.0 — scaled by the token's IDF weight
+    (from :func:`_idf_weights`) so a rare, discriminating token outweighs one common to
+    many pages. With ``idf=None`` every token weighs 1.0, i.e. plain overlap counting.
+    0.0 == no match. (The 0.5 raw-substring bonus is applied in search(), which knows the
+    original query string; this helper handles the token-overlap weights.)"""
     if not query_tokens:
         return 0.0
+
+    def w(tok: str) -> float:
+        return idf.get(tok, 1.0) if idf else 1.0
+
     score = 0.0
     title_tokens = _tokenize(page.title)
     tag_tokens = _tokenize(" ".join(page.tags))
     desc_tokens = _tokenize(page.description)
     body_tokens = _tokenize(page.body)
-    score += 3.0 * len(query_tokens & title_tokens)
-    score += 2.0 * len(query_tokens & tag_tokens)
-    score += 1.5 * len(query_tokens & desc_tokens)
-    score += 1.0 * len(query_tokens & body_tokens)
+    score += 3.0 * sum(w(t) for t in query_tokens & title_tokens)
+    score += 2.0 * sum(w(t) for t in query_tokens & tag_tokens)
+    score += 1.5 * sum(w(t) for t in query_tokens & desc_tokens)
+    score += 1.0 * sum(w(t) for t in query_tokens & body_tokens)
     return score
 
 
 def search(query: str, pages: list[Page] | None = None, limit: int = 8) -> list[tuple[Page, float]]:
-    """THE single swappable search seam. If pages is None, call load(). Score every
-    page (token overlap with title*3/tags*2/description*1.5/body*1.0 plus a 0.5
-    substring bonus when the lowercased query appears in the title or body), drop
-    zeros, sort desc by score then rel_path, return the top `limit` as (page, score).
-    (Future: replace this body with SQLite FTS5 bm25 — signature + MCP surface
-    stay identical.)"""
+    """THE single swappable search seam. If pages is None, call load(). Score every page
+    (IDF-weighted token overlap with title*3/tags*2/description*1.5/body*1.0 — a rare,
+    discriminating query token outweighs one common to the whole corpus — plus a 0.5
+    substring bonus when the lowercased query appears in the title or body), drop zeros,
+    sort desc by score then rel_path, return the top `limit` as (page, score). IDF is
+    computed over the candidate `pages` each call, so a tag-pre-filtered search weighs
+    rarity within that subset. (Future: replace this body with SQLite FTS5 bm25 —
+    signature + MCP surface stay identical.)"""
+    if limit <= 0:
+        return []
     if pages is None:
         pages = load()
     query_tokens = _tokenize(query)
     raw_query = query.strip().lower()
+    # Weight by rarity only when there are tokens to weight: an empty or one-char query still
+    # surfaces pages via the substring bonus below, and skips the full-corpus IDF pass.
+    idf = _idf_weights(pages) if query_tokens else None
     scored: list[tuple[Page, float]] = []
     for page in pages:
-        score = _score(query_tokens, page)
+        score = _score(query_tokens, page, idf)
         if raw_query and (raw_query in page.title.lower() or raw_query in page.body.lower()):
             score += 0.5
         if score > 0.0:

@@ -26,6 +26,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Search now weights rare terms (IDF).** `store_core.search` scales each token's field weight by its
+  inverse document frequency, so a rare, discriminating query term (an acronym, a proper noun)
+  outranks one common to the whole wiki — a "TDS" or "espresso" lookup surfaces its own page instead
+  of being buried under generic topic pages (measured on the showcase corpora: rank 4→2 and 3→1, no
+  regressions). Pure-Python, no new dependency, recomputed per search; the `search()` seam signature
+  and MCP surface are unchanged. A golden-rank test locks the behavior against a regression to plain
+  overlap.
 - **`verify-corpus` now grades retrieval-first.** Phase 2 checks each corpus guarantee the way a user
   consumes the wiki — driving `citadel search`/`read`/`index`/`tags` to prove the answer is both
   correct+cited and *findable* (not merely present on disk), and drops to a file-level grep only to
