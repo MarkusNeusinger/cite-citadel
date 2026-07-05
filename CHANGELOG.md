@@ -50,6 +50,16 @@ All notable changes to this project are documented here. The format is based on
   existing `stages/wave2/`/`stages/wave3/` overlays. The sandbox wave protocol now seeds the raw
   from `stages/initial/`.
 
+### Fixed
+
+- **Locator lint no longer false-flags the combined `§ Heading, line N` citation form.** The Z6
+  locator check treated the whole `Heading, line N` as a heading name and failed to find it —
+  producing false-positive advisories (13 on the beverages showcase alone) and phantom `locator`
+  findings in `citadel curate` (the check is shared). The locator parser is now a single
+  `grammar.parse_locator` (moved to the citation-grammar home, next to `source_definitions`), which
+  splits the combined form and verifies **both** the heading and the line range; `lint._locator_problem`
+  is a thin consumer. All five showcase corpora now lint with zero locator advisories.
+
 ## [0.2.0] - 2026-07-03
 
 ### Added

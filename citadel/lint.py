@@ -60,20 +60,10 @@ _OP_DUP_RATIO = 0.85
 _OP_DUP_CAP = 50
 
 # --- Z6 locator verification (deterministic, for text-bearing raw sources) ------------------
-# The link span on a footnote-definition line, up to its closing ')': `](path)` or `](<path>)`.
-# What follows it is the (optional) locator + description tail.
-_LINK_SPAN_RE = re.compile(r"\]\((?:<[^>]*>|[^)]*)\)")
-# A line locator, matched as a PREFIX of the tail (a trailing ` - description` is left in place, not
-# split off — a description separator is a spaced dash, which is indistinguishable from a dash INSIDE
-# a heading, so we never split blindly). Groups: start, optional end (`lines 40-52`, en/em dash ok).
-_LOC_LINES_RE = re.compile(r"^lines?\s+(\d+)(?:\s*[-–—]\s*(\d+))?", re.IGNORECASE)
-# The trailing `(ingested YYYY-MM-DD)` stamp the citation emitter always appends last — the one
-# suffix we can strip unambiguously before reading the locator.
-_INGESTED_SUFFIX_RE = re.compile(r"\s*\(ingested[^)]*\)\s*$", re.IGNORECASE)
-# A spaced dash (` - ` / ` – ` / ` — `): the description separator AND a legal character inside a
-# heading. Heading verification tries the full text first, then progressively drops a trailing
-# `<spaced-dash> …` segment, so a heading that itself contains a spaced dash still matches.
-_SPACED_DASH_RE = re.compile(r"\s[-–—]\s")
+# The locator grammar — the link span, `lines A-B` / `§ Heading` / combined `§ Heading, line N`
+# parsing, and the source-heading set — lives in grammar.py (the single home of the citation
+# grammar) as grammar.locator_tail / parse_locator / heading_candidates / source_headings. What
+# stays here is the IO + policy: which source extensions are non-text, and the advisory framing.
 # Paginated / binary source extensions whose locators (`p. 12`) are agent-verified, not read here.
 _NON_TEXT_EXTS = {
     ".pdf",
@@ -461,69 +451,28 @@ def _load_source_text(abs_path: str) -> str | None:
         return None
 
 
-def _locator_tail(rest: str) -> str | None:
-    """The locator tail on a footnote-definition line's ``rest`` (everything after the source link),
-    or None when there is none. A locator is comma-separated from the link (``…md), lines 40-52``,
-    per ``schema.md`` § Locators); only the unambiguous trailing ``(ingested …)`` stamp is stripped —
-    the ``- description`` separator is left in place because it is a spaced dash, indistinguishable
-    from a dash inside a heading (the line/heading checks handle the description themselves)."""
-    span = _LINK_SPAN_RE.search(rest)
-    if span is None:
-        return None
-    tail = rest[span.end() :].lstrip()
-    if not tail.startswith(","):
-        return None  # a bare ` - description` (no locator) or nothing
-    tail = _INGESTED_SUFFIX_RE.sub("", tail[1:].strip()).strip()
-    return tail or None
-
-
-def _heading_candidates(text: str):
-    """The heading strings to try for a ``§`` locator, most-specific first: the full text, then it
-    with a trailing ``<spaced-dash> …`` segment dropped, and so on. So a heading that legitimately
-    contains a spaced dash (``A word on the rivalry — yes, the coffee``) matches on the full text,
-    while a real trailing description (``Nonexistent Heading - x``) is trimmed away and re-tried."""
-    text = text.strip()
-    yield text
-    for match in reversed(list(_SPACED_DASH_RE.finditer(text))):
-        candidate = text[: match.start()].strip()
-        if candidate:
-            yield candidate
-
-
 def _locator_problem(page_rel: str, target: str, tail: str, cache: dict[str, str | None]) -> str | None:
     """Verify ONE locator ``tail`` against its text source, returning a human-readable problem or
-    None. A line range (matched as a prefix, so a trailing description is ignored) is checked against
-    the file's line count; ``§ Heading`` against the source's headings (a heading = a markdown
-    heading line — its left-stripped text starts with ``#``, outside code fences — with the leading
-    ``#``/space stripped, case-folded; a ``# comment`` inside a ``` fence is prose, not a heading).
-    ``p. 12`` / ``pp. 3-5`` page locators (and any unrecognized form) are agent-verified — skipped.
-    ``cache`` is the per-run source-text memo threaded through :func:`_read_source_text`."""
-    lines_m = _LOC_LINES_RE.match(tail)
-    if lines_m:
-        text = _read_source_text(page_rel, target, cache)
-        if text is None:
-            return None
-        start = int(lines_m.group(1))
-        end = int(lines_m.group(2)) if lines_m.group(2) else start
-        n = len(text.splitlines())
-        if start < 1 or start > end or end > n:
-            return f"locator '{lines_m.group(0).strip()}' out of range (source has {n} lines)"
+    None. Parsed by :func:`grammar.parse_locator`: a ``lines A-B`` range is checked against the file's
+    line count, a ``§ Heading`` against the source's headings (:func:`grammar.source_headings`), and
+    the combined ``§ Heading, line N`` form verifies BOTH halves. ``p. 12`` page locators and any
+    unrecognized form are agent-verified — skipped. ``cache`` is the per-run source-text memo threaded
+    through :func:`_read_source_text`."""
+    loc = grammar.parse_locator(tail)
+    if loc.kind == "other":
         return None
-    if tail.startswith("§"):
-        text = _read_source_text(page_rel, target, cache)
-        if text is None:
-            return None
-        headings = {
-            line.lstrip().lstrip("#").strip().lower()
-            for line, in_code in grammar.iter_lines(text)
-            if not in_code and line.lstrip().startswith("#")
-        }
-        wanted = tail[1:].strip()
-        if not wanted:
-            return None
-        if any(cand.lower() in headings for cand in _heading_candidates(wanted)):
-            return None
-        return f"locator '§ {wanted}' names a heading not in the source"
+    text = _read_source_text(page_rel, target, cache)
+    if text is None:
+        return None
+    if loc.start is not None:
+        n = len(text.splitlines())
+        if loc.start < 1 or loc.start > loc.end or loc.end > n:
+            span = f"line {loc.start}" if loc.start == loc.end else f"lines {loc.start}-{loc.end}"
+            return f"locator '{span}' out of range (source has {n} lines)"
+    if loc.heading is not None:
+        headings = grammar.source_headings(text)
+        if not any(cand.lower() in headings for cand in grammar.heading_candidates(loc.heading)):
+            return f"locator '§ {loc.heading}' names a heading not in the source"
     return None
 
 
@@ -542,7 +491,7 @@ def check_locators(pages: list[Page]) -> list[tuple[str, str]]:
             target = grammar.def_link_target(rest)
             if target is None or grammar.is_external(target):
                 continue
-            tail = _locator_tail(rest)
+            tail = grammar.locator_tail(rest)
             if tail is None:
                 continue
             problem = _locator_problem(page.rel_path, target, tail, cache)

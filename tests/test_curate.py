@@ -534,6 +534,37 @@ def test_lint_flags_prose_text_locator_that_is_not_a_heading(tmp_citadel, seed_p
     assert any("concepts/topic.md" == rel for rel, _detail in report.locator_issues)
 
 
+def test_lint_passes_combined_heading_and_line_locator(tmp_citadel, seed_page):
+    """The combined `§ Heading, line N` form the ingest agent emits verifies BOTH halves: a real
+    heading plus an in-range line raises no warning. Previously the `, line N` tail was folded into
+    the heading name and defeated the match, so a valid citation produced a false positive."""
+    (tmp_citadel.raw / "spec.md").write_text(
+        "# Overview\n\n## Real Heading\n\nprose line\nmore\n", encoding="utf-8"
+    )  # 6 lines
+    seed_page(
+        "concepts/topic.md",
+        {"type": "Concept", "title": "Topic", "description": "d", "tags": ["t"], "resource": "raw/spec.md"},
+        "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/spec.md](../../raw/spec.md), § Real Heading, line 5\n",
+    )
+
+    report = lint.lint()
+    assert not any("concepts/topic.md" == rel for rel, _detail in report.locator_issues)
+
+
+def test_lint_flags_combined_locator_with_out_of_range_line(tmp_citadel, seed_page):
+    """The combined form verifies the LINE half too: a real heading but a line past the file's end is
+    still flagged (both halves are checked, not just the heading)."""
+    (tmp_citadel.raw / "spec.md").write_text("# Real Heading\n\nprose\n", encoding="utf-8")  # 3 lines
+    seed_page(
+        "concepts/topic.md",
+        {"type": "Concept", "title": "Topic", "description": "d", "tags": ["t"], "resource": "raw/spec.md"},
+        "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/spec.md](../../raw/spec.md), § Real Heading, line 40\n",
+    )
+
+    report = lint.lint()
+    assert any("concepts/topic.md" == rel for rel, _detail in report.locator_issues)
+
+
 def test_lint_passes_genuine_heading_locator(tmp_citadel, seed_page):
     """A `§ Heading` locator that names a real markdown heading in its text source raises no
     locator warning — the restricted candidate set still recognizes true headings."""

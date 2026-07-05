@@ -194,3 +194,55 @@ def test_split_link_target_forms():
     assert grammar.split_link_target('../../raw/x.md "note"') == ("../../raw/x.md", ' "note"')
     assert grammar.split_link_target("<../../raw/x.md>") == ("../../raw/x.md", "")
     assert grammar.split_link_target("plain.md") == ("plain.md", "")
+
+
+# --- source-citation locators (parse_locator and friends) ----------------------------------
+
+
+def test_locator_tail_strips_link_and_ingested_stamp():
+    """The comma-separated tail after the source link, minus the trailing `(ingested …)` stamp; a
+    bare ` - description` with no locator, or no tail at all, yields None."""
+    assert grammar.locator_tail("[x](../../raw/x.md), lines 5-9 (ingested 2026-07-03)") == "lines 5-9"
+    assert grammar.locator_tail("[x](../../raw/x.md), § Intro") == "§ Intro"
+    assert grammar.locator_tail("[x](../../raw/x.md) - just a description") is None
+    assert grammar.locator_tail("[x](../../raw/x.md)") is None
+
+
+def test_parse_locator_line_range():
+    loc = grammar.parse_locator("lines 40-52")
+    assert (loc.kind, loc.start, loc.end, loc.heading) == ("lines", 40, 52, None)
+    single = grammar.parse_locator("line 7")
+    assert (single.kind, single.start, single.end) == ("lines", 7, 7)
+
+
+def test_parse_locator_plain_heading():
+    loc = grammar.parse_locator("§ Making a Matcha Latte")
+    assert (loc.kind, loc.heading, loc.start) == ("heading", "Making a Matcha Latte", None)
+
+
+def test_parse_locator_combined_heading_and_line_splits_both_halves():
+    """The combined `§ Heading, line N` form yields a heading AND a line range so both verify — the
+    bug fix: the `, line N` tail was previously folded into the heading name and defeated the match."""
+    loc = grammar.parse_locator("§ Step by Step: Usucha (Thin Matcha), line 33")
+    assert loc.kind == "heading"
+    assert loc.heading == "Step by Step: Usucha (Thin Matcha)"
+    assert (loc.start, loc.end) == (33, 33)
+    rng = grammar.parse_locator("§ Making a Matcha Latte, lines 55-59")
+    assert rng.heading == "Making a Matcha Latte" and (rng.start, rng.end) == (55, 59)
+
+
+def test_parse_locator_page_locator_is_other():
+    assert grammar.parse_locator("p. 12").kind == "other"
+    assert grammar.parse_locator("pp. 3-5").kind == "other"
+
+
+def test_source_headings_are_fence_aware():
+    text = "# Real Heading\n\n```\n# Fenced Pseudo\n```\n## Second\n"
+    assert grammar.source_headings(text) == {"real heading", "second"}
+
+
+def test_heading_candidates_drops_trailing_spaced_dash():
+    assert list(grammar.heading_candidates("Nonexistent Heading - x")) == [
+        "Nonexistent Heading - x",
+        "Nonexistent Heading",
+    ]

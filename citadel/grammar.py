@@ -29,6 +29,7 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Iterator
+from dataclasses import dataclass
 
 from . import config, okf
 
@@ -171,6 +172,103 @@ def source_definitions(body: str) -> Iterator[tuple[str, str]]:
         if not match or is_llm_marker(match.group(1)):
             continue
         yield match.group(1), match.group(2)
+
+
+# --- source-citation locators (the `[^sN]` tail after the source link) -----------------------
+
+# The full link span `](path)` / `](<path>)` on a definition line; what follows is the locator tail.
+_LINK_SPAN_RE = re.compile(r"\]\((?:<[^>]*>|[^)]*)\)")
+# A line-range locator matched as a PREFIX of the tail: `lines 40-52` (single or en/em-dash range).
+_LOC_LINES_RE = re.compile(r"^lines?\s+(\d+)(?:\s*[-–—]\s*(\d+))?", re.IGNORECASE)
+# The trailing `(ingested YYYY-MM-DD)` stamp the citation emitter always appends last — the one
+# suffix strippable unambiguously before reading the locator.
+_INGESTED_SUFFIX_RE = re.compile(r"\s*\(ingested[^)]*\)\s*$", re.IGNORECASE)
+# A spaced dash (` - ` / ` – ` / ` — `): the description separator, ALSO legal inside a heading, so
+# heading verification tries the full text then progressively drops a trailing `<spaced-dash> …`.
+_SPACED_DASH_RE = re.compile(r"\s[-–—]\s")
+# A `§ Heading` locator's trailing `, line N` / `, lines N-M`: the COMBINED form the ingest agent
+# emits (`§ Making a Matcha Latte, lines 55-59`). Split off so BOTH the heading and the line range
+# verify, instead of the `, line N` tail defeating the heading match.
+_HEADING_LINES_SUFFIX_RE = re.compile(r",\s*lines?\s+(\d+)(?:\s*[-–—]\s*(\d+))?\s*$", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class Locator:
+    """A parsed ``[^sN]`` citation locator tail (per ``schema.md`` § Locators). ``kind`` is
+    ``"lines"`` (a ``lines A-B`` range), ``"heading"`` (a ``§ Heading``, optionally carrying a
+    combined ``, line N`` range), or ``"other"`` (a ``p. 12`` page locator or any unrecognized form —
+    agent-verified, not checkable offline). ``start``/``end`` carry a 1-based line range when one is
+    present (on a ``"lines"`` locator or the combined ``"heading"`` form); ``heading`` carries the
+    section name for a ``"heading"`` locator. ``text`` is the raw tail, kept for messages."""
+
+    kind: str
+    text: str
+    start: int | None = None
+    end: int | None = None
+    heading: str | None = None
+
+
+def locator_tail(rest: str) -> str | None:
+    """The locator tail on a footnote-definition line's ``rest`` (everything after the source link),
+    or None when there is none. A locator is comma-separated from the link (``…md), lines 40-52``,
+    per ``schema.md`` § Locators); only the unambiguous trailing ``(ingested …)`` stamp is stripped —
+    the ``- description`` separator is left in place because it is a spaced dash, indistinguishable
+    from a dash inside a heading (:func:`parse_locator` and its consumers handle the description)."""
+    span = _LINK_SPAN_RE.search(rest)
+    if span is None:
+        return None
+    tail = rest[span.end() :].lstrip()
+    if not tail.startswith(","):
+        return None  # a bare ` - description` (no locator) or nothing
+    tail = _INGESTED_SUFFIX_RE.sub("", tail[1:].strip()).strip()
+    return tail or None
+
+
+def parse_locator(tail: str) -> Locator:
+    """Parse a locator ``tail`` (from :func:`locator_tail`) into a :class:`Locator`. A ``lines A-B``
+    prefix is a line range; a ``§ Heading`` is a section, and a trailing ``, line N`` / ``, lines
+    N-M`` on it is split off as a line range so BOTH halves can be verified — the combined form the
+    ingest agent emits, whose ``, line N`` tail otherwise defeats the heading match. Anything else
+    (``p. 12``, ``pp. 3-5``, unrecognized) is ``"other"`` — agent-verified, not offline-checkable."""
+    lines_m = _LOC_LINES_RE.match(tail)
+    if lines_m:
+        start = int(lines_m.group(1))
+        end = int(lines_m.group(2)) if lines_m.group(2) else start
+        return Locator(kind="lines", text=tail, start=start, end=end)
+    if tail.startswith("§"):
+        heading = tail[1:].strip()
+        start = end = None
+        suffix = _HEADING_LINES_SUFFIX_RE.search(heading)
+        if suffix:
+            start = int(suffix.group(1))
+            end = int(suffix.group(2)) if suffix.group(2) else start
+            heading = heading[: suffix.start()].strip()
+        return Locator(kind="heading", text=tail, start=start, end=end, heading=heading or None)
+    return Locator(kind="other", text=tail)
+
+
+def heading_candidates(text: str) -> Iterator[str]:
+    """The heading strings to try for a ``§`` locator, most-specific first: the full text, then it
+    with a trailing ``<spaced-dash> …`` segment dropped, and so on. So a heading that legitimately
+    contains a spaced dash (``A word on the rivalry — yes, the coffee``) matches on the full text,
+    while a real trailing description (``Nonexistent Heading - x``) is trimmed away and re-tried."""
+    text = text.strip()
+    yield text
+    for match in reversed(list(_SPACED_DASH_RE.finditer(text))):
+        candidate = text[: match.start()].strip()
+        if candidate:
+            yield candidate
+
+
+def source_headings(text: str) -> set[str]:
+    """The set of markdown headings in a raw source ``text`` — each heading line's text with the
+    leading ``#``/space stripped and case-folded — that a ``§ Heading`` locator may name. Fence-aware
+    via :func:`iter_lines`: a ``# comment`` inside a ``` code fence is prose, not a heading."""
+    return {
+        line.lstrip().lstrip("#").strip().lower()
+        for line, in_code in iter_lines(text)
+        if not in_code and line.lstrip().startswith("#")
+    }
 
 
 def prose_lines(body: str, *, skip_sources: bool = False) -> Iterator[str]:
