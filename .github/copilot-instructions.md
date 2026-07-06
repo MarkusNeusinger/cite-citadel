@@ -37,7 +37,8 @@ per-source state table: ingested / failed / skipped-duplicate / ignored / pendin
 (read-only setup health check — OK/WARN/FAIL lines for workspace / rules / agent CLI / raw roots /
 manifest / billing; needs no workspace, exits 1 only on a FAIL), `serve` (MCP
 stdio server), `search <query> [--tag T] [--limit N]`, `read <rel_path>` / `raw <key> [--locator L]`
-/ `index` / `sources` (CLI twins of the `wiki_read`/`wiki_raw`/`wiki_index`/`wiki_sources` MCP tools
+/ `neighbors <rel_path>` / `index` / `sources` (CLI twins of the
+`wiki_read`/`wiki_raw`/`wiki_neighbors`/`wiki_index`/`wiki_sources` MCP tools
 — full CLI↔MCP parity),
 `tags [tag]`, `lint [--stale-days N]`, `check [paths…]`, `view [--out PATH] [--no-open]
 [--obsidian]`, `rules list|show|eject`. `citadel --version` prints the version and (like `--help`)
@@ -246,12 +247,13 @@ is dispatched. `curate.py` is the second lifecycle and `status.py` the read-only
 view (both above); `doctor.py` (`citadel doctor`) is the read-only setup health check (OK/WARN/FAIL
 lines over workspace resolution, the rules tree, the agent CLI on PATH, raw-root reachability,
 manifest parse + stamp, failures summary, and the API-key/PDF advisories). `server.py` is the
-FastMCP stdio server (9 tools — 8 read-only incl. `wiki_raw` (the cited-source reader, backed by
-`rawsource.py`) and `wiki_lint`, only `wiki_ingest` mutates; every tool carries MCP behavior
+FastMCP stdio server (10 tools — 9 read-only incl. `wiki_raw` (the cited-source reader, backed by
+`rawsource.py`), `wiki_neighbors` (a page's links-out/backlinks/cited-sources graph) and `wiki_lint`,
+only `wiki_ingest` mutates; every tool carries MCP behavior
 annotations and never raises, returning error strings). The `viewer/` subpackage builds the
 self-contained offline HTML viewer (`template.html`/`app.css`/`app.js` are package-data assets loaded
 via `importlib.resources`). `config.py` resolves all paths/settings. `cli.py` mirrors the MCP tools as
-subcommands with full parity (`read`/`raw`/`index`/`sources` twin the readers; `lint`/`view` stay
+subcommands with full parity (`read`/`raw`/`neighbors`/`index`/`sources` twin the readers; `lint`/`view` stay
 CLI-only, `wiki_lint` closes the gap from the MCP side). `rawsource.py` backs `wiki_raw`/`citadel raw`
 — the provenance-gated, locator-aware reader for the raw source behind a `[^sN]` citation (verify-only).
 

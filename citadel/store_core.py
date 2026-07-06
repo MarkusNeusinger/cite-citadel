@@ -171,6 +171,61 @@ def read_page_text(rel_path: str) -> str:
     return okf.dump(page.frontmatter, page.body)
 
 
+def neighbors_text(rel_path: str) -> str:
+    """The link neighborhood of one wiki page — the text behind ``wiki_neighbors`` / ``citadel
+    neighbors``, so an AI can walk the graph without doing relative-path math itself. Three sections:
+    **Links out** (this page's resolved wiki cross-links, each flagged ``(missing)`` when it names no
+    existing page), **Linked from** (the pages that link to this one — the backlink graph), and
+    **Cites sources** (the distinct raw/docs source keys in its ``## Sources``, with how many
+    footnotes cite each — the handoff key for ``wiki_raw``). Raises FileNotFoundError (no such page) /
+    okf.OKFError (unsafe path), which the CLI/MCP surfaces map to an exit code / error string. ONE
+    ``load()`` powers the target page, the backlink graph, and the link titles — the file is parsed
+    once, not re-read on top of the corpus scan."""
+    from . import grammar, linkgraph
+
+    okf.safe_join(config.WIKI_DIR, rel_path)  # validate the path (raises okf.OKFError on traversal/escape)
+    pages = load()
+    by_path = {p.rel_path: p for p in pages}
+    page = by_path.get(rel_path)
+    if page is None:  # safe but absent (or a skipped index.md/log.md) — same not-found contract as read_page
+        raise FileNotFoundError(rel_path)
+    titles = {rp: p.title for rp, p in by_path.items()}
+
+    seen: set[str] = set()
+    out_links: list[tuple[str, str | None]] = []
+    for _raw, resolved in grammar.resolved_md_links(rel_path, page.body):
+        if resolved == rel_path or resolved in seen:
+            continue
+        seen.add(resolved)
+        out_links.append((resolved, titles.get(resolved)))
+
+    inbound = linkgraph.inbound_map(pages).get(rel_path, [])
+
+    cites: dict[str, int] = {}
+    for _marker, rest in grammar.source_definitions(page.body):
+        target = grammar.def_link_target(rest)
+        if target is None or grammar.is_external(target):
+            continue
+        abs_path = grammar.link_abs(rel_path, target)
+        key = config.rel_or_abs_posix(abs_path) if abs_path else target
+        cites[key] = cites.get(key, 0) + 1
+
+    lines = [f"# Neighbors of {rel_path} — {page.title}", ""]
+    lines.append(f"## Links out ({len(out_links)})")
+    lines += [f"- {resolved} — {title if title is not None else '(missing)'}" for resolved, title in out_links] or [
+        "- (none)"
+    ]
+    lines.append("")
+    lines.append(f"## Linked from ({len(inbound)})")
+    lines += [f"- {src} — {titles.get(src, '')}" for src in inbound] or ["- (none)"]
+    lines.append("")
+    lines.append(f"## Cites sources ({len(cites)})")
+    lines += [f"- {key} — {cites[key]} citation{'s' if cites[key] != 1 else ''}" for key in sorted(cites)] or [
+        "- (none)"
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def index_text() -> str:
     """The generated ``wiki/index.md`` catalog text. Raises FileNotFoundError when no index exists
     yet (nothing ingested), or an OS error when the path is unreadable."""

@@ -2,7 +2,7 @@
 
 FastMCP's ``@mcp.tool()`` decorator registers each function on the server but returns the
 ORIGINAL plain function, so the tools are called directly as ``server.wiki_search(...)`` etc. —
-no ``.fn`` unwrapping is needed. Each of the nine tools is exercised for its happy path against
+no ``.fn`` unwrapping is needed. Each of the ten tools is exercised for its happy path against
 a small seeded wiki (``tmp_citadel`` + ``seed_page``) AND for its NEVER-RAISES contract: broken
 inputs (missing page, path traversal, empty wiki, undecodable file, a crashing store) must come
 back as clear error STRINGS, never as exceptions, so the MCP server stays up. ``wiki_ingest``
@@ -55,8 +55,8 @@ def seeded_wiki(tmp_citadel, seed_page):
 # --- registration ------------------------------------------------------------------------
 
 
-def test_all_nine_tools_registered():
-    """The FastMCP instance exposes exactly the nine documented tools (eight read-only + the
+def test_all_ten_tools_registered():
+    """The FastMCP instance exposes exactly the ten documented tools (nine read-only + the
     one mutating wiki_ingest) — a rename or a lost decorator would silently drop a tool from
     every MCP client."""
     tools = asyncio.run(server.mcp.list_tools())
@@ -64,6 +64,7 @@ def test_all_nine_tools_registered():
         "wiki_index",
         "wiki_ingest",
         "wiki_lint",
+        "wiki_neighbors",
         "wiki_raw",
         "wiki_read",
         "wiki_search",
@@ -84,6 +85,7 @@ def test_read_only_tools_are_annotated_read_only():
         "wiki_search",
         "wiki_read",
         "wiki_raw",
+        "wiki_neighbors",
         "wiki_index",
         "wiki_sources",
         "wiki_tags",
@@ -272,6 +274,21 @@ def test_raw_uncited_key_returns_error_string(tmp_citadel):
     provenance gate holds), not a SourceError out of the tool."""
     out = server.wiki_raw("raw/nope.md")
     assert out.startswith("error:") and "not a source the wiki cites" in out
+
+
+# --- wiki_neighbors ----------------------------------------------------------------------
+
+
+def test_neighbors_lists_the_three_sections(seeded_wiki):
+    out = server.wiki_neighbors("concepts/transformer.md")
+    assert out.startswith("# Neighbors of concepts/transformer.md")
+    assert "## Links out" in out and "## Linked from" in out and "## Cites sources" in out
+    assert "- raw/notes.md — 1 citation" in out  # the source the page cites, keyed for wiki_raw
+
+
+def test_neighbors_not_found_returns_error_string(seeded_wiki):
+    """NEVER-RAISES contract: a missing page comes back as an error string."""
+    assert server.wiki_neighbors("concepts/nope.md").startswith("error: page not found:")
 
 
 # --- wiki_index --------------------------------------------------------------------------
