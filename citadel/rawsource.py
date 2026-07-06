@@ -155,10 +155,13 @@ def _render(source_key: str, lines: list[str], start: int, end: int, note: str =
     number, under a header naming the source and range; capped at :data:`MAX_CHARS` with a
     narrow-with-a-locator hint when the slice is too large."""
     picked = lines[start - 1 : end]
-    width = len(str(end)) if picked else 1
-    header = f"{source_key} — lines {start}-{end} of {len(lines)}" + (f" ({note})" if note else "")
+    suffix = f" ({note})" if note else ""
+    if not picked:  # an empty source (0 lines) — a valid header, never a `lines 1-0 of 0` range
+        return f"{source_key} — empty source (0 lines){suffix}"
+    width = len(str(end))
+    header = f"{source_key} — lines {start}-{end} of {len(lines)}{suffix}"
     body = "\n".join(f"{start + i:>{width}} | {line}" for i, line in enumerate(picked))
-    out = f"{header}\n\n{body}" if body else header
+    out = f"{header}\n\n{body}"
     if len(out) > MAX_CHARS:
         clipped = out[:MAX_CHARS].rsplit("\n", 1)[0]
         return f"{clipped}\n… [truncated at {MAX_CHARS} chars — narrow with a `lines A-B` or `§ Heading` locator]"

@@ -138,6 +138,16 @@ def test_binary_source_is_reported_not_dumped(tmp_citadel):
         rawsource.raw_text(key)
 
 
+def test_empty_source_renders_a_valid_header(tmp_citadel):
+    """An empty cited source renders a clean 'empty source' header, never a `lines 1-0 of 0` range."""
+    key = _cite(tmp_citadel, "empty.md", "")
+
+    out = rawsource.raw_text(key)
+
+    assert "empty source (0 lines)" in out
+    assert "1-0" not in out
+
+
 def test_page_locator_shows_whole_source_with_a_note(tmp_citadel):
     key = _cite(tmp_citadel, "notes.md", "a\nb\nc\n")
 
