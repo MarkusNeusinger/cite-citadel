@@ -115,6 +115,7 @@ def test_every_documented_subcommand_is_registered():
     for command, func in funcs.items():
         assert parser.parse_args([command]).func is func
     assert parser.parse_args(["search", "q"]).func is cli.cmd_search
+    assert parser.parse_args(["raw", "raw/notes.md"]).func is cli.cmd_raw
 
 
 def test_unknown_subcommand_exits_2(capsys):

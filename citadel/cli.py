@@ -10,6 +10,7 @@
     citadel serve                # run the MCP stdio server
     citadel search <query> [--limit N] [--tag T]
     citadel read <rel_path>      # print one page's full OKF text (mirrors wiki_read)
+    citadel raw <key> [--locator L]  # print the raw source behind a citation (mirrors wiki_raw)
     citadel index                # print the generated wiki/index.md (mirrors wiki_index)
     citadel sources              # print the generated wiki/sources/index.md (mirrors wiki_sources)
     citadel tags [tag]           # browse pages by tag
@@ -18,7 +19,7 @@
     citadel view [--out PATH] [--no-open] [--obsidian]   # offline single-file HTML viewer
     citadel rules list|show|eject   # inspect / fork the rules files the ingest agent reads
 
-The read/index/sources/lint subcommands give an AI without MCP access full parity with the
+The read/raw/index/sources/lint subcommands give an AI without MCP access full parity with the
 server's tools (`lint`/`view` stay CLI-only; `wiki_lint` closes the gap from the MCP side).
 
 Every subcommand except ``init`` and ``rules`` needs a resolved WORKSPACE (see config's discovery
@@ -157,6 +158,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_read = sub.add_parser("read", help="Print the full OKF text of one wiki page (mirrors the wiki_read MCP tool).")
     p_read.add_argument("rel_path", help="Page to print, e.g. concepts/transformer.md.")
     p_read.set_defaults(func=cmd_read)
+
+    p_raw = sub.add_parser(
+        "raw", help="Print the raw source behind a citation, optionally a locator slice (mirrors wiki_raw)."
+    )
+    p_raw.add_argument("source_key", help="Cited source key, e.g. raw/notes.md (as shown in a page's ## Sources).")
+    p_raw.add_argument("--locator", default="", help="Citation locator tail, e.g. 'lines 76-83' or '§ Method'.")
+    p_raw.set_defaults(func=cmd_raw)
 
     p_index = sub.add_parser(
         "index", help="Print wiki/index.md — the generated catalog of every page (mirrors wiki_index)."
@@ -335,6 +343,21 @@ def cmd_read(args: argparse.Namespace) -> int:
         return 1
     except okf.OKFError as e:
         print(f"error: unsafe path: {e}", file=sys.stderr)
+        return 1
+    print(text, end="" if text.endswith("\n") else "\n")
+    return 0
+
+
+def cmd_raw(args: argparse.Namespace) -> int:
+    """Print the raw SOURCE behind a citation (the CLI twin of the wiki_raw MCP tool). Returns 1 when
+    the key is not a cited source, missing on disk, or its locator does not resolve — mirroring the
+    tool's error contract as a CLI exit code."""
+    from . import rawsource
+
+    try:
+        text = rawsource.raw_text(args.source_key, args.locator or "")
+    except rawsource.SourceError as e:
+        print(f"error: {e}", file=sys.stderr)
         return 1
     print(text, end="" if text.endswith("\n") else "\n")
     return 0

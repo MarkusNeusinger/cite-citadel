@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`wiki_raw` / `citadel raw` — read the raw source behind a citation.** A new read-only MCP tool
+  (the ninth) and its CLI twin resolve a `[^sN]` citation's provenance for spot-checking: given the
+  cited source key (e.g. `raw/notes.md`) and, optionally, the citation's locator tail (`lines 76-83`,
+  `§ Method`, or a combined `§ Method, lines 5-9`), it returns the cited source's text — or exactly
+  the slice the locator names — line-numbered and size-capped. A provenance gate makes only sources
+  the wiki actually cites (the ingest manifest, or a `docs/` file) readable, so it verifies the
+  synthesized wiki without becoming a bulk re-retrieval path; PDFs/images/undecodable files return an
+  honest "read it directly" message. Backed by the new `citadel/rawsource.py`.
 - **Two more graded test corpora** under `corpora/`, bringing the total to five: **pemberley** (the
   whole of *Pride and Prejudice* as one ~730k-char source — large-source multi-segment chunking,
   relationship extraction, in-novel misinformation, narrative supersession) and

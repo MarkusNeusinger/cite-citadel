@@ -2,7 +2,7 @@
 
 FastMCP's ``@mcp.tool()`` decorator registers each function on the server but returns the
 ORIGINAL plain function, so the tools are called directly as ``server.wiki_search(...)`` etc. —
-no ``.fn`` unwrapping is needed. Each of the eight tools is exercised for its happy path against
+no ``.fn`` unwrapping is needed. Each of the nine tools is exercised for its happy path against
 a small seeded wiki (``tmp_citadel`` + ``seed_page``) AND for its NEVER-RAISES contract: broken
 inputs (missing page, path traversal, empty wiki, undecodable file, a crashing store) must come
 back as clear error STRINGS, never as exceptions, so the MCP server stays up. ``wiki_ingest``
@@ -55,8 +55,8 @@ def seeded_wiki(tmp_citadel, seed_page):
 # --- registration ------------------------------------------------------------------------
 
 
-def test_all_eight_tools_registered():
-    """The FastMCP instance exposes exactly the eight documented tools (seven read-only + the
+def test_all_nine_tools_registered():
+    """The FastMCP instance exposes exactly the nine documented tools (eight read-only + the
     one mutating wiki_ingest) — a rename or a lost decorator would silently drop a tool from
     every MCP client."""
     tools = asyncio.run(server.mcp.list_tools())
@@ -64,6 +64,7 @@ def test_all_eight_tools_registered():
         "wiki_index",
         "wiki_ingest",
         "wiki_lint",
+        "wiki_raw",
         "wiki_read",
         "wiki_search",
         "wiki_sources",
@@ -79,7 +80,17 @@ def test_read_only_tools_are_annotated_read_only():
     if server.ToolAnnotations is None:  # older mcp without annotations -> nothing to assert
         return
     tools = {t.name: t for t in asyncio.run(server.mcp.list_tools())}
-    for name in ("wiki_search", "wiki_read", "wiki_index", "wiki_sources", "wiki_tags", "wiki_validate", "wiki_lint"):
+    readers = (
+        "wiki_search",
+        "wiki_read",
+        "wiki_raw",
+        "wiki_index",
+        "wiki_sources",
+        "wiki_tags",
+        "wiki_validate",
+        "wiki_lint",
+    )
+    for name in readers:
         assert tools[name].annotations is not None and tools[name].annotations.readOnlyHint is True
     assert tools["wiki_ingest"].annotations.readOnlyHint is False
 
@@ -238,6 +249,29 @@ def test_read_undecodable_file_returns_error_string(seeded_wiki):
     target.write_bytes(b"\xff\xfe\x00 not utf-8")
     out = server.wiki_read("concepts/binary.md")
     assert out.startswith("error: could not read 'concepts/binary.md':")
+
+
+# --- wiki_raw ----------------------------------------------------------------------------
+
+
+def test_raw_reads_a_cited_source_slice(tmp_citadel):
+    """wiki_raw resolves a cited source and its locator: a line slice comes back line-numbered."""
+    from citadel import config, manifest
+
+    (tmp_citadel.raw / "notes.md").write_text("hello\nworld\n", encoding="utf-8")
+    key = config.rel_or_abs_posix(tmp_citadel.raw / "notes.md")
+    manifest.save({key: manifest.make_entry("aa" * 32)})
+
+    out = server.wiki_raw(key, "lines 1-1")
+    assert "1 | hello" in out
+    assert "world" not in out
+
+
+def test_raw_uncited_key_returns_error_string(tmp_citadel):
+    """NEVER-RAISES contract: a key the wiki does not cite comes back as an error string (the
+    provenance gate holds), not a SourceError out of the tool."""
+    out = server.wiki_raw("raw/nope.md")
+    assert out.startswith("error:") and "not a source the wiki cites" in out
 
 
 # --- wiki_index --------------------------------------------------------------------------
