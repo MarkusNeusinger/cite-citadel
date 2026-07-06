@@ -11,6 +11,7 @@
     citadel search <query> [--limit N] [--tag T]
     citadel read <rel_path>      # print one page's full OKF text (mirrors wiki_read)
     citadel raw <key> [--locator L]  # print the raw source behind a citation (mirrors wiki_raw)
+    citadel neighbors <rel_path> # a page's links out / backlinks / cited sources (mirrors wiki_neighbors)
     citadel index                # print the generated wiki/index.md (mirrors wiki_index)
     citadel sources              # print the generated wiki/sources/index.md (mirrors wiki_sources)
     citadel tags [tag]           # browse pages by tag
@@ -19,8 +20,8 @@
     citadel view [--out PATH] [--no-open] [--obsidian]   # offline single-file HTML viewer
     citadel rules list|show|eject   # inspect / fork the rules files the ingest agent reads
 
-The read/raw/index/sources/lint subcommands give an AI without MCP access full parity with the
-server's tools (`lint`/`view` stay CLI-only; `wiki_lint` closes the gap from the MCP side).
+The read/raw/neighbors/index/sources/lint subcommands give an AI without MCP access full parity with
+the server's tools (`lint`/`view` stay CLI-only; `wiki_lint` closes the gap from the MCP side).
 
 Every subcommand except ``init`` and ``rules`` needs a resolved WORKSPACE (see config's discovery
 order); ``main`` fails loud with exit 2 — pointing at ``citadel init`` and ``CITADEL_WORKSPACE``
@@ -165,6 +166,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_raw.add_argument("source_key", help="Cited source key, e.g. raw/notes.md (as shown in a page's ## Sources).")
     p_raw.add_argument("--locator", default="", help="Citation locator tail, e.g. 'lines 76-83' or '§ Method'.")
     p_raw.set_defaults(func=cmd_raw)
+
+    p_neighbors = sub.add_parser(
+        "neighbors", help="Print a page's links out, backlinks, and cited sources (mirrors wiki_neighbors)."
+    )
+    p_neighbors.add_argument("rel_path", help="Page whose neighborhood to print, e.g. concepts/transformer.md.")
+    p_neighbors.set_defaults(func=cmd_neighbors)
 
     p_index = sub.add_parser(
         "index", help="Print wiki/index.md — the generated catalog of every page (mirrors wiki_index)."
@@ -358,6 +365,23 @@ def cmd_raw(args: argparse.Namespace) -> int:
         text = rawsource.raw_text(args.source_key, args.locator or "")
     except rawsource.SourceError as e:
         print(f"error: {e}", file=sys.stderr)
+        return 1
+    print(text, end="" if text.endswith("\n") else "\n")
+    return 0
+
+
+def cmd_neighbors(args: argparse.Namespace) -> int:
+    """Print a page's link neighborhood — links out, backlinks, cited sources (the CLI twin of
+    wiki_neighbors). Returns 1 on a missing page or unsafe path, mirroring the tool's error contract."""
+    from . import okf, store
+
+    try:
+        text = store.neighbors_text(args.rel_path)
+    except FileNotFoundError:
+        print(f"error: page not found: {args.rel_path}", file=sys.stderr)
+        return 1
+    except okf.OKFError as e:
+        print(f"error: unsafe path: {e}", file=sys.stderr)
         return 1
     print(text, end="" if text.endswith("\n") else "\n")
     return 0

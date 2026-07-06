@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`wiki_neighbors` / `citadel neighbors` — walk a page's link graph.** A tenth read-only MCP tool
+  (+ its CLI twin) prints a page's **links out** (its wiki cross-links, resolved to rel_paths, each
+  flagged `(missing)` if the target page is gone), **linked from** (the backlink graph), and **cites
+  sources** (the raw/`docs/` source keys it cites, with per-source counts — the keys to hand to
+  `wiki_raw`), so an AI can traverse the graph without doing relative-path math itself. Backed by
+  `store.neighbors_text`.
 - **`wiki_raw` / `citadel raw` — read the raw source behind a citation.** A new read-only MCP tool
   (the ninth) and its CLI twin resolve a `[^sN]` citation's provenance for spot-checking: given the
   cited source key (e.g. `raw/notes.md`) and, optionally, the citation's locator tail (`lines 76-83`,

@@ -1,15 +1,15 @@
 """MCP stdio server exposing the OKF wiki to AI clients.
 
-A FastMCP instance over stdio with nine tools: eight read-only
-(wiki_search / wiki_read / wiki_raw / wiki_index / wiki_sources / wiki_tags / wiki_validate /
-wiki_lint) and one mutating (wiki_ingest). Every tool returns a plain markdown/text string, which an
-LLM consumes best, and NEVER raises out of the tool: not-found / unsafe-path /
+A FastMCP instance over stdio with ten tools: nine read-only
+(wiki_search / wiki_read / wiki_raw / wiki_neighbors / wiki_index / wiki_sources / wiki_tags /
+wiki_validate / wiki_lint) and one mutating (wiki_ingest). Every tool returns a plain markdown/text
+string, which an LLM consumes best, and NEVER raises out of the tool: not-found / unsafe-path /
 missing-or-unusable-LLM-CLI conditions are returned as clear error strings
 so the server stays up.
 
 Each tool carries MCP **behavior annotations** (``readOnlyHint`` / ``destructiveHint`` /
 ``idempotentHint`` / ``openWorldHint``) so a client can reason about a tool before calling it: the
-eight readers are read-only, and only ``wiki_ingest`` mutates (non-destructive, idempotent via the
+nine readers are read-only, and only ``wiki_ingest`` mutates (non-destructive, idempotent via the
 sha manifest, and open-world because it spawns your external coding-agent CLI). If the installed
 ``mcp`` predates tool annotations, they are silently omitted — a client that ignores hints is
 unaffected.
@@ -34,7 +34,7 @@ def _annotations(**hints):
     return ToolAnnotations(**hints) if ToolAnnotations is not None else None
 
 
-# The eight readers share this profile; wiki_ingest overrides it at its decorator.
+# The nine readers share this profile; wiki_ingest overrides it at its decorator.
 _READ_ONLY = {"readOnlyHint": True, "openWorldHint": False}
 
 
@@ -186,6 +186,29 @@ def wiki_raw(source_key: str, locator: str = "") -> str:
         return f"error: {e}"
     except Exception as e:  # never raise out of the tool
         return f"error: could not read source {source_key!r}: {e}"
+
+
+@mcp.tool(annotations=_annotations(**_READ_ONLY))
+def wiki_neighbors(rel_path: str) -> str:
+    """The link neighborhood of a page — walk the graph without doing relative-path math yourself.
+
+    For a rel_path like 'concepts/transformer.md', returns three sections: **Links out** (its wiki
+    cross-links, resolved to rel_paths, each flagged '(missing)' if the target page does not exist),
+    **Linked from** (the pages that link to it — the backlink graph), and **Cites sources** (the raw/
+    docs source keys it cites, with a per-source count — the keys to hand to wiki_raw).
+
+    Returns a clear error string on not-found / unsafe path rather than raising.
+    """
+    from . import okf, store
+
+    try:
+        return store.neighbors_text(rel_path)
+    except FileNotFoundError:
+        return f"error: page not found: {rel_path!r}"
+    except okf.OKFError as e:
+        return f"error: unsafe path: {e}"
+    except Exception as e:  # never raise out of the tool
+        return f"error: could not read {rel_path!r}: {e}"
 
 
 @mcp.tool(annotations=_annotations(**_READ_ONLY))
