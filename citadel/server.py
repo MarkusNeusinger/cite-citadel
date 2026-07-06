@@ -1,15 +1,15 @@
 """MCP stdio server exposing the OKF wiki to AI clients.
 
-A FastMCP instance over stdio with eight tools: seven read-only
-(wiki_search / wiki_read / wiki_index / wiki_sources / wiki_tags / wiki_validate / wiki_lint) and
-one mutating (wiki_ingest). Every tool returns a plain markdown/text string, which an LLM consumes
-best, and NEVER raises out of the tool: not-found / unsafe-path /
+A FastMCP instance over stdio with nine tools: eight read-only
+(wiki_search / wiki_read / wiki_raw / wiki_index / wiki_sources / wiki_tags / wiki_validate /
+wiki_lint) and one mutating (wiki_ingest). Every tool returns a plain markdown/text string, which an
+LLM consumes best, and NEVER raises out of the tool: not-found / unsafe-path /
 missing-or-unusable-LLM-CLI conditions are returned as clear error strings
 so the server stays up.
 
 Each tool carries MCP **behavior annotations** (``readOnlyHint`` / ``destructiveHint`` /
 ``idempotentHint`` / ``openWorldHint``) so a client can reason about a tool before calling it: the
-seven readers are read-only, and only ``wiki_ingest`` mutates (non-destructive, idempotent via the
+eight readers are read-only, and only ``wiki_ingest`` mutates (non-destructive, idempotent via the
 sha manifest, and open-world because it spawns your external coding-agent CLI). If the installed
 ``mcp`` predates tool annotations, they are silently omitted — a client that ignores hints is
 unaffected.
@@ -34,7 +34,7 @@ def _annotations(**hints):
     return ToolAnnotations(**hints) if ToolAnnotations is not None else None
 
 
-# The seven readers share this profile; wiki_ingest overrides it at its decorator.
+# The eight readers share this profile; wiki_ingest overrides it at its decorator.
 _READ_ONLY = {"readOnlyHint": True, "openWorldHint": False}
 
 
@@ -162,6 +162,30 @@ def wiki_read(rel_path: str) -> str:
         return f"error: unsafe path: {e}"
     except Exception as e:  # never raise out of the tool
         return f"error: could not read {rel_path!r}: {e}"
+
+
+@mcp.tool(annotations=_annotations(**_READ_ONLY))
+def wiki_raw(source_key: str, locator: str = "") -> str:
+    """Read the raw SOURCE behind a citation — the spot-check that closes a [^sN] provenance loop.
+
+    'source_key' is the key as it appears in a page's ## Sources citation (e.g. 'raw/notes.md');
+    'locator' is that citation's locator tail verbatim ('lines 76-83', '§ Method', or a combined
+    '§ Method, lines 5-9') — empty returns the whole source. Output is line-numbered and capped.
+
+    Only sources the wiki actually cites are readable (the ingest manifest, or a docs/ file). This
+    VERIFIES the synthesized wiki against its provenance; to ANSWER a question use wiki_search /
+    wiki_read (the wiki is the cited layer — this is the trust-but-verify spot-check, not bulk
+    re-retrieval). Returns a clear error string (not a cited source / missing on disk / no offline
+    text / locator out of range) rather than raising.
+    """
+    from . import rawsource
+
+    try:
+        return rawsource.raw_text(source_key, locator)
+    except rawsource.SourceError as e:
+        return f"error: {e}"
+    except Exception as e:  # never raise out of the tool
+        return f"error: could not read source {source_key!r}: {e}"
 
 
 @mcp.tool(annotations=_annotations(**_READ_ONLY))
