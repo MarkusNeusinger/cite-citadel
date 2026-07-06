@@ -178,13 +178,18 @@ def neighbors_text(rel_path: str) -> str:
     existing page), **Linked from** (the pages that link to this one — the backlink graph), and
     **Cites sources** (the distinct raw/docs source keys in its ``## Sources``, with how many
     footnotes cite each — the handoff key for ``wiki_raw``). Raises FileNotFoundError (no such page) /
-    okf.OKFError (unsafe path), which the CLI/MCP surfaces map to an exit code / error string. One
-    ``load()`` powers both the backlink graph and the link titles."""
+    okf.OKFError (unsafe path), which the CLI/MCP surfaces map to an exit code / error string. ONE
+    ``load()`` powers the target page, the backlink graph, and the link titles — the file is parsed
+    once, not re-read on top of the corpus scan."""
     from . import grammar, linkgraph
 
-    page = read_page(rel_path)  # FileNotFoundError / OKFError propagate to the caller
+    okf.safe_join(config.WIKI_DIR, rel_path)  # validate the path (raises okf.OKFError on traversal/escape)
     pages = load()
-    titles = {p.rel_path: p.title for p in pages}
+    by_path = {p.rel_path: p for p in pages}
+    page = by_path.get(rel_path)
+    if page is None:  # safe but absent (or a skipped index.md/log.md) — same not-found contract as read_page
+        raise FileNotFoundError(rel_path)
+    titles = {rp: p.title for rp, p in by_path.items()}
 
     seen: set[str] = set()
     out_links: list[tuple[str, str | None]] = []
