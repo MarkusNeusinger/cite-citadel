@@ -81,6 +81,22 @@ def test_empty_term_returns_an_error_string(tmp_citadel):
     assert store.define_text("   ") == "error: empty term"
 
 
+def test_non_string_frontmatter_does_not_break_the_never_raises_contract(tmp_citadel, seed_page):
+    """Frontmatter values are not type-enforced, so a hand-edited page can carry a numeric
+    ``description``/``title``. ``define_text`` must still render (not raise ``AttributeError`` on
+    ``.strip()``) — the Page accessors coerce to ``str``, honoring the "Never raises" contract."""
+    seed_page("abbreviations/num.md", {"type": "Abbreviation", "title": "NUM — Numeric Page", "description": 2023})
+    seed_page("concepts/weird.md", {"type": "Concept", "title": 12345, "description": 0.5})
+
+    abbr = store.define_text("NUM")
+    assert "## NUM — Numeric Page" in abbr
+    assert "- 2023" in abbr
+
+    exact = store.define_text("12345")
+    assert "## 12345 (Concept)" in exact
+    assert "- 0.5" in exact
+
+
 def test_multiple_abbreviation_hits_are_ordered_by_short_then_rel_path(tmp_citadel, seed_page):
     """Two Abbreviation pages sharing an alias both surface, ordered deterministically."""
     seed_page("abbreviations/b.md", {"type": "Abbreviation", "title": "BBB — Big Brown Bear", "aliases": ["shared"]})

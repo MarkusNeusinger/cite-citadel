@@ -30,17 +30,25 @@ class Page:
     frontmatter: dict
     body: str
 
+    # ``type``/``title``/``description`` are coerced to ``str``: frontmatter values are not
+    # type-enforced (``validate`` only checks truthiness), so a hand-edited page can carry a
+    # non-string (e.g. a YAML number or list) here. Coercing at the accessor keeps every
+    # ``.strip()`` / formatting call site — search, the glossary, ``define_text`` — safe from an
+    # ``AttributeError`` rather than pushing the guard into each consumer.
     @property
     def type(self) -> str:
-        return self.frontmatter.get("type", "")
+        value = self.frontmatter.get("type", "")
+        return value if isinstance(value, str) else str(value)
 
     @property
     def title(self) -> str:
-        return self.frontmatter.get("title", self.rel_path)
+        value = self.frontmatter.get("title", self.rel_path)
+        return value if isinstance(value, str) else str(value)
 
     @property
     def description(self) -> str:
-        return self.frontmatter.get("description", "")
+        value = self.frontmatter.get("description", "")
+        return value if isinstance(value, str) else str(value)
 
     @property
     def tags(self) -> list[str]:

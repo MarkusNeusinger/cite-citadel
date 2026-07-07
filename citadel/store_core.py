@@ -71,11 +71,13 @@ _VOWELS = frozenset("aeiouy")
 def _stem(token: str) -> str:
     """A light, deterministic, dependency-free suffix strip so paraphrased query words match:
     ``brewing``/``brew``, ``founded``/``founding``/``found``, ``blows``/``blow`` all collapse to a
-    common root. NOT a full Porter stemmer — one pass, longest matching suffix first, only when a
-    vowel survives in the stem (so short/odd tokens like ``ss`` are left alone) and the remaining
-    stem is long enough. ``-ies`` becomes ``-y`` (``ponies`` -> ``pony``). Applied symmetrically to
-    both the query and the page text by :func:`_tokenize`, so matching stays consistent and the
-    field-weight/IDF contract is unchanged (a token is stemmed the same way wherever it appears).
+    common root. NOT a full Porter stemmer — one pass, checking a fixed, hand-ordered suffix list
+    (``ing``, ``edly``, ``ed``, ``ly``, ``ies``, ``es``, ``s``) and taking the first that matches,
+    only when a vowel survives in the stem (so short/odd tokens like ``ss`` are left alone) and the
+    remaining stem is long enough. ``-ies`` becomes ``-y`` (``ponies`` -> ``pony``). Applied
+    symmetrically to both the query and the page text by :func:`_tokenize`, so matching stays
+    consistent and the field-weight/IDF contract is unchanged (a token is stemmed the same way
+    wherever it appears).
 
     Two targeted guards keep the strip from over-collapsing:
 
