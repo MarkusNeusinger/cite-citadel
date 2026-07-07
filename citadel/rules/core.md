@@ -26,9 +26,10 @@ given.
 2. **Read the source** the way the task/format brief says. If it holds no usable text (a stray
    binary that slipped through), make no edits and stop — the system records it as unreadable.
    (Obvious binaries are filtered out before you run, so assume yours is readable.)
-3. **Search the wiki before writing** (Grep/Glob/Read) — never assume a page does or doesn't
-   exist; look. Use the source's content **and its path/filename as context** (below), and read
-   the candidate pages in full.
+3. **Search the wiki before writing** — use your built-in read/search/edit tools (Grep/Glob/Read),
+   not shell commands, to read and search; the shell is only for the self-check and for
+   deleting/renaming page files. Never assume a page does or doesn't exist; look. Use the source's
+   content **and its path/filename as context** (below), and read the candidate pages in full.
 4. **Edit the wiki directly**: create new page files, extend or rewrite existing ones, or
    merge/split as needed (see *Restructuring*). Prefer extending or merging into an existing page
    over creating a new one; do **not** mechanically make one page per raw source.
@@ -121,11 +122,14 @@ translated).
 
 The generated navigation/provenance files are catalogued in `schema.md` § Generated layer — never
 create or edit the files it lists (nor any `*/index.md` or dotfile). No changes outside the wiki.
+The **raw sources are read-only inputs**: read them for content and citations, but never write,
+create, move, or delete anything under the raw source tree.
 
 ## Self-check — before you stop
 
-Run `citadel check` (or `uv run python -m citadel check`, or the `wiki_validate` tool on each
-page you created or changed) and **fix every reported error** before finishing — especially a
-missing `type`/`title`/`description`/`tags`/`resource`, an undefined or fabricated citation, or a
-broken or `[[wiki-style]]` link. The system re-runs the same gate after your session; an unfixed
-error fails the whole source.
+When your edits are complete, run `citadel check` **once** (or `uv run python -m citadel check`, or
+the `wiki_validate` tool on each page you created or changed) and **fix every reported error** —
+especially a missing `type`/`title`/`description`/`tags`/`resource`, an undefined or fabricated
+citation, or a broken or `[[wiki-style]]` link. Only re-run it to confirm your fixes if it reported
+errors; if it is clean, stop — don't run it repeatedly while working. The system re-runs the same
+gate after your session; an unfixed error fails the whole source.

@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **Leaner, more predictable ingest sessions.** The run instruction and `core.md` now tell the agent
+  that the raw source tree is a **read-only input** (read it for content and citations, never write,
+  create, move, or delete under it) and that reading/searching go through the agent's **built-in
+  file tools** rather than the shell, which stays reserved for the `citadel check` self-check and
+  page deletes/renames. The self-check now runs **once** and re-runs only to confirm fixes when it
+  reported errors, instead of being invoked repeatedly. Together these cut the number of shell
+  subprocesses a session spawns and keep every write inside the wiki — no functional change to the
+  wiki that gets produced. (Editing any `rules/` file bumps `rules_version`, so `citadel status`
+  shows previously ingested sources as `(stale)` — expected, cosmetic.)
+
 ## [0.3.0] - 2026-07-06
 
 ### Added

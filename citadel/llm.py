@@ -329,10 +329,13 @@ def _build_instruction(
 
     lines += [
         "",
-        f"Do what the task brief says by EDITING FILES DIRECTLY under {wiki_rel}/. "
-        f"Never create or edit {wiki_rel}/index.md, {wiki_rel}/log.md, any */index.md, or any "
-        f"dotfile, and make no changes outside {wiki_rel}/. Before finishing, run `citadel check` "
-        "(or `uv run python -m citadel check`) and fix every reported error.",
+        f"Do what the task brief says by EDITING FILES DIRECTLY under {wiki_rel}/, using your "
+        "built-in file tools (read/search/edit) — not shell commands — to read and search. "
+        f"The source and {raw_rel}/ are READ-ONLY inputs: read them, but never write, create, "
+        f"move, or delete anything there. Never create or edit {wiki_rel}/index.md, "
+        f"{wiki_rel}/log.md, any */index.md, or any dotfile, and make no changes outside "
+        f"{wiki_rel}/. When your edits are complete, run `citadel check` (or `uv run python -m "
+        "citadel check`) ONCE; only if it reports errors, fix them and run it again to confirm.",
     ]
     return "\n".join(lines)
 
@@ -347,7 +350,13 @@ def _build_invocation(
     workspace (an out-of-workspace wiki/raw on a mounted network drive, and the packaged rules dir
     for a pip install — computed by :func:`_external_dirs`) — empty for the all-under-workspace
     dev-checkout layout. For **claude** the prompt goes on STDIN (argv carries only flags); for
-    copilot/gemini it is a ``-p`` argument — now safe because the prompt is tiny."""
+    copilot/gemini it is a ``-p`` argument — now safe because the prompt is tiny.
+
+    All three CLIs run in their fully autonomous mode (each backend's headless YOLO equivalent);
+    which files the agent may touch and which tools it should use is governed by the run
+    instruction (:func:`_build_instruction`) — ``raw/`` is read-only, edits go only under the
+    wiki, and the shell is reserved for the ``citadel check`` self-check and page deletes/renames —
+    not by divergent per-CLI permission flags."""
     extra_dirs = extra_dirs or []
     if cli == "claude":
         # acceptEdits auto-applies file edits; the allowlist scopes tools (Read/Edit/Write to
