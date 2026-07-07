@@ -123,6 +123,35 @@ def test_core_rules_teach_path_and_filename_as_routing_context():
     assert "never cite" in core
 
 
+def test_core_rules_teach_raw_read_only_and_tool_discipline():
+    """core.md must keep telling the agent that raw sources are READ-ONLY (never written) and that
+    reading/searching go through the built-in file tools, with the shell reserved for the
+    self-check and page deletes/renames — the guidance that keeps a session's footprint small and
+    the raw tree untouched. Coarse keyword pins so a rewording survives but a dropped rule fails."""
+    core = (REAL_RULES_DIR / "core.md").read_text(encoding="utf-8").lower()
+    assert "read-only" in core  # raw sources are read-only inputs
+    assert "built-in" in core and "shell" in core  # prefer built-in tools over the shell
+    # The self-check runs ONCE, not repeatedly, to avoid a spawn per iteration.
+    assert "once" in core
+
+
+def test_curate_brief_runs_check_once():
+    """tasks/curate.md keeps the run-once self-check discipline (re-run only to confirm fixes)."""
+    brief = (REAL_RULES_DIR / "tasks/curate.md").read_text(encoding="utf-8").lower()
+    assert "once" in brief and "citadel check" in brief
+
+
+def test_prompt_frame_pins_raw_read_only_and_run_once_check():
+    """The code-invariant closing frame must name the raw tree as READ-ONLY, steer reading/search
+    to the built-in file tools, and run `citadel check` ONCE (re-running only on errors) — the
+    behaviors that keep the agent from writing outside the wiki and spawning a shell per step."""
+    prompt = llm._build_instruction("raw/notes.md")
+    assert "READ-ONLY" in prompt  # raw/source is read-only
+    assert "built-in file tools" in prompt
+    assert "ONCE" in prompt  # the self-check runs once
+    assert "citadel check" in prompt
+
+
 def test_reconcile_brief_says_update_remove_and_keeps_cocited_facts():
     """tasks/reconcile.md (the changed-source brief) must keep telling the agent to UPDATE/REMOVE
     stale facts rather than append — and that a co-cited fact loses only THIS source's marker

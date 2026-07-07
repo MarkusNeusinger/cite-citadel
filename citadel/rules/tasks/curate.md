@@ -40,6 +40,7 @@ where it genuinely holds against those sources:
 
 ## Before you finish
 
-Run `citadel check` (or `uv run python -m citadel check`) and fix every error on the pages you
-touched. The system re-runs the same gate and rolls the WHOLE cluster back on any error — leaving
+When your edits are complete, run `citadel check` **once** (or `uv run python -m citadel check`)
+and fix every error on the pages you touched; only re-run it to confirm your fixes if it reported
+errors. The system re-runs the same gate and rolls the WHOLE cluster back on any error — leaving
 the wiki exactly as it was — so leave it clean or leave it untouched.
