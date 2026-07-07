@@ -55,12 +55,13 @@ def seeded_wiki(tmp_citadel, seed_page):
 # --- registration ------------------------------------------------------------------------
 
 
-def test_all_ten_tools_registered():
-    """The FastMCP instance exposes exactly the ten documented tools (nine read-only + the
+def test_all_tools_registered():
+    """The FastMCP instance exposes exactly the eleven documented tools (ten read-only + the
     one mutating wiki_ingest) — a rename or a lost decorator would silently drop a tool from
     every MCP client."""
     tools = asyncio.run(server.mcp.list_tools())
     assert sorted(t.name for t in tools) == [
+        "wiki_define",
         "wiki_index",
         "wiki_ingest",
         "wiki_lint",
@@ -83,6 +84,7 @@ def test_read_only_tools_are_annotated_read_only():
     tools = {t.name: t for t in asyncio.run(server.mcp.list_tools())}
     readers = (
         "wiki_search",
+        "wiki_define",
         "wiki_read",
         "wiki_raw",
         "wiki_neighbors",
@@ -179,6 +181,63 @@ def test_search_tag_branch_never_raises(tmp_citadel, monkeypatch):
     monkeypatch.setattr(store, "load", boom)
     out = server.wiki_search("anything", tag="ml")
     assert out.startswith("error: search failed:")
+
+
+# --- wiki_define -------------------------------------------------------------------------
+
+
+def test_define_surfaces_abbreviation_glossary_entry(tmp_citadel, seed_page):
+    seed_page(
+        "abbreviations/tds.md",
+        {"type": "Abbreviation", "title": "TDS — Total Dissolved Solids", "description": "Mineral content of water."},
+        "Body.\n",
+    )
+    out = server.wiki_define("TDS")
+    assert out.startswith("# Definition: TDS")
+    assert "## TDS — Total Dissolved Solids" in out
+    assert "- Page: abbreviations/tds.md — TDS — Total Dissolved Solids" in out
+    assert "- Mineral content of water." in out
+
+
+def test_define_is_case_insensitive_and_matches_expansion(tmp_citadel, seed_page):
+    seed_page(
+        "abbreviations/tds.md",
+        {"type": "Abbreviation", "title": "TDS — Total Dissolved Solids", "description": "d"},
+        "Body.\n",
+    )
+    assert "## TDS — Total Dissolved Solids" in server.wiki_define("tds")
+    assert "## TDS — Total Dissolved Solids" in server.wiki_define("total dissolved solids")
+
+
+def test_define_falls_back_to_exact_title_page(tmp_citadel, seed_page):
+    seed_page(
+        "concepts/brewing.md",
+        {"type": "Concept", "title": "Brewing", "description": "Extracting coffee with hot water."},
+        "Body.\n",
+    )
+    out = server.wiki_define("Brewing")
+    assert "## Brewing (Concept)" in out
+    assert "- Page: concepts/brewing.md" in out
+    assert "- Extracting coffee with hot water." in out
+
+
+def test_define_fallback_lists_closest_pages(tmp_citadel, seed_page):
+    seed_page("concepts/espresso.md", {"type": "Concept", "title": "Espresso"}, "A concentrated coffee shot.\n")
+    out = server.wiki_define("espresso shot")
+    assert "No glossary entry or exact-title page for 'espresso shot'." in out
+    assert "Closest pages:" in out
+    assert "- concepts/espresso.md — Espresso" in out
+
+
+def test_define_never_raises(tmp_citadel, monkeypatch):
+    """NEVER-RAISES contract: a crashing store.define_text comes back as an error string."""
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("kaboom")
+
+    monkeypatch.setattr(store, "define_text", boom)
+    out = server.wiki_define("anything")
+    assert out.startswith("error: could not define 'anything':")
 
 
 # --- wiki_tags ---------------------------------------------------------------------------

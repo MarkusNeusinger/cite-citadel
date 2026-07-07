@@ -65,9 +65,54 @@ def load() -> list[Page]:
     return pages
 
 
+_VOWELS = frozenset("aeiouy")
+
+
+def _stem(token: str) -> str:
+    """A light, deterministic, dependency-free suffix strip so paraphrased query words match:
+    ``brewing``/``brew``, ``founded``/``founding``/``found``, ``blows``/``blow`` all collapse to a
+    common root. NOT a full Porter stemmer — one pass, longest matching suffix first, only when a
+    vowel survives in the stem (so short/odd tokens like ``ss`` are left alone) and the remaining
+    stem is long enough. ``-ies`` becomes ``-y`` (``ponies`` -> ``pony``). Applied symmetrically to
+    both the query and the page text by :func:`_tokenize`, so matching stays consistent and the
+    field-weight/IDF contract is unchanged (a token is stemmed the same way wherever it appears).
+
+    Two targeted guards keep the strip from over-collapsing:
+
+    * ``-ly`` requires a **4-char** stem (all other suffixes require 3), so ``nearly`` -> ``near``
+      but ``early``/``curly``/``burly`` are left whole rather than colliding with ``ear``/``cur``/``bur``.
+    * ``-es`` is only taken when the stem ends in a vowel (``potatoes`` -> ``potato``); for a
+      consonant-ending stem it is skipped so the plain ``-s`` rule strips a single char instead,
+      keeping ``-e`` words symmetric (``tables`` -> ``table`` matches ``table``, ``houses`` ->
+      ``house``) rather than over-stripping to ``tabl``/``hous``.
+
+    This is a single pass, so it unifies only one inflection layer: ``findings`` -> ``finding`` (not
+    ``find``), and irregular pairs (e.g. ``caffeinated``/``caffeine``) simply fall back to plain
+    overlap — light recall gain, never a regression."""
+    if len(token) <= 3:
+        return token
+    for suffix in ("ing", "edly", "ed", "ly", "ies", "es", "s"):
+        if not token.endswith(suffix):
+            continue
+        stem = token[: len(token) - len(suffix)]
+        min_stem = 4 if suffix == "ly" else 3
+        if len(stem) < min_stem:
+            continue
+        if suffix == "ies":
+            return stem + "y"
+        # A consonant-ending "-es" (tables, houses) is really "-e" + "s": defer to the "-s" rule
+        # below so it strips a single char and stays symmetric with the singular.
+        if suffix == "es" and stem[-1] not in _VOWELS:
+            continue
+        if any(ch in _VOWELS for ch in stem):
+            return stem
+    return token
+
+
 def _tokenize(text: str) -> set[str]:
-    """Lowercase, split on non-alphanumeric, drop tokens shorter than 2 chars."""
-    return {tok for tok in _TOKEN_RE.findall(text.lower()) if len(tok) >= 2}
+    """Lowercase, split on non-alphanumeric, drop tokens shorter than 2 chars, then light-stem
+    (:func:`_stem`) so paraphrased forms of the same word share a token."""
+    return {_stem(tok) for tok in _TOKEN_RE.findall(text.lower()) if len(tok) >= 2}
 
 
 def _idf_weights(pages: list[Page]) -> dict[str, float]:
@@ -223,6 +268,81 @@ def neighbors_text(rel_path: str) -> str:
     lines += [f"- {key} — {cites[key]} citation{'s' if cites[key] != 1 else ''}" for key in sorted(cites)] or [
         "- (none)"
     ]
+    return "\n".join(lines) + "\n"
+
+
+def _aliases_of(page: Page) -> set[str]:
+    """Lowercased, stripped ``aliases`` frontmatter of a page (empty set when absent/malformed).
+    Aliases are alternate lookup keys — an abbreviation's spelled-out form, a synonym title — so
+    :func:`define_text` can match either the short or the long form."""
+    aliases = page.frontmatter.get("aliases") or []
+    if not isinstance(aliases, list):
+        return set()
+    return {str(a).strip().lower() for a in aliases if str(a).strip()}
+
+
+def define_text(term: str, pages: list[Page] | None = None) -> str:
+    """Glossary lookup — the text behind ``wiki_define`` / ``citadel define``. A short "what does X
+    stand for / mean" is a LOOKUP, not full-text retrieval, so this surfaces the definition directly
+    instead of a ranked page list.
+
+    Three tiers, most specific first: (1) the **Abbreviations glossary** — every ``type:
+    Abbreviation`` page whose short form, expansion, title, or an alias equals ``term`` (rendered
+    ``SHORT — Expansion`` via :func:`okf.abbrev_short_long`); (2) an **exact-title / alias boost** —
+    any page (any type) whose title or an alias equals ``term``, the definitional page for that
+    concept; (3) a **fallback** to the closest :func:`search` hits, so the lookup still points
+    somewhere when nothing matches exactly. Case-insensitive throughout; results are ordered
+    deterministically by rel_path. Never raises."""
+    query = (term or "").strip()
+    if not query:
+        return "error: empty term"
+    needle = query.lower()
+    if pages is None:
+        pages = load()
+
+    # Tier 1: the Abbreviations glossary the index already builds — exact short/expansion/title/alias.
+    abbrev_hits: list[tuple[str, str, Page]] = []
+    for page in pages:
+        if (page.type or "").strip().lower() != "abbreviation":
+            continue
+        short, expansion = okf.abbrev_short_long(page)
+        forms = {short.strip().lower(), expansion.strip().lower(), page.title.strip().lower()}
+        forms |= _aliases_of(page)
+        forms.discard("")
+        if needle in forms:
+            abbrev_hits.append((short, expansion, page))
+    abbrev_hits.sort(key=lambda h: (h[0].lower(), h[2].rel_path))
+    if abbrev_hits:
+        lines = [f"# Definition: {query}", ""]
+        for short, expansion, page in abbrev_hits:
+            lines.append(f"## {short} — {expansion}")
+            lines.append(f"- Page: {page.rel_path} — {page.title}")
+            if page.description.strip():
+                lines.append(f"- {page.description.strip()}")
+            lines.append("")
+        return "\n".join(lines).rstrip() + "\n"
+
+    # Tier 2: exact-title / alias boost — the definitional page for a concept, any type.
+    exact = [p for p in pages if needle == p.title.strip().lower() or needle in _aliases_of(p)]
+    exact.sort(key=lambda p: p.rel_path)
+    if exact:
+        lines = [f"# Definition: {query}", ""]
+        for page in exact:
+            kind = (page.type or "").strip() or "page"
+            lines.append(f"## {page.title} ({kind})")
+            lines.append(f"- Page: {page.rel_path}")
+            if page.description.strip():
+                lines.append(f"- {page.description.strip()}")
+            lines.append("")
+        return "\n".join(lines).rstrip() + "\n"
+
+    # Tier 3: no exact definition — point at the closest full-text hits so the lookup still helps.
+    hits = search(query, pages=pages, limit=5)
+    lines = [f"# Definition: {query}", "", f"No glossary entry or exact-title page for {query!r}."]
+    if hits:
+        lines.append("")
+        lines.append("Closest pages:")
+        lines += [f"- {p.rel_path} — {p.title}" for p, _ in hits]
     return "\n".join(lines) + "\n"
 
 
