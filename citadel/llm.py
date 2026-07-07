@@ -355,7 +355,8 @@ def _build_invocation(
     All three CLIs run in their fully autonomous mode (each backend's headless YOLO equivalent);
     which files the agent may touch and which tools it should use is governed by the run
     instruction (:func:`_build_instruction`) — ``raw/`` is read-only, edits go only under the
-    wiki, and the shell is a last resort — not by divergent per-CLI permission flags."""
+    wiki, and the shell is reserved for the ``citadel check`` self-check and page deletes/renames —
+    not by divergent per-CLI permission flags."""
     extra_dirs = extra_dirs or []
     if cli == "claude":
         # acceptEdits auto-applies file edits; the allowlist scopes tools (Read/Edit/Write to

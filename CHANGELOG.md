@@ -18,6 +18,8 @@ All notable changes to this project are documented here. The format is based on
   wiki that gets produced. (Editing any `rules/` file bumps `rules_version`, so `citadel status`
   shows previously ingested sources as `(stale)` — expected, cosmetic.)
 
+## [0.3.0] - 2026-07-06
+
 ### Added
 
 - **`wiki_neighbors` / `citadel neighbors` — walk a page's link graph.** A tenth read-only MCP tool
