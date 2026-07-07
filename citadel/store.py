@@ -19,6 +19,7 @@ from .linkgraph import (
 from .open_points import OpenPoint, collect_open_points, parse_open_points
 from .store_core import (
     append_log,
+    define_text,
     delete_page,
     index_text,
     is_skipped_name,
@@ -39,6 +40,7 @@ __all__ = [
     "utc_now_iso",
     "load",
     "search",
+    "define_text",
     "read_page",
     "read_page_text",
     "neighbors_text",

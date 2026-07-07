@@ -6,8 +6,22 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **`wiki_define` / `citadel define` — glossary lookup.** An eleventh read-only MCP tool (+ its CLI
+  twin) answers a short "what does X stand for / mean?" as a *lookup* rather than full-text
+  retrieval: it surfaces a `type: Abbreviation` glossary hit (matching the short form, expansion,
+  title, or an alias, rendered `SHORT — Expansion`) first, then an exact-title/alias page of any
+  type, then falls back to the closest `wiki_search` hits when nothing matches exactly. Backed by the
+  new `store.define_text`. Read-only, no new dependency.
+
 ### Changed
 
+- **Light stemming in search.** `store_core._tokenize` now applies a small, deterministic,
+  dependency-free suffix strip (`brewing`/`brew`, `founded`/`founding`, `magnets`/`magnet` collapse to
+  a shared token) so paraphrased query forms match. It is applied symmetrically to both the query and
+  the page text, so the field-weight / IDF scoring contract is unchanged; the `test_search.py`
+  characterization tests still pass unmodified.
 - **Leaner, more predictable ingest sessions.** The run instruction and `core.md` now tell the agent
   that the raw source tree is a **read-only input** (read it for content and citations, never write,
   create, move, or delete under it) and that reading/searching go through the agent's **built-in

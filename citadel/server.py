@@ -1,15 +1,15 @@
 """MCP stdio server exposing the OKF wiki to AI clients.
 
-A FastMCP instance over stdio with ten tools: nine read-only
-(wiki_search / wiki_read / wiki_raw / wiki_neighbors / wiki_index / wiki_sources / wiki_tags /
-wiki_validate / wiki_lint) and one mutating (wiki_ingest). Every tool returns a plain markdown/text
-string, which an LLM consumes best, and NEVER raises out of the tool: not-found / unsafe-path /
-missing-or-unusable-LLM-CLI conditions are returned as clear error strings
+A FastMCP instance over stdio with eleven tools: ten read-only
+(wiki_search / wiki_define / wiki_read / wiki_raw / wiki_neighbors / wiki_index / wiki_sources /
+wiki_tags / wiki_validate / wiki_lint) and one mutating (wiki_ingest). Every tool returns a plain
+markdown/text string, which an LLM consumes best, and NEVER raises out of the tool: not-found /
+unsafe-path / missing-or-unusable-LLM-CLI conditions are returned as clear error strings
 so the server stays up.
 
 Each tool carries MCP **behavior annotations** (``readOnlyHint`` / ``destructiveHint`` /
 ``idempotentHint`` / ``openWorldHint``) so a client can reason about a tool before calling it: the
-nine readers are read-only, and only ``wiki_ingest`` mutates (non-destructive, idempotent via the
+ten readers are read-only, and only ``wiki_ingest`` mutates (non-destructive, idempotent via the
 sha manifest, and open-world because it spawns your external coding-agent CLI). If the installed
 ``mcp`` predates tool annotations, they are silently omitted — a client that ignores hints is
 unaffected.
@@ -141,6 +141,27 @@ def wiki_tags(tag: str = "") -> str:
         lines += [f"- [{p.title}]({p.rel_path}) — {p.description}" for p in pages]
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
+
+
+@mcp.tool(annotations=_annotations(**_READ_ONLY))
+def wiki_define(term: str) -> str:
+    """Glossary lookup — "what does X stand for / mean?" — surfacing the definition directly.
+
+    A short definitional query is a LOOKUP, not full-text retrieval, so this answers it in three
+    tiers, most specific first: an **Abbreviations glossary** hit (a ``type: Abbreviation`` page
+    whose short form, expansion, title, or alias equals ``term``, rendered ``SHORT — Expansion``),
+    then an **exact-title / alias** page of any type (the definitional page for that concept), then
+    a **fallback** to the closest wiki_search hits when nothing matches exactly. Case-insensitive.
+
+    Prefer this over wiki_search when you just need the meaning/expansion of a term; use wiki_search
+    to explore a topic. Returns a clear message when nothing matches; never raises out of the tool.
+    """
+    from . import store
+
+    try:
+        return store.define_text(term)
+    except Exception as e:  # never raise out of the tool
+        return f"error: could not define {term!r}: {e}"
 
 
 @mcp.tool(annotations=_annotations(**_READ_ONLY))

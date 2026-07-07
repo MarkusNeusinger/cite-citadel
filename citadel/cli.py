@@ -9,6 +9,7 @@
     citadel doctor               # read-only environment/setup health check (OK/WARN/FAIL lines)
     citadel serve                # run the MCP stdio server
     citadel search <query> [--limit N] [--tag T]
+    citadel define <term>        # glossary lookup: what a term / abbreviation stands for (mirrors wiki_define)
     citadel read <rel_path>      # print one page's full OKF text (mirrors wiki_read)
     citadel raw <key> [--locator L]  # print the raw source behind a citation (mirrors wiki_raw)
     citadel neighbors <rel_path> # a page's links out / backlinks / cited sources (mirrors wiki_neighbors)
@@ -20,7 +21,7 @@
     citadel view [--out PATH] [--no-open] [--obsidian]   # offline single-file HTML viewer
     citadel rules list|show|eject   # inspect / fork the rules files the ingest agent reads
 
-The read/raw/neighbors/index/sources/lint subcommands give an AI without MCP access full parity with
+The define/read/raw/neighbors/index/sources/lint subcommands give an AI without MCP access full parity with
 the server's tools (`lint`/`view` stay CLI-only; `wiki_lint` closes the gap from the MCP side).
 
 Every subcommand except ``init`` and ``rules`` needs a resolved WORKSPACE (see config's discovery
@@ -190,6 +191,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--tag", default=None, help="Restrict the search to pages carrying this tag (case-insensitive)."
     )
     p_search.set_defaults(func=cmd_search)
+
+    p_define = sub.add_parser(
+        "define", help="Glossary lookup: what a term/abbreviation stands for or means (mirrors wiki_define)."
+    )
+    p_define.add_argument("term", help="Term to define, e.g. an abbreviation short form or a page title.")
+    p_define.set_defaults(func=cmd_define)
 
     p_tags = sub.add_parser("tags", help="List all tags and the pages under each (browse the wiki by topic).")
     p_tags.add_argument("tag", nargs="?", default=None, help="Show only this tag's pages (default: list every tag).")
@@ -444,6 +451,16 @@ def cmd_search(args: argparse.Namespace) -> int:
         print(f"{page.rel_path}\t{page.title}\t{score:.2f}{tags}")
         if snippet:
             print(f"    {snippet}")
+    return 0
+
+
+def cmd_define(args: argparse.Namespace) -> int:
+    """Print a glossary definition for the term (the CLI twin of wiki_define): an Abbreviation
+    glossary hit, an exact-title/alias page, or the closest search hits as a fallback; return 0."""
+    from . import store
+
+    text = store.define_text(args.term)
+    print(text, end="" if text.endswith("\n") else "\n")
     return 0
 
 

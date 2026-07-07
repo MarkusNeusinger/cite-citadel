@@ -282,3 +282,61 @@ def test_default_corpus_excludes_generated_files(tmp_citadel, seed_page):
     hits = store.search("meteor")
 
     assert [p.rel_path for p, _ in hits] == ["misc/real.md"]
+
+
+# --- light stemming (recall on paraphrased queries) ----------------------------------------
+
+
+def test_stemming_matches_a_paraphrased_verb_form(tmp_citadel, seed_page):
+    """The stemming contract: an inflected query form finds a page carrying a different
+    inflection of the same word. 'brewing' (query) matches a body that only says 'brew',
+    and 'founded' matches a title that says 'founding' — recall the un-stemmed tokenizer missed."""
+    seed_page("concepts/coffee.md", {"type": "concept", "title": "Coffee"}, "You brew it slowly.\n")
+    seed_page("concepts/company.md", {"type": "concept", "title": "Founding a Company"}, "History here.\n")
+
+    assert [p.rel_path for p, _ in store.search("brewing")] == ["concepts/coffee.md"]
+    assert [p.rel_path for p, _ in store.search("founded")] == ["concepts/company.md"]
+
+
+def test_stemming_is_symmetric_so_plurals_and_singulars_agree(tmp_citadel, seed_page):
+    """'magnets' (query) matches a body that says 'magnet', and vice versa — the stemmer is
+    applied to both sides, so number/inflection no longer blocks a hit."""
+    seed_page("concepts/m.md", {"type": "concept", "title": "Physics"}, "A single magnet attracts iron.\n")
+
+    assert [p.rel_path for p, _ in store.search("magnets")] == ["concepts/m.md"]
+
+
+def test_stemming_leaves_short_and_rootless_tokens_alone(tmp_citadel, seed_page):
+    """Guard against over-stemming: a short token with no strippable suffix is unchanged, so an
+    exact word still scores exactly as before (title 3.0 + substring bonus 0.5)."""
+    seed_page("concepts/gas.md", {"type": "concept", "title": "Gas"}, "A state of matter.\n")
+
+    hits = store.search("gas")
+    assert [(p.rel_path, s) for p, s in hits] == [("concepts/gas.md", 3.5)]
+
+
+def test_ly_needs_a_four_char_stem_so_early_does_not_match_ear(tmp_citadel, seed_page):
+    """``-ly`` requires a 4-char stem: ``early`` stays whole (would otherwise collide with ``ear``),
+    while ``nearly`` still stems to ``near`` and matches a page about ``near``."""
+    seed_page("concepts/ear.md", {"type": "concept", "title": "Ear"}, "The ear hears sound.\n")
+    seed_page("concepts/near.md", {"type": "concept", "title": "Near"}, "A near miss.\n")
+
+    assert store.search("early") == []  # must NOT match the 'ear' page
+    assert [p.rel_path for p, _ in store.search("nearly")] == ["concepts/near.md"]
+
+
+def test_es_words_are_symmetric_with_their_singular(tmp_citadel, seed_page):
+    """A consonant-ending ``-es`` plural strips a single char (via the ``-s`` rule), so ``tables``
+    (query) matches a body that only says ``table`` — not the over-stripped ``tabl``."""
+    seed_page("concepts/furniture.md", {"type": "concept", "title": "Furniture"}, "Put it on the table.\n")
+
+    assert [p.rel_path for p, _ in store.search("tables")] == ["concepts/furniture.md"]
+
+
+def test_single_pass_stemming_does_not_reach_the_bare_root(tmp_citadel, seed_page):
+    """Boundary/characterization: the strip is ONE pass, so ``findings`` stems only to ``finding``,
+    NOT to ``find`` — a page that only says ``find`` is not matched. Locks the intentional scope so a
+    future move to two-pass stemming is a conscious change, not a silent regression."""
+    seed_page("concepts/useful.md", {"type": "concept", "title": "Useful"}, "I find it useful.\n")
+
+    assert store.search("findings") == []

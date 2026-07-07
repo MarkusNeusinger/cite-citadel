@@ -115,6 +115,7 @@ def test_every_documented_subcommand_is_registered():
     for command, func in funcs.items():
         assert parser.parse_args([command]).func is func
     assert parser.parse_args(["search", "q"]).func is cli.cmd_search
+    assert parser.parse_args(["define", "TDS"]).func is cli.cmd_define
     assert parser.parse_args(["raw", "raw/notes.md"]).func is cli.cmd_raw
     assert parser.parse_args(["neighbors", "concepts/x.md"]).func is cli.cmd_neighbors
 
@@ -306,6 +307,26 @@ def test_search_prints_hits_with_tags_and_snippet(good_page, capsys):
     assert "concepts/transformer.md\tTransformer\t" in out
     assert "[ml]" in out
     assert "Transformers use self-attention." in out  # the snippet line
+
+
+# --- define ---------------------------------------------------------------------------------
+
+
+def test_define_prints_abbreviation_glossary_entry(tmp_citadel, seed_page, capsys):
+    seed_page(
+        "abbreviations/tds.md",
+        {"type": "Abbreviation", "title": "TDS — Total Dissolved Solids", "description": "Mineral content."},
+    )
+    assert cli.main(["define", "TDS"]) == 0
+    out = capsys.readouterr().out
+    assert "# Definition: TDS" in out
+    assert "## TDS — Total Dissolved Solids" in out
+
+
+def test_define_unknown_term_prints_fallback_message(tmp_citadel, seed_page, capsys):
+    seed_page("concepts/a.md", {"type": "Concept", "title": "A"})
+    assert cli.main(["define", "zzz-unknown"]) == 0
+    assert "No glossary entry or exact-title page for 'zzz-unknown'." in capsys.readouterr().out
 
 
 # --- tags -----------------------------------------------------------------------------------
