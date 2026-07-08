@@ -252,6 +252,19 @@ def test_source_heading_texts_preserve_casing_order_and_dedupe():
     assert grammar.source_headings(text) == {"second", "the one rule"}
 
 
+def test_bold_line_is_recognized_as_a_source_heading():
+    # FAQ / exported-doc convention (issue #62): a whole-line **bold** span acts as a section heading
+    # so a `§ Heading` locator into it verifies. Inline / partial bold is NOT a heading.
+    text = "**Q: How does it work?**\n\nit works.\n\n__Q: And then?__\n\nlater.\n"
+    assert grammar.source_heading_texts(text) == ["Q: How does it work?", "Q: And then?"]
+    assert "q: how does it work?" in grammar.source_headings(text)
+    assert grammar.parse_heading_line("## Real") == (2, "Real")
+    assert grammar.parse_heading_line("**Heading**") == (grammar._BOLD_HEADING_LEVEL, "Heading")
+    assert grammar.parse_heading_line("This is **important** text") is None
+    assert grammar.parse_heading_line("**a** and **b**") is None
+    assert grammar.parse_heading_line("just prose") is None
+
+
 def test_heading_candidates_drops_trailing_spaced_dash():
     assert list(grammar.heading_candidates("Nonexistent Heading - x")) == [
         "Nonexistent Heading - x",
