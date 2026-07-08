@@ -53,7 +53,9 @@ uv run citadel view       # browse it offline
 ```
 
 Every other knob is documented inline in the generated `.env`. A global install (`uv tool install
-cite-citadel`; plain `pip install cite-citadel` works too) drops the `uv run` prefixes. On Windows,
+cite-citadel`; plain `pip install cite-citadel` works too) drops the `uv run` prefixes; `citadel
+doctor` warns when a newer release is on PyPI and prints the update command matching your install
+(see [docs/troubleshooting.md](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/troubleshooting.md#how-do-i-update-citadel)). On Windows,
 use `uv run python -m citadel` — the `uv run citadel` shorthand can be antivirus-blocked (see the
 contributor note below). `citadel serve` exposes the wiki to any AI over MCP — and **everything the
 MCP server offers, the CLI offers too** (`search`, `read`, `status`, …), so an AI without MCP access

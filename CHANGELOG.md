@@ -39,6 +39,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`citadel doctor` now checks for updates.** A ninth check asks PyPI (best-effort, 2s timeout —
+  offline it degrades to an OK "check skipped" line, never a WARN/FAIL) whether a newer
+  `cite-citadel` is published, and when behind WARNs with the exact upgrade command for the
+  *detected* install method: `git pull && uv sync` for a dev checkout, `uv tool upgrade` /
+  `pipx upgrade` / `pip install -U cite-citadel`, or a note that `uvx` always runs the latest.
+  Deliberately no self-executing `citadel --update` — citadel cannot know which package manager
+  owns it, and a running `citadel.exe` cannot replace itself on Windows. Stdlib-only (`urllib` +
+  a naive dotted-version compare that never nags on a pre-release it cannot rank).
 - **`wiki_define` / `citadel define` — glossary lookup.** An eleventh read-only MCP tool (+ its CLI
   twin) answers a short "what does X stand for / mean?" as a *lookup* rather than full-text
   retrieval: it surfaces a `type: Abbreviation` glossary hit (matching the short form, expansion,

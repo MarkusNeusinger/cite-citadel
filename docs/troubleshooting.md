@@ -64,3 +64,19 @@ links stay valid. Details in [configuration.md](configuration.md#paths--multi-ro
 A source that could not be read (unreadable binary, an errored or timed-out session) is persisted
 with its reason and surfaced two ways: in the `citadel status` table, and under a **"Could not
 ingest"** section of `wiki/sources/index.md`. Nothing fails silently.
+
+### How do I update citadel?
+
+`citadel doctor` checks PyPI (best-effort, 2s timeout — offline it just skips) and warns when a
+newer release is out, printing the right command for how you installed it:
+
+| Installed via | Update with |
+| --- | --- |
+| `uv tool install` | `uv tool upgrade cite-citadel` |
+| `pipx` | `pipx upgrade cite-citadel` |
+| `pip` / a venv | `pip install -U cite-citadel` |
+| `uvx` | nothing — `uvx cite-citadel` always runs the latest |
+| a git checkout | `git pull && uv sync` |
+
+There is deliberately no self-executing `citadel --update`: citadel cannot know which package
+manager owns it, and a running `citadel.exe` cannot replace itself on Windows.

@@ -9,9 +9,40 @@ so tests drive them through ``tmp_citadel`` + ``monkeypatch`` (no CLI, no networ
 from __future__ import annotations
 
 import json
+import socket
+
+import pytest
 
 from citadel import cli, config, doctor, manifest
 from citadel import llm as llm_mod
+
+
+@pytest.fixture(autouse=True)
+def _block_real_network(monkeypatch):
+    """Hard-block PyPI for EVERY doctor test: a forgotten stub must fail closed (return None), never
+    hit the network. Tests that exercise the fetch install their own fake urlopen, overriding this."""
+
+    def _no_network(*args, **kwargs):
+        raise OSError("network is disabled in tests")
+
+    monkeypatch.setattr(doctor.urllib.request, "urlopen", _no_network)
+
+
+class _FakeResp:
+    """A minimal stand-in for an ``http.client.HTTPResponse`` context manager: ``read()`` returns a
+    fixed body so ``_fetch_latest_pypi_version`` can be tested without a socket."""
+
+    def __init__(self, body: bytes):
+        self._body = body
+
+    def read(self) -> bytes:
+        return self._body
+
+    def __enter__(self) -> "_FakeResp":
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        return False
 
 
 # --- workspace ---------------------------------------------------------------------------
@@ -241,6 +272,162 @@ def test_pdf_ok_images_on_claude(tmp_citadel, monkeypatch):
     assert doctor.check_pdf_mode().status == doctor.OK
 
 
+# --- update check: version compare -------------------------------------------------------
+
+
+def test_version_is_newer_detects_bumps():
+    assert doctor.version_is_newer("0.4.0", "0.3.0")
+    assert doctor.version_is_newer("0.3.1", "0.3.0")
+    assert doctor.version_is_newer("1.0.0", "0.9.9")
+
+
+def test_version_is_newer_false_when_equal_or_older():
+    assert not doctor.version_is_newer("0.3.0", "0.3.0")
+    assert not doctor.version_is_newer("0.3.0", "0.4.0")  # local dev build ahead of PyPI
+    assert not doctor.version_is_newer("0.9.9", "1.0.0")
+
+
+def test_version_is_newer_pads_a_shorter_version():
+    assert doctor.version_is_newer("0.3.1", "0.3")  # 0.3 == 0.3.0 < 0.3.1
+    assert not doctor.version_is_newer("0.3", "0.3.0")
+
+
+def test_version_is_newer_is_conservative_on_non_numeric_segments():
+    # A pre-release-ish segment it cannot rank -> never claims "newer" in either direction.
+    assert not doctor.version_is_newer("0.3.0rc1", "0.3.0")
+    assert not doctor.version_is_newer("0.3.0", "0.3.0rc1")
+    # But a plain numeric bump before any weird segment still wins.
+    assert doctor.version_is_newer("0.4.0rc1", "0.3.0")
+
+
+# --- update check: install-method detection ----------------------------------------------
+
+
+def _make_module(tmp_path, *, dev: bool, marker: str = ".git") -> str:
+    """Lay out a synthetic ``<root>/citadel/doctor.py`` and return its path. ``dev=True`` also drops a
+    ``pyproject.toml`` + a repo marker one level up so the dev-checkout branch fires."""
+    root = tmp_path / ("repo" if dev else "site-packages")
+    (root / "citadel").mkdir(parents=True)
+    mod = root / "citadel" / "doctor.py"
+    mod.write_text("", encoding="utf-8")
+    if dev:
+        (root / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+        (root / marker).mkdir()
+    return str(mod)
+
+
+def test_detect_update_command_dev_checkout_via_git(tmp_path):
+    mod = _make_module(tmp_path, dev=True, marker=".git")
+    assert doctor.detect_update_command(module_file=mod, prefix="/irrelevant") == "git pull && uv sync"
+
+
+def test_detect_update_command_dev_checkout_via_corpora(tmp_path):
+    mod = _make_module(tmp_path, dev=True, marker="corpora")
+    assert doctor.detect_update_command(module_file=mod, prefix="/irrelevant") == "git pull && uv sync"
+
+
+def test_detect_update_command_uv_tool(tmp_path):
+    mod = _make_module(tmp_path, dev=False)
+    prefix = "/home/u/.local/share/uv/tools/cite-citadel"
+    assert doctor.detect_update_command(module_file=mod, prefix=prefix) == "uv tool upgrade cite-citadel"
+
+
+def test_detect_update_command_pipx(tmp_path):
+    mod = _make_module(tmp_path, dev=False)
+    prefix = "/home/u/.local/pipx/venvs/cite-citadel"
+    assert doctor.detect_update_command(module_file=mod, prefix=prefix) == "pipx upgrade cite-citadel"
+
+
+def test_detect_update_command_uvx_ephemeral(tmp_path):
+    mod = _make_module(tmp_path, dev=False)
+    prefix = "/home/u/.cache/uv/environments-v2/cite-citadel-abc123"
+    cmd = doctor.detect_update_command(module_file=mod, prefix=prefix)
+    assert cmd.startswith("uvx cite-citadel")
+    assert "latest" in cmd
+
+
+def test_detect_update_command_generic_venv(tmp_path):
+    mod = _make_module(tmp_path, dev=False)
+    prefix = "/home/u/.venvs/myproject"
+    assert doctor.detect_update_command(module_file=mod, prefix=prefix) == "pip install -U cite-citadel"
+
+
+# --- update check: PyPI fetch (network hard-blocked; fakes only) --------------------------
+
+
+def test_fetch_latest_parses_pypi_info_version(monkeypatch):
+    body = json.dumps({"info": {"version": "1.2.3"}, "releases": {}}).encode("utf-8")
+    monkeypatch.setattr(doctor.urllib.request, "urlopen", lambda url, timeout=None: _FakeResp(body))
+    assert doctor._fetch_latest_pypi_version() == "1.2.3"
+
+
+def test_fetch_latest_returns_none_on_oserror(monkeypatch):
+    def _boom(url, timeout=None):
+        raise OSError("no route to host")
+
+    monkeypatch.setattr(doctor.urllib.request, "urlopen", _boom)
+    assert doctor._fetch_latest_pypi_version() is None
+
+
+def test_fetch_latest_returns_none_on_timeout(monkeypatch):
+    def _timeout(url, timeout=None):
+        raise socket.timeout("timed out")
+
+    monkeypatch.setattr(doctor.urllib.request, "urlopen", _timeout)
+    assert doctor._fetch_latest_pypi_version() is None
+
+
+def test_fetch_latest_returns_none_on_malformed_json(monkeypatch):
+    monkeypatch.setattr(doctor.urllib.request, "urlopen", lambda url, timeout=None: _FakeResp(b"{not json"))
+    assert doctor._fetch_latest_pypi_version() is None
+
+
+def test_fetch_latest_returns_none_when_version_key_missing(monkeypatch):
+    body = json.dumps({"info": {}}).encode("utf-8")
+    monkeypatch.setattr(doctor.urllib.request, "urlopen", lambda url, timeout=None: _FakeResp(body))
+    assert doctor._fetch_latest_pypi_version() is None
+
+
+# --- update check: check_update() glue ---------------------------------------------------
+
+
+def test_check_update_warn_when_pypi_is_newer(tmp_citadel, monkeypatch):
+    monkeypatch.setattr(doctor, "_fetch_latest_pypi_version", lambda timeout=2.0: "0.4.0")
+    c = doctor.check_update(installed="0.3.0")
+    assert c.status == doctor.WARN
+    assert "0.3.0 installed, 0.4.0 on PyPI" in c.detail
+    assert "run:" in c.detail
+
+
+def test_check_update_ok_when_current(tmp_citadel, monkeypatch):
+    monkeypatch.setattr(doctor, "_fetch_latest_pypi_version", lambda timeout=2.0: "0.3.0")
+    c = doctor.check_update(installed="0.3.0")
+    assert c.status == doctor.OK
+    assert "0.3.0 is current" in c.detail
+
+
+def test_check_update_ok_when_local_is_ahead(tmp_citadel, monkeypatch):
+    monkeypatch.setattr(doctor, "_fetch_latest_pypi_version", lambda timeout=2.0: "0.3.0")
+    c = doctor.check_update(installed="0.4.0")
+    assert c.status == doctor.OK
+    assert "0.4.0 is current" in c.detail
+
+
+def test_check_update_ok_when_pypi_unreachable(tmp_citadel, monkeypatch):
+    monkeypatch.setattr(doctor, "_fetch_latest_pypi_version", lambda timeout=2.0: None)
+    c = doctor.check_update(installed="0.3.0")
+    assert c.status == doctor.OK
+    assert "could not reach PyPI" in c.detail
+
+
+def test_check_update_defaults_to_installed_version(tmp_citadel, monkeypatch):
+    monkeypatch.setattr(doctor, "_INSTALLED_VERSION", "9.9.9")
+    monkeypatch.setattr(doctor, "_fetch_latest_pypi_version", lambda timeout=2.0: "0.3.0")
+    c = doctor.check_update()
+    assert c.status == doctor.OK
+    assert "9.9.9 is current" in c.detail
+
+
 # --- report + CLI wiring -----------------------------------------------------------------
 
 
@@ -259,8 +446,20 @@ def test_render_lists_every_check_and_a_verdict():
 
 def test_run_emits_the_full_check_inventory(tmp_citadel, monkeypatch):
     monkeypatch.setattr(llm_mod, "_resolve_cli", lambda cli: "/opt/bin/claude")
+    # Keep run() fully offline: stub the PyPI lookup so the update check never touches the network.
+    monkeypatch.setattr(doctor, "_fetch_latest_pypi_version", lambda timeout=2.0: None)
     names = [c.name for c in doctor.run().checks]
-    assert names == ["workspace", "rules", "agent CLI", "raw roots", "manifest", "failures", "billing", "PDF mode"]
+    assert names == [
+        "workspace",
+        "rules",
+        "agent CLI",
+        "raw roots",
+        "manifest",
+        "failures",
+        "billing",
+        "PDF mode",
+        "update",
+    ]
 
 
 def test_doctor_subcommand_is_registered_workspace_optional():
