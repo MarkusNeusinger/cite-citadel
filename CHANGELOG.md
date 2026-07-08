@@ -64,6 +64,25 @@ All notable changes to this project are documented here. The format is based on
   **Pointer Events**, so one-finger pan, node drag, and tap-to-open work on touch (mouse behavior
   unchanged; wheel and the +/- buttons still zoom). A **print stylesheet** prints just the reader
   (black-on-white, sidebar/map/chips hidden) with the Sources section forced open so citations print.
+- **Offline viewer embeds only the CITED EXCERPTS of each raw source, not its whole body.** For a
+  source-heavy wiki the full-text embed dominated the single-file viewer (a source could be ~40% of
+  the document). Now, per source, only the passages the wiki actually cites are embedded — a
+  `lines A-B` locator becomes that range plus 3 lines of context, a `§ Heading` becomes its section
+  (capped at 80 lines), and an unlocated citation contributes a head excerpt (lines 1-30); overlapping
+  and near-adjacent ranges (gap ≤ 2 lines) merge. A short file (≤ 120 lines) or one whose excerpts
+  already cover ≥ 2/3 of it embeds whole — but only when the whole body fits under the 200k guard —
+  so small notes are never fragmented. The reader shows
+  each segment under a "lines A–B" label with a "⋯ lines X–Y not embedded — open the original file" gap
+  indicator, and the existing "Open original file" affordance covers the rest. `_SOURCE_MAX_CHARS`
+  (200k) stays as the final per-source guard: segments are filled whole until the next one would
+  exceed it, then the rest are dropped to the gap indicator rather than sliced off mid-passage. No new
+  flag or env knob — this is the default. A large source cited by only a couple of narrow ranges
+  shrinks that source's embed by ~100× or more; a wiki that cites its source almost in full and is far
+  larger than the guard (e.g. the pemberley novel, ~730k chars, ~95% cited) embeds the cited segments
+  that fit within the 200k budget — down from a blind 200k front-slice of the whole body — with the
+  uncited/over-budget remainder reachable via "open the original file." The viewer's source
+  full-text search accordingly covers only the embedded excerpts; text in an uncited stretch of a
+  large source is reachable through the wiki pages that cite it, or the original file.
 - **Ingest now gives pages lay-term `aliases`.** `citadel/rules/schema.md` gains an *Aliases* section
   teaching the agent to add up to ~4 high-precision alternate names a reader might search — a lay
   synonym, everyday word, nickname, or former name — to any page (not just abbreviations), so a
