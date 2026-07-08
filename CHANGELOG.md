@@ -48,6 +48,22 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Viewer: compact, grouped Sources + a mobile/touch/print pass.** A page's trailing `## Sources`
+  section no longer renders as a tall footnote wall (the same raw file repeated once per citation,
+  each with its own link, date, and back-arrow). It is now a **collapsed `Sources (N)` `<details>`**
+  (the page ends on content, not footnotes) that **groups citations by the file they cite** — the
+  file link and `(ingested …)` date appear once, followed by that file's citations as a compact run
+  (`s1 (§ Heading), s5 (lines 23-25), …`) or, when they carry distinct notes, one muted line each.
+  Every citation keeps its own `id`, so an inline `[^sN]` still jumps to its definition (opening the
+  collapsed section first) and hover popovers still work per citation; the back-arrows are dropped
+  (the inline marker is the way back). The sidebar "Sources" axis now defaults **closed** (with a
+  persisted toggle). The viewer also gained its **first responsive breakpoint** (≤ 720px): the
+  sidebar becomes an off-canvas drawer toggled by the existing hamburger / backslash shortcut, the
+  reader goes full-width, and the map defaults collapsed and height-capped — no horizontal scroll at
+  phone widths, with the desktop layout unchanged. Map pan/drag/tap and the pane resizer now use
+  **Pointer Events**, so one-finger pan, node drag, and tap-to-open work on touch (mouse behavior
+  unchanged; wheel and the +/- buttons still zoom). A **print stylesheet** prints just the reader
+  (black-on-white, sidebar/map/chips hidden) with the Sources section forced open so citations print.
 - **Ingest now gives pages lay-term `aliases`.** `citadel/rules/schema.md` gains an *Aliases* section
   teaching the agent to add up to ~4 high-precision alternate names a reader might search — a lay
   synonym, everyday word, nickname, or former name — to any page (not just abbreviations), so a

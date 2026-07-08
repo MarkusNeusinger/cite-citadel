@@ -335,7 +335,11 @@
     if (activeTag || activeFacet) { box.innerHTML = ""; return; }
     var ids = Object.keys(SOURCES).sort();
     if (!ids.length) { box.innerHTML = ""; return; }
-    var html = "<details open><summary>Sources (" + ids.length + ")</summary>";
+    // Default CLOSED (the source list is a long secondary axis), but honor a persisted user toggle.
+    var open = false;
+    try { open = localStorage.getItem("okf_sources_open") === "1"; } catch (e) {}
+    var html = "<details class='src-axis'" + (open ? " open" : "") +
+      "><summary>Sources (" + ids.length + ")</summary>";
     ids.forEach(function (id) {
       var s = SOURCES[id];
       html += "<a class='navitem src' href='#src:" + encodeURIComponent(id) +
@@ -359,7 +363,7 @@
     var hiddenTypes = {};  // type name -> 1 when that category is toggled off in the legend
     var hoverIdx = null;   // index of the hovered node (dims non-neighbours), or null
     var raf = null, animating = false;
-    var dragNode = null, panning = false, last = null, moved = false;
+    var dragNode = null, panning = false, last = null, moved = false, activePointer = null;
     var W = 600, H = 420;
 
     function r2(v) { return Math.round(v * 10) / 10; }
@@ -540,17 +544,24 @@
                y: (ev.clientY - sz.top - view.y) / view.k };
     }
 
+    // Pointer Events (not mouse) so one-finger pan, node drag, and tap-to-open work on touch and
+    // nothing regresses for mouse. setPointerCapture keeps move/up flowing to the SVG even if the
+    // pointer leaves it mid-drag, so the window-level mouse listeners are no longer needed.
     function onDown(ev) {
+      if (activePointer != null) return;  // ignore a second finger (single-pointer pan/drag)
       var g = ev.target.closest ? ev.target.closest(".node") : null;
       last = { x: ev.clientX, y: ev.clientY }; moved = false;
       if (g) {
         dragNode = nodes[idx[g.getAttribute("data-page")]];
         dragNode.fx = dragNode.x; dragNode.fy = dragNode.y;  // pin in place until moved
       } else { panning = true; svg.classList.add("grabbing"); }
+      activePointer = ev.pointerId;
+      try { svg.setPointerCapture(ev.pointerId); } catch (e) {}
       ev.preventDefault();
     }
     function onMove(ev) {
       if (!dragNode && !panning) return;
+      if (activePointer != null && ev.pointerId !== activePointer) return;
       var dx = ev.clientX - last.x, dy = ev.clientY - last.y;
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
       if (dragNode) {
@@ -560,17 +571,20 @@
       } else if (panning) { view.x += dx; view.y += dy; draw(); }
       last = { x: ev.clientX, y: ev.clientY };
     }
-    function onUp() {
+    function onUp(ev) {
+      if (activePointer != null && ev && ev.pointerId !== activePointer) return;
       if (dragNode) {
         var node = dragNode;
         dragNode.fx = null; dragNode.fy = null; dragNode = null;
-        if (!moved) {  // a click (no drag) opens the page or source
+        if (!moved) {  // a click/tap (no drag) opens the page or source
           if (node.id.indexOf("src:") === 0) openSource(node.id.slice(4));
           else openPage(node.id);
         }
         reheat();
       }
       panning = false; if (svg) svg.classList.remove("grabbing");
+      if (ev) { try { svg.releasePointerCapture(ev.pointerId); } catch (e) {} }
+      activePointer = null;
     }
 
     function init() {
@@ -580,23 +594,24 @@
       buildModel();
       settle();
       refit();
-      svg.addEventListener("mousedown", onDown);
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
+      svg.addEventListener("pointerdown", onDown);
+      svg.addEventListener("pointermove", onMove);
+      svg.addEventListener("pointerup", onUp);
+      svg.addEventListener("pointercancel", onUp);
       svg.addEventListener("wheel", function (ev) {
         ev.preventDefault();
         var sz = size();
         zoomAt(ev.deltaY < 0 ? 1.12 : 1 / 1.12, ev.clientX - sz.left, ev.clientY - sz.top);
       }, { passive: false });
       // Hover-highlight a node's neighbourhood (skip while dragging/panning; draw-only, no re-layout).
-      svg.addEventListener("mousemove", function (ev) {
+      svg.addEventListener("pointermove", function (ev) {
         if (dragNode || panning) return;
         var g = ev.target.closest ? ev.target.closest(".node") : null;
         var ni = g ? idx[g.getAttribute("data-page")] : null;
         if (ni == null) ni = null;
         if (ni !== hoverIdx) { hoverIdx = ni; draw(); }
       });
-      svg.addEventListener("mouseleave", function () {
+      svg.addEventListener("pointerleave", function () {
         if (hoverIdx !== null) { hoverIdx = null; draw(); }
       });
     }
@@ -705,9 +720,107 @@
     if (scroll && first) first.scrollIntoView({ block: "center" });
   }
 
+  // ---- Compact "## Sources" rendering. ----
+  // The trailing Sources section renders one .fndef per footnote — a same file repeated many times,
+  // each with its own link, "(ingested ...)" date and back-arrow: a tall footnote wall. These helpers
+  // rewrite it into a collapsed <details> that GROUPS citations by the source file they resolve to,
+  // showing the file link + date once, then that file's citations as a compact run (or one line each
+  // when they carry distinct notes). Every citation keeps its own id="fn-sN" so the inline [^sN] jump,
+  // the fnref highlight, and the hover popovers still work per citation.
+
+  // Peel a trailing "(ingested YYYY-MM-DD)" / "(added ...)" (or any year-bearing parenthesis, for a
+  // translated wiki) off a footnote tail, returning the remaining text and the date text.
+  function stripDate(s) {
+    var m = s.match(/\(((?:ingested|added)[^)]*)\)\s*$/i);
+    if (!m) m = s.match(/\(([^)]*\d{4}[^)]*)\)\s*$/);
+    if (m) return { rest: s.slice(0, m.index).replace(/\s+$/, ""), date: m[1].trim() };
+    return { rest: s, date: "" };
+  }
+
+  // Parse one rendered .fndef div into { fid, key, header, date, locator, note }. `key` groups
+  // by the cited file (its data-source / link text) — or "__llm__" for a model-knowledge note.
+  function parseDef(div) {
+    var fid = (div.id || "").replace(/^fn-/, "");
+    var isLlm = /^llm/i.test(fid);
+    var linkEl = div.querySelector("a.srclink") || div.querySelector("a[data-source]") ||
+                 div.querySelector("a") || div.querySelector(".ext");
+    var clone = div.cloneNode(true), x;
+    if ((x = clone.querySelector(".fnid"))) x.parentNode.removeChild(x);
+    if ((x = clone.querySelector(".fnback"))) x.parentNode.removeChild(x);
+    if (!isLlm && linkEl) {
+      var lc = clone.querySelector("a.srclink") || clone.querySelector("a[data-source]") ||
+               clone.querySelector("a") || clone.querySelector(".ext");
+      if (lc) lc.parentNode.removeChild(lc);
+    }
+    var tail = (clone.textContent || "").replace(/\s+/g, " ").trim();
+    var d = stripDate(tail); tail = d.rest.replace(/^[,;]\s*/, "");
+    var locator = "", note = "";
+    if (isLlm) {
+      note = tail.replace(/^LLM\b\s*[-–—:,]?\s*/i, "").trim();
+      if (/^model knowledge/i.test(note)) note = "";  // the generic boilerplate adds nothing
+    } else {
+      var dash = tail.indexOf(" — ");  // "locator — note"
+      if (dash >= 0) { locator = tail.slice(0, dash).trim(); note = tail.slice(dash + 3).trim(); }
+      else { locator = tail; }
+    }
+    var key = isLlm ? "__llm__"
+      : (linkEl ? (linkEl.getAttribute("data-source") || linkEl.textContent) : "__" + fid);
+    var header = isLlm ? "<span class='src-label'>Model knowledge (LLM)</span>"
+      : (linkEl ? linkEl.outerHTML : esc(key));
+    return { fid: fid, key: key, header: header, date: d.date, locator: locator, note: note };
+  }
+
+  // Replace the reader's "## Sources" heading + its .fndef run with a grouped, collapsed <details>.
+  // The heading is matched with the grammar's laxness (SOURCES_HEADING_RE: case-insensitive
+  // "sources" word) — the heading stays literal even in non-English wikis, it is a format invariant.
+  function compactSources(reader) {
+    var heads = reader.querySelectorAll("h2"), head = null, i;
+    for (i = 0; i < heads.length; i++) {
+      if (/^sources\b/i.test((heads[i].textContent || "").trim())) { head = heads[i]; break; }
+    }
+    if (!head) return;
+    var defs = [], removable = [], sib = head.nextSibling;
+    while (sib) {
+      if (sib.nodeType === 1 && /^H[1-6]$/.test(sib.nodeName)) break;  // next section ends Sources
+      removable.push(sib);
+      if (sib.nodeType === 1 && sib.classList && sib.classList.contains("fndef")) defs.push(sib);
+      sib = sib.nextSibling;
+    }
+    if (!defs.length) return;
+    var order = [], groups = {};
+    defs.forEach(function (div) {
+      var info = parseDef(div), g = groups[info.key];
+      if (!g) { g = groups[info.key] = { header: info.header, date: info.date, cites: [] }; order.push(info.key); }
+      if (!g.date && info.date) g.date = info.date;
+      g.cites.push(info);
+    });
+    var body = order.map(function (key) {
+      var g = groups[key], noteless = [], noted = [];
+      g.cites.forEach(function (c) { (c.note ? noted : noteless).push(c); });
+      var run = noteless.length ? "<div class='src-cites'>" + noteless.map(function (c) {
+        return "<span class='fncite' id='fn-" + esc(c.fid) + "'>" + esc(c.fid) +
+          (c.locator ? " <span class='fnloc'>(" + esc(c.locator) + ")</span>" : "") + "</span>";
+      }).join(", ") + "</div>" : "";
+      var lines = noted.map(function (c) {
+        return "<div class='src-cite' id='fn-" + esc(c.fid) + "'><span class='fncid'>" + esc(c.fid) +
+          "</span>" + (c.locator ? " <span class='fnloc'>(" + esc(c.locator) + ")</span>" : "") +
+          " <span class='src-note'>— " + esc(c.note) + "</span></div>";
+      }).join("");
+      return "<div class='src-group'><div class='src-group-head'>" + g.header +
+        (g.date ? " <span class='src-date'>(" + esc(g.date) + ")</span>" : "") + "</div>" + run + lines + "</div>";
+    }).join("");
+    var details = document.createElement("details");
+    details.className = "sources";
+    details.innerHTML = "<summary>Sources (" + defs.length + ")</summary>" + body;
+    head.parentNode.insertBefore(details, head);
+    removable.forEach(function (n) { if (n.parentNode) n.parentNode.removeChild(n); });
+    if (head.parentNode) head.parentNode.removeChild(head);
+  }
+
   // Add a collapsible table of contents for any page/source with enough headings, giving every
   // heading a stable id to jump to.
   function decorateReader(reader) {
+    compactSources(reader);
     var hs = reader.querySelectorAll("h2, h3");
     if (hs.length < 3) return;
     var items = [];
@@ -835,6 +948,13 @@
   document.addEventListener("click", function (ev) {
     // The graph pane (nodes + toolbar) handles its own pointer events.
     if (ev.target.closest && ev.target.closest("#graph-pane")) return;
+    // An inline [^sN] jump lands inside the collapsed Sources <details> — open it first so the
+    // browser's native anchor scroll can reach the (now visible) definition.
+    var fnj = ev.target.closest && ev.target.closest("a[href^='#fn-']");
+    if (fnj) {
+      var det = document.querySelector("#reader details.sources");
+      if (det && !det.open) det.open = true;  // no return: let the native scroll proceed
+    }
     var s = ev.target.closest("[data-source]");
     if (s) { ev.preventDefault(); hidePop(); openSource(s.getAttribute("data-source")); return; }
     var a = ev.target.closest("[data-page]");
@@ -878,6 +998,14 @@
   document.getElementById("tag-filter").addEventListener("change", function (ev) {
     if (ev.target.id === "tag-select") { activeTag = ev.target.value; renderSidebar(); }
   });
+  // Persist the sidebar Sources <details> open/closed state (the `toggle` event does not bubble, so
+  // capture it on the stable #source-list container that renderSources rewrites each render).
+  document.getElementById("source-list").addEventListener("toggle", function (ev) {
+    var d = ev.target;
+    if (d && d.classList && d.classList.contains("src-axis")) {
+      try { localStorage.setItem("okf_sources_open", d.open ? "1" : "0"); } catch (e) {}
+    }
+  }, true);
   // Enter in the search box jumps straight to the top-ranked full-text result.
   document.getElementById("search").addEventListener("keydown", function (ev) {
     if (ev.key !== "Enter") return;
@@ -901,8 +1029,20 @@
 
   function route() {
     var h = safeHash();
+    // A footnote/marker anchor (#fn-sN / #ref-sN) opens the collapsed Sources section and scrolls to
+    // the definition — covers hashchange/direct-URL navigation as well as an in-page marker click.
+    if (h.indexOf("fn-") === 0 || h.indexOf("ref-") === 0) {
+      var det = document.querySelector("#reader details.sources");
+      if (det) det.open = true;
+      var t = document.getElementById(h);
+      if (t) t.scrollIntoView({ block: "center" });
+      return;
+    }
     if (h.indexOf("src:") === 0) { if (SOURCES[h.slice(4)]) openSource(h.slice(4)); }
     else if (h && PAGES[h]) openPage(h);
+    else return;
+    // Navigating to a page/source dismisses the mobile drawer, so the reader is visible at once.
+    if (isSmall()) app.classList.remove("sb-open");
   }
   window.addEventListener("hashchange", route);
 
@@ -1026,12 +1166,23 @@
   });
 
   // Sidebar collapse (focus/reading mode); the toggle lives in the map bar so it stays reachable.
+  // On a small screen the sidebar is an off-canvas drawer: the same button/shortcut slides it in and
+  // out via `sb-open` (default closed) instead of the desktop `sb-collapsed` (default open).
+  function isSmall() { return window.matchMedia("(max-width: 720px)").matches; }
   function toggleSidebar() {
+    if (isSmall()) { app.classList.toggle("sb-open"); return; }
+    app.classList.remove("sb-open");
     app.classList.toggle("sb-collapsed");
     try { localStorage.setItem("okf_sb_collapsed", app.classList.contains("sb-collapsed") ? "1" : "0"); } catch (e) {}
     Graph.refit();
   }
   document.getElementById("g-sidebar").addEventListener("click", toggleSidebar);
+  // A dim backdrop behind the open mobile drawer; tapping it closes the drawer. Inert (display:none)
+  // on desktop, so the desktop layout is untouched.
+  var backdrop = document.createElement("div");
+  backdrop.id = "sb-backdrop";
+  app.appendChild(backdrop);
+  backdrop.addEventListener("click", function () { app.classList.remove("sb-open"); });
 
   // Reading-width cycle (comfortable -> wide -> full), persisted; only the reader column changes.
   var RW = ["rw-comfortable", "rw-wide", "rw-full"], rwi = 0;
@@ -1062,20 +1213,24 @@
   // both window handlers early-return unless their own flag is set). Re-fit only on release.
   var gRez = document.getElementById("graph-resizer"), gPane = document.getElementById("graph-pane");
   var gDrag = false;
-  gRez.addEventListener("mousedown", function (ev) {
-    gDrag = true; gRez.classList.add("drag"); document.body.style.userSelect = "none"; ev.preventDefault();
+  gRez.addEventListener("pointerdown", function (ev) {
+    gDrag = true; gRez.classList.add("drag"); document.body.style.userSelect = "none";
+    try { gRez.setPointerCapture(ev.pointerId); } catch (e) {}
+    ev.preventDefault();
   });
-  window.addEventListener("mousemove", function (ev) {
+  gRez.addEventListener("pointermove", function (ev) {
     if (!gDrag) return;
     var top = content.getBoundingClientRect().top;
     gPane.style.height = Math.max(120, Math.min(content.clientHeight - 120, ev.clientY - top)) + "px";
   });
-  window.addEventListener("mouseup", function () {
+  function endResize() {
     if (!gDrag) return;
     gDrag = false; gRez.classList.remove("drag"); document.body.style.userSelect = "";
     try { localStorage.setItem("okf_map_h", gPane.style.height); } catch (e) {}
     Graph.refit();
-  });
+  }
+  gRez.addEventListener("pointerup", endResize);
+  gRez.addEventListener("pointercancel", endResize);
 
   // Restore persisted view state, then re-fit once the pane geometry is final.
   try { var mh = localStorage.getItem("okf_map_h"); if (mh) gPane.style.height = mh; } catch (e) {}
@@ -1085,8 +1240,26 @@
   try { if (localStorage.getItem("okf_sb_collapsed") === "1") app.classList.add("sb-collapsed"); } catch (e) {}
   try { if (localStorage.getItem("okf_map_collapsed") === "1") setCollapsed(true); } catch (e) {}
   try { if (localStorage.getItem("okf_map_expanded") === "1") setExpanded(true); } catch (e) {}
+  // On a small screen the map eats the viewport, so default it COLLAPSED on first load — but only
+  // when the user has expressed no map preference yet (a persisted choice always wins).
+  try {
+    if (window.matchMedia("(max-width: 720px)").matches &&
+        localStorage.getItem("okf_map_collapsed") === null &&
+        localStorage.getItem("okf_map_expanded") === null) {
+      setCollapsed(true);
+    }
+  } catch (e) {}
   renderLegend();
   Graph.refit();
+  // Print: force the collapsed Sources section open so citations print, then restore afterwards.
+  window.addEventListener("beforeprint", function () {
+    var d = document.querySelector("#reader details.sources");
+    if (d) { d._wasOpen = d.open; d.open = true; }
+  });
+  window.addEventListener("afterprint", function () {
+    var d = document.querySelector("#reader details.sources");
+    if (d && !d._wasOpen) d.open = false;
+  });
 
   var rt;
   window.addEventListener("resize", function () {
