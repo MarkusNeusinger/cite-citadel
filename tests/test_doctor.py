@@ -428,6 +428,62 @@ def test_check_update_defaults_to_installed_version(tmp_citadel, monkeypatch):
     assert "9.9.9 is current" in c.detail
 
 
+# --- workspace coherence -----------------------------------------------------------------
+
+
+_COHERENT_FM = {"type": "Concept", "title": "Topic", "description": "d", "tags": ["t"], "resource": "raw/x.md"}
+_COHERENT_BODY = "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/x.md](../../raw/x.md) - notes\n"
+
+
+def test_coherence_ok_when_citations_resolve_under_the_raw_root(tmp_citadel, seed_page):
+    # Normal layout: wiki/ and raw/ share a parent, so ../../raw/x.md lands under the raw root.
+    seed_page("concepts/topic.md", _COHERENT_FM, _COHERENT_BODY)
+    c = doctor.check_workspace_coherence()
+    assert c.status == doctor.OK
+    assert c.name == "workspace coherence"
+    assert "all 1 source citations resolve under the configured raw/docs roots" in c.detail
+
+
+def test_coherence_warn_on_hybrid_wiki_and_raw_layout(make_citadel, seed_page, tmp_path):
+    # Tonight's incident: the wiki is nested deep while raw/ stays at the workspace root, so a
+    # standard ../../raw/x.md citation resolves to <wiki_parent>/raw/x.md — OUTSIDE the configured
+    # raw root (tmp/raw). Everything then degrades silently; only doctor should call it out.
+    make_citadel(wiki=tmp_path / "sub" / "deep" / "wiki")
+    seed_page("concepts/topic.md", _COHERENT_FM, _COHERENT_BODY)
+    c = doctor.check_workspace_coherence()
+    assert c.status == doctor.WARN
+    assert "1/1 source citation" in c.detail
+    assert "concepts/topic.md" in c.detail and "OUTSIDE" in c.detail
+    # names where it actually resolved (the nested raw tree) and the CITADEL_RAW_DIR / workspace fix.
+    assert str(tmp_path / "sub" / "deep" / "raw") in c.detail
+    assert "CITADEL_RAW_DIR" in c.detail and "CITADEL_WORKSPACE" in c.detail
+
+
+def test_coherence_ok_when_no_pages(tmp_citadel):
+    c = doctor.check_workspace_coherence()
+    assert c.status == doctor.OK
+    assert "no pages" in c.detail
+
+
+def test_coherence_ok_when_only_external_citations(tmp_citadel, seed_page):
+    # A page whose only Sources entry is an external URL has no raw/docs citation to check.
+    seed_page(
+        "concepts/topic.md",
+        {"type": "Concept", "title": "Topic", "description": "d", "tags": ["t"], "resource": "https://example.com"},
+        "A fact.[^s1]\n\n## Sources\n\n[^s1]: [example](https://example.com) - web\n",
+    )
+    c = doctor.check_workspace_coherence()
+    assert c.status == doctor.OK
+    assert "no source citations to check" in c.detail
+
+
+def test_coherence_ok_skips_without_a_workspace(tmp_citadel, monkeypatch):
+    monkeypatch.setattr(config, "WORKSPACE_FOUND", False)
+    c = doctor.check_workspace_coherence()
+    assert c.status == doctor.OK
+    assert "no workspace" in c.detail
+
+
 # --- report + CLI wiring -----------------------------------------------------------------
 
 
@@ -459,6 +515,7 @@ def test_run_emits_the_full_check_inventory(tmp_citadel, monkeypatch):
         "billing",
         "PDF mode",
         "update",
+        "workspace coherence",
     ]
 
 

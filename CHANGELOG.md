@@ -39,6 +39,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`citadel doctor` now checks workspace coherence.** A new check catches the silent
+  misconfiguration where `CITADEL_WIKI_DIR` and `CITADEL_RAW_DIR` sit under different parents (e.g.
+  the wiki points into a corpus but the raw root is left at the default): every `../../raw/x`
+  citation then resolves OUTSIDE the configured raw root, so `grammar.is_source_citation` rejects it,
+  `citadel lint` reports the sources broken, and the viewer's source records lose their names/links —
+  yet nothing else said the roots don't line up. The check walks the wiki's `## Sources` citations
+  (read-only, O(pages), reusing the shared citation grammar) and WARNs (advisory, never FAILs) with
+  the count, one offending citation and where it actually resolved, plus the fix (set
+  `CITADEL_RAW_DIR` to the `raw/` tree next to the wiki, or select the workspace with
+  `CITADEL_WORKSPACE`); OK when every citation resolves under a root.
 - **`citadel doctor` now checks for updates.** A ninth check asks PyPI (best-effort, 2s timeout —
   offline it degrades to an OK "check skipped" line, never a WARN/FAIL) whether a newer
   `cite-citadel` is published, and when behind WARNs with the exact upgrade command for the
