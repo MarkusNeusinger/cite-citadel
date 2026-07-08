@@ -70,6 +70,28 @@ def test_field_weight_ladder_title_tags_description_body(tmp_citadel, seed_page)
     ]
 
 
+def test_alias_hit_ranks_between_title_and_tags(tmp_citadel, seed_page):
+    """A page's declared `aliases` are scored (weight 2.5), so a paraphrase that matches only an
+    alias still reaches the page — above a tags hit (2.0), below a title hit (3.0). Search-lane
+    harvest (#69): without this an alias-only term never ranked its page. 'cardamom' is in all 3
+    pages so IDF ~1.0; the title page also gets the +0.5 substring bonus."""
+    seed_page("concepts/title-hit.md", {"type": "concept", "title": "Cardamom"}, "Nothing.\n")
+    seed_page(
+        "concepts/alias-hit.md",
+        {"type": "concept", "title": "Green Pod Spice", "aliases": ["cardamom"]},
+        "Nothing here.\n",
+    )
+    seed_page("concepts/tag-hit.md", {"type": "concept", "title": "Beta", "tags": ["cardamom"]}, "Nothing.\n")
+
+    hits = store.search("cardamom")
+
+    assert [(p.rel_path, s) for p, s in hits] == [
+        ("concepts/title-hit.md", 3.5),
+        ("concepts/alias-hit.md", 2.5),
+        ("concepts/tag-hit.md", 2.0),
+    ]
+
+
 def test_title_hit_outranks_body_hit(tmp_citadel, seed_page):
     """The core ranking promise: a query token in the title beats the same token in a body."""
     seed_page("concepts/in-title.md", {"type": "concept", "title": "Ferrite Basics"}, "Magnetic stuff.\n")

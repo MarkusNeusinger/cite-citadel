@@ -48,6 +48,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Search now weights a page's declared `aliases`.** `store_core._score` scores the `aliases`
+  frontmatter (an alternate name / lay-term synonym) at weight 2.5 — between `title` (3.0) and `tags`
+  (2.0) — and counts them in the IDF corpus, so a paraphrased query can reach a page by a word its
+  title lacks (e.g. a currency page aliased `money`/`cash` surfaces for "how do people pay …"). Purely
+  lexical, no synonym map or embeddings. Aliases were already parsed and used by `wiki_define` /
+  exact-title lookup but never ranked; a paraphrase-probe harvest over fresh Mode-A builds surfaced the
+  gap. Locked by a golden-rank test; the rest of `test_search.py` passes unchanged.
 - **Light stemming in search.** `store_core._tokenize` now applies a small, deterministic,
   dependency-free suffix strip (`brewing`/`brew`, `founded`/`founding`, `magnets`/`magnet` collapse to
   a shared token) so paraphrased query forms match. It is applied symmetrically to both the query and

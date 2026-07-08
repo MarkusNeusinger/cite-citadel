@@ -131,7 +131,11 @@ def _idf_weights(pages: list[Page]) -> dict[str, float]:
     df: dict[str, int] = {}
     for page in pages:
         tokens = (
-            _tokenize(page.title) | _tokenize(" ".join(page.tags)) | _tokenize(page.description) | _tokenize(page.body)
+            _tokenize(page.title)
+            | _tokenize(" ".join(_aliases_of(page)))
+            | _tokenize(" ".join(page.tags))
+            | _tokenize(page.description)
+            | _tokenize(page.body)
         )
         for tok in tokens:
             df[tok] = df.get(tok, 0) + 1
@@ -140,11 +144,13 @@ def _idf_weights(pages: list[Page]) -> dict[str, float]:
 
 def _score(query_tokens: set[str], page: Page, idf: dict[str, float] | None = None) -> float:
     """Token-overlap score. Each matching query token contributes its field weight —
-    title 3.0, tags 2.0, description 1.5, body 1.0 — scaled by the token's IDF weight
-    (from :func:`_idf_weights`) so a rare, discriminating token outweighs one common to
-    many pages. With ``idf=None`` every token weighs 1.0, i.e. plain overlap counting.
-    0.0 == no match. (The 0.5 raw-substring bonus is applied in search(), which knows the
-    original query string; this helper handles the token-overlap weights.)"""
+    title 3.0, aliases 2.5, tags 2.0, description 1.5, body 1.0 — scaled by the token's IDF
+    weight (from :func:`_idf_weights`) so a rare, discriminating token outweighs one common to
+    many pages. Aliases are a page's declared alternate names/synonyms (an abbreviation's
+    spelled-out form, a lay term for the concept), so weighting them lets a paraphrased query
+    reach the page by a word the title lacks — purely lexical, no synonym map. With ``idf=None``
+    every token weighs 1.0, i.e. plain overlap counting. 0.0 == no match. (The 0.5 raw-substring
+    bonus is applied in search(), which knows the original query string.)"""
     if not query_tokens:
         return 0.0
 
@@ -153,10 +159,12 @@ def _score(query_tokens: set[str], page: Page, idf: dict[str, float] | None = No
 
     score = 0.0
     title_tokens = _tokenize(page.title)
+    alias_tokens = _tokenize(" ".join(_aliases_of(page)))
     tag_tokens = _tokenize(" ".join(page.tags))
     desc_tokens = _tokenize(page.description)
     body_tokens = _tokenize(page.body)
     score += 3.0 * sum(w(t) for t in query_tokens & title_tokens)
+    score += 2.5 * sum(w(t) for t in query_tokens & alias_tokens)
     score += 2.0 * sum(w(t) for t in query_tokens & tag_tokens)
     score += 1.5 * sum(w(t) for t in query_tokens & desc_tokens)
     score += 1.0 * sum(w(t) for t in query_tokens & body_tokens)
@@ -165,8 +173,8 @@ def _score(query_tokens: set[str], page: Page, idf: dict[str, float] | None = No
 
 def search(query: str, pages: list[Page] | None = None, limit: int = 8) -> list[tuple[Page, float]]:
     """THE single swappable search seam. If pages is None, call load(). Score every page
-    (IDF-weighted token overlap with title*3/tags*2/description*1.5/body*1.0 — a rare,
-    discriminating query token outweighs one common to the whole corpus — plus a 0.5
+    (IDF-weighted token overlap with title*3/aliases*2.5/tags*2/description*1.5/body*1.0 — a
+    rare, discriminating query token outweighs one common to the whole corpus — plus a 0.5
     substring bonus when the lowercased query appears in the title or body), drop zeros,
     sort desc by score then rel_path, return the top `limit` as (page, score). IDF is
     computed over the candidate `pages` each call, so a tag-pre-filtered search weighs
