@@ -56,6 +56,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Viewer map now clusters by topic.** The offline HTML viewer's graph is reworked from a single
+  ring into a topic map: communities are detected by deterministic label propagation over the
+  combined graph (real cross-links + IDF-weighted tag-similarity KNN edges) and each is named by its
+  most characteristic tag (beverages: `botany`/`trade`/`roasting`/`measurement` instead of 27
+  single-tag micro-clusters); source nodes inherit their citing pages' community. Nodes seed around
+  per-community centroids and relax with node collision, per-community gravity, and faint
+  tag-similarity springs, so related pages actually settle together. Nodes colour by topic (full
+  8-hue colorblind-safe brand palette; a type-colour toggle in the map bar, persisted — and a wiki
+  that collapses to a single community, like one dense novel, defaults to type colours), the legend
+  lists the top clusters with an "other" bucket and per-cluster show/hide, and labels declutter —
+  only hubs, hovered neighbours, and zoomed-in views draw text. Deterministic (no `Math.random`),
+  vanilla JS, zero deps. Viewer assets only (`app.css`/`app.js`).
 - **Viewer adopts the project's warm brand palette.** The offline HTML viewer's tokens move to the
   warm paper/ink scheme with the green brand accent (`#009E73` family): a monospace wordmark carrying
   a small green brand marker, and a colorblind-safe map palette (the brand green pinned first). The
