@@ -93,7 +93,8 @@ timestamp: 2026-06-21T12:00:00Z   # set automatically on every write — do NOT 
 
 - The `check` gate (`citadel check`, MCP `wiki_validate`) treats `title`, `description`, `tags`
   (≥1), and `resource` as required alongside `type` — a missing one is a hard error. Extra fields
-  beyond these are allowed and preserved.
+  beyond these are allowed and preserved — notably `aliases` (see § Aliases), the alternate names a
+  reader might search by.
 - **Do NOT write a `timestamp` field** — the system stamps it on every write.
 - **Never put a second `---` YAML block inside the body.** The body is markdown only.
 - **Filename** is the slug of the title: lowercase, runs of non-alphanumeric → `-`, trimmed
@@ -210,6 +211,20 @@ Give each page 2–5 lowercase `tags` from a shared vocabulary (reuse existing t
 fit). Tags are the OKF-native `tags` frontmatter field and a second navigation axis: they boost
 search ranking, power `citadel tags` / `search --tag` / the MCP `wiki_tags` tool, and are
 surfaced as a `## Tags` section in the generated `index.md`.
+
+## Aliases — the other names a reader searches by
+
+`aliases` is a frontmatter list of **alternate names for the page's subject that its title does not
+contain** — a common lay synonym, an everyday word, a nickname, or a former name. It is not only for
+abbreviations: search weights `aliases` highly (just below the title), so an alias lets a paraphrased
+query reach the page even when the query's word never appears in the prose — a currency page titled
+*Skell* becomes findable by "money"; a *Multi-Factor Authentication* page by "two-factor".
+
+Add up to ~4 aliases to a page when a **genuinely common, unambiguous** everyday term differs from
+its canonical title — e.g. `aliases: [money, cash]` on the currency page, `[two-factor, 2FA]` on the
+MFA page, a widely-used nickname on a person page. Be conservative: only real, well-known synonyms,
+never a speculative or invented one (a wrong alias mis-routes searches). Most pages need none — reach
+for aliases where the subject has an obvious everyday name the title omits.
 
 ## Abbreviations — capture short + long so either form is found
 

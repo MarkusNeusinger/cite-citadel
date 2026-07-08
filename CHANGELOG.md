@@ -48,6 +48,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Ingest now gives pages lay-term `aliases`.** `citadel/rules/schema.md` gains an *Aliases* section
+  teaching the agent to add up to ~4 high-precision alternate names a reader might search — a lay
+  synonym, everyday word, nickname, or former name — to any page (not just abbreviations), so a
+  paraphrased query reaches the page by a word its title lacks. Pairs with the alias-scoring change
+  below. Validated on a fresh kelvarra build: the currency page picked up `aliases: [money, cash]` and
+  `citadel search "money"` went from *absent* to rank 1, with the counterfactual/structural guarantees
+  unchanged. (Editing a `rules/` file bumps `rules_version`, so `citadel status` shows previously
+  ingested sources as `(stale)` — expected, cosmetic.)
 - **Search now weights a page's declared `aliases`.** `store_core._score` scores the `aliases`
   frontmatter (an alternate name / lay-term synonym) at weight 2.5 — between `title` (3.0) and `tags`
   (2.0) — and counts them in the IDF corpus, so a paraphrased query can reach a page by a word its
