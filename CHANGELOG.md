@@ -27,6 +27,15 @@ All notable changes to this project are documented here. The format is based on
   `H1`/`H2`) and roman numerals used in an ordinal context (`Chapter IV`), while still surfacing a
   genuine abbreviation that merely parses as a numeral (`DC`). Advisory-only; no structural gate
   changes. Surfaced by the verify-corpus Mode-A harvest.
+- **`okf.slugify` transliterates accented titles instead of dropping the letters.** A title like
+  `Café` slugged to `caf` and `Zürich` to `z-rich` (every non-ASCII letter became a gap), so a
+  filename the ingest agent sensibly wrote (`cafe.md`) triggered a spurious `filename does not match
+  slug of title` advisory. Slugify now ASCII-folds via NFKD + combining-mark stripping (`Café` →
+  `cafe`, `naïve` → `naive`) with a small map for letters that do not decompose (`ß` → `ss`,
+  `Œ` → `oe`). The three affected `leuchtfeuer` person pages are renamed to the improved slugs
+  (`j-rn-albers` → `jorn-albers`, `sabine-kr-ger` → `sabine-kruger`, `tom-s-iglesias` →
+  `tomas-iglesias`) with their inbound links and indexes repaired, so all five committed corpora
+  stay advisory-clean.
 
 ### Added
 

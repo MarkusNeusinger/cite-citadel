@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -116,10 +117,44 @@ def validate(frontmatter: dict) -> None:
         raise OKFError(f"missing required field: {REQUIRED_FIELD!r}")
 
 
+# A handful of Latin letters that do NOT decompose to an ASCII base + combining mark under NFKD, so
+# NFKD alone would drop them. Mapped to a sensible ASCII transliteration so a title like ``Straße``
+# or ``Œuvre`` slugs to real words rather than losing letters.
+_SLUG_TRANSLITERATE = str.maketrans(
+    {
+        "ß": "ss",
+        "ẞ": "ss",
+        "œ": "oe",
+        "Œ": "oe",
+        "æ": "ae",
+        "Æ": "ae",
+        "ø": "o",
+        "Ø": "o",
+        "ð": "d",
+        "Ð": "d",
+        "þ": "th",
+        "Þ": "th",
+        "ł": "l",
+        "Ł": "l",
+        "đ": "d",
+        "Đ": "d",
+        "ı": "i",
+    }
+)
+
+
 def slugify(title: str) -> str:
-    """Lowercase, strip, replace runs of non-alphanumeric with ``-``, trim
-    leading/trailing ``-``. Empty -> ``'untitled'``."""
-    slug = re.sub(r"[^a-z0-9]+", "-", title.strip().lower()).strip("-")
+    """Lowercase and ASCII-fold ``title`` into a filename slug: accented Latin letters transliterate
+    to their base (``Café`` -> ``cafe``, ``Zürich`` -> ``zurich``, ``naïve`` -> ``naive``) via NFKD +
+    combining-mark stripping, with a small map for letters that do not decompose (``ß`` -> ``ss``,
+    ``Œ`` -> ``oe``). Runs of any remaining non-``[a-z0-9]`` collapse to ``-`` and are trimmed. A
+    title with no ASCII-foldable characters (e.g. all-CJK) -> ``'untitled'``.
+
+    Folding matters because the ingest agent already transliterates accents when it names a file, so a
+    non-folding slug produced spurious ``filename does not match slug of title`` advisories."""
+    folded = unicodedata.normalize("NFKD", title.translate(_SLUG_TRANSLITERATE))
+    ascii_only = "".join(ch for ch in folded if not unicodedata.combining(ch))
+    slug = re.sub(r"[^a-z0-9]+", "-", ascii_only.strip().lower()).strip("-")
     return slug or "untitled"
 
 

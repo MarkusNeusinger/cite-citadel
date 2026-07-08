@@ -21,7 +21,7 @@ inventory data.[^s1] Blauwal's existing MDE devices are incompatible with the ne
 manufacturer for years.[^s1]
 
 On 19 March 2024 the steering committee (Lenkungsausschuss) approved the procurement of 180 new MDE devices
-(decision LA-2024-03).[^s1] [Jörn Albers](../persons/j-rn-albers.md) asked that the devices for the
+(decision LA-2024-03).[^s1] [Jörn Albers](../persons/jorn-albers.md) asked that the devices for the
 [SEAGULL](../projects/seagull.md) pilot reach Bremen-Walle with enough lead time for his team to practice in
 live operation before cutover.[^s1]
 
@@ -51,7 +51,7 @@ id: op-mde-device-procurement
 - [MDE — Mobile Data Capture](../abbreviations/mde-mobile-data-capture.md)
 - [QUAYSTONE](../systems/quaystone.md)
 - [SEAGULL](../projects/seagull.md)
-- [Jörn Albers](../persons/j-rn-albers.md)
+- [Jörn Albers](../persons/jorn-albers.md)
 - [Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md)
 
 ## Sources

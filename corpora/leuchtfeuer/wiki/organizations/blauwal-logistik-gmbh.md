@@ -29,15 +29,15 @@ the third quarter of 2024.[^s3] Blauwal's steering committee (Lenkungsausschuss)
 scheduled to meet next on 19 March 2024 in Bremen; its minutes are kept in German.[^s4]
 
 The steering committee met again on 19 March 2024 as scheduled, chaired by
-[Petra Vogelsang](../persons/petra-vogelsang.md) and minuted by [Sabine Krüger](../persons/sabine-kr-ger.md),
-with [Tomás Iglesias](../persons/tom-s-iglesias.md) sending his regrets.[^s6] It took three decisions
+[Petra Vogelsang](../persons/petra-vogelsang.md) and minuted by [Sabine Krüger](../persons/sabine-kruger.md),
+with [Tomás Iglesias](../persons/tomas-iglesias.md) sending his regrets.[^s6] It took three decisions
 (LA-2024-01 to LA-2024-03) and set its next meeting for 7 May 2024 in Bremen.[^s7]
 
 The steering committee held an extraordinary session on 10 February 2025, conducted in English at guest
 Tomás Iglesias's request, chaired by Petra Vogelsang and minuted by
 [Jonas Petersen](../persons/jonas-petersen.md), with [Marek Duszek](../persons/marek-duszek.md),
-[Sabine Krüger](../persons/sabine-kr-ger.md), [Heike Brandt](../persons/heike-brandt.md), and
-[Jörn Albers](../persons/j-rn-albers.md) also attending.[^s9] It took four decisions (D-9 to D-12) — reversing
+[Sabine Krüger](../persons/sabine-kruger.md), [Heike Brandt](../persons/heike-brandt.md), and
+[Jörn Albers](../persons/jorn-albers.md) also attending.[^s9] It took four decisions (D-9 to D-12) — reversing
 the persistence layer to [BasaltDB](../systems/basaltdb.md), confirming the re-planned timeline and the
 increased EUR 2.4 million budget, and ratifying charter Revision B in full — and set its next meeting for 11
 March 2025 in Bremen, when the German-language protokoll series resumes.[^s9]
@@ -49,10 +49,10 @@ over the whole cutover weekend.[^s10]
 
 The steering committee met again at Bremen-Walle on 30 June 2025, for a status handover on the SEAGULL pilot,
 chaired by [Petra Vogelsang](../persons/petra-vogelsang.md) and minuted by
-[Sabine Krüger](../persons/sabine-kr-ger.md), with [Jörn Albers](../persons/j-rn-albers.md) and
+[Sabine Krüger](../persons/sabine-kruger.md), with [Jörn Albers](../persons/jorn-albers.md) and
 [Jonas Petersen](../persons/jonas-petersen.md) also attending and
 [Marek Duszek](../persons/marek-duszek.md) joining by video; [Heike Brandt](../persons/heike-brandt.md) and
-[Tomás Iglesias](../persons/tom-s-iglesias.md) were excused.[^s11] It took decision LA-2025-07, postponing the
+[Tomás Iglesias](../persons/tomas-iglesias.md) were excused.[^s11] It took decision LA-2025-07, postponing the
 rollout to the remaining sites to the first quarter of 2026 after the customs-interface certification and the
 MDE-device delivery for three sites both slipped.[^s12] Its next meeting is set for 9 September 2025 in
 Bremen.[^s13]
@@ -78,11 +78,11 @@ is being built on QUAYSTONE's order and shipment APIs, with no direct database a
 - [QUAYSTONE](../systems/quaystone.md)
 - [Gezeitenwerk Software GmbH](gezeitenwerk-software-gmbh.md)
 - [Petra Vogelsang](../persons/petra-vogelsang.md)
-- [Sabine Krüger](../persons/sabine-kr-ger.md)
-- [Tomás Iglesias](../persons/tom-s-iglesias.md)
+- [Sabine Krüger](../persons/sabine-kruger.md)
+- [Tomás Iglesias](../persons/tomas-iglesias.md)
 - [Marek Duszek](../persons/marek-duszek.md)
 - [Heike Brandt](../persons/heike-brandt.md)
-- [Jörn Albers](../persons/j-rn-albers.md)
+- [Jörn Albers](../persons/jorn-albers.md)
 - [Jonas Petersen](../persons/jonas-petersen.md)
 - [Yasmin Okafor](../persons/yasmin-okafor.md)
 - [BasaltDB](../systems/basaltdb.md)

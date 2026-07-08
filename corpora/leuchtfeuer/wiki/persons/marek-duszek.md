@@ -79,7 +79,7 @@ programme is advisory, two days a week.[^s19]
 - [Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md)
 - [SEAGULL](../projects/seagull.md)
 - [SEAGULL (customer portal programme)](../projects/seagull-customer-portal-programme.md)
-- [Tomás Iglesias](../persons/tom-s-iglesias.md)
+- [Tomás Iglesias](tomas-iglesias.md)
 - [Petra Vogelsang](../persons/petra-vogelsang.md)
 - [TCO — Total Cost of Ownership](../abbreviations/tco-total-cost-of-ownership.md)
 

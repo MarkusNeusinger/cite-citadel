@@ -39,7 +39,7 @@ the steering committee Gezeitenwerk's week-one vendor summary: the cutover ran e
 data migration reconciled against the [KOMET](../systems/komet.md) extracts with zero unexplained
 differences, and the BasaltDB stack behaved impeccably from the first minute.[^s9] He called it, in his own words, the smoothest mid-size WMS cutover
 Gezeitenwerk has delivered in years, crediting the Gezeitenwerk implementation crew and
-[Jörn Albers](j-rn-albers.md)'s team at Walle.[^s9] He reported that, from the vendor side, nothing stands in
+[Jörn Albers](jorn-albers.md)'s team at Walle.[^s9] He reported that, from the vendor side, nothing stands in
 the way of the pilot hold-point review in April 2025, and offered to bring the lessons-learned workshop to
 Bremen in the last week of March 2025 if the committee's calendar allows.[^s9]
 
@@ -55,7 +55,7 @@ He was likewise excused from a status handover meeting at Bremen-Walle on 30 Jun
 - [Marek Duszek](../persons/marek-duszek.md)
 - [Petra Vogelsang](../persons/petra-vogelsang.md)
 - [KOMET](../systems/komet.md)
-- [Jörn Albers](../persons/j-rn-albers.md)
+- [Jörn Albers](jorn-albers.md)
 
 ## Sources
 

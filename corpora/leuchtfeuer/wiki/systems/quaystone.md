@@ -30,7 +30,7 @@ a pilot at the Bremen-Walle warehouse, codename [SEAGULL](../projects/seagull.md
 start in the third quarter of 2024 and now set for 22–23 February 2025.[^s3][^s7]
 
 Blauwal's QUAYSTONE deployment originally ran on [KorallenDB](korallendb.md) as its persistence layer, on the
-recommendation of Gezeitenwerk's [Tomás Iglesias](../persons/tom-s-iglesias.md); [Marek Duszek](../persons/marek-duszek.md)
+recommendation of Gezeitenwerk's [Tomás Iglesias](../persons/tomas-iglesias.md); [Marek Duszek](../persons/marek-duszek.md)
 dissented from this choice and asked that his dissent be recorded in the minutes.[^s4] The Lenkungsausschuss
 later reversed this decision: per a circular resolution of 13 January 2025 recorded in the charter's
 Revision B, QUAYSTONE's persistence layer now runs on [BasaltDB](basaltdb.md) instead, with the migration

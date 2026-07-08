@@ -15,7 +15,7 @@ timestamp: '2026-07-03T15:36:17Z'
 KorallenDB is one of two deployment options [Gezeitenwerk Software GmbH](../organizations/gezeitenwerk-software-gmbh.md)
 supports for the persistence layer of its [QUAYSTONE](quaystone.md) WMS platform.[^s1] At the
 [Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md) kickoff meeting on 5 March 2024, on the
-recommendation of Gezeitenwerk's [Tomás Iglesias](../persons/tom-s-iglesias.md), the meeting decided that
+recommendation of Gezeitenwerk's [Tomás Iglesias](../persons/tomas-iglesias.md), the meeting decided that
 [Blauwal Logistik GmbH](../organizations/blauwal-logistik-gmbh.md)'s QUAYSTONE deployment would run on
 KorallenDB (decision D-4).[^s1]
 
@@ -44,7 +44,7 @@ overhead nobody had priced. The committee confirmed the reversal to BasaltDB una
 - [QUAYSTONE](quaystone.md)
 - [Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md)
 - [Marek Duszek](../persons/marek-duszek.md)
-- [Tomás Iglesias](../persons/tom-s-iglesias.md)
+- [Tomás Iglesias](../persons/tomas-iglesias.md)
 - [BasaltDB](basaltdb.md)
 
 ## Sources

@@ -29,7 +29,7 @@ the persistence layer executed before the pilot cutover so the pilot runs on the
 day.[^s2]
 
 At the steering committee's 10 February 2025 session — held after KorallenDB's vendor announced revised
-per-core licence terms with an audit clause in December 2024 — [Tomás Iglesias](../persons/tom-s-iglesias.md) confirmed that Gezeitenwerk
+per-core licence terms with an audit clause in December 2024 — [Tomás Iglesias](../persons/tomas-iglesias.md) confirmed that Gezeitenwerk
 supports QUAYSTONE on BasaltDB as a first-class deployment and that two reference customers run it in
 production at comparable volume. The committee confirmed the reversal to BasaltDB unanimously as decision
 D-9.[^s3]

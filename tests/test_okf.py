@@ -187,6 +187,25 @@ def test_default_rel_path_routing():
     assert okf.default_rel_path("Note", "") == "misc/untitled.md"
 
 
+def test_slugify_transliterates_accented_titles():
+    """Accented Latin letters ASCII-fold instead of being dropped (they previously vanished, so a
+    'Café' page slugged to 'caf' and mismatched the agent's 'cafe.md')."""
+    assert okf.slugify("Caffè Aurora") == "caffe-aurora"
+    assert okf.slugify("Café") == "cafe"
+    assert okf.slugify("Zürcher") == "zurcher"
+    assert okf.slugify("naïve") == "naive"
+    assert okf.slugify("José María") == "jose-maria"
+    # Letters with no NFKD ASCII decomposition get an explicit transliteration.
+    assert okf.slugify("Straße") == "strasse"
+    assert okf.slugify("Œuvre") == "oeuvre"
+    assert okf.slugify("Æther") == "aether"
+    assert okf.slugify("Þórr") == "thorr"
+    # ASCII titles are unchanged; a title with nothing ASCII-foldable falls back to 'untitled'.
+    assert okf.slugify("Plain Title 3") == "plain-title-3"
+    assert okf.slugify("北京") == "untitled"
+    assert okf.slugify("") == "untitled"
+
+
 def test_abbrev_short_long():
     """abbrev_short_long splits 'SHORT — Expansion' titles (em/en-dash or spaced hyphen),
     falls back to the first two aliases, then to (title, description)."""

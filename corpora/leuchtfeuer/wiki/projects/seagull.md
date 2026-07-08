@@ -18,10 +18,10 @@ SEAGULL is the working codename for the pilot rollout of [QUAYSTONE](../systems/
 on 5 March 2024, to start in the third quarter of 2024 (decision D-2).[^s1]
 
 Bremen-Walle was chosen deliberately: it is mid-sized, sits close to headquarters, and
-[Jörn Albers](../persons/j-rn-albers.md)'s team there is regarded as the most change-friendly crew in the
+[Jörn Albers](../persons/jorn-albers.md)'s team there is regarded as the most change-friendly crew in the
 estate.[^s1] Whatever SEAGULL teaches the programme, it is meant to teach it cheaply and close to home.[^s1]
 
-Gezeitenwerk's [Tomás Iglesias](../persons/tom-s-iglesias.md) confirmed his company can staff the full-estate
+Gezeitenwerk's [Tomás Iglesias](../persons/tomas-iglesias.md) confirmed his company can staff the full-estate
 implementation for a 1 October 2024 go-live, provided the master data arrives clean and the interface
 specifications are frozen by early summer.[^s1] How the remaining sites follow the SEAGULL pilot — one at a
 time or via a single coordinated cutover — was left open at the kickoff meeting; see the
@@ -66,7 +66,7 @@ throughput in week one ran above the plan values and the pick error rate stayed 
 corridor, with the full metrics pack going to [Jonas Petersen](../persons/jonas-petersen.md) for the project
 share.[^s10] Tomás Iglesias called it, in his own assessment, the smoothest mid-size WMS cutover Gezeitenwerk
 has delivered in years, crediting both the Gezeitenwerk implementation crew and
-[Jörn Albers](../persons/j-rn-albers.md)'s team at Walle, whom he said met them more than halfway.[^s11]
+[Jörn Albers](../persons/jorn-albers.md)'s team at Walle, whom he said met them more than halfway.[^s11]
 
 > [!CONTRADICTION]
 > Gezeitenwerk's 3 March 2025 week-one vendor summary reports that order release at Walle stood still for only
@@ -82,8 +82,8 @@ side, Tomás Iglesias reported that nothing stands in the way of the pilot hold-
 and Gezeitenwerk offered to bring the lessons-learned workshop to Bremen in the last week of March 2025,
 pending the steering committee's calendar.[^s13]
 
-At a status handover meeting at Bremen-Walle on 30 June 2025, [Jörn Albers](../persons/j-rn-albers.md) and
-[Sabine Krüger](../persons/sabine-kr-ger.md) reviewed the cutover weekend from the site's perspective: the
+At a status handover meeting at Bremen-Walle on 30 June 2025, [Jörn Albers](../persons/jorn-albers.md) and
+[Sabine Krüger](../persons/sabine-kruger.md) reviewed the cutover weekend from the site's perspective: the
 data takeover was complete with no unresolved discrepancies, and the crew was well prepared by the training
 and MDE practice weeks.[^s14] The site had planned for the nine-hour interruption in advance, so no customer
 commitment was broken; the meeting recorded that follow-up sites should expect an interruption of this order
@@ -152,11 +152,11 @@ id: op-seagull-lessons-learned-workshop
 - [QUAYSTONE](../systems/quaystone.md)
 - [BasaltDB](../systems/basaltdb.md)
 - [KOMET](../systems/komet.md)
-- [Jörn Albers](../persons/j-rn-albers.md)
+- [Jörn Albers](../persons/jorn-albers.md)
 - [Petra Vogelsang](../persons/petra-vogelsang.md)
 - [Marek Duszek](../persons/marek-duszek.md)
-- [Sabine Krüger](../persons/sabine-kr-ger.md)
-- [Tomás Iglesias](../persons/tom-s-iglesias.md)
+- [Sabine Krüger](../persons/sabine-kruger.md)
+- [Tomás Iglesias](../persons/tomas-iglesias.md)
 - [Jonas Petersen](../persons/jonas-petersen.md)
 - [MDE device](../objects/mde-device.md)
 - [SEAGULL (customer portal programme)](seagull-customer-portal-programme.md)

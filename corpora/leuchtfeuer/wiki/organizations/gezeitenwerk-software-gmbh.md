@@ -15,7 +15,7 @@ timestamp: '2026-07-03T17:30:14Z'
 Gezeitenwerk Software GmbH is a software vendor based in Hamburg that sells [QUAYSTONE](../systems/quaystone.md),
 the cloud warehouse management system (WMS) platform [Blauwal Logistik GmbH](blauwal-logistik-gmbh.md) is
 adopting under [Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md).[^s11] Its account manager for the
-engagement is [Tomás Iglesias](../persons/tom-s-iglesias.md).[^s1]
+engagement is [Tomás Iglesias](../persons/tomas-iglesias.md).[^s1]
 
 Gezeitenwerk's implementation services were originally funded from the LEUCHTFEUER programme's EUR 1.8
 million budget.[^s2] Revision B of the programme charter records that this budget has since grown to EUR 2.4
@@ -51,7 +51,7 @@ their weekends" throughout the programme.[^s10]
 - [KorallenDB](../systems/korallendb.md)
 - [BasaltDB](../systems/basaltdb.md)
 - [KOMET](../systems/komet.md)
-- [Tomás Iglesias](../persons/tom-s-iglesias.md)
+- [Tomás Iglesias](../persons/tomas-iglesias.md)
 - [Blauwal Logistik GmbH](blauwal-logistik-gmbh.md)
 - [SEAGULL](../projects/seagull.md)
 - [Marek Duszek](../persons/marek-duszek.md)

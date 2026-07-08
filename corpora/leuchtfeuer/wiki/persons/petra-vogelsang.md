@@ -39,7 +39,7 @@ Lenkungsausschuss adopted her proposal at its 7 May 2024 session.[^s10] Per the 
 the Lenkungsausschuss and reports to it as programme lead.[^s11]
 
 She also chaired an extraordinary steering committee session on 10 February 2025, conducted in English at
-guest [Tomás Iglesias](../persons/tom-s-iglesias.md)'s request. She opened by naming the reasons the original 1 October 2024 go-live target
+guest [Tomás Iglesias](tomas-iglesias.md)'s request. She opened by naming the reasons the original 1 October 2024 go-live target
 was missed in the detail the committee now understood — the interface work package proving far larger in
 effort than in count, and the master-data cleansing, correctly made a precondition, unable to be
 responsibly declared done in the summer — and the committee agreed the honest response was a re-planned

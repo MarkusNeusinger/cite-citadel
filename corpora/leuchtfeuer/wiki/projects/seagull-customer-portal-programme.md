@@ -114,7 +114,7 @@ id: op-seagull-operations-liaison
 - [Yasmin Okafor](../persons/yasmin-okafor.md)
 - [Marek Duszek](../persons/marek-duszek.md)
 - [Petra Vogelsang](../persons/petra-vogelsang.md)
-- [Sabine Krüger](../persons/sabine-kr-ger.md)
+- [Sabine Krüger](../persons/sabine-kruger.md)
 - [Jonas Petersen](../persons/jonas-petersen.md)
 - [Heike Brandt](../persons/heike-brandt.md)
 

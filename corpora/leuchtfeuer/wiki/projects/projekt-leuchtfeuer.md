@@ -19,9 +19,9 @@ patched in-house for many years, with [QUAYSTONE](../systems/quaystone.md), the 
 [Gezeitenwerk Software GmbH](../organizations/gezeitenwerk-software-gmbh.md) of Hamburg.[^s2] The programme
 was constituted at its kickoff meeting on 5 March 2024 at Blauwal's Bremen headquarters, chaired by
 [Petra Vogelsang](../persons/petra-vogelsang.md) (Head of IT), who is its programme lead (decision
-D-1).[^s1] [Marek Duszek](../persons/marek-duszek.md) (lead architect), [Sabine Krüger](../persons/sabine-kr-ger.md)
+D-1).[^s1] [Marek Duszek](../persons/marek-duszek.md) (lead architect), [Sabine Krüger](../persons/sabine-kruger.md)
 (Head of Warehouse Operations), [Heike Brandt](../persons/heike-brandt.md) (Commercial Director),
-[Tomás Iglesias](../persons/tom-s-iglesias.md) (Gezeitenwerk account manager), and
+[Tomás Iglesias](../persons/tomas-iglesias.md) (Gezeitenwerk account manager), and
 [Jonas Petersen](../persons/jonas-petersen.md) (PMO, minutes) also attended.[^s1]
 
 ## Why the programme exists
@@ -111,7 +111,7 @@ D-3).[^s4] Tomás Iglesias confirmed Gezeitenwerk can staff the implementation t
 master data arrives clean and the interface specifications are frozen by early summer.[^s4] The pilot runs at
 the Bremen-Walle warehouse under the working codename [SEAGULL](seagull.md), originally targeted to start in
 the third quarter of 2024 (decision D-2).[^s4] Walle was chosen deliberately: it is mid-sized, sits close to
-headquarters, and [Jörn Albers](../persons/j-rn-albers.md)'s team there is regarded as the most change-friendly
+headquarters, and [Jörn Albers](../persons/jorn-albers.md)'s team there is regarded as the most change-friendly
 crew in the estate.[^s4]
 
 The Lenkungsausschuss adopted the phased, warehouse-by-warehouse approach Petra Vogelsang proposed in April,

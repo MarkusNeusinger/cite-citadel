@@ -41,7 +41,7 @@ feedback led Gezeitenwerk to adopt two screen improvements into QUAYSTONE's stan
 - [SEAGULL](../projects/seagull.md)
 - [Blauwal Logistik GmbH](../organizations/blauwal-logistik-gmbh.md)
 - [MDE device](../objects/mde-device.md)
-- [Tomás Iglesias](tom-s-iglesias.md)
+- [Tomás Iglesias](tomas-iglesias.md)
 
 ## Sources
 
