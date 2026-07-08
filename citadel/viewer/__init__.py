@@ -3,7 +3,10 @@
 ``build_html`` serializes the wiki — the pages, the cross-link graph, the tags, AND the cited
 raw sources (only the CITED EXCERPTS of each, not the whole file) — into ONE standalone HTML
 document with the bundle embedded inline as JSON and a small hand-rolled markdown renderer + graph
-in inlined vanilla JS. It opens from ``file://`` with **no web server and no network**: nothing is
+in inlined vanilla JS. The link graph is stored ONCE, as each page's ``outbound``/``inbound`` lists;
+the flat ``{source, target}`` edge array the graph code consumes is rebuilt from ``outbound`` in the
+browser at boot (``BUNDLE.edges``), not shipped, so the same graph is not serialized three times.
+It opens from ``file://`` with **no web server and no network**: nothing is
 fetched from a CDN, so the wiki data never leaves the machine. No third-party code is vendored.
 
 Sources are first-class: every ``[..](../../raw/x.md)`` citation and ``## Sources`` footnote is a
@@ -119,14 +122,11 @@ def build_bundle(pages=None) -> dict:
     inbound = store.inbound_map(pages)
 
     pages_json: list[dict] = []
-    edges: list[dict] = []
     types: dict[str, list[str]] = {}
     for page in pages:
         outbound = sorted(
             {resolved for _raw, resolved in grammar.resolved_md_links(page.rel_path, page.body) if resolved in paths}
         )
-        for target in outbound:
-            edges.append({"source": page.rel_path, "target": target})
         types.setdefault(page.type or "Untyped", []).append(page.rel_path)
         cites, llm, contradictions = _page_stats(page.body)
         pages_json.append(
@@ -150,7 +150,6 @@ def build_bundle(pages=None) -> dict:
     return {
         "wiki_name": config.WIKI_DIR.name,
         "pages": pages_json,
-        "edges": edges,
         "tags": tags,
         "types": {k: sorted(v) for k, v in types.items()},
         "sources": _build_sources(pages),

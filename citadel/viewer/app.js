@@ -4,6 +4,15 @@
   var PAGES = {};
   BUNDLE.pages.forEach(function (p) { PAGES[p.rel_path] = p; });
   var SOURCES = BUNDLE.sources || {};
+  // The flat {source, target} link edges the graph consumes are NOT shipped (they duplicated the
+  // per-page outbound/inbound lists ~3x in every file). Rebuild them ONCE here at boot, from each
+  // page's outbound list, BEFORE any consumer runs (Graph.clusters()/buildModel read BUNDLE.edges).
+  BUNDLE.edges = [];
+  BUNDLE.pages.forEach(function (p) {
+    (p.outbound || []).forEach(function (target) {
+      if (PAGES[target]) BUNDLE.edges.push({ source: p.rel_path, target: target });
+    });
+  });
   // The full 8-hue colorblind-safe brand palette (green pinned first) — 8 hues so the topic
   // legend's top-8 clusters never share a color.
   var TYPE_COLORS = ["#009E73", "#C475FD", "#4467A3", "#BD8233", "#AE3030", "#2ABCCD", "#954477", "#99B314"];
@@ -16,6 +25,8 @@
   var activeTag = "";
   var activeFacet = "";  // "" | "contradiction" | "llm" — the sidebar quick filter
   var query = "";        // current full-text query, lowercased/trimmed
+  var kbdSel = -1;       // j/k selection index into the visible sidebar list (-1 = none)
+  var markIdx = -1;      // n/N cursor index into the reader's <mark> hits (-1 = none)
 
   // Precompute the searchable/snippet forms once: a whitespace-collapsed body ("flat") and a
   // lowercased mirror of each searched field. Full-text search then scans these in memory — no
@@ -25,6 +36,7 @@
     p.lowBody = p.flat.toLowerCase();
     p.lowTitle = (p.title || "").toLowerCase();
     p.lowTags = (p.tags || []).join(" ").toLowerCase();
+    p.lowTagArr = (p.tags || []).map(function (t) { return t.toLowerCase(); });
     p.lowPath = p.rel_path.toLowerCase();
   });
   Object.keys(SOURCES).forEach(function (id) {
@@ -229,39 +241,105 @@
     return true;
   }
 
-  // A whitespace-collapsed excerpt of `flat` centered on the first occurrence of `q` (already
-  // lowercased) in `low`, with the hit wrapped in <mark> and ellipses where clipped. Falls back to
-  // the head of the text when the match is only in the title/path/tags (not the body).
-  function snippetHtml(flat, low, q) {
-    var radius = 64, i = low.indexOf(q);
-    if (i < 0) return esc(flat.slice(0, 2 * radius)) + (flat.length > 2 * radius ? "…" : "");
-    var start = Math.max(0, i - radius), end = Math.min(flat.length, i + q.length + radius);
-    return (start > 0 ? "…" : "") + esc(flat.slice(start, i)) + "<mark>" +
-      esc(flat.slice(i, i + q.length)) + "</mark>" + esc(flat.slice(i + q.length, end)) +
+  // Split a query into bare terms (matched AND) plus tag:/type: operator filters. Any other
+  // "prefix:" token is kept as a literal bare term. The input is already lowercased/trimmed, so a
+  // 'tag:'/'type:' operator is case-insensitive by construction.
+  function parseQuery(q) {
+    var terms = [], tags = [], types = [];
+    (q || "").split(/\s+/).forEach(function (tok) {
+      if (!tok) return;
+      if (tok.indexOf("tag:") === 0 && tok.length > 4) tags.push(tok.slice(4));
+      else if (tok.indexOf("type:") === 0 && tok.length > 5) types.push(tok.slice(5));
+      else terms.push(tok);
+    });
+    return { terms: terms, tags: tags, types: types, phrase: terms.join(" ") };
+  }
+
+  function reEsc(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+  // Escape `text` and wrap every occurrence of any of `terms` (case-insensitive) in <mark>, so a
+  // multi-term result snippet highlights each matched word, not just the first.
+  function highlightTerms(text, terms) {
+    var pats = (terms || []).filter(Boolean).map(reEsc);
+    if (!pats.length) return esc(text);
+    var re = new RegExp("(" + pats.join("|") + ")", "gi"), out = "", last = 0, m;
+    while ((m = re.exec(text))) {
+      out += esc(text.slice(last, m.index)) + "<mark>" + esc(m[0]) + "</mark>";
+      last = m.index + m[0].length;
+      if (m.index === re.lastIndex) re.lastIndex++;  // guard against a zero-length match loop
+    }
+    return out + esc(text.slice(last));
+  }
+
+  // A whitespace-collapsed excerpt of `flat` centered on the FIRST term hit (searching each of
+  // `terms` in the lowercased `low`), every term occurrence in the window wrapped in <mark> and
+  // ellipses where clipped. Falls back to the head of the text when no term hits the body (e.g. the
+  // match was only in the title/path/tags, or the query was operator-only).
+  function snippetHtml(flat, low, terms) {
+    var radius = 64, best = -1, blen = 0;
+    (terms || []).forEach(function (t) {
+      var i = low.indexOf(t);
+      if (i >= 0 && (best < 0 || i < best)) { best = i; blen = t.length; }
+    });
+    if (best < 0) return esc(flat.slice(0, 2 * radius)) + (flat.length > 2 * radius ? "…" : "");
+    var start = Math.max(0, best - radius), end = Math.min(flat.length, best + blen + radius);
+    return (start > 0 ? "…" : "") + highlightTerms(flat.slice(start, end), terms) +
       (end < flat.length ? "…" : "");
   }
 
-  // Full-text ranking: title > tags > path > body, so a title hit sorts above a body-only hit.
-  // Sources join the results only when neither a tag nor a facet is active (they carry no tags and
-  // no contradiction/LLM markers, so a facet/tag filter is page-only).
+  // Full-text ranking: title > tags > path > body. Every bare term must hit some field (AND); the
+  // per-term field weights are summed, and an exact full-phrase match adds a bonus so a contiguous
+  // phrase still ranks above scattered-term matches. tag:/type: operators filter to pages carrying
+  // that tag (prefix match) / of that type, composing with the bare terms and the sidebar tag/facet
+  // filters. Sources join the results only when NO page-only filter is active (no sidebar tag/facet
+  // and no tag:/type: operator — sources carry neither tags nor a page type).
   function searchResults(q) {
-    var res = [];
+    var pq = parseQuery(q), terms = pq.terms, res = [];
+    var hasOps = pq.tags.length > 0 || pq.types.length > 0;
     BUNDLE.pages.forEach(function (p) {
       if (!passesFilters(p)) return;
-      var score = 0;
-      if (p.lowTitle.indexOf(q) >= 0) score += 100;
-      if (p.lowTags.indexOf(q) >= 0) score += 20;
-      if (p.lowPath.indexOf(q) >= 0) score += 10;
-      if (p.lowBody.indexOf(q) >= 0) score += 1;
-      if (score) res.push({ kind: "page", id: p.rel_path, title: p.title, p: p, score: score });
+      if (pq.types.length && pq.types.indexOf((p.type || "").toLowerCase()) < 0) return;
+      if (pq.tags.length && !pq.tags.every(function (tf) {
+        return p.lowTagArr.some(function (t) { return t.indexOf(tf) === 0; });
+      })) return;
+      var score = 0, matchedAll = true;
+      terms.forEach(function (t) {
+        var ts = 0;
+        if (p.lowTitle.indexOf(t) >= 0) ts += 100;
+        if (p.lowTags.indexOf(t) >= 0) ts += 20;
+        if (p.lowPath.indexOf(t) >= 0) ts += 10;
+        if (p.lowBody.indexOf(t) >= 0) ts += 1;
+        if (!ts) matchedAll = false;
+        score += ts;
+      });
+      if (!matchedAll) return;
+      if (terms.length > 1) {  // exact-phrase bonus (the old whole-string behavior)
+        if (p.lowTitle.indexOf(pq.phrase) >= 0) score += 100;
+        if (p.lowTags.indexOf(pq.phrase) >= 0) score += 20;
+        if (p.lowPath.indexOf(pq.phrase) >= 0) score += 10;
+        if (p.lowBody.indexOf(pq.phrase) >= 0) score += 1;
+      }
+      if (!terms.length) { if (!hasOps) return; score = 1; }  // operator-only: a flat filter listing
+      res.push({ kind: "page", id: p.rel_path, title: p.title, p: p, score: score });
     });
-    if (!activeTag && !activeFacet) {
+    if (!activeTag && !activeFacet && !hasOps && terms.length) {
       Object.keys(SOURCES).forEach(function (id) {
-        var s = SOURCES[id], score = 0;
-        if (s.lowTitle.indexOf(q) >= 0) score += 80;
-        if (s.lowId.indexOf(q) >= 0) score += 10;
-        if (s.lowBody.indexOf(q) >= 0) score += 1;
-        if (score) res.push({ kind: "source", id: id, title: s.title, s: s, score: score });
+        var s = SOURCES[id], score = 0, matchedAll = true;
+        terms.forEach(function (t) {
+          var ts = 0;
+          if (s.lowTitle.indexOf(t) >= 0) ts += 80;
+          if (s.lowId.indexOf(t) >= 0) ts += 10;
+          if (s.lowBody.indexOf(t) >= 0) ts += 1;
+          if (!ts) matchedAll = false;
+          score += ts;
+        });
+        if (!matchedAll) return;
+        if (terms.length > 1) {
+          if (s.lowTitle.indexOf(pq.phrase) >= 0) score += 80;
+          if (s.lowId.indexOf(pq.phrase) >= 0) score += 10;
+          if (s.lowBody.indexOf(pq.phrase) >= 0) score += 1;
+        }
+        res.push({ kind: "source", id: id, title: s.title, s: s, score: score });
       });
     }
     res.sort(function (a, b) { return b.score - a.score || a.title.localeCompare(b.title); });
@@ -270,6 +348,7 @@
 
   function renderResults(q) {
     var res = searchResults(q), nav = document.getElementById("page-list");
+    var terms = parseQuery(q).terms;  // the bare terms to center + highlight snippets on
     document.getElementById("source-list").innerHTML = "";  // sources appear inline in results
     if (!res.length) {
       nav.innerHTML = "<p class='ext'>No matches for “" + esc(q) + "”.</p>";
@@ -283,13 +362,13 @@
         html += "<a class='result' href='#" + encodeURIComponent(p.rel_path) + "' data-page='" +
           esc(p.rel_path) + "'><span class='result-title'>" + esc(p.title) + "</span>" +
           badgesHtml(p) + "<span class='result-snip'>" +
-          snippetHtml(p.flat, p.lowBody, q) + "</span></a>";
+          snippetHtml(p.flat, p.lowBody, terms) + "</span></a>";
       } else {
         var s = r.s;
         html += "<a class='result src' href='#src:" + encodeURIComponent(r.id) +
           "' data-source='" + esc(r.id) + "' data-pop='" + esc(r.id) +
           "'><span class='result-title'>" + esc(s.title) + "</span><span class='result-snip'>" +
-          snippetHtml(s.flat, s.lowBody, q) + "</span></a>";
+          snippetHtml(s.flat, s.lowBody, terms) + "</span></a>";
       }
     });
     nav.innerHTML = html;
@@ -298,6 +377,7 @@
 
   function renderSidebar() {
     query = (document.getElementById("search").value || "").trim().toLowerCase();
+    kbdSel = -1;  // the visible list is about to be rebuilt — drop any j/k selection
     renderFacets();
     if (query) { renderResults(query); return; }  // full-text mode
     var nav = document.getElementById("page-list"), html = "";
@@ -407,34 +487,75 @@
         nbr[a][b] = (nbr[a][b] || 0) + w;
         nbr[b][a] = (nbr[b][a] || 0) + w;
       }
+      var sims = simEdgesFor(pages);
       BUNDLE.edges.forEach(function (e) { link(pidx[e.source], pidx[e.target], 1.0); });
-      simEdgesFor(pages).forEach(function (e) { link(e.s, e.t, e.w); });
+      sims.forEach(function (e) { link(e.s, e.t, e.w); });
 
-      // Deterministic asynchronous label propagation (fixed index order, tie -> smaller label id).
-      var label = pages.map(function (_p, i) { return i; });
-      for (var sweep = 0; sweep < 20; sweep++) {
-        var changed = false;
-        for (var i = 0; i < P; i++) {
-          var ns = nbr[i], keys = Object.keys(ns);
-          if (!keys.length) continue;                    // edgeless node keeps its own label
-          var wsum = {};
-          for (var k = 0; k < keys.length; k++) {
-            var lab = label[+keys[k]];
-            wsum[lab] = (wsum[lab] || 0) + ns[keys[k]];
+      // Deterministic asynchronous label propagation over a weighted adjacency `nbrAdj`
+      // (index -> {neighbourIndex: weight}), sweeping `order` in fixed sequence: each node adopts the
+      // neighbour label with the greatest summed incident weight (tie -> the SMALLER label id); an
+      // edgeless node keeps its label; stops at a fixed point or after 20 sweeps. `label` is mutated
+      // in place (and returned). Shared by the full-graph pass and the in-community refinement pass.
+      function propagate(nbrAdj, order, label) {
+        for (var sweep = 0; sweep < 20; sweep++) {
+          var changed = false;
+          for (var oi = 0; oi < order.length; oi++) {
+            var i = order[oi], ns = nbrAdj[i], keys = Object.keys(ns);
+            if (!keys.length) continue;                    // edgeless node keeps its own label
+            var wsum = {};
+            for (var k = 0; k < keys.length; k++) {
+              var lab = label[+keys[k]];
+              wsum[lab] = (wsum[lab] || 0) + ns[keys[k]];
+            }
+            var best = label[i], bestW = -1;
+            for (var l in wsum) {
+              var lw = wsum[l], li = +l;
+              if (lw > bestW || (lw === bestW && li < best)) { bestW = lw; best = li; }
+            }
+            if (best !== label[i]) { label[i] = best; changed = true; }
           }
-          var best = label[i], bestW = -1;
-          for (var l in wsum) {
-            var lw = wsum[l], li = +l;
-            if (lw > bestW || (lw === bestW && li < best)) { bestW = lw; best = li; }
-          }
-          if (best !== label[i]) { label[i] = best; changed = true; }
+          if (!changed) break;
         }
-        if (!changed) break;
+        return label;
       }
 
-      // Group members by final label.
-      var groups = {};
-      for (var m = 0; m < P; m++) (groups[label[m]] = groups[label[m]] || []).push(m);
+      // First pass over the full combined graph (real links + sim edges), fixed page-index order.
+      var allOrder = pages.map(function (_p, i) { return i; });
+      var label = pages.map(function (_p, i) { return i; });
+      propagate(nbr, allOrder, label);
+
+      // Group members by their current label.
+      function regroup() {
+        var g = {};
+        for (var m = 0; m < P; m++) (g[label[m]] = g[label[m]] || []).push(m);
+        return g;
+      }
+      var groups = regroup();
+
+      // Hierarchical refinement (ONE level, no recursion): when a single community swallows more than
+      // two thirds of all pages AND tag-similarity edges exist, re-run the SAME label propagation
+      // INSIDE that community only — over the sim edges alone (real links dropped, weights = sim) — so
+      // a dense, uniformly cross-linked wiki resolves into legible sub-topics instead of one blob. The
+      // giant community is replaced by whatever sub-communities emerge; every other community is kept
+      // untouched, and a size-1 sub-community falls to the "other" bucket downstream like any singleton.
+      var bigKey = null, bigN = 0;
+      Object.keys(groups).forEach(function (g) {
+        var n = groups[g].length;
+        if (n > bigN || (n === bigN && bigKey != null && +g < +bigKey)) { bigN = n; bigKey = g; }
+      });
+      if (bigKey != null && bigN > (2 / 3) * P && sims.length) {
+        var big = groups[bigKey], inBig = {}, subNbr = {};
+        big.forEach(function (mi) { inBig[mi] = 1; subNbr[mi] = {}; });
+        sims.forEach(function (e) {                        // sim edges INSIDE the community only
+          if (inBig[e.s] && inBig[e.t]) {
+            subNbr[e.s][e.t] = (subNbr[e.s][e.t] || 0) + e.w;
+            subNbr[e.t][e.s] = (subNbr[e.t][e.s] || 0) + e.w;
+          }
+        });
+        big.forEach(function (mi) { label[mi] = mi; });    // re-seed each member to its own label
+        propagate(subNbr, big, label);
+        groups = regroup();
+      }
 
       // Corpus IDF (the same ubiquity machinery the sim edges use) for community naming.
       var ubiq = 0.67 * P, idf = {};
@@ -962,12 +1083,21 @@
 
   // ---- The reader: render a page or a source into the article pane, then decorate it. ----
 
-  function renderReader(html) {
+  // In-memory (session-scoped) reading position per page/source key, so returning to a doc restores
+  // where you were — UNLESS a search query is active, where scrolling to the first hit wins.
+  var scrollPos = {};
+  function renderReader(html, key) {
     var reader = document.getElementById("reader");
     reader.innerHTML = html;
-    reader.scrollTop = 0;
+    reader._key = key || "";
+    markIdx = -1;  // reset the n/N mark cursor for the freshly rendered doc
     decorateReader(reader);
-    applyHighlight(reader, true);  // opening a doc scrolls to the first hit
+    if (query) {
+      reader.scrollTop = 0;
+      applyHighlight(reader, true);  // opening a doc under a query scrolls to the first hit
+    } else {
+      reader.scrollTop = (key && scrollPos[key]) || 0;  // restore the remembered position
+    }
   }
 
   // Unwrap any existing <mark> spans so the reader can be re-highlighted for a new query without a
@@ -1033,10 +1163,14 @@
   // when there is no query.
   function applyHighlight(reader, scroll) {
     if (!query) return;
-    var first = markAll(reader, query);
-    if (!first && query.indexOf(" ") >= 0) {
+    var terms = parseQuery(query).terms;  // ignore tag:/type: operator tokens
+    if (!terms.length) return;
+    // Try the whole phrase first (a multi-word phrase can straddle a block boundary the collapsed
+    // search index elides); on a miss, highlight each term so a clicked result always shows a hit.
+    var first = terms.length > 1 ? markAll(reader, terms.join(" ")) : null;
+    if (!first) {
       var seen = {};
-      query.split(/\s+/).forEach(function (term) {
+      terms.forEach(function (term) {
         if (!term || seen[term]) return;
         seen[term] = 1;
         var f = markAll(reader, term);
@@ -1068,14 +1202,18 @@
   function parseDef(div) {
     var fid = (div.id || "").replace(/^fn-/, "");
     var isLlm = /^llm/i.test(fid);
+    // The citation's OWN link/ext-span — never the trailing .fnback back-arrow (which is also an
+    // <a>). Under a misconfigured workspace a citation whose source key didn't resolve renders as a
+    // bare <span class='ext' title='../../raw/x.md'>raw/x.md</span> (no data-source); the a:not(.fnback)
+    // guard stops the fallback from latching onto the "↩" glyph and lumping every def into one group.
     var linkEl = div.querySelector("a.srclink") || div.querySelector("a[data-source]") ||
-                 div.querySelector("a") || div.querySelector(".ext");
+                 div.querySelector("a:not(.fnback)") || div.querySelector(".ext");
     var clone = div.cloneNode(true), x;
     if ((x = clone.querySelector(".fnid"))) x.parentNode.removeChild(x);
-    if ((x = clone.querySelector(".fnback"))) x.parentNode.removeChild(x);
+    if ((x = clone.querySelector(".fnback"))) x.parentNode.removeChild(x);  // drop the ↩ in every path
     if (!isLlm && linkEl) {
       var lc = clone.querySelector("a.srclink") || clone.querySelector("a[data-source]") ||
-               clone.querySelector("a") || clone.querySelector(".ext");
+               clone.querySelector("a:not(.fnback)") || clone.querySelector(".ext");
       if (lc) lc.parentNode.removeChild(lc);
     }
     var tail = (clone.textContent || "").replace(/\s+/g, " ").trim();
@@ -1089,10 +1227,26 @@
       if (dash >= 0) { locator = tail.slice(0, dash).trim(); note = tail.slice(dash + 3).trim(); }
       else { locator = tail; }
     }
-    var key = isLlm ? "__llm__"
-      : (linkEl ? (linkEl.getAttribute("data-source") || linkEl.textContent) : "__" + fid);
-    var header = isLlm ? "<span class='src-label'>Model knowledge (LLM)</span>"
-      : (linkEl ? linkEl.outerHTML : esc(key));
+    // Group each def by the file it cites, rendered once as the group header. A resolved source link
+    // keeps its live <a>; an unresolved .ext span groups by its written target (title, else text) and
+    // shows the file name as PLAIN, non-linked text (no dead link, no arrow); a def with no link/ext
+    // at all falls into one shared "unresolved citations" bucket.
+    var isExt = !!(!isLlm && linkEl && linkEl.classList && linkEl.classList.contains("ext"));
+    var key, header;
+    if (isLlm) {
+      key = "__llm__";
+      header = "<span class='src-label'>Model knowledge (LLM)</span>";
+    } else if (isExt) {
+      var target = linkEl.getAttribute("title") || linkEl.textContent || "";
+      key = "ext:" + target;
+      header = "<span class='src-label'>" + esc(linkEl.textContent || target) + "</span>";
+    } else if (linkEl) {
+      key = linkEl.getAttribute("data-source") || linkEl.textContent;
+      header = linkEl.outerHTML;
+    } else {
+      key = "__unresolved__";
+      header = "<span class='src-label'>unresolved citations</span>";
+    }
     return { fid: fid, key: key, header: header, date: d.date, locator: locator, note: note };
   }
 
@@ -1171,6 +1325,30 @@
     }).join(", ") + "</div>";
   }
 
+  // "Related:" row — up to 6 pages sharing >= 1 tag with `p`, ranked by shared-tag count (tie:
+  // title asc), EXCLUDING pages already linked (outbound/inbound) and `p` itself. Empty -> "".
+  function relatedList(p) {
+    if (!p.tags || !p.tags.length) return "";
+    var linked = {};
+    (p.outbound || []).forEach(function (r) { linked[r] = 1; });
+    (p.inbound || []).forEach(function (r) { linked[r] = 1; });
+    linked[p.rel_path] = 1;
+    var shared = {};
+    p.tags.forEach(function (t) {
+      (BUNDLE.tags[t] || []).forEach(function (r) {
+        if (linked[r]) return;
+        shared[r] = (shared[r] || 0) + 1;
+      });
+    });
+    var rels = Object.keys(shared);
+    if (!rels.length) return "";
+    rels.sort(function (a, b) {
+      return shared[b] - shared[a] ||
+        (PAGES[a] ? PAGES[a].title : a).localeCompare(PAGES[b] ? PAGES[b].title : b);
+    });
+    return backlinkList("Related:", rels.slice(0, 6));
+  }
+
   function openPage(rel) {
     var p = PAGES[rel];
     if (!p) return;
@@ -1190,7 +1368,7 @@
     renderReader("<h1>" + esc(p.title) + "</h1>" + meta + statsHtml(p) +
       (p.description ? "<p class='desc'>" + esc(p.description) + "</p>" : "") +
       backlinkList("Referenced by:", p.inbound) + backlinkList("Links to:", p.outbound) +
-      "<hr>" + mdToHtml(p.body, p.rel_path, fnSrc));
+      relatedList(p) + "<hr>" + mdToHtml(p.body, p.rel_path, fnSrc), rel);
     Graph.setActive(rel);
     markActiveNav();
   }
@@ -1261,7 +1439,7 @@
       }
     }
     renderReader("<h1>" + esc(s.title) + "</h1>" + meta +
-      backlinkList("Cited by:", s.cited_by) + "<hr>" + body);
+      backlinkList("Cited by:", s.cited_by) + "<hr>" + body, "src:" + sid);
     Graph.setActive("src:" + sid);
     markActiveNav();
   }
@@ -1269,6 +1447,17 @@
   // ---- Source hover preview popover. ----
 
   var pop = null;
+  // Show the popover (its innerHTML already set) anchored under `anchor`, flipping above it when it
+  // would overflow the viewport. Shared by the source popover and the page-link preview.
+  function positionPop(anchor) {
+    pop.classList.add("show");
+    var r = anchor.getBoundingClientRect();
+    var x = Math.min(r.left, window.innerWidth - pop.offsetWidth - 8);
+    var y = r.bottom + 6;
+    if (y + pop.offsetHeight > window.innerHeight) y = r.top - pop.offsetHeight - 6;
+    pop.style.left = Math.max(8, x) + "px";
+    pop.style.top = Math.max(8, y) + "px";
+  }
   function showPop(sid, anchor) {
     var s = SOURCES[sid]; if (!s) return;
     if (!pop) pop = document.getElementById("srcpop");
@@ -1278,22 +1467,34 @@
       esc(s.id) + (s.model ? " · " + esc(s.model) : "") + note + "</div>" +
       (s.snippet ? "<div class='sp-snip'>" + esc(s.snippet) + "…</div>" : "") +
       "<div class='sp-hint'>Click to open source</div>";
-    pop.classList.add("show");
-    var r = anchor.getBoundingClientRect();
-    var x = Math.min(r.left, window.innerWidth - pop.offsetWidth - 8);
-    var y = r.bottom + 6;
-    if (y + pop.offsetHeight > window.innerHeight) y = r.top - pop.offsetHeight - 6;
-    pop.style.left = Math.max(8, x) + "px";
-    pop.style.top = Math.max(8, y) + "px";
+    positionPop(anchor);
+  }
+  // Hover preview for a wiki-page link: title, type chip, description, and a short text excerpt —
+  // reusing the same popover element/positioning/delay. Mouse-only (a touch tap navigates instead).
+  function showPagePop(rel, anchor) {
+    var p = PAGES[rel]; if (!p) return;
+    if (!pop) pop = document.getElementById("srcpop");
+    var snip = (p.flat || "").slice(0, 200);
+    pop.innerHTML = "<div class='sp-title'>" + esc(p.title) + "</div>" +
+      "<div class='sp-meta'><span class='sp-type'>" + esc(p.type) + "</span></div>" +
+      (p.description ? "<div class='sp-desc'>" + esc(p.description) + "</div>" : "") +
+      (snip ? "<div class='sp-snip'>" + esc(snip) + (p.flat.length > 200 ? "…" : "") + "</div>" : "") +
+      "<div class='sp-hint'>Click to open page</div>";
+    positionPop(anchor);
   }
   function hidePop() { if (pop) pop.classList.remove("show"); }
 
   document.addEventListener("mouseover", function (ev) {
     var a = ev.target.closest && ev.target.closest("[data-pop]");
-    if (a) showPop(a.getAttribute("data-pop"), a);
+    if (a) { showPop(a.getAttribute("data-pop"), a); return; }
+    // Page-link previews fire ONLY for links inside the reader — never over sidebar navitems or
+    // search results (a preview popping over the nav is noise). Source popovers ([data-pop]) above
+    // keep their existing document-wide behavior.
+    var pg = ev.target.closest && ev.target.closest("#reader a[data-page]");
+    if (pg) showPagePop(pg.getAttribute("data-page"), pg);
   });
   document.addEventListener("mouseout", function (ev) {
-    var a = ev.target.closest && ev.target.closest("[data-pop]");
+    var a = ev.target.closest && ev.target.closest("[data-pop], a[data-page]");
     if (a) hidePop();
   });
   document.addEventListener("click", function (ev) {
@@ -1306,10 +1507,20 @@
       var det = document.querySelector("#reader details.sources");
       if (det && !det.open) det.open = true;  // no return: let the native scroll proceed
     }
+    // Blur the clicked anchor so it doesn't keep focus — a focused <a> trips inField() and would kill
+    // j/k/n/Enter list navigation after a mouse click (inField() itself stays strict).
     var s = ev.target.closest("[data-source]");
-    if (s) { ev.preventDefault(); hidePop(); openSource(s.getAttribute("data-source")); return; }
+    if (s) {
+      ev.preventDefault(); hidePop();
+      var sa = ev.target.closest("a"); if (sa) sa.blur();
+      openSource(s.getAttribute("data-source")); return;
+    }
     var a = ev.target.closest("[data-page]");
-    if (a) { ev.preventDefault(); openPage(a.getAttribute("data-page")); return; }
+    if (a) {
+      ev.preventDefault();
+      var pa = ev.target.closest("a"); if (pa) pa.blur();
+      openPage(a.getAttribute("data-page")); return;
+    }
     var tc = ev.target.closest(".toc a[data-h]");
     if (tc) {
       ev.preventDefault();
@@ -1367,14 +1578,68 @@
     ev.preventDefault();
     if (res[0].kind === "source") openSource(res[0].id); else openPage(res[0].id);
   });
+  // ---- Keyboard list navigation. Active only when focus does NOT sit on a form field or a
+  // natively keyboard-activated control, so typing in the search box is never intercepted AND a
+  // focused button / <summary> / link keeps its own Enter/Space activation. j/k move a selection
+  // through the visible sidebar list (search results under a query, else the page/source nav),
+  // Enter opens it; n/N step the reader's <mark> hits. No focus trapping — dead simple. ----
+  function inField() {
+    var el = document.activeElement;
+    if (!el) return false;
+    var tag = el.tagName;
+    // Text fields plus anything the browser activates from the keyboard on its own: hijacking Enter
+    // here would cancel the native click/toggle/navigation on these.
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" ||
+      tag === "BUTTON" || tag === "SUMMARY" || (tag === "A" && el.hasAttribute("href")) ||
+      el.isContentEditable;
+  }
+  function kbdList() {
+    var sel = query ? "#page-list .result" : "#page-list .navitem, #source-list .navitem";
+    return Array.prototype.slice.call(document.querySelectorAll(sel));
+  }
+  function kbdMove(delta) {
+    var list = kbdList();
+    if (!list.length) return;
+    list.forEach(function (el) { el.classList.remove("kbd-sel"); });
+    kbdSel = Math.max(0, Math.min(list.length - 1, kbdSel + delta));
+    list[kbdSel].classList.add("kbd-sel");
+    list[kbdSel].scrollIntoView({ block: "nearest" });
+  }
+  function kbdOpen() {
+    var list = kbdList();
+    if (kbdSel < 0 || kbdSel >= list.length) return;
+    var el = list[kbdSel], src = el.getAttribute("data-source");
+    if (src) openSource(src);
+    else { var pg = el.getAttribute("data-page"); if (pg) openPage(pg); }
+  }
+  function markJump(delta) {
+    var reader = document.getElementById("reader"), marks = reader.querySelectorAll("mark");
+    if (!marks.length) return;
+    if (markIdx < 0) markIdx = delta > 0 ? 0 : marks.length - 1;
+    else markIdx = (markIdx + delta + marks.length) % marks.length;
+    Array.prototype.forEach.call(reader.querySelectorAll("mark.cur"), function (m) {
+      m.classList.remove("cur");
+    });
+    marks[markIdx].classList.add("cur");
+    marks[markIdx].scrollIntoView({ block: "center" });
+  }
   document.addEventListener("keydown", function (ev) {
-    if (ev.key === "/" && document.activeElement.id !== "search") {
-      ev.preventDefault(); document.getElementById("search").focus();
-    } else if (ev.key === "\\" && document.activeElement.id !== "search") {
-      ev.preventDefault(); toggleSidebar();
-    } else if (ev.key === "Escape") {
+    // Escape always dismisses the hover popover and unfocuses the search box, regardless of what has
+    // focus — handled before the inField() gate so it works even from a focused control.
+    if (ev.key === "Escape") {
       hidePop();
-      if (document.activeElement.id === "search") document.activeElement.blur();
+      if (document.activeElement && document.activeElement.id === "search") document.activeElement.blur();
+      return;
+    }
+    if (inField()) return;
+    switch (ev.key) {
+      case "/": ev.preventDefault(); document.getElementById("search").focus(); break;
+      case "\\": ev.preventDefault(); toggleSidebar(); break;
+      case "j": ev.preventDefault(); kbdMove(1); break;
+      case "k": ev.preventDefault(); kbdMove(-1); break;
+      case "Enter": ev.preventDefault(); kbdOpen(); break;
+      case "n": ev.preventDefault(); markJump(1); break;
+      case "N": ev.preventDefault(); markJump(-1); break;
     }
   });
 
@@ -1480,6 +1745,25 @@
   // --- Map + reading toolbar wiring (everything below needs `content`/`app` in scope). ---
   var content = document.getElementById("content");
   var app = document.getElementById("app");
+
+  // Hint the search operators in the placeholder (ASCII, set here since template.html is package
+  // data and untouched by this build).
+  document.getElementById("search").placeholder = "Search... (tag:x type:y, / to focus)";
+
+  // Remember the reading position per doc: save the reader's scrollTop (throttled) as the user
+  // scrolls, keyed by the currently rendered doc; renderReader restores it when no query is active.
+  (function () {
+    var reader = document.getElementById("reader"), t = null;
+    reader.addEventListener("scroll", function () {
+      if (t) return;
+      t = setTimeout(function () {
+        t = null;
+        // Skip while a query is active: renderReader scrolls to the first hit, not the reading
+        // position, so saving here would clobber the remembered spot with the hit location.
+        if (reader._key && !query) scrollPos[reader._key] = reader.scrollTop;
+      }, 120);
+    });
+  })();
   var collapseBtn = document.getElementById("g-collapse");
   var expandBtn = document.getElementById("g-expand");
   var srcBtn = document.getElementById("g-sources");
@@ -1598,6 +1882,26 @@
     try { localStorage.setItem("okf_reader_width", String(rwi)); } catch (e) {}
   }
   document.getElementById("g-width").addEventListener("click", function () { setWidth(rwi + 1); });
+
+  // Reader font-size cycle (15 -> 17 -> 19 -> back), persisted like the width toggle. Applied as a
+  // CSS var on #reader so em-based headings scale proportionally. The button is created in JS (next
+  // to the width control) so the packaged template stays untouched.
+  var FONTS = [15, 17, 19], fi = 0;
+  var fontBtn = document.createElement("button");
+  fontBtn.className = "iconbtn";
+  fontBtn.id = "g-font";
+  fontBtn.type = "button";
+  fontBtn.textContent = "A";
+  var widthBtn = document.getElementById("g-width");
+  widthBtn.parentNode.insertBefore(fontBtn, widthBtn.nextSibling);
+  function setFont(i) {
+    fi = (((i | 0) % 3) + 3) % 3;  // coerce NaN/corrupt values to a valid slot
+    document.getElementById("reader").style.setProperty("--reader-font", FONTS[fi] + "px");
+    fontBtn.title = "Reading font size: " + FONTS[fi] + "px (click to change)";
+    try { localStorage.setItem("okf_reader_font", String(fi)); } catch (e) {}
+  }
+  fontBtn.addEventListener("click", function () { setFont(fi + 1); });
+  try { setFont(+(localStorage.getItem("okf_reader_font") || 0)); } catch (e) { setFont(0); }
 
   // Theme cycle (auto -> light -> dark), persisted; "auto" defers to the OS via prefers-color-scheme.
   var THEMES = ["auto", "light", "dark"], themeBtn = document.getElementById("g-theme");
