@@ -247,7 +247,7 @@ is dispatched. `curate.py` is the second lifecycle and `status.py` the read-only
 view (both above); `doctor.py` (`citadel doctor`) is the read-only setup health check (OK/WARN/FAIL
 lines over workspace resolution, the rules tree, the agent CLI on PATH, raw-root reachability,
 manifest parse + stamp, failures summary, and the API-key/PDF advisories). `server.py` is the
-FastMCP stdio server (10 tools — 9 read-only incl. `wiki_raw` (the cited-source reader, backed by
+FastMCP stdio server (11 tools — 10 read-only incl. `wiki_raw` (the cited-source reader, backed by
 `rawsource.py`), `wiki_neighbors` (a page's links-out/backlinks/cited-sources graph) and `wiki_lint`,
 only `wiki_ingest` mutates; every tool carries MCP behavior
 annotations and never raises, returning error strings). The `viewer/` subpackage builds the
