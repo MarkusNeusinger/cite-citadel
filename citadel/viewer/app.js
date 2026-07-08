@@ -4,8 +4,8 @@
   var PAGES = {};
   BUNDLE.pages.forEach(function (p) { PAGES[p.rel_path] = p; });
   var SOURCES = BUNDLE.sources || {};
-  var TYPE_COLORS = ["#2563eb", "#16a34a", "#d97706", "#9333ea", "#dc2626", "#0891b2"];
-  var SOURCE_COLOR = "#6b7280";
+  var TYPE_COLORS = ["#009E73", "#C475FD", "#4467A3", "#BD8233", "#AE3030", "#2ABCCD"];
+  var SOURCE_COLOR = "#6B6A63";
   var typeColor = {};
   Object.keys(BUNDLE.types).sort().forEach(function (t, i) {
     typeColor[t] = TYPE_COLORS[i % TYPE_COLORS.length];
