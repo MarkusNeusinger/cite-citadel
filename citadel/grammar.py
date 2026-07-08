@@ -393,7 +393,7 @@ def resolves_to_source(resolved: str) -> bool:
     root must remain a skipped source link here even though no configured root contains it.
     A resolved path is a source citation when it escapes the wiki root (``..``-escape), names
     a top-level ``raw``/``docs`` segment, or is ABSOLUTE (the multi-root citation form for
-    non-sibling roots — see docs/refactor-plan.md Z3)."""
+    non-sibling roots)."""
     if resolved.startswith(("/", "\\")) or os.path.isabs(resolved) or _DRIVE_RE.match(resolved):
         return True
     return resolved.startswith("..") or resolved.split("/", 1)[0] in ("raw", "docs")

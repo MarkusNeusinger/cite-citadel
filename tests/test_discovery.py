@@ -1,4 +1,4 @@
-"""Target-behavior suite for PR4 — incremental discovery + multi-root (docs/refactor-plan.md Z3).
+"""Target-behavior suite for PR4 — incremental discovery + multi-root.
 
 Covers the manifest-as-scan-cache (stat quick check, zero content reads on an unchanged corpus),
 the racy-timestamp guard (source clock, 3 s window, mtime as an OPAQUE EQUALITY token), the
@@ -13,7 +13,7 @@ by ``grammar.split_link_target``. The bare form splits at the first whitespace (
 suffix would be indistinguishable) and stays unsupported; the rewriters must EMIT the angle form
 whenever a repointed target contains whitespace, so a rewrite round-trips.
 
-All of Z3 is implemented; every test here is a live behavior pin. All offline:
+All of the incremental-discovery rework is implemented; every test here is a live behavior pin. All offline:
 ``llm.run_ingest_session`` is always the ``fake_agent`` stand-in.
 """
 
@@ -55,7 +55,7 @@ def _fake_session(rel_key: str, kind: str = "ingest", **_kw) -> None:
 class HashCounter:
     """Counts every raw-source content read routed through ``manifest.file_sha256`` — the single
     content-hash seam for sources (the quick-check-miss rehash, move detection, and ``mark_done``
-    all go through it). The Z3 'zero reads on an unchanged corpus' contract is asserted on this
+    all go through it). The 'zero reads on an unchanged corpus' contract is asserted on this
     counter."""
 
     calls: list[Path] = field(default_factory=list)
@@ -267,7 +267,7 @@ def test_racy_timestamp_entries_are_rehashed_despite_matching_stat(tmp_citadel, 
 
 
 def test_same_stat_edit_within_racy_window_is_still_detected(tmp_citadel, fake_agent):
-    """The end-to-end property the racy-window guard exists for (docs/refactor-plan.md Z3): a
+    """The end-to-end property the racy-window guard exists for: a
     source rewritten with the SAME byte length and the SAME mtime_ns (mtime granularity / clock
     skew / a backdating ``utime`` can produce exactly this) is still detected as changed when the
     entry is inside the racy window — its recorded mtime is not comfortably before its recorded
@@ -275,10 +275,10 @@ def test_same_stat_edit_within_racy_window_is_still_detected(tmp_citadel, fake_a
 
     Pinned on a PURE-WINDOW entry (ctime token stripped, ``hashed_at_ns`` set to the recorded
     mtime — the hand-seeded/other-tool entry class) because that is the guarantee that holds on
-    EVERY platform. This is the accepted Z3 limitation, same as git: OUTSIDE the window the quick
+    EVERY platform. This is the accepted limitation, same as git: OUTSIDE the window the quick
     check needs the ctime token, and on Windows ``st_ctime`` is the stable creation time, so a
     deliberately backdated same-size in-place rewrite there is invisible to stat until
-    ``--full-rescan`` or a real mtime change (see the PR4 deviation note in Z3 and
+    ``--full-rescan`` or a real mtime change (an accepted deviation, and
     ``manifest.entry_trusts_stat``). The ctime-mismatch catch is pinned separately below."""
     src = tmp_citadel.raw / "a.md"
     src.write_text("alpha version one\n", encoding="utf-8")
@@ -445,7 +445,7 @@ def test_deleted_file_is_confirmed_gone_then_swept_on_full_run(tmp_citadel, fake
 
 def test_path_scoped_run_never_sweeps_deletions(tmp_citadel, fake_agent):
     """A path-scoped run (explicit paths) runs NO deletion sweep at all — it cannot surprise-prune
-    sources it was not pointed at (existing behavior, kept pinned through the Z3 rework)."""
+    sources it was not pointed at (existing behavior, kept pinned through the discovery rework)."""
     raw = tmp_citadel.raw
     gone = raw / "gone.md"
     gone.write_text("gone\n", encoding="utf-8")
@@ -550,7 +550,7 @@ def test_manifest_key_under_no_configured_root_is_never_swept(make_citadel, fake
 
 
 def test_out_of_root_source_still_on_disk_survives_full_run(make_citadel, fake_agent, tmp_path):
-    """The Z3 pinning case: path-scoped ingest of an out-of-root (out-of-workspace) file, then a
+    """The pinning case: path-scoped ingest of an out-of-root (out-of-workspace) file, then a
     FULL run — the absolute key stays tracked and nothing tries to delete it while the file is on
     disk."""
     cit = make_citadel(root=tmp_path / "repo")
@@ -690,7 +690,7 @@ def test_deletion_sweep_scoped_per_root_with_unreachable_second_root(
 
 
 def test_page_citing_second_root_by_absolute_path_passes_check_lint_and_rebuild(make_citadel, seed_page, tmp_path):
-    """The Z3 cross-root citation form: a page citing a non-sibling root's source by ABSOLUTE posix
+    """The cross-root citation form: a page citing a non-sibling root's source by ABSOLUTE posix
     path passes the strict gate and lint, is untouched by an unrelated raw-reference rewrite, and
     survives an index rebuild (grammar pre-paved: resolves_to_source accepts absolutes)."""
     cit = make_citadel(root=tmp_path / "repo")
@@ -718,7 +718,7 @@ def test_page_citing_second_root_by_absolute_path_passes_check_lint_and_rebuild(
     assert store.find_broken_links() == []
 
 
-# --- 6. the workspace-identity HARD guard (Z1, deferred from PR2 to the sweep rework) ---------
+# --- 6. the workspace-identity HARD guard (deferred to the sweep rework) ---------
 
 
 def _write_stamped_manifest(cit, sources: dict, stamp: str) -> None:

@@ -180,7 +180,7 @@ it is itself a workspace.
   to canonicalize YAML and stamp the timestamp) after **every** agent pass, repairs renamed-page
   links, and **only on a fully clean source promotes staging onto the live wiki — exactly once per
   source** — with a non-destructive copy-over-then-prune. A chunked large source folds ALL its
-  segments into that one staging copy before the single promote (refactor-plan Z11: the live wiki
+  segments into that one staging copy before the single promote (the live wiki
   never holds a partially imported source; the accepted trade-off is that a failure at segment N
   discards the earlier segments' work and the source retries from segment 1 next run). Any
   failure/timeout/Ctrl+C leaves the live wiki exactly as it was; the source is retried next run.
@@ -207,7 +207,7 @@ git repo folded as one digest), `image`/`image-reconcile` (an image read visuall
   citations, relative non-broken links, no `[[wikilinks]]`). The ingest agent self-runs it; ingest
   re-runs it and fails the source on any error.
 - `citadel lint` (`lint.py`) — a **pure offline health check** (contradictions, orphans, missing
-  cites, broken links, stale, fabricated sources, undefined abbreviations, and **Z6 locator issues**
+  cites, broken links, stale, fabricated sources, undefined abbreviations, and **locator issues**
   — an out-of-range `lines A-B` range or a missing `§ Heading`, via `lint.check_locators`, shared
   with curate). Only *structural* problems (missing type, broken links, bad sources, wikilinks) flip
   its non-zero exit; the rest — locator issues included — are advisory. Both layers parse

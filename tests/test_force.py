@@ -1,5 +1,5 @@
 """``ingest --force`` (offline): deliberately re-read a source whose sha already matches the
-manifest — docs/refactor-plan.md Z4, pinned tests-first. The decided semantics:
+manifest, pinned tests-first. The decided semantics:
 
 - a forced sha-matching FILE lands in pending and runs ``kind="reconcile"`` (never plain ingest —
   the reconcile brief carries the forced-re-read note), and the manifest is re-stamped with the
@@ -33,7 +33,7 @@ from citadel import config, failures, ingest, manifest, repo
 
 
 def test_forced_sha_match_runs_reconcile_never_plain_ingest(tmp_citadel, fake_agent, cite_page):
-    """Z4: forcing an UNCHANGED, already-ingested source bypasses the sha short-circuit — it lands
+    """Forcing an UNCHANGED, already-ingested source bypasses the sha short-circuit — it lands
     in pending and runs ``kind="reconcile"`` via the existing changed-keys logic (the key is
     tracked), NEVER a plain ``ingest`` that would duplicate its pages. Control on the same corpus:
     an UNFORCED path-scoped run still skips the sha match — force must not weaken the default
@@ -56,7 +56,7 @@ def test_forced_sha_match_runs_reconcile_never_plain_ingest(tmp_citadel, fake_ag
 
 
 def test_force_without_paths_refused_at_the_api_layer(tmp_citadel, fake_agent):
-    """Z4 guard, API twin of the CLI's exit-2 refusal: ``ingest(force=True)`` with no paths must
+    """Force guard, API twin of the CLI's exit-2 refusal: ``ingest(force=True)`` with no paths must
     raise ValueError BEFORE any work — one agent session per source must never hit the whole
     corpus by accident, no matter the caller. (The MCP server's ``wiki_ingest`` does not expose
     ``force`` at all.)"""
@@ -67,7 +67,7 @@ def test_force_without_paths_refused_at_the_api_layer(tmp_citadel, fake_agent):
 
 
 def test_force_restamps_manifest_with_current_model_and_rules_version(tmp_citadel, fake_agent, cite_page, monkeypatch):
-    """Z4: a completed forced re-read re-stamps the manifest entry with the CURRENT model label +
+    """A completed forced re-read re-stamps the manifest entry with the CURRENT model label +
     rules_version — that is the point of forcing after a model/rules upgrade."""
     raw = tmp_citadel.raw
     (raw / "notes.md").write_text("stable content\n", encoding="utf-8")
@@ -118,7 +118,7 @@ def test_forced_source_failure_rolls_back_and_is_recorded(tmp_citadel, fake_agen
 
 
 def test_forced_path_run_never_sweeps_deletions(tmp_citadel, fake_agent, cite_page, seed_cited_deleted_source):
-    """Z4: NO deletion sweep on a path-scoped force run — ``citadel ingest --force <path>`` must
+    """NO deletion sweep on a path-scoped force run — ``citadel ingest --force <path>`` must
     not read the rest of the manifest as candidates for deletion (``swept_roots=None`` already
     covers path-scoped runs; force must not re-arm it)."""
     wiki, raw = tmp_citadel.wiki, tmp_citadel.raw
@@ -145,7 +145,7 @@ def test_forced_path_run_never_sweeps_deletions(tmp_citadel, fake_agent, cite_pa
 def test_forced_repo_same_commit_runs_repo_reconcile_with_full_digest(
     repo_wiki, fake_agent, make_repo, cite_page, monkeypatch
 ):
-    """Z4: forcing a repo at the SAME commit runs ``kind="repo-reconcile"`` with a FULL re-digest
+    """Forcing a repo at the SAME commit runs ``kind="repo-reconcile"`` with a FULL re-digest
     (``only=None``) and NO change summary — never ``kind="repo"`` (whose first-time brief would
     duplicate pages), and never the diff-restricted digest a normal reconcile builds."""
     raw = repo_wiki.raw
@@ -186,7 +186,7 @@ def test_forced_repo_same_commit_runs_repo_reconcile_with_full_digest(
 
 
 def test_forced_unreadable_source_is_reevaluated_and_failure_cleared(tmp_citadel, fake_agent, cite_page, monkeypatch):
-    """Z4: force clears a persisted UNREADABLE failure record and re-evaluates the source. Setup:
+    """Force clears a persisted UNREADABLE failure record and re-evaluates the source. Setup:
     an image recorded unreadable while image support was OFF is sha-tracked, so turning support ON
     is invisible to an unforced run (the short-circuit wins); the forced run re-classifies it,
     ingests it (reconcile-flavored — the key is tracked), and drops the failure record."""
@@ -212,7 +212,7 @@ def test_forced_unreadable_source_is_reevaluated_and_failure_cleared(tmp_citadel
 
 
 def test_forced_dedup_dropped_key_ingests_exactly_that_file(tmp_citadel, fake_agent, make_pptx, cite_page, monkeypatch):
-    """Z4: force on a dedup-dropped key ingests EXACTLY the requested file — ``_dedup_rank`` is
+    """Force on a dedup-dropped key ingests EXACTLY the requested file — ``_dedup_rank`` is
     bypassed for it — and the report records the divergence (it names the kept sibling the wiki
     now deliberately holds alongside). The key was never ingested, so the existing changed-keys
     logic gives it a plain ``ingest`` (there are no stale facts of its own to reconcile)."""
@@ -256,7 +256,7 @@ def test_forced_dedup_dropped_key_ingests_exactly_that_file(tmp_citadel, fake_ag
 
 
 def test_full_rescan_refreshes_stats_only_where_force_reconciles(tmp_citadel, fake_agent, cite_page):
-    """Z4 vs PR4: on the SAME unchanged sha-matching source, ``--full-rescan`` re-hashes and
+    """Force vs --full-rescan: on the SAME unchanged sha-matching source, ``--full-rescan`` re-hashes and
     re-stamps stats with ZERO agent sessions, while ``--force`` runs exactly ONE reconcile
     session. The two flags must stay distinct."""
     raw = tmp_citadel.raw
@@ -280,7 +280,7 @@ def test_full_rescan_refreshes_stats_only_where_force_reconciles(tmp_citadel, fa
 
 
 def test_reconcile_brief_carries_forced_reread_note():
-    """Z4: ``tasks/reconcile.md`` must tell a forced session that the source may be UNCHANGED —
+    """``tasks/reconcile.md`` must tell a forced session that the source may be UNCHANGED —
     re-verify the wiki's facts against it under the current rules — otherwise the agent hunts for
     a source diff that does not exist. The note already ships; this pins it in place."""
     text = (REAL_RULES_DIR / "tasks" / "reconcile.md").read_text(encoding="utf-8").lower()

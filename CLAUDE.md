@@ -165,7 +165,7 @@ it is itself a workspace.
   the promote bullet below). `ingest --force <paths>` bypasses the sha short-circuit: the named
   sources land in pending as reconciles (a repo re-digests in full), and the manifest is re-stamped
   with the current model + rules version.
-- **Discovery is incremental and deletion-safe** (refactor-plan Z3): one iterative `os.scandir`
+- **Discovery is incremental and deletion-safe**: one iterative `os.scandir`
   walk over every `CITADEL_RAW_DIRS` root keeps each file's stat; the **manifest doubles as the
   scan cache** (an entry's `size`/`mtime_ns`/`ctime_ns`/`hashed_at_ns` are a skip-hint — sha256
   stays the sole arbiter of "changed"; `--full-rescan` distrusts the cache). Deletion candidates
@@ -182,7 +182,7 @@ it is itself a workspace.
   to canonicalize YAML and stamp the timestamp) after **every** agent pass, repairs renamed-page
   links, and **only on a fully clean source promotes staging onto the live wiki — exactly once per
   source** — with a non-destructive copy-over-then-prune. A chunked large source folds ALL its
-  segments into that one staging copy before the single promote (refactor-plan Z11: the live wiki
+  segments into that one staging copy before the single promote (the live wiki
   never holds a partially imported source; the accepted trade-off is that a failure at segment N
   discards the earlier segments' work and the source retries from segment 1 next run). Any
   failure/timeout/Ctrl+C leaves the live wiki exactly as it was; the source is retried next run.
@@ -212,7 +212,7 @@ raw source). A large source is split into segments and folded in over several pa
   re-runs it and fails the source on any error.
 - `citadel lint` (`lint.py`) — a **pure offline health check** (contradictions, orphans, missing
   cites, broken links, stale, fabricated sources, undefined abbreviations, near-duplicate/malformed
-  open points, and **Z6 locator issues** — a `lines A-B` range past a text source's end or a
+  open points, and **locator issues** — a `lines A-B` range past a text source's end or a
   `§ Heading` naming a heading the source lacks, via `lint.check_locators`, shared with curate).
   Only *structural* problems (missing type, broken links, bad sources, wikilinks) flip its non-zero
   exit; the rest — locator issues included — are advisory. Both layers parse citations/links/fences

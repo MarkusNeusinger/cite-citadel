@@ -104,7 +104,7 @@ def test_failed_repo_digest_build_recorded_and_retried(repo_wiki, fake_agent, ma
 def test_mixed_run_failed_file_repo_and_delete_all_recorded_then_cleared(
     repo_wiki, seed_cited_deleted_source, fake_agent, make_repo
 ):
-    """SourceJob unification pin (shape-neutral, docs/refactor-plan.md Z7): ONE run in which a
+    """SourceJob unification pin (shape-neutral): ONE run in which a
     FILE source, a REPO source, and a DELETE cleanup all fail must land all three in the failures
     catalog with reasons — through whatever shared per-source loop drives them — with retry
     semantics intact (file+repo not marked done; the deleted key kept); a later fully-successful

@@ -189,7 +189,7 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
     failures_dict = failures_mod.load()
     # ONE wiki-body traversal builds the source-key → citing-pages map that BOTH provenance
     # consumers (the sources catalog and the index.md ## Sources section) read — replacing the two
-    # separate O(sources × pages) scans the two consumers used to run independently (Z7).
+    # separate O(sources × pages) scans the two consumers used to run independently.
     refs_by_key = citing_pages_map(manifest_dict, pages)
     sources_body = _render_sources_catalog(manifest_dict, pages, failures_dict, refs_by_key)
     sources_path = config.SOURCES_INDEX_PATH

@@ -7,7 +7,7 @@ module does the deterministic work around that autonomy:
 - run the agent against a **per-source staging copy** of the wiki (a sibling directory), so the
   **live wiki is never the agent's scratch space**: a clean source is promoted onto the live
   wiki, and a failed or aborted (Ctrl+C) one is discarded with the live wiki untouched
-  (promote-once per source, all-or-nothing — the full Z11 story lives on
+  (promote-once per source, all-or-nothing — the full story lives on
   :func:`_run_agent_sessions`);
 - snapshot the wiki BEFORE and AFTER each session and **diff by content hash** to learn what
   the agent created/updated/deleted (no return value needed);
@@ -82,7 +82,7 @@ class IngestReport:
     # (dropped_key, kept_key) for same-basename document files skipped in favor of another format.
     duplicates: list[tuple[str, str]] = field(default_factory=list)
     # (forced_key, kept_key) for same-basename pairs a FORCED run ingested ALONGSIDE the kept
-    # sibling (Z4: the dedup drop is bypassed — nothing was skipped, both formats are in the wiki).
+    # sibling (a forced run bypasses the dedup drop — nothing was skipped, both formats are in the wiki).
     duplicates_forced: list[tuple[str, str]] = field(default_factory=list)
     # rel-keys of tracked sources that VANISHED from disk (a full run only): their provenance is
     # reconciled out of the wiki by a cleanup agent session, then the manifest key is dropped.
@@ -190,7 +190,7 @@ class _Walk:
     error (a flaky SMB subdirectory), the roots that could not be entered at all (an unmounted
     share), and the roots discovery actually ENTERED (top-level scandir succeeded). A root that
     is missing, errors at top level, or hides files behind a flaky listing must NEVER read as
-    "the user deleted these sources" (docs/refactor-plan.md Z3): any error anywhere zeroes the
+    "the user deleted these sources": any error anywhere zeroes the
     sweep for the whole run, so entered-vs-clean needs no per-root error bookkeeping."""
 
     files: list[tuple[Path, os.stat_result]] = field(default_factory=list)
@@ -300,7 +300,7 @@ def _sweep_gone(keys, exclude_keys: set[str], swept_roots: list[Path] | None) ->
     references get repointed, not a deletion). ``swept_roots`` is the caller's ONE sweep
     decision: None = no sweep at all (a path-scoped run, a degraded walk, or the
     workspace-identity guard), else exactly the roots discovery entered this run. The remaining
-    guards, in order (operational safety is the point — docs/refactor-plan.md Z3):
+    guards, in order (operational safety is the point):
 
     - a key under NO configured root (``config.root_covering``) whose file is gone lands in
       ``out_of_root`` (an explicit out-of-root ingest, a root removed from the config) —
@@ -562,7 +562,7 @@ def _partition_sources(
     sha+stat the same way, so an unchanged stuck source (duplicate twin, unreadable binary) is
     re-evaluated without being re-hashed. ``full_rescan`` bypasses both quick checks.
 
-    ``force`` (``ingest --force``, docs/refactor-plan.md Z4) goes one deliberate step further:
+    ``force`` (``ingest --force``) goes one deliberate step further:
     it bypasses the quick checks AND the sha short-circuit, so an unchanged already-ingested
     candidate lands in ``pending`` and is re-read by the agent — the caller's changed-keys logic
     then gives a tracked key ``kind="reconcile"``, never a plain ingest (the rationale lives on
@@ -708,7 +708,7 @@ def _partition_sources(
     deleted, out_of_root = _sweep_gone(file_keys, moved_old | seen_keys, swept_roots)
     # Collapse same-basename document duplicates (e.g. report.pptx + report.pdf) to one kept file,
     # dropping the rest from pending (and from the office/image side-tables). Recorded for the run.
-    # A FORCED run (Z4) bypasses the drop — the requested file is ingested ALONGSIDE its kept
+    # A FORCED run bypasses the drop — the requested file is ingested ALONGSIDE its kept
     # sibling — so its pairs are classified separately and pending stays intact.
     duplicates: list[tuple[str, str]] = []
     duplicates_forced: list[tuple[str, str]] = []
@@ -760,7 +760,7 @@ def _partition_repos(
     """Split discovered repos into ``(pending, moved, deleted, skipped, out_of_root)``.
 
     - ``pending``: repos that are new (``kind="repo"``) or whose commit changed since last ingest
-      (``kind="repo-reconcile"``, carrying the old commit for the diff). With ``force`` (Z4) a
+      (``kind="repo-reconcile"``, carrying the old commit for the diff). With ``force`` a
       repo already at its stored commit is NOT skipped: it lands here as ``kind="repo-reconcile"``
       — never ``"repo"``, because a first-time brief would DUPLICATE the pages the wiki already
       holds for it (the same rule gives a forced sha-matching FILE ``kind="reconcile"``, never a
@@ -1218,10 +1218,9 @@ def _run_agent_sessions(session_fns, rel_key: str, extra_check=None, allow_empty
     staging copy. After the last session an optional ``extra_check()`` post-condition runs (used
     by deletion cleanup to assert no reference to the removed source survived).
 
-    PROMOTION HAPPENS EXACTLY ONCE, after the last session passes (docs/refactor-plan.md Z11 —
-    no silently partial imports): the non-destructive copy-over-then-prune that can never empty
+    PROMOTION HAPPENS EXACTLY ONCE, after the last session passes (no silently partial imports): the non-destructive copy-over-then-prune that can never empty
     or half-write the live wiki, which thus only ever contains FULLY imported sources. Trade-off
-    accepted and documented (Z11): a failure/timeout/interrupt at segment N discards the whole
+    accepted and documented: a failure/timeout/interrupt at segment N discards the whole
     staging copy — N-1 segments' agent work — and the source retries from segment 1 next run;
     the all-or-nothing guarantee is worth more than salvaged partial passes.
 
@@ -1294,7 +1293,7 @@ def _run_agent_sessions(session_fns, rel_key: str, extra_check=None, allow_empty
 @dataclass
 class _SourceJob:
     """ONE per-source unit of agent-driven work — the shared shape behind :func:`ingest`'s single
-    per-source loop (docs/refactor-plan.md Z7: the three near-duplicate loops — pending files,
+    per-source loop (the three near-duplicate loops — pending files,
     repos, deletion cleanups — collapse behind this; :func:`_run_source_jobs` owns the
     emit/report/failures vocabulary once).
 
@@ -1336,7 +1335,7 @@ def _run_source_jobs(jobs: list[_SourceJob], emit, report: IngestReport, failure
     The progress vocabulary is frozen (pinned by tests): ``index``/``total`` count within THIS
     group, restarting at 1 per group, and the event payload keys are exactly what the three
     former loops emitted. Page changes reach the report only on success — a failed or interrupted
-    source promotes nothing, so the report claims nothing for it (Z11).
+    source promotes nothing, so the report claims nothing for it.
 
     A ``BaseException`` (Ctrl+C) is RETURNED, not raised — the caller captures it, skips the
     remaining groups, finalizes the completed sources, and re-raises (the frozen
@@ -1559,7 +1558,7 @@ def ingest(
     ``--full-rescan`` flag — distrusts that cache and re-hashes everything; sha stays the sole
     arbiter, so unchanged sources are re-stamped, not re-ingested).
 
-    ``force`` (the ``--force`` flag — docs/refactor-plan.md Z4) deliberately re-reads the
+    ``force`` (the ``--force`` flag) deliberately re-reads the
     requested sources even when nothing changed: the quick check AND the sha short-circuit are
     bypassed, so a sha-matching tracked source lands in pending and runs ``kind="reconcile"``,
     a tracked repo at its stored commit runs ``kind="repo-reconcile"`` over a FULL re-digest
@@ -1572,14 +1571,14 @@ def ingest(
     CLI pre-empts it with the same message and a friendly exit 2), and a path-scoped run never
     sweeps deletions (``swept_roots=None`` below).
 
-    Deletion detection is guarded (docs/refactor-plan.md Z3 — operational safety over
+    Deletion detection is guarded (operational safety over
     thoroughness): candidates come from the walked-seen-set diff, each positively confirmed with
     ``.exists()``; any walk error aborts the entire sweep for the run; an unreachable root
     contributes no candidates; keys under no configured root are logged, never swept; and a
     workspace-identity mismatch whose keys do not resolve refuses the sweep outright.
 
     Per pending source: the agent's pass(es) run all-or-nothing against a per-source STAGING
-    copy, promoted once per source — the full Z11 story lives on :func:`_run_agent_sessions`.
+    copy, promoted once per source — the full story lives on :func:`_run_agent_sessions`.
     A source already tracked in the manifest but with new bytes is a re-ingest, run with
     ``kind="reconcile"`` so the agent UPDATES/REMOVES the stale facts it produced rather than
     only appending. On a per-source exception (a missing/unusable CLI, a timeout, etc.) — or a
@@ -1655,7 +1654,7 @@ def ingest(
     rules_ver = config.rules_version()
     report = IngestReport([], [], [], [], model=model)
 
-    # --- The workspace-identity HARD guard (Z1 key-space stability): the manifest was stamped by
+    # --- The workspace-identity HARD guard (key-space stability): the manifest was stamped by
     # a DIFFERENT workspace root AND most of its relative keys do not resolve here
     # (``manifest.workspace_rekeyed``) — a nested marker or a moved checkout re-keyed the world,
     # so the seen-set diff would read the entire old key space as deleted. Refuse the deletion
@@ -1677,7 +1676,7 @@ def ingest(
         # does not look hung.
         print("NOTE: --full-rescan: re-hashing every tracked source (sha256 still decides).", file=sys.stderr)
     walk = _discover_walk(paths)
-    # The ONE sweep decision (Z3): None = NO deletion sweep this run — a path-scoped run, a
+    # The ONE sweep decision: None = NO deletion sweep this run — a path-scoped run, a
     # degraded walk (any error anywhere has an unknown blast radius), or the workspace guard
     # above — else exactly the roots discovery ENTERED (an unreachable root contributes no
     # candidates). Passed to BOTH the file and the repo partition; every remaining guard
@@ -1801,7 +1800,7 @@ def ingest(
     # --- Duplicate document sources: skipped in favor of another same-basename format (config
     # DEDUP_BY_BASENAME). Record them (report + persistent failures, with sha+stat so an unchanged
     # twin is never re-hashed) but do NOT mark them done, so a later run re-evaluates — deleting
-    # the kept file promotes one of these. On a FORCED run nothing was dropped (Z4: the requested
+    # the kept file promotes one of these. On a FORCED run nothing was dropped (the requested
     # file is ingested alongside its kept sibling), so the scan classified the pairs separately:
     # they reach the report purely as the divergence record naming that sibling — no DUPLICATE
     # failure is persisted (a stale one is cleared by the successful session below). ---
@@ -1828,7 +1827,7 @@ def ingest(
         repos=len(repo_pending),
     )
 
-    # --- The per-source jobs (Z7 SourceJob): DELETION cleanups first, then files, then repos,
+    # --- The per-source jobs (the SourceJob loop): DELETION cleanups first, then files, then repos,
     # each group with its own index/total counters (frozen progress vocabulary). All three run
     # through the ONE shared loop (_run_source_jobs) + the ONE all-or-nothing session runner
     # (_run_agent_sessions); only session planning and post-success bookkeeping differ.

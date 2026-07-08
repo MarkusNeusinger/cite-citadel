@@ -66,14 +66,13 @@ packages = ["citadel"]
 # The sdist otherwise mirrors the VCS tree. Trim everything that is dev/CI/test scaffolding and does
 # not belong in the distributed package — none of it is imported by the installed code, and the
 # corpora tree (raw sources + the committed showcase wiki + its manifest) is large. The WHEEL is
-# unaffected (it ships only the `citadel` package). Keep this list in sync with refactor-plan Z8.
+# unaffected (it ships only the `citadel` package). Keep this list in sync.
 exclude = [
     "/corpora",              # test corpora incl. the beverages showcase wiki + .citadel_ingested.json
     "/.claude",              # skills + hidden corpus answer keys (ground-truth.md)
     "/.github",              # workflows + copilot-instructions
     "/uv.lock",              # dev lockfile
     "/CLAUDE.md",            # contributor architecture notes
-    "/docs/refactor-plan.md", # internal refactor design doc
 ]
 
 [tool.ruff]

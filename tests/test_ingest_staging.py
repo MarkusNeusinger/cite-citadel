@@ -149,11 +149,11 @@ def test_keyboardinterrupt_rolls_back_current_source(tmp_citadel, fake_agent, se
 
 
 def test_keyboardinterrupt_mid_segment_discards_whole_source(tmp_citadel, fake_agent, cite_page, monkeypatch):
-    """Z11 promote-once under Ctrl+C: a KeyboardInterrupt at segment 2 of a chunked source keeps
+    """Promote-once under Ctrl+C: a KeyboardInterrupt at segment 2 of a chunked source keeps
     the capture-finalize-reraise semantics — the interrupt still propagates AFTER finalization ran
     for the previously completed source — and leaves the live wiki with NOTHING from the segmented
     source (previously segment 1's page was already promoted; that partial is flipped away by
-    Z11's single staging copy). The whole source retries from segment 1 next run."""
+    the single staging copy). The whole source retries from segment 1 next run."""
     wiki, raw = tmp_citadel.wiki, tmp_citadel.raw
     monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 120)
     (raw / "a.md").write_text("a small source that fits one pass\n", encoding="utf-8")
@@ -175,7 +175,7 @@ def test_keyboardinterrupt_mid_segment_discards_whole_source(tmp_citadel, fake_a
     with pytest.raises(KeyboardInterrupt):
         ingest.ingest()  # a.md completes first (sorted order), big.txt interrupts at segment 2
 
-    assert not (wiki / "misc" / "big.md").exists()  # the whole segmented source discarded (Z11)
+    assert not (wiki / "misc" / "big.md").exists()  # the whole segmented source discarded
     data = tmp_citadel.read_manifest()
     assert "raw/big.txt" not in data  # retried in full next run
     assert "raw/a.md" in data  # the completed source was persisted before the interrupt

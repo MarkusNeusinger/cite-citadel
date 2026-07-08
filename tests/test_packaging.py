@@ -47,7 +47,7 @@ def test_dev_deps_live_only_in_the_pep735_dependency_group():
 
 
 def test_pyproject_metadata_is_free_of_vendor_marks():
-    """Z12 packaging guard: the distributed identity — name, description, keywords — must name no
+    """Packaging guard: the distributed identity — name, description, keywords — must name no
     provider. The coding-agent CLI is user-supplied; naming it in the package identity would read as
     endorsement, and would let a later rename smuggle a trademark onto the PyPI page. (The README /
     rules are free to name the CLIs to identify them — this pins ONLY pyproject metadata.)"""
@@ -60,10 +60,9 @@ def test_pyproject_metadata_is_free_of_vendor_marks():
 
 
 def test_sdist_excludes_dev_and_corpora_trees():
-    """The sdist must not carry the test corpora, CI/agent config, or dev-only files (refactor-plan
-    Z8). The wheel target ships only the `citadel` package, so it is unaffected either way."""
+    """The sdist must not carry the test corpora, CI/agent config, or dev-only files. The wheel target ships only the `citadel` package, so it is unaffected either way."""
     exclude = _pyproject()["tool"]["hatch"]["build"]["targets"]["sdist"]["exclude"]
-    for expected in ("/corpora", "/.claude", "/.github", "/uv.lock", "/CLAUDE.md", "/docs/refactor-plan.md"):
+    for expected in ("/corpora", "/.claude", "/.github", "/uv.lock", "/CLAUDE.md"):
         assert expected in exclude, f"{expected} must be excluded from the sdist"
 
 

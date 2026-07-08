@@ -1,5 +1,5 @@
 """``citadel curate`` — the second wiki lifecycle: re-verify, re-sort, split, and re-ground EXISTING
-pages against a recomputed findings checklist (docs/refactor-plan.md Z5), never ingesting anything
+pages against a recomputed findings checklist, never ingesting anything
 new.
 
 Two layers, the Wikipedia-bot model, with **no persisted queue** — the wiki IS the database:
@@ -81,7 +81,7 @@ _REASON_ORDER = [
 # is left alone until an explicit retry (``curate(force=True)`` / the CLI's ``citadel curate --retry``).
 ATTEMPT_CAP = 2
 
-# How many pages the rolling fact re-verification samples PER RUN (docs/refactor-plan.md Z5). Kept
+# How many pages the rolling fact re-verification samples PER RUN. Kept
 # small and deterministic: each run re-checks the K stalest, most-linked sha-unchanged-cited pages,
 # so a large corpus re-verifies over many runs without a per-run token blow-up.
 REVERIFY_SAMPLE_K = 3
@@ -198,7 +198,7 @@ def _staleness_seconds(page: Page, now: datetime) -> float:
 def _reverify_sample(citing_pages: set[str], pages: list[Page]) -> list[str]:
     """The up-to-:data:`REVERIFY_SAMPLE_K` citing pages to re-verify this run, ranked by
     ``staleness × (in-degree + 1)`` so the stalest, most-linked pages are re-checked first while a
-    stale island (in-degree 0) is never fully discounted (docs/refactor-plan.md Z5). Deterministic:
+    stale island (in-degree 0) is never fully discounted. Deterministic:
     ties break on rel_path."""
     if not citing_pages:
         return []
@@ -271,7 +271,7 @@ def _is_type_folder_mismatch(page: Page) -> bool:
 
 def reverify_candidates() -> set[str]:
     """The tracked source keys whose facts need the agent's entailment re-verification pass — the
-    stale-fact re-check, PRE-FILTERED offline through the manifest shas (docs/refactor-plan.md Z5):
+    stale-fact re-check, PRE-FILTERED offline through the manifest shas:
 
     - a source whose bytes CHANGED (manifest sha != on-disk sha) is reconcile's job, not curate's;
     - a source that is GONE from disk is delete's job;
@@ -345,12 +345,12 @@ def build_plan(
     for rel_path in lint.orphans(pages):
         add(rel_path, REASON_ORPHAN)
 
-    # locator drift (Z6): a `lines A-B`/`§ Heading` citation that no longer resolves against its
+    # locator drift: a `lines A-B`/`§ Heading` citation that no longer resolves against its
     # still-unchanged text source. Reuses lint's one deterministic verifier (no second parser).
     for rel_path, _detail in lint.check_locators(pages):
         add(rel_path, REASON_LOCATOR)
 
-    # fact re-verification (Z5): every page citing a sha-UNCHANGED tracked source is a candidate
+    # fact re-verification: every page citing a sha-UNCHANGED tracked source is a candidate
     # (a changed source is reconcile's job, a gone one delete's) — sample K of them by staleness ×
     # in-degree for the agent's entailment re-check of each [^sN] claim against its still-identical
     # source.

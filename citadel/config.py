@@ -578,7 +578,7 @@ DEDUP_BY_BASENAME: bool = os.environ.get("CITADEL_DEDUP_BY_BASENAME", "1").strip
 # to disable) for a very large one.
 MAX_SOURCE_CHARS: int = int(os.environ.get("CITADEL_MAX_SOURCE_CHARS", "300000"))
 
-# Curate page-length thresholds, measured in BODY lines (docs/refactor-plan.md Z5). `citadel lint`
+# Curate page-length thresholds, measured in BODY lines. `citadel lint`
 # only WARNS at the soft threshold; `citadel curate` ACTS (plans a topic split, every fact keeping
 # its citation) at the hard one. Deliberately module constants, not env knobs — one KISS default the
 # rules-tree page-shape guidance is written around, not a per-workspace dial.

@@ -19,7 +19,7 @@ posix key to how it was last ingested: ``sha256`` is the hash of the source's co
 ingested under older rules. ``model``/``rules_version`` are omitted for a source that no model
 imported (a binary/unreadable file that was only seen and skipped).
 
-**The manifest is also the scan cache** (docs/refactor-plan.md Z3 — no second cache file): an
+**The manifest is also the scan cache** (no second cache file): an
 entry additionally records the source's stat at hash time — ``size`` + ``mtime_ns`` (opaque
 equality tokens, never ordered: an older-but-different mtime invalidates exactly like a newer
 one), ``ctime_ns`` (one more opaque equality token — authoritative when recorded, see
@@ -36,7 +36,7 @@ forces the rehash and the sha decides).
 :func:`load` returns the FLAT sources dict — callers never see ``meta`` — and :func:`save` stamps
 ``meta`` with the CURRENT workspace root. A legacy flat manifest (pre-workspace, no meta) is read
 as sources-only and upgraded to the stamped form on the next save; greenfield, no migration
-tooling (docs/refactor-plan.md). A bare-sha-string entry value is likewise still read (it simply
+tooling. A bare-sha-string entry value is likewise still read (it simply
 carries no model). No DB.
 """
 
@@ -118,8 +118,7 @@ def entry_trusts_stat(entry: Entry | None, st: os.stat_result) -> bool:
       degrades to a harmless re-hash, never to a missed change. (On Windows ``st_ctime`` is the
       stable creation time: a match still rules out the file being REPLACED, but — like git on
       Windows — a deliberately backdated same-size in-place rewrite is invisible to stat and
-      only ``--full-rescan`` or a real mtime change surfaces it. See the PR4 deviation note in
-      docs/refactor-plan.md Z3.)
+      only ``--full-rescan`` or a real mtime change surfaces it.)
     - the racy-timestamp window (the git model, for entries carrying no ctime — hand-seeded or
       written by another tool): the file's mtime must lie comfortably BEFORE the recorded
       ``hashed_at_ns`` (both readings of the source's own clock), beyond
@@ -259,7 +258,7 @@ def _check_workspace(meta: dict) -> None:
     """Print ONE prominent stderr warning when the manifest was stamped by a workspace rooted
     somewhere else. A warning, NOT an error: the same share can legitimately be mounted at
     different paths (a Windows drive letter vs a WSL /mnt path), so a mismatch is suspicious but
-    must not block. The HARD workspace-identity guard lives in ingest (Z1 "key-space
+    must not block. The HARD workspace-identity guard lives in ingest (the "key-space
     stability"): when the stamp mismatches AND the manifest's relative keys do not resolve on
     disk (a nested marker / moved checkout re-keyed the world, not just a dual mount), the
     deletion sweep is REFUSED with an actionable error — see

@@ -221,7 +221,7 @@ def seed_page() -> Callable[..., Path]:
 def _cite_page(rel_path: str, rel_key: str, body_fact: str) -> None:
     """Write a minimal valid OKF page that cites ``rel_key`` once (for use inside fake sessions).
     A workspace-relative key is cited with a relative link; an absolute (out-of-workspace) key by
-    its absolute posix path — the Z3 cross-root citation form.
+    its absolute posix path — the cross-root citation form.
 
     Absoluteness is decided with the NATIVE ``Path`` flavor (the same discipline as
     ``config.source_path_for_key``), never ``PurePosixPath``: keys are produced by

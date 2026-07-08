@@ -60,7 +60,7 @@ def test_mark_done_records_model_and_roundtrips(tmp_citadel):
     assert on_disk[key]["sha256"] == manifest.file_sha256(src)
 
 
-# --- PR4 (docs/refactor-plan.md Z3): the manifest is the scan cache ----------------------
+# --- PR4: the manifest is the scan cache ----------------------
 
 
 def test_mark_done_records_scan_cache_stat_fields(tmp_citadel):

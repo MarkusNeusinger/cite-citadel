@@ -180,8 +180,7 @@ def test_ingest_forwards_explicit_paths(ingest_spy):
 
 
 def test_ingest_force_flag_reaches_ingest(ingest_spy):
-    """``--force`` hands ``force=True`` through to ``ingest.ingest`` alongside the explicit paths
-    (docs/refactor-plan.md Z4); without the flag the kwarg defaults to False."""
+    """``--force`` hands ``force=True`` through to ``ingest.ingest`` alongside the explicit paths; without the flag the kwarg defaults to False."""
     assert cli.main(["ingest", "--quiet", "raw/a.md"]) == 0
     assert ingest_spy.kwargs["force"] is False
     assert cli.main(["ingest", "--quiet", "--force", "raw/a.md"]) == 0
@@ -190,8 +189,7 @@ def test_ingest_force_flag_reaches_ingest(ingest_spy):
 
 
 def test_ingest_force_without_paths_is_rejected(ingest_spy):
-    """PLAN PIN (Z4 leaves this open, so the SAFER semantics are pinned here — noted for
-    docs/refactor-plan.md Z4): ``citadel ingest --force`` with NO explicit paths is refused with a
+    """The SAFER semantics are pinned here: ``citadel ingest --force`` with NO explicit paths is refused with a
     non-zero exit and ``ingest.ingest`` is never called. Forcing the ENTIRE corpus would re-run
     one agent session per source; that must never happen by accident — force requires explicit
     paths (``cmd_ingest`` refuses with exit 2 before ``ingest.ingest`` is reached)."""

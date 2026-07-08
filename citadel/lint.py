@@ -94,7 +94,7 @@ _ORDINAL_CONTEXT = frozenset(
     }
 )
 
-# --- Z6 locator verification (deterministic, for text-bearing raw sources) ------------------
+# --- Locator verification (deterministic, for text-bearing raw sources) ------------------
 # The locator grammar — the link span, `lines A-B` / `§ Heading` / combined `§ Heading, line N`
 # parsing, and the source-heading set — lives in grammar.py (the single home of the citation
 # grammar) as grammar.locator_tail / parse_locator / heading_candidates / source_headings. What
@@ -145,12 +145,12 @@ class LintReport:
     # (rel_path, title): an open-point thread missing its `id:` line or any dated bullet. Advisory.
     malformed_open_points: list[tuple[str, str]] = field(default_factory=list)
     # (rel_path, detail): a `lines A-B` locator past the end of its text source, or a `§ Heading`
-    # locator naming a heading the source does not contain (Z6). Advisory — a locator being off does
+    # locator naming a heading the source does not contain. Advisory — a locator being off does
     # not break navigation, so it does NOT flip ok(); it is also fed to `citadel curate` as a finding.
     locator_issues: list[tuple[str, str]] = field(default_factory=list)
     # rel_paths over the SOFT page-length threshold (config.CURATE_PAGE_SOFT_LINES, ~400 body lines):
     # long enough to be worth an eventual topic split. Advisory — "lint warns at soft, curate acts at
-    # hard" (docs/refactor-plan.md Z5): this does NOT flip ok(); `citadel curate` only plans a split
+    # hard": this does NOT flip ok(); `citadel curate` only plans a split
     # once a page crosses the HARD threshold.
     long_pages: list[str] = field(default_factory=list)
 
@@ -541,8 +541,7 @@ def _locator_problem(page_rel: str, target: str, tail: str, cache: dict[str, str
 
 
 def check_locators(pages: list[Page]) -> list[tuple[str, str]]:
-    """Deterministically verify every ``[^sN]`` citation locator against its text-bearing raw source
-    (docs/refactor-plan.md Z6): a ``lines A-B`` range past the file's end, or a ``§ Heading`` naming
+    """Deterministically verify every ``[^sN]`` citation locator against its text-bearing raw source: a ``lines A-B`` range past the file's end, or a ``§ Heading`` naming
     a heading the source lacks, is a ``(rel_path, detail)`` warning. PDF/Office page locators stay
     agent-verified (no Python PDF reader by design). Shared by :func:`lint` and ``citadel curate``;
     reuses the one citation/link/fence grammar (:func:`grammar.source_definitions`), so it agrees
@@ -643,7 +642,7 @@ def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
     )
     report.duplicate_open_points = _duplicate_open_points(op_points)
 
-    # locator issues (advisory, Z6): line ranges past a text source's end / missing §-headings.
+    # locator issues (advisory): line ranges past a text source's end / missing §-headings.
     report.locator_issues = check_locators(pages)
 
     # Deterministic ordering.
