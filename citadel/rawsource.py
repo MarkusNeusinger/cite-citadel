@@ -71,7 +71,7 @@ def raw_text(source_key: str, locator: str = "") -> str:
     if loc.heading is not None:
         span = _heading_span(text, loc.heading)
         if span is None:
-            available = ", ".join("§ " + h for h in sorted(grammar.source_headings(text))) or "none"
+            available = ", ".join("§ " + h for h in grammar.source_heading_texts(text)) or "none"
             raise SourceError(f"'§ {loc.heading}' is not a heading in '{source_key}' (headings present: {available})")
         if loc.start is None:  # heading-only: show the whole section
             return _render(source_key, lines, span[0] + 1, span[1])

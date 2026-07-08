@@ -104,11 +104,16 @@ def test_out_of_range_line_locator_is_reported(tmp_citadel):
         rawsource.raw_text(key, "lines 40-52")
 
 
-def test_missing_heading_lists_the_available_ones(tmp_citadel):
-    key = _cite(tmp_citadel, "spec.md", "# Real Heading\n\nprose\n")
+def test_missing_heading_lists_the_available_ones_with_original_casing(tmp_citadel):
+    # Issue #58: the hint must echo the source's OWN casing, not grammar.source_headings' case-fold.
+    key = _cite(tmp_citadel, "spec.md", "# The One Rule About Temperature\n\nprose\n")
 
-    with pytest.raises(rawsource.SourceError, match="real heading"):  # the available heading is named
+    with pytest.raises(rawsource.SourceError) as exc:
         rawsource.raw_text(key, "§ No Such Heading")
+
+    msg = str(exc.value)
+    assert "§ The One Rule About Temperature" in msg  # the available heading, in the source's casing
+    assert "the one rule about temperature" not in msg  # never the case-folded form
 
 
 def test_large_source_is_capped_with_a_narrowing_hint(tmp_citadel):
