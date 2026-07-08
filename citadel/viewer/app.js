@@ -511,7 +511,7 @@
     // seed position is reproducible (no Math.random) yet spread inside its cluster.
     function hashJitter(str) {
       var h = 2166136261;
-      for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = (h * 16777619) >>> 0; }
+      for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
       return { x: (h % 141) - 70, y: ((h >>> 8) % 141) - 70 };
     }
 
@@ -550,7 +550,7 @@
           var sim = wjaccard(maps[i], maps[j]);
           if (sim >= MINSIM) cand.push({ j: j, sim: sim });
         }
-        cand.sort(function (a, b) { return b.sim - a.sim; });
+        cand.sort(function (a, b) { return b.sim - a.sim || a.j - b.j; });  // tie -> lower index (deterministic)
         for (var c = 0; c < cand.length && c < K; c++) {
           var b2 = cand[c].j, key = i < b2 ? i + "," + b2 : b2 + "," + i;
           if (seen[key]) continue;
@@ -607,13 +607,14 @@
           if (idx[rel] != null) edges.push({ s: idx[rel], t: sNode, src: true });
         });
       });
-      // Adjacency + real-link degree (both from LINK edges only — sim edges are layout aids, never
-      // neighbours); reset any stale hover on rebuild.
+      // Adjacency from link + citation edges (sim edges are layout aids, never neighbours); the
+      // declutter degree counts PAGE-PAGE links only, so toggling the source layer never shifts
+      // which labels show. Reset any stale hover on rebuild.
       adj = {}; hoverIdx = null;
       edges.forEach(function (e) {
         (adj[e.s] = adj[e.s] || {})[e.t] = 1;
         (adj[e.t] = adj[e.t] || {})[e.s] = 1;
-        nodes[e.s].deg++; nodes[e.t].deg++;
+        if (!e.src) { nodes[e.s].deg++; nodes[e.t].deg++; }
       });
       // Label declutter threshold: the ~60th-percentile degree, so only the top ~40% of connected
       // nodes label by default (floored at 1 so degree-0 nodes never label except on hover/zoom).
