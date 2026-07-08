@@ -131,7 +131,8 @@ graded showcase wiki** at `corpora/<name>/wiki/`, lint-checked in CI.
 **See the result without running anything.** Browse any generated showcase wiki on GitHub — e.g.
 [`corpora/beverages/wiki/index.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/corpora/beverages/wiki/index.md) — GitHub renders the OKF pages natively, so the `[^sN]` citations,
 cross-links, glossary, and `> [!CONTRADICTION]` callouts all show inline. For the richer, interactive
-view — the cross-link graph, tags, and the cited raw sources embedded — open the **live demo gallery**
+view — the cross-link graph, tags, and the cited passages of each raw source embedded (open the
+original for the rest) — open the **live demo gallery**
 at **[markusneusinger.github.io/cite-citadel](https://markusneusinger.github.io/cite-citadel/)**, which
 serves one offline single-file viewer per corpus, regenerated on every push.
 

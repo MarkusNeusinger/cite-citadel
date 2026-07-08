@@ -1,15 +1,19 @@
 """A self-contained, offline, zero-dependency local viewer for the OKF wiki.
 
 ``build_html`` serializes the wiki — the pages, the cross-link graph, the tags, AND the cited
-raw sources (their content embedded inline) — into ONE standalone HTML document with the bundle
-embedded inline as JSON and a small hand-rolled markdown renderer + graph in inlined vanilla JS.
-It opens from ``file://`` with **no web server and no network**: nothing is fetched from a CDN,
-so the wiki data never leaves the machine. No third-party code is vendored.
+raw sources (only the CITED EXCERPTS of each, not the whole file) — into ONE standalone HTML
+document with the bundle embedded inline as JSON and a small hand-rolled markdown renderer + graph
+in inlined vanilla JS. It opens from ``file://`` with **no web server and no network**: nothing is
+fetched from a CDN, so the wiki data never leaves the machine. No third-party code is vendored.
 
 Sources are first-class: every ``[..](../../raw/x.md)`` citation and ``## Sources`` footnote is a
 clickable link that opens the cited raw file — rendered, in the same reader — and a hover preview
-peeks at it. The raw file content is embedded too, so opening a source stays fully offline. A
-"Sources" axis in the sidebar and an optional source layer in the graph make provenance browsable.
+peeks at it. Only the passages the wiki actually cites (plus a few lines of context) are embedded,
+keyed by locator across every citing page — a ``lines A-B`` range, a ``§ Heading`` section, or a
+head excerpt for an unlocated citation — merged into segments, with a "⋯ lines X–Y not embedded"
+gap indicator and an "open the original file" affordance for the rest. A short file (or one whose
+excerpts already cover most of it) still embeds whole. A "Sources" axis in the sidebar and an
+optional source layer in the graph make provenance browsable.
 
 Provenance is also legible at a glance: each page carries counts (``cites`` / ``llm`` /
 ``contradictions``) that the viewer renders as sidebar badges, quick-filter chips ("Contradictions",
@@ -62,9 +66,22 @@ from .. import manifest as manifest_mod
 VIEWER_FILENAME = ".citadel_viewer.html"
 
 # A single embedded source is capped so a pathologically large raw file (a big PDF/CSV dump or a
-# repo digest) can't bloat the standalone document without bound; the body is truncated with a
-# marker and the viewer flags it. Generous enough that ordinary notes embed whole.
+# repo digest) can't bloat the standalone document without bound. This is the FINAL guard on the
+# total embedded text per source (the whole body when a source embeds whole, or the sum of its
+# excerpt segments): past it, the text is truncated with a marker and the viewer flags it. Only
+# cited passages are embedded now, so this rarely bites.
 _SOURCE_MAX_CHARS = 200_000
+
+# Excerpt selection knobs (see :func:`_source_excerpts`). A ``lines A-B`` locator embeds the range
+# padded by _LINE_CONTEXT lines on each side; an unlocated citation embeds a head excerpt of the
+# first _HEAD_EXCERPT_LINES lines; a ``§ Heading`` section is capped at _HEADING_SECTION_CAP lines;
+# ranges whose gap is <= _MERGE_GAP lines merge; and a file of <= _WHOLE_FILE_MAX_LINES lines (or
+# one whose excerpts already cover >= 2/3 of it) embeds whole so small notes are never fragmented.
+_LINE_CONTEXT = 3
+_HEAD_EXCERPT_LINES = 30
+_HEADING_SECTION_CAP = 80
+_MERGE_GAP = 2
+_WHOLE_FILE_MAX_LINES = 120
 
 # First markdown ATX heading in a raw source — used as its human title when present.
 _HEADING_RE = re.compile(r"^#[ \t]+(.+?)[ \t]*$", re.MULTILINE)
@@ -246,13 +263,169 @@ def _read_source(path: Path) -> tuple[str, str]:
     return "", "binary"
 
 
+def _collect_source_locators(pages) -> dict[str, list[grammar.Locator | None]]:
+    """Map each cited source's VIEWER IDENTITY -> the list of its citation locators across the whole
+    wiki (``None`` for a citation with no locator). Walks every page's ``## Sources`` footnote
+    definitions through :func:`grammar.source_definitions` (the one locator-bearing citation walk,
+    shared with ``lint.check_locators``), keyed under the same :func:`_viewer_resolve` identity the
+    embedded source records use — so :func:`_source_excerpts` can select exactly the cited passages.
+    Model-supplied ``[^llm]`` definitions are skipped by ``source_definitions``."""
+    locs: dict[str, list[grammar.Locator | None]] = {}
+    for page in pages:
+        for _marker_id, rest in grammar.source_definitions(page.body):
+            target = grammar.def_link_target(rest)
+            if target is None or grammar.is_external(target):
+                continue
+            view_id = _viewer_resolve(page.rel_path, target)
+            tail = grammar.locator_tail(rest)
+            locs.setdefault(view_id, []).append(grammar.parse_locator(tail) if tail else None)
+    return locs
+
+
+def _heading_lines(text: str) -> list[tuple[int, int, str]]:
+    """Every section heading in ``text`` as ``(0-based line index, level, heading text)``, in
+    document order — fence-aware via :func:`grammar.iter_lines`, using the shared
+    :func:`grammar.parse_heading_line` (ATX ``#`` heading or whole-line ``**bold**``), so a
+    ``§ Heading`` locator resolves against the same headings lint verifies against."""
+    heads: list[tuple[int, int, str]] = []
+    for idx, (line, in_code) in enumerate(grammar.iter_lines(text)):
+        if in_code:
+            continue
+        parsed = grammar.parse_heading_line(line)
+        if parsed is not None:
+            heads.append((idx, parsed[0], parsed[1]))
+    return heads
+
+
+def _heading_range(heads: list[tuple[int, int, str]], heading: str, n: int) -> tuple[int, int] | None:
+    """The 1-based inclusive line range of the section a ``§ Heading`` locator names, or None when
+    no such heading exists. The section runs from the heading line to the line before the next
+    heading of the SAME OR HIGHER level (else end of file), capped at :data:`_HEADING_SECTION_CAP`
+    lines. Heading matching reuses :func:`grammar.heading_candidates` (case-folded), exactly as
+    ``lint._locator_problem`` does, so a heading carrying a spaced-dash still matches."""
+    cands = {c.lower() for c in grammar.heading_candidates(heading)}
+    for pos, (idx, level, htext) in enumerate(heads):
+        if htext.lower() not in cands:
+            continue
+        start = idx + 1  # 1-based heading line
+        end = n
+        for nidx, nlevel, _ in heads[pos + 1 :]:
+            if nlevel <= level:
+                end = nidx  # 0-based next-heading index == 1-based line before it
+                break
+        return start, min(end, start + _HEADING_SECTION_CAP - 1)
+    return None
+
+
+def _clamp_range(lo: int, hi: int, n: int) -> tuple[int, int]:
+    """Clamp a 1-based inclusive line range to ``[1, n]``."""
+    return max(1, min(lo, n)), max(1, min(hi, n))
+
+
+def _line_range(start: int, end: int, n: int) -> tuple[int, int]:
+    """The embed range for a ``lines A-B`` locator: the locator lines first clamped to EOF (a range
+    past the file's end anchors at EOF, not off it), THEN padded by :data:`_LINE_CONTEXT` lines each
+    side and clamped to ``[1, n]`` — so a past-EOF locator still shows a few lines of trailing context."""
+    start, end = min(start, n), min(end, n)
+    return _clamp_range(start - _LINE_CONTEXT, end + _LINE_CONTEXT, n)
+
+
+def _source_excerpts(text: str, locators: list[grammar.Locator | None]) -> list[tuple[int, int]] | None:
+    """Decide what to embed for one text source given all its citation ``locators``.
+
+    Returns None to signal "embed the whole body" (a short file of <= :data:`_WHOLE_FILE_MAX_LINES`
+    lines, or one whose merged excerpts already cover >= 2/3 of it — small notes must not be
+    fragmented), or a list of merged 1-based inclusive ``(start, end)`` line ranges to embed as
+    segments. Each locator contributes a range: a ``lines A-B`` range padded by :data:`_LINE_CONTEXT`
+    lines each side; a ``§ Heading`` section (falling back to its combined ``, line N`` range, then to
+    a head excerpt); and an unlocated / page-locator (``other``) citation a head excerpt of the first
+    :data:`_HEAD_EXCERPT_LINES` lines. Overlapping AND near-adjacent ranges (gap <= :data:`_MERGE_GAP`)
+    merge.
+
+    The whole-body fallbacks fire ONLY when the whole body actually fits under
+    :data:`_SOURCE_MAX_CHARS`. A file too big to embed whole (e.g. a whole book cited chapter by
+    chapter) would otherwise fall through the coverage rule to a blindly truncated 200k prefix that
+    drops its entire middle and end; emitting segments instead keeps the cited passages from
+    throughout, with gap markers, so a large mostly-cited source is never silently front-truncated."""
+    n = len(text.splitlines())
+    whole_fits = len(text) <= _SOURCE_MAX_CHARS
+    if n <= _WHOLE_FILE_MAX_LINES and whole_fits:
+        return None
+    head = _clamp_range(1, _HEAD_EXCERPT_LINES, n)
+    ranges: list[tuple[int, int]] = []
+    heads: list[tuple[int, int, str]] | None = None
+    for loc in locators:
+        if loc is None or loc.kind == "other":
+            ranges.append(head)
+        elif loc.kind == "lines":
+            ranges.append(_line_range(loc.start, loc.end, n))
+        elif loc.kind == "heading":
+            if heads is None:
+                heads = _heading_lines(text)
+            hr = _heading_range(heads, loc.heading or "", n) if loc.heading else None
+            if hr is not None:
+                ranges.append(hr)
+            elif loc.start is not None:
+                ranges.append(_line_range(loc.start, loc.end, n))
+            else:
+                ranges.append(head)
+    if not ranges:  # cited only via forms that yielded nothing — show a head excerpt
+        ranges.append(head)
+    ranges.sort()
+    merged: list[tuple[int, int]] = []
+    for lo, hi in ranges:
+        if merged and lo <= merged[-1][1] + _MERGE_GAP + 1:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], hi))
+        else:
+            merged.append((lo, hi))
+    covered = sum(hi - lo + 1 for lo, hi in merged)
+    if covered * 3 >= n * 2 and whole_fits:
+        return None
+    return merged
+
+
+def _embed_source(text: str, locators: list[grammar.Locator | None]) -> dict:
+    """Build the per-source embed payload from its full ``text`` and citation ``locators``: either a
+    whole-body record (``{"body": ..., "truncated": ...}``) or a segmented one (``{"segments": [...],
+    "total_lines": n, "truncated": ...}``). :data:`_SOURCE_MAX_CHARS` is the final guard on the total
+    embedded text (whole body, or the sum of segment texts).
+
+    Segments are filled at SEGMENT granularity: whole segments are embedded greedily until the next
+    one would exceed the budget, then the rest are dropped (``truncated`` set, the un-embedded tail
+    shown as a gap with an "open the original" affordance) rather than slicing a passage off
+    mid-line — so a hugely-cited source embeds only the segments that fit, not a 200k front-slice. If
+    even the FIRST segment overflows an (unusually small) budget, a truncated head of just that
+    segment is embedded so the record is never empty."""
+    ranges = _source_excerpts(text, locators)
+    if ranges is None:  # embed whole
+        truncated = len(text) > _SOURCE_MAX_CHARS
+        return {"body": text[:_SOURCE_MAX_CHARS] if truncated else text, "truncated": truncated}
+    lines = text.splitlines()
+    segments: list[dict] = []
+    used = 0
+    truncated = False
+    for lo, hi in ranges:
+        seg_text = "\n".join(lines[lo - 1 : hi])
+        if used + len(seg_text) > _SOURCE_MAX_CHARS:
+            truncated = True
+            if not segments:  # never emit an empty record: keep a truncated head of the first
+                seg_text = seg_text[: max(0, _SOURCE_MAX_CHARS - used)]
+                segments.append({"start": lo, "end": hi, "text": seg_text})
+            break
+        used += len(seg_text)
+        segments.append({"start": lo, "end": hi, "text": seg_text})
+    return {"segments": segments, "total_lines": len(lines), "truncated": truncated}
+
+
 def _build_sources(pages) -> dict:
     """Map each cited raw/docs source -> its embedded record. Cited sources are keyed by the exact
     browser identity (:func:`_collect_sources` via :func:`_viewer_resolve`) so an inline citation
     resolves straight to its record; tracked-but-uncited files fall back to :func:`_source_view_id`.
-    Each record carries the file content (capped/truncated), title, the model that imported it (from
-    the manifest), the wiki pages that cite it (the live link graph), a kind (text/office/binary),
-    an "open the original" href, and a missing flag when the file isn't on disk. Includes file
+    Each record carries the CITED EXCERPTS of the file (via :func:`_embed_source` — a whole ``body``
+    for a short/mostly-cited file, else ``segments`` + ``total_lines``), a title/snippet computed
+    from the full text, the model that imported it (from the manifest), the wiki pages that cite it
+    (the live link graph), a kind (text/office/binary), an "open the original" href, and a missing
+    flag when the file isn't on disk. Includes file
     sources tracked in the manifest even if currently uncited, so the Sources axis is complete;
     skips git-repository manifest entries (a folder, not a readable file). The manifest is read
     through ``manifest.load()`` — the one reader that understands both the stamped format-2 file
@@ -269,31 +442,35 @@ def _build_sources(pages) -> dict:
             continue
         id_to_key.setdefault(_source_view_id(config.source_path_for_key(key)), key)
         seen_keys.add(key)
+    locators_by_id = _collect_source_locators(pages)
     sources: dict[str, dict] = {}
     for view_id, key in sorted(id_to_key.items()):
         abs_path = str(config.source_path_for_key(key))
         path = Path(abs_path)
         present = path.is_file()
         if present:
-            body, kind = _read_source(path)
+            text, kind = _read_source(path)
         else:
-            body, kind = "", "binary"  # not on disk: render an "unavailable" notice, no body
-        truncated = len(body) > _SOURCE_MAX_CHARS
-        if truncated:
-            body = body[:_SOURCE_MAX_CHARS]
-        sources[view_id] = {
+            text, kind = "", "binary"  # not on disk: render an "unavailable" notice, no body
+        record = {
             "id": view_id,
             "key": key,
-            "title": _source_title(body, view_id),
+            # Title and snippet are computed from the FULL text (it is read anyway).
+            "title": _source_title(text, view_id),
             "model": manifest_mod.entry_model(manifest[key]) if key in manifest else None,
             "cited_by": store.find_raw_references(key, pages),
             "missing": not present,
             "kind": kind,  # "text" | "office" | "binary"
             "href": _source_href(abs_path) if present else None,
-            "truncated": truncated,
-            "snippet": _source_snippet(body),
-            "body": body,
+            "snippet": _source_snippet(text),
         }
+        if kind == "binary" or not text:
+            # Missing / binary / empty: no inline text, mirror the pre-excerpt whole-body shape.
+            record.update(body="", truncated=False)
+        else:
+            # Embed only the cited passages (or the whole file when it is short / mostly cited).
+            record.update(_embed_source(text, locators_by_id.get(view_id, [])))
+        sources[view_id] = record
     return sources
 
 
