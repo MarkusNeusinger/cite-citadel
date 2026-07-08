@@ -272,8 +272,9 @@ _BOLD_HEADING_LEVEL = 7
 
 def parse_heading_line(line: str) -> tuple[int, str] | None:
     """Classify a source ``line`` (already known to be OUTSIDE a code fence) as a section heading,
-    returning ``(level, text)`` or None. An ATX heading (``## Foo``) has ``level`` = the ``#`` count
-    (1–6) and ``text`` the remainder; a line that is ONLY a bold span (``**Foo**`` / ``__Foo__``,
+    returning ``(level, text)`` or None. An ATX heading (``## Foo``) has ``level`` = the number of
+    leading ``#`` (1–6 for a spec-valid heading; the count is not clamped) and ``text`` the remainder;
+    a line that is ONLY a bold span (``**Foo**`` / ``__Foo__``,
     nothing else) is a bold heading at :data:`_BOLD_HEADING_LEVEL`. Plain prose, a line with merely
     *inline* bold, or a bold span with trailing text is None. The single home of "what a raw-source
     heading is", shared by :func:`source_heading_texts` and ``rawsource._heading_span`` so lint and
