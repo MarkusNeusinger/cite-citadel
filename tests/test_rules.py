@@ -242,7 +242,7 @@ def test_packaged_rules_readme_indexes_every_file():
 
 @pytest.mark.parametrize("relname", ["schema.md", "core.md"])
 def test_always_read_rules_carry_the_wiki_language_rule(relname):
-    """Z2: the target-language contract lives in the always-read layer — named in the run
+    """The target-language contract lives in the always-read layer — named in the run
     instruction, verbatim quotes stay original."""
     text = (REAL_RULES_DIR / relname).read_text(encoding="utf-8").lower()
     assert "language" in text

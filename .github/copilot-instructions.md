@@ -207,7 +207,7 @@ git repo folded as one digest), `image`/`image-reconcile` (an image read visuall
   citations, relative non-broken links, no `[[wikilinks]]`). The ingest agent self-runs it; ingest
   re-runs it and fails the source on any error.
 - `citadel lint` (`lint.py`) — a **pure offline health check** (contradictions, orphans, missing
-  cites, broken links, stale, fabricated sources, undefined abbreviations, and **Z6 locator issues**
+  cites, broken links, stale, fabricated sources, undefined abbreviations, and **locator issues**
   — an out-of-range `lines A-B` range or a missing `§ Heading`, via `lint.check_locators`, shared
   with curate). Only *structural* problems (missing type, broken links, bad sources, wikilinks) flip
   its non-zero exit; the rest — locator issues included — are advisory. Both layers parse

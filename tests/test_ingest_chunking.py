@@ -94,10 +94,10 @@ def test_large_pdf_is_not_chunked(tmp_citadel, fake_agent, cite_page, monkeypatc
 
 
 def test_segment_failure_discards_all_segments_nothing_live(tmp_citadel, fake_agent, cite_page, monkeypatch):
-    """DELIBERATE PIN FLIP (Z11, "no silently partial imports"): when segment 2 of a chunked
+    """DELIBERATE PIN FLIP ("no silently partial imports"): when segment 2 of a chunked
     source fails, the LIVE wiki holds NOTHING from the source — the whole single staging copy is
     discarded. (The previous pin here documented the opposite: segment 1's page was promoted and
-    stayed live, a silently half-folded source. Z11 accepts the trade-off: a failure at segment N
+    stayed live, a silently half-folded source. The promote-once design accepts the trade-off: a failure at segment N
     discards N-1 segments' agent work; the all-or-nothing guarantee is worth more.) The manifest
     is untouched, the failure is recorded, and the NEXT run retries from segment 1 in full."""
     wiki, raw = tmp_citadel.wiki, tmp_citadel.raw
@@ -115,7 +115,7 @@ def test_segment_failure_discards_all_segments_nothing_live(tmp_citadel, fake_ag
 
     assert "raw/big.txt" not in report.processed
     assert any("segment two boom" in e for e in report.errors)
-    assert not (wiki / "misc" / "big.md").exists()  # FLIPPED: nothing from the source is live (Z11)
+    assert not (wiki / "misc" / "big.md").exists()  # FLIPPED: nothing from the source is live
     assert "misc/big.md" not in report.pages_created  # the report claims no page that is not live
     assert "raw/big.txt" not in tmp_citadel.read_manifest()  # not marked done -> pending next run
     assert failures.load()["raw/big.txt"]["reason"] == failures.ERROR  # the failure is persisted
@@ -138,7 +138,7 @@ def test_segment_failure_discards_all_segments_nothing_live(tmp_citadel, fake_ag
 
 
 def test_segments_fold_into_single_staging_and_promote_once(tmp_citadel, fake_agent, cite_page, monkeypatch):
-    """Z11: all segments of one chunked source run against the SAME staging copy (a later segment
+    """All segments of one chunked source run against the SAME staging copy (a later segment
     sees — and merges into — what the earlier segments wrote there, exactly as the ingest brief
     promises), the live wiki stays untouched until the LAST segment passes, and promotion happens
     exactly ONCE. The manifest marks the source once, at the end."""
@@ -183,7 +183,7 @@ def test_segments_fold_into_single_staging_and_promote_once(tmp_citadel, fake_ag
 
 
 def test_invalid_segment_fails_fast_and_discards_whole_source(tmp_citadel, fake_agent, cite_page, monkeypatch):
-    """Z11: validation still runs after EVERY segment (fail fast) — an invalid page written by
+    """Validation still runs after EVERY segment (fail fast) — an invalid page written by
     segment 2 stops the source right there (segment 3 never runs) — and promote-once means
     NOTHING, not even segment 1's clean work, reaches the live wiki."""
     wiki, raw = tmp_citadel.wiki, tmp_citadel.raw
@@ -204,6 +204,6 @@ def test_invalid_segment_fails_fast_and_discards_whole_source(tmp_citadel, fake_
 
     assert seen == [1, 2]  # fail fast: segment 3 never ran
     assert "raw/big.txt" not in report.processed and report.errors
-    assert not (wiki / "misc" / "big.md").exists()  # segment 1's clean work discarded too (Z11)
+    assert not (wiki / "misc" / "big.md").exists()  # segment 1's clean work discarded too
     assert not (wiki / "misc" / "invalid.md").exists()  # the invalid page never reached live
     assert "raw/big.txt" not in tmp_citadel.read_manifest()  # retried in full next run

@@ -258,7 +258,7 @@ def _check_workspace(meta: dict) -> None:
     """Print ONE prominent stderr warning when the manifest was stamped by a workspace rooted
     somewhere else. A warning, NOT an error: the same share can legitimately be mounted at
     different paths (a Windows drive letter vs a WSL /mnt path), so a mismatch is suspicious but
-    must not block. The HARD workspace-identity guard lives in ingest (Z1 "key-space
+    must not block. The HARD workspace-identity guard lives in ingest (the "key-space
     stability"): when the stamp mismatches AND the manifest's relative keys do not resolve on
     disk (a nested marker / moved checkout re-keyed the world, not just a dual mount), the
     deletion sweep is REFUSED with an actionable error — see

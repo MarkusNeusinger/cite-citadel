@@ -3,7 +3,7 @@
 Covers the whole surface: the offline detectors, the recompute-per-run plan, the
 ``--dry-run``/``--limit``/``--stale-rules``/``--diff`` driver, the attempt-capped revert-and-stop
 cluster sessions, ``citadel status``, the CLI read/index/sources parity + the ``wiki_lint`` MCP
-tool, and the Z6 locator lint checks. Each test imports the surface it exercises inside the test
+tool, and the locator lint checks. Each test imports the surface it exercises inside the test
 body, so a collection stays green even mid-refactor.
 
 All offline: the agent bridge is the conftest ``fake_agent`` (no real CLI is ever spawned); the
@@ -97,7 +97,7 @@ def test_detector_flags_overlong_page_at_hard_threshold(tmp_citadel, seed_page):
 
 
 def test_detector_flags_out_of_range_locator(tmp_citadel, seed_page):
-    """The Z6 locator detector plans a re-curate for a `lines A-B` citation pointing past the end of
+    """The locator detector plans a re-curate for a `lines A-B` citation pointing past the end of
     its text source — the class of the harvested `lines 30-1992` on a 57-line source (#57). Detection
     reuses lint.check_locators; this locks that build_plan surfaces it as REASON_LOCATOR so the
     curate lifecycle repairs a hallucinated line range rather than leaving it as a silent advisory."""
@@ -202,7 +202,7 @@ def test_reverify_candidates_are_prefiltered_to_sha_unchanged_sources(tmp_citade
 
 
 def test_reverify_sampling_is_wired_into_the_plan(tmp_citadel, seed_page):
-    """Fact re-verification is WIRED into build_plan (Z5): a stale page whose cited source is tracked
+    """Fact re-verification is WIRED into build_plan: a stale page whose cited source is tracked
     and sha-UNCHANGED is sampled into the plan under reason ``reverify`` (a page whose source is
     changed/gone never lands here — that is reconcile's / delete's job)."""
     from citadel import curate
@@ -399,7 +399,7 @@ def test_diff_report_is_written(tmp_citadel, seed_page, fake_agent):
     assert "concepts/alice.md" in report_path.read_text(encoding="utf-8")
 
 
-# --- citadel status (Z11): per-source table from the manifest + failures catalog ------------
+# --- citadel status: per-source table from the manifest + failures catalog ------------
 
 
 def test_status_reports_ingested_and_failed_sources(tmp_citadel, seed_page):
@@ -421,7 +421,7 @@ def test_status_reports_ingested_and_failed_sources(tmp_citadel, seed_page):
     assert report.ingested and report.failed  # structured collections, not just prose
 
 
-# --- MCP <-> CLI parity (Z11): read/index/sources CLI wrappers + wiki_lint tool --------------
+# --- MCP <-> CLI parity: read/index/sources CLI wrappers + wiki_lint tool --------------
 
 
 def test_every_mcp_tool_has_a_cli_counterpart():
@@ -484,11 +484,11 @@ def test_curate_retry_flag_maps_to_force(tmp_citadel, monkeypatch):
     assert isinstance(out, str) and out.lower().startswith("error")
 
 
-# --- soft-vs-hard page length: lint warns, curate acts (Z5) ---------------------------------
+# --- soft-vs-hard page length: lint warns, curate acts ---------------------------------
 
 
 def test_lint_warns_on_soft_overlong_page_as_advisory(tmp_citadel, seed_page):
-    """ "lint warns at soft, curate acts at hard" (Z5): a page over the SOFT page-length threshold is
+    """ "lint warns at soft, curate acts at hard": a page over the SOFT page-length threshold is
     listed under lint's advisory ``long_pages`` but does NOT flip ok() — only `citadel curate` acts,
     and only once a page crosses the HARD threshold."""
     (tmp_citadel.raw / "notes.md").write_text("body\n", encoding="utf-8")
@@ -504,12 +504,12 @@ def test_lint_warns_on_soft_overlong_page_as_advisory(tmp_citadel, seed_page):
     assert report.ok()  # advisory: the soft threshold never flips the lint exit
 
 
-# --- Z6 locator lint checks for text-bearing raw sources ------------------------------------
+# --- Locator lint checks for text-bearing raw sources ------------------------------------
 
 
 def test_lint_flags_out_of_range_line_locator(tmp_citadel, seed_page):
     """A `lines A-B` locator pointing past the end of its (immutable) text source is a lint
-    warning — the deterministic half of Z6 provenance precision."""
+    warning — the deterministic half of the locator provenance precision."""
     (tmp_citadel.raw / "notes.md").write_text("line one\nline two\nline three\n", encoding="utf-8")  # 3 lines
     seed_page(
         "concepts/topic.md",
@@ -518,7 +518,7 @@ def test_lint_flags_out_of_range_line_locator(tmp_citadel, seed_page):
     )
 
     report = lint.lint()
-    issues = report.locator_issues  # new LintReport field -> AttributeError until Z6 lands
+    issues = report.locator_issues  # new LintReport field
     assert any("concepts/topic.md" == rel for rel, _detail in issues)
 
 
@@ -533,7 +533,7 @@ def test_lint_flags_missing_heading_locator(tmp_citadel, seed_page):
     )
 
     report = lint.lint()
-    issues = report.locator_issues  # AttributeError until Z6 lands
+    issues = report.locator_issues
     assert any("concepts/topic.md" == rel for rel, _detail in issues)
 
 

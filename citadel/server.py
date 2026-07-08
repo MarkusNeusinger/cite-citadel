@@ -314,7 +314,7 @@ def wiki_ingest(paths: list[str] | None = None) -> str:
 def wiki_lint() -> str:
     """Run the offline wiki health check and return its report — contradictions, orphans,
     missing citations, broken links, missing types, stale pages, fabricated sources, undefined
-    abbreviations, and Z6 locator issues.
+    abbreviations, and locator issues.
 
     This is the read-only companion to wiki_validate: ``wiki_validate`` is the strict per-page
     gate (required fields, honest citations, non-broken links), while ``wiki_lint`` is the

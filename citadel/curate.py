@@ -345,12 +345,12 @@ def build_plan(
     for rel_path in lint.orphans(pages):
         add(rel_path, REASON_ORPHAN)
 
-    # locator drift (Z6): a `lines A-B`/`§ Heading` citation that no longer resolves against its
+    # locator drift: a `lines A-B`/`§ Heading` citation that no longer resolves against its
     # still-unchanged text source. Reuses lint's one deterministic verifier (no second parser).
     for rel_path, _detail in lint.check_locators(pages):
         add(rel_path, REASON_LOCATOR)
 
-    # fact re-verification (Z5): every page citing a sha-UNCHANGED tracked source is a candidate
+    # fact re-verification: every page citing a sha-UNCHANGED tracked source is a candidate
     # (a changed source is reconcile's job, a gone one delete's) — sample K of them by staleness ×
     # in-degree for the agent's entailment re-check of each [^sN] claim against its still-identical
     # source.

@@ -173,7 +173,7 @@ def test_office_brief_covers_extract_media_and_source_of_record():
     brief = (REAL_RULES_DIR / "formats/office.md").read_text(encoding="utf-8").lower()
     assert "extracted" in brief and "media/" in brief
     assert "source of record" in brief and "resource" in brief
-    assert "locator" in brief  # office citations require locators (Z6)
+    assert "locator" in brief  # office citations require locators
 
 
 def test_delete_brief_strips_provenance_without_opening():

@@ -212,7 +212,7 @@ raw source). A large source is split into segments and folded in over several pa
   re-runs it and fails the source on any error.
 - `citadel lint` (`lint.py`) — a **pure offline health check** (contradictions, orphans, missing
   cites, broken links, stale, fabricated sources, undefined abbreviations, near-duplicate/malformed
-  open points, and **Z6 locator issues** — a `lines A-B` range past a text source's end or a
+  open points, and **locator issues** — a `lines A-B` range past a text source's end or a
   `§ Heading` naming a heading the source lacks, via `lint.check_locators`, shared with curate).
   Only *structural* problems (missing type, broken links, bad sources, wikilinks) flip its non-zero
   exit; the rest — locator issues included — are advisory. Both layers parse citations/links/fences

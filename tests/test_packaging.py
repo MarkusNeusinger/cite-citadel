@@ -47,7 +47,7 @@ def test_dev_deps_live_only_in_the_pep735_dependency_group():
 
 
 def test_pyproject_metadata_is_free_of_vendor_marks():
-    """Z12 packaging guard: the distributed identity — name, description, keywords — must name no
+    """Packaging guard: the distributed identity — name, description, keywords — must name no
     provider. The coding-agent CLI is user-supplied; naming it in the package identity would read as
     endorsement, and would let a later rename smuggle a trademark onto the PyPI page. (The README /
     rules are free to name the CLIs to identify them — this pins ONLY pyproject metadata.)"""
