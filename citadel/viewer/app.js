@@ -4,8 +4,11 @@
   var PAGES = {};
   BUNDLE.pages.forEach(function (p) { PAGES[p.rel_path] = p; });
   var SOURCES = BUNDLE.sources || {};
-  var TYPE_COLORS = ["#009E73", "#C475FD", "#4467A3", "#BD8233", "#AE3030", "#2ABCCD"];
+  // The full 8-hue colorblind-safe brand palette (green pinned first) — 8 hues so the topic
+  // legend's top-8 clusters never share a color.
+  var TYPE_COLORS = ["#009E73", "#C475FD", "#4467A3", "#BD8233", "#AE3030", "#2ABCCD", "#954477", "#99B314"];
   var SOURCE_COLOR = "#6B6A63";
+  var OTHER_COLOR = "#8C8B82";  // muted warm gray for the grouped "other" topic bucket (singletons)
   var typeColor = {};
   Object.keys(BUNDLE.types).sort().forEach(function (t, i) {
     typeColor[t] = TYPE_COLORS[i % TYPE_COLORS.length];
@@ -360,35 +363,238 @@
   // the pages that cite them). A node click (no drag) opens the page or source.
   var Graph = (function () {
     var svg, gzoom;
-    var nodes = [], edges = [], idx = {}, adj = {};
+    var nodes = [], edges = [], simEdges = [], idx = {}, adj = {};
     var view = { x: 0, y: 0, k: 1 };
     var activeRel = "";
     var showSources = false;
+    var colorMode = "topic";       // "topic" (cluster color) | "type" (page-type color)
     var hiddenTypes = {};  // type name -> 1 when that category is toggled off in the legend
+    var hiddenTopics = {}; // cluster key -> 1 when that topic cluster is toggled off (topic mode)
     var hoverIdx = null;   // index of the hovered node (dims non-neighbours), or null
+    var degCut = 1;        // real-link-degree threshold above which a label always renders
     var raf = null, animating = false;
     var dragNode = null, panning = false, last = null, moved = false, activePointer = null;
     var W = 600, H = 420;
 
     function r2(v) { return Math.round(v * 10) / 10; }
 
+    // Topic communities via DETERMINISTIC label propagation over the combined edge set (real link
+    // edges weight 1.0 + tag-similarity edges weight = their similarity). Computed ONCE over EVERY
+    // page — independent of any legend toggle — so colours/sizes/names never shift when a cluster is
+    // hidden. There is NO Math.random: the assignment is byte-identical on every load.
+    //   * combined weighted adjacency: real links weight 1.0, sim edges weight = similarity, summed
+    //     where a pair carries both;
+    //   * asynchronous sweeps in FIXED page-index order — each node adopts the neighbour label with
+    //     the greatest summed incident edge weight (ties -> the SMALLER label id); an edgeless node
+    //     keeps its own label; stop at a fixed point or after 20 sweeps;
+    //   * communities of fewer than 2 members collapse into one muted "__other__" bucket;
+    //   * each surviving community is NAMED by the tag with the highest summed IDF over its members
+    //     (zero-IDF tags skipped), falling back to its dominant page type, then "cluster"; a name
+    //     collision is broken deterministically (its next-best tag, else a numeric suffix).
+    // Returns { of: rel_path -> cluster key, list: size-desc [{key,label,size,color}] (+ a muted
+    // "__other__" bucket, then an empty "__sources__" bucket), index: key -> list position }.
+    var _clusters = null;
+    function clusters() {
+      if (_clusters) return _clusters;
+      var pages = BUNDLE.pages, P = pages.length;
+      var pidx = {};
+      pages.forEach(function (p, i) { pidx[p.rel_path] = i; });
+
+      // Combined weighted adjacency over PAGE nodes (undirected, weights summed on overlap).
+      var nbr = pages.map(function () { return {}; });
+      function link(a, b, w) {
+        if (a == null || b == null || a === b) return;
+        nbr[a][b] = (nbr[a][b] || 0) + w;
+        nbr[b][a] = (nbr[b][a] || 0) + w;
+      }
+      BUNDLE.edges.forEach(function (e) { link(pidx[e.source], pidx[e.target], 1.0); });
+      simEdgesFor(pages).forEach(function (e) { link(e.s, e.t, e.w); });
+
+      // Deterministic asynchronous label propagation (fixed index order, tie -> smaller label id).
+      var label = pages.map(function (_p, i) { return i; });
+      for (var sweep = 0; sweep < 20; sweep++) {
+        var changed = false;
+        for (var i = 0; i < P; i++) {
+          var ns = nbr[i], keys = Object.keys(ns);
+          if (!keys.length) continue;                    // edgeless node keeps its own label
+          var wsum = {};
+          for (var k = 0; k < keys.length; k++) {
+            var lab = label[+keys[k]];
+            wsum[lab] = (wsum[lab] || 0) + ns[keys[k]];
+          }
+          var best = label[i], bestW = -1;
+          for (var l in wsum) {
+            var lw = wsum[l], li = +l;
+            if (lw > bestW || (lw === bestW && li < best)) { bestW = lw; best = li; }
+          }
+          if (best !== label[i]) { label[i] = best; changed = true; }
+        }
+        if (!changed) break;
+      }
+
+      // Group members by final label.
+      var groups = {};
+      for (var m = 0; m < P; m++) (groups[label[m]] = groups[label[m]] || []).push(m);
+
+      // Corpus IDF (the same ubiquity machinery the sim edges use) for community naming.
+      var ubiq = 0.67 * P, idf = {};
+      Object.keys(BUNDLE.tags).forEach(function (t) {
+        var df = BUNDLE.tags[t].length;
+        idf[t] = (df <= 0 || df > ubiq) ? 0 : Math.log(P / df);
+      });
+
+      // Real communities (>= 2 members): rank their tags by summed IDF + find the dominant type.
+      var comms = Object.keys(groups).filter(function (g) { return groups[g].length >= 2; })
+        .map(function (g) {
+          var mem = groups[g], tagW = {}, typeN = {};
+          mem.forEach(function (pi) {
+            var pg = pages[pi];
+            (pg.tags || []).forEach(function (t) { if (idf[t]) tagW[t] = (tagW[t] || 0) + idf[t]; });
+            var ty = pg.type || "Untyped"; typeN[ty] = (typeN[ty] || 0) + 1;
+          });
+          var tags = Object.keys(tagW).sort(function (a, b) {
+            return tagW[b] - tagW[a] || (a < b ? -1 : a > b ? 1 : 0);
+          });
+          var domType = Object.keys(typeN).sort(function (a, b) {
+            return typeN[b] - typeN[a] || (a < b ? -1 : a > b ? 1 : 0);
+          })[0];
+          return { members: mem, tags: tags, domType: domType, size: mem.length,
+                   first: Math.min.apply(null, mem) };
+        });
+      // Rank size-desc (tie -> smallest member index) so the palette assignment is stable.
+      comms.sort(function (a, b) { return b.size - a.size || a.first - b.first; });
+
+      // Name each community; break collisions deterministically (next-best tag, then a suffix).
+      var used = {};
+      comms.forEach(function (c) {
+        var name = c.tags.length ? c.tags[0] : (c.domType || "cluster");
+        if (used[name]) {
+          var alt = c.tags.length > 1 ? name + "/" + c.tags[1] : null;
+          if (alt && !used[alt]) { name = alt; }
+          else { var n = 2; while (used[name + " " + n]) n++; name = name + " " + n; }
+        }
+        used[name] = 1;
+        c.label = name;
+        c.key = "topic:" + name;
+      });
+
+      // Assemble the catalogue + the rel_path -> key map.
+      var of = {}, list = [], index = {};
+      comms.forEach(function (c, i) {
+        index[c.key] = i;
+        c.members.forEach(function (pi) { of[pages[pi].rel_path] = c.key; });
+        list.push({ key: c.key, label: c.label, size: c.size,
+                    color: TYPE_COLORS[i % TYPE_COLORS.length] });
+      });
+      // Singletons (edgeless / unmergeable pages) share one muted "other" bucket.
+      var otherN = 0;
+      Object.keys(groups).forEach(function (g) {
+        if (groups[g].length < 2) {
+          groups[g].forEach(function (pi) { of[pages[pi].rel_path] = "__other__"; otherN++; });
+        }
+      });
+      if (otherN) {
+        index["__other__"] = list.length;
+        list.push({ key: "__other__", label: "other", size: otherN, color: OTHER_COLOR });
+      }
+      index["__sources__"] = list.length;
+      list.push({ key: "__sources__", label: "Sources", size: 0, color: SOURCE_COLOR });
+
+      _clusters = { of: of, list: list, index: index };
+      return _clusters;
+    }
+
+    // A page's community (cluster) key — the label-propagation assignment computed in clusters().
+    function clusterKey(p) { return clusters().of[p.rel_path] || "__other__"; }
+
+    // Deterministic FNV-1a hash of a string -> two signed jitter offsets in [-70, 70], so a node's
+    // seed position is reproducible (no Math.random) yet spread inside its cluster.
+    function hashJitter(str) {
+      var h = 2166136261;
+      for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+      return { x: (h % 141) - 70, y: ((h >>> 8) % 141) - 70 };
+    }
+
+    // Weighted-Jaccard similarity of two tag-weight maps: sum(min)/sum(max) over the key union.
+    function wjaccard(A, B) {
+      var num = 0, den = 0, k;
+      for (k in A) { var b = B[k] || 0; num += Math.min(A[k], b); den += Math.max(A[k], b); }
+      for (k in B) { if (!(k in A)) den += B[k]; }
+      return den > 0 ? num / den : 0;
+    }
+
+    // Tag-similarity KNN edges (the anyplot mechanism): IDF-weighted tag vectors + a soft type
+    // token, top-K neighbours per page kept as faint edges. Returns index-pair edges { s, t, w }
+    // over `pgs` (w = weighted-Jaccard similarity). Pure + deterministic — no shared state — so both
+    // the layout springs and the community detection can call it. One-time O(n^2) per call — fine at
+    // wiki scale, so it is simply skipped past 1500 pages.
+    function simEdgesFor(pgs) {
+      var out = [], N = pgs.length;
+      if (N > 1500 || N < 2) return out;
+      var ubiq = 0.67 * N, idfw = {};
+      Object.keys(BUNDLE.tags).forEach(function (t) {
+        var df = BUNDLE.tags[t].length;
+        idfw[t] = (df <= 0 || df > ubiq) ? 0 : Math.log(N / df);  // zero out ubiquitous tags
+      });
+      var maps = pgs.map(function (p) {
+        var m = {};
+        (p.tags || []).forEach(function (t) { if (idfw[t]) m["tag:" + t] = idfw[t]; });
+        m["type:" + (p.type || "Untyped")] = 0.8;  // soft type token
+        return m;
+      });
+      var K = 6, MINSIM = 0.12, seen = {};
+      for (var i = 0; i < N; i++) {
+        var cand = [];
+        for (var j = 0; j < N; j++) {
+          if (j === i) continue;
+          var sim = wjaccard(maps[i], maps[j]);
+          if (sim >= MINSIM) cand.push({ j: j, sim: sim });
+        }
+        cand.sort(function (a, b) { return b.sim - a.sim || a.j - b.j; });  // tie -> lower index (deterministic)
+        for (var c = 0; c < cand.length && c < K; c++) {
+          var b2 = cand[c].j, key = i < b2 ? i + "," + b2 : b2 + "," + i;
+          if (seen[key]) continue;
+          seen[key] = 1;
+          out.push({ s: i, t: b2, sim: true, w: cand[c].sim });
+        }
+      }
+      return out;
+    }
+
+    // The LAYOUT-ONLY tag-similarity springs over the currently visible `pgs` (indices match `pgs`).
+    function buildSimEdges(pgs) { simEdges = simEdgesFor(pgs); }
+
     function buildModel() {
-      var pgs = BUNDLE.pages.filter(function (p) { return !hiddenTypes[p.type || "Untyped"]; });
+      var cl = clusters();
+      var pgs = BUNDLE.pages.filter(function (p) {
+        return colorMode === "topic" ? !hiddenTopics[clusterKey(p)]
+                                     : !hiddenTypes[p.type || "Untyped"];
+      });
       var srcIds = showSources
         ? Object.keys(SOURCES).filter(function (id) { return SOURCES[id].cited_by.length; })
         : [];
-      var n = (pgs.length + srcIds.length) || 1;
-      nodes = pgs.map(function (p, i) {
-        var a = 2 * Math.PI * i / n;
-        return { id: p.rel_path, kind: "page", type: p.type, title: p.title,
-                 x: W / 2 + Math.cos(a) * 150, y: H / 2 + Math.sin(a) * 150,
-                 vx: 0, vy: 0, fx: null, fy: null };
+      var C = cl.list.length;
+      function seed(cluster, id) {
+        var ang = 2 * Math.PI * cluster / C, jt = hashJitter(id);
+        return { x: W / 2 + Math.cos(ang) * 160 + jt.x, y: H / 2 + Math.sin(ang) * 160 + jt.y };
+      }
+      nodes = pgs.map(function (p) {
+        var ci = cl.index[clusterKey(p)], s = seed(ci, p.rel_path);
+        return { id: p.rel_path, kind: "page", type: p.type, title: p.title, cluster: ci,
+                 x: s.x, y: s.y, vx: 0, vy: 0, fx: null, fy: null, deg: 0 };
       });
-      srcIds.forEach(function (id, j) {
-        var a = 2 * Math.PI * (pgs.length + j) / n;
+      srcIds.forEach(function (id) {
+        // A source inherits its dominant citing-page cluster (max overlap), else the sources bucket.
+        var tally = {}, bestKey = null, bestN = 0;
+        SOURCES[id].cited_by.forEach(function (rel) {
+          var pp = PAGES[rel]; if (!pp) return;
+          var ck = clusterKey(pp), v = (tally[ck] = (tally[ck] || 0) + 1);
+          if (v > bestN) { bestN = v; bestKey = ck; }
+        });
+        var ci = bestKey != null ? cl.index[bestKey] : cl.index["__sources__"];
+        var s = seed(ci, "src:" + id);
         nodes.push({ id: "src:" + id, kind: "source", type: "__source__", title: SOURCES[id].title,
-                     x: W / 2 + Math.cos(a) * 150, y: H / 2 + Math.sin(a) * 150,
-                     vx: 0, vy: 0, fx: null, fy: null });
+                     cluster: ci, x: s.x, y: s.y, vx: 0, vy: 0, fx: null, fy: null, deg: 0 });
       });
       idx = {};
       nodes.forEach(function (nd, i) { idx[nd.id] = i; });
@@ -401,12 +607,21 @@
           if (idx[rel] != null) edges.push({ s: idx[rel], t: sNode, src: true });
         });
       });
-      // Adjacency (by node index) for the hover-highlight; reset any stale hover on rebuild.
+      // Adjacency from link + citation edges (sim edges are layout aids, never neighbours); the
+      // declutter degree counts PAGE-PAGE links only, so toggling the source layer never shifts
+      // which labels show. Reset any stale hover on rebuild.
       adj = {}; hoverIdx = null;
       edges.forEach(function (e) {
         (adj[e.s] = adj[e.s] || {})[e.t] = 1;
         (adj[e.t] = adj[e.t] || {})[e.s] = 1;
+        if (!e.src) { nodes[e.s].deg++; nodes[e.t].deg++; }
       });
+      // Label declutter threshold: the ~60th-percentile degree, so only the top ~40% of connected
+      // nodes label by default (floored at 1 so degree-0 nodes never label except on hover/zoom).
+      var degs = nodes.map(function (nd) { return nd.deg; }).sort(function (a, b) { return a - b; });
+      degCut = degs.length ? Math.max(1, degs[Math.floor(degs.length * 0.6)]) : 1;
+      // Tag-similarity springs over the page nodes (indices 0..pgs.length-1, matching `pgs` order).
+      buildSimEdges(pgs);
     }
 
     // Proven Fruchterman-Reingold settle for the INITIAL layout (clamped to the WxH box).
@@ -427,6 +642,12 @@
           disp[e.s].x -= dx / d * f; disp[e.s].y -= dy / d * f;
           disp[e.t].x += dx / d * f; disp[e.t].y += dy / d * f;
         });
+        simEdges.forEach(function (e) {  // tag-similarity springs pull half as hard as real links
+          var dx = nodes[e.s].x - nodes[e.t].x, dy = nodes[e.s].y - nodes[e.t].y;
+          var d = Math.sqrt(dx * dx + dy * dy) || 0.01, f = (d * d / k) * 0.5;
+          disp[e.s].x -= dx / d * f; disp[e.s].y -= dy / d * f;
+          disp[e.t].x += dx / d * f; disp[e.t].y += dy / d * f;
+        });
         var temp = Math.max(2, 30 * (1 - it / 130));
         nodes.forEach(function (nd, kk) {
           var dl = Math.sqrt(disp[kk].x * disp[kk].x + disp[kk].y * disp[kk].y) || 0.01;
@@ -443,29 +664,44 @@
     // per-node movement so the animation loop knows when to stop.
     function simStep() {
       var n = nodes.length; if (!n) return 0;
-      var cx = 0, cy = 0, i, j;
-      for (i = 0; i < n; i++) { cx += nodes[i].x; cy += nodes[i].y; }
-      cx /= n; cy /= n;
-      var L = 80, REP = 2400, SPR = 0.03, GRAV = 0.012, DAMP = 0.9, MAXV = 50;
+      var i, j;
+      // Per-cluster centroids (O(n)) so gravity pulls each node toward ITS cluster, not one global
+      // point — this is what makes the clusters actually separate on screen.
+      var cen = {};
+      for (i = 0; i < n; i++) {
+        var c = nodes[i].cluster, acc = cen[c] || (cen[c] = { x: 0, y: 0, n: 0 });
+        acc.x += nodes[i].x; acc.y += nodes[i].y; acc.n++;
+      }
+      for (var ck in cen) { cen[ck].x /= cen[ck].n; cen[ck].y /= cen[ck].n; }
+      var REP = 2400, GRAV = 0.012, DAMP = 0.9, MAXV = 50, MIN = 22;
       for (i = 0; i < n; i++) for (j = i + 1; j < n; j++) {
         var dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
         var d2 = dx * dx + dy * dy + 0.01, d = Math.sqrt(d2);
-        var f = Math.min(REP / d2, 40), ux = dx / d * f, uy = dy / d * f;
+        var f = Math.min(REP / d2, 40);
+        if (d < MIN) f += (MIN - d) * 0.5;  // hard collision separation for overlapping nodes
+        var ux = dx / d * f, uy = dy / d * f;
         nodes[i].vx += ux; nodes[i].vy += uy;
         nodes[j].vx -= ux; nodes[j].vy -= uy;
       }
-      edges.forEach(function (e) {
+      edges.forEach(function (e) {  // real link springs: short + stiff
         var a = nodes[e.s], b = nodes[e.t];
         var dx = b.x - a.x, dy = b.y - a.y, d = Math.sqrt(dx * dx + dy * dy) || 0.01;
-        var f = (d - L) * SPR, ux = dx / d * f, uy = dy / d * f;
+        var f = (d - 80) * 0.03, ux = dx / d * f, uy = dy / d * f;
+        a.vx += ux; a.vy += uy; b.vx -= ux; b.vy -= uy;
+      });
+      simEdges.forEach(function (e) {  // tag-similarity springs: longer + soft, scaled by similarity
+        var a = nodes[e.s], b = nodes[e.t];
+        var dx = b.x - a.x, dy = b.y - a.y, d = Math.sqrt(dx * dx + dy * dy) || 0.01;
+        var f = (d - 120) * (0.012 * e.w), ux = dx / d * f, uy = dy / d * f;
         a.vx += ux; a.vy += uy; b.vx -= ux; b.vy -= uy;
       });
       var maxd = 0;
       for (i = 0; i < n; i++) {
         var nd = nodes[i];
         if (nd.fx != null) { nd.x = nd.fx; nd.y = nd.fy; nd.vx = 0; nd.vy = 0; continue; }
-        nd.vx = (nd.vx + (cx - nd.x) * GRAV) * DAMP;
-        nd.vy = (nd.vy + (cy - nd.y) * GRAV) * DAMP;
+        var g = cen[nd.cluster];
+        nd.vx = (nd.vx + (g.x - nd.x) * GRAV) * DAMP;
+        nd.vy = (nd.vy + (g.y - nd.y) * GRAV) * DAMP;
         nd.vx = Math.max(-MAXV, Math.min(MAXV, nd.vx));
         nd.vy = Math.max(-MAXV, Math.min(MAXV, nd.vy));
         nd.x += nd.vx; nd.y += nd.vy;
@@ -477,7 +713,13 @@
     function draw() {
       if (!gzoom) return;
       var s = "", i;
-      var hi = hoverIdx;
+      var hi = hoverIdx, cl = clusters().list, revealAll = view.k > 1.4;
+      // Sim edges are barely-visible dashed layout aids, drawn behind the real link edges.
+      for (i = 0; i < simEdges.length; i++) {
+        var sa = nodes[simEdges[i].s], sb = nodes[simEdges[i].t];
+        s += "<line class='sim' x1='" + r2(sa.x) + "' y1='" + r2(sa.y) + "' x2='" + r2(sb.x) +
+             "' y2='" + r2(sb.y) + "'/>";
+      }
       for (i = 0; i < edges.length; i++) {
         var a = nodes[edges[i].s], b = nodes[edges[i].t];
         var edim = hi != null && edges[i].s !== hi && edges[i].t !== hi ? " dim" : "";
@@ -486,19 +728,24 @@
       }
       for (i = 0; i < nodes.length; i++) {
         var nd = nodes[i];
-        var label = nd.title.length > 18 ? nd.title.slice(0, 17) + "…" : nd.title;
         var act = nd.id === activeRel ? " active" : "";
+        var isNb = hi != null && (i === hi || (adj[hi] && adj[hi][i]));
         var ndim = hi != null && i !== hi && !(adj[hi] && adj[hi][i]) ? " dim" : "";
+        // Declutter: a label renders only when the node is hovered/its neighbour, or it is a
+        // top-degree hub, or the user has zoomed in (dimmed non-neighbours also hide text via CSS).
+        var label = (isNb || revealAll || nd.deg >= degCut)
+          ? "<text x='" + r2(nd.x) + "' y='" + r2(nd.y - 11) + "' text-anchor='middle'>" +
+            esc(nd.title.length > 18 ? nd.title.slice(0, 17) + "…" : nd.title) + "</text>"
+          : "";
         if (nd.kind === "source") {
           s += "<g class='node src" + act + ndim + "' data-page='" + esc(nd.id) + "'><rect x='" +
                r2(nd.x - 6) + "' y='" + r2(nd.y - 6) + "' width='12' height='12' rx='2' fill='" +
-               SOURCE_COLOR + "'/><text x='" + r2(nd.x) + "' y='" + r2(nd.y - 11) +
-               "' text-anchor='middle'>" + esc(label) + "</text></g>";
+               SOURCE_COLOR + "'/>" + label + "</g>";
         } else {
+          var fill = colorMode === "topic"
+            ? (cl[nd.cluster] ? cl[nd.cluster].color : "#888") : (typeColor[nd.type] || "#888");
           s += "<g class='node" + act + ndim + "' data-page='" + esc(nd.id) + "'><circle cx='" +
-               r2(nd.x) + "' cy='" + r2(nd.y) + "' r='7' fill='" +
-               (typeColor[nd.type] || "#888") + "'/><text x='" + r2(nd.x) + "' y='" +
-               r2(nd.y - 11) + "' text-anchor='middle'>" + esc(label) + "</text></g>";
+               r2(nd.x) + "' cy='" + r2(nd.y) + "' r='7' fill='" + fill + "'/>" + label + "</g>";
         }
       }
       gzoom.innerHTML = s;
@@ -506,13 +753,22 @@
         ") scale(" + (Math.round(view.k * 1000) / 1000) + ")");
     }
 
+    // frame() runs the live model until motion dies down, but a hard per-reheat frame budget caps
+    // it: a few dense layouts never fully quiesce below the motion threshold (collision + per-
+    // cluster gravity keep a couple of nodes jittering), and without the cap the init reheat would
+    // spin rAF forever. The budget is topped up while a node is being dragged (user-driven).
+    var SETTLE_FRAMES = 400, frameBudget = 0;
     function frame() {
       var moving = simStep();
       draw();
-      if (dragNode || moving > 0.4) { raf = requestAnimationFrame(frame); }
+      if (dragNode) { frameBudget = SETTLE_FRAMES; raf = requestAnimationFrame(frame); }
+      else if (moving > 0.4 && frameBudget-- > 0) { raf = requestAnimationFrame(frame); }
       else { animating = false; raf = null; }
     }
-    function reheat() { if (!animating) { animating = true; raf = requestAnimationFrame(frame); } }
+    function reheat() {
+      frameBudget = SETTLE_FRAMES;
+      if (!animating) { animating = true; raf = requestAnimationFrame(frame); }
+    }
 
     function size() {
       var r = svg.getBoundingClientRect();
@@ -593,11 +849,16 @@
 
     function init() {
       svg = document.getElementById("graph");
+      // Seed the layout box from the real pane size when it's laid out, so density scales with the
+      // viewport (fall back to the 600x420 defaults when the pane isn't measurable yet).
+      var r = svg.getBoundingClientRect ? svg.getBoundingClientRect() : null;
+      if (r && r.width && r.height) { W = r.width; H = r.height; }
       svg.innerHTML = "<g id='gzoom'></g>";
       gzoom = document.getElementById("gzoom");
       buildModel();
       settle();
       refit();
+      reheat();  // let the refined model (collision + cluster gravity + sim springs) settle the picture
       svg.addEventListener("pointerdown", onDown);
       svg.addEventListener("pointermove", onMove);
       svg.addEventListener("pointerup", onUp);
@@ -621,10 +882,53 @@
     }
 
     function setActive(rel) { activeRel = rel; draw(); }
-    function setShowSources(on) { showSources = on; buildModel(); settle(); refit(); }
+    // A rebuild re-seeds the model, re-runs the FR settle, re-fits, then reheats so the refined
+    // simStep model (collision + cluster gravity + sim springs) relaxes the final picture.
+    function rebuild() { buildModel(); settle(); refit(); reheat(); }
+    function setShowSources(on) { showSources = on; rebuild(); }
+
+    // Topic-cluster legend data: the top clusters as individual toggles + one grouped "other"
+    // bucket for the remainder (all with size over every page, so the list is stable).
+    function topicLegend() {
+      // Named communities only compete for the top slots; the muted "__other__" bucket is always
+      // grouped into "other" (never colour-ranked), joined by any community beyond the top 8.
+      var cl = clusters().list.filter(function (c) {
+        return c.key !== "__sources__" && c.key !== "__other__" && c.size > 0;
+      });
+      var top = cl.slice(0, 8).map(function (c) {
+        return { key: c.key, label: c.label, color: c.color, size: c.size,
+                 hidden: !!hiddenTopics[c.key] };
+      });
+      var rest = cl.slice(8), keys = rest.map(function (c) { return c.key; });
+      var oi = clusters().index["__other__"];
+      var otherCluster = oi != null ? clusters().list[oi] : null;
+      if (otherCluster) keys.push("__other__");
+      var other = null;
+      if (keys.length) {
+        var sz = 0, allHidden = true;
+        rest.forEach(function (c) { sz += c.size; if (!hiddenTopics[c.key]) allHidden = false; });
+        if (otherCluster) {
+          sz += otherCluster.size;
+          if (!hiddenTopics["__other__"]) allHidden = false;
+        }
+        other = { size: sz, hidden: allHidden, keys: keys };
+      }
+      return { top: top, other: other };
+    }
 
     return { init: init, zoom: zoom, refit: refit, setActive: setActive,
              setShowSources: setShowSources, showsSources: function () { return showSources; },
+             colorMode: function () { return colorMode; },
+             // How many REAL topic communities exist (excl. the "other"/Sources buckets) — lets the
+             // boot code default a one-community wiki to type colours, where topic mode is monochrome.
+             topicCount: function () {
+               return clusters().list.filter(function (c) {
+                 return c.key !== "__other__" && c.key !== "__sources__";
+               }).length;
+             },
+             // Set the colour mode (before init, without a rebuild) / at runtime (rebuilds).
+             setColorInit: function (m) { colorMode = m === "type" ? "type" : "topic"; },
+             setColorMode: function (m) { colorMode = m === "type" ? "type" : "topic"; rebuild(); },
              isHidden: function (t) { return !!hiddenTypes[t]; },
              hiddenList: function () { return Object.keys(hiddenTypes); },
              // Restore the hidden-category set without rebuilding (call before init()).
@@ -634,7 +938,25 @@
              },
              setHiddenType: function (t, hide) {
                if (hide) hiddenTypes[t] = 1; else delete hiddenTypes[t];
-               buildModel(); settle(); refit();
+               rebuild();
+             },
+             topicLegend: topicLegend,
+             isTopicHidden: function (k) { return !!hiddenTopics[k]; },
+             hiddenTopicList: function () { return Object.keys(hiddenTopics); },
+             setHiddenTopics: function (arr) {
+               hiddenTopics = {};
+               (arr || []).forEach(function (k) { hiddenTopics[k] = 1; });
+             },
+             setHiddenTopic: function (k, hide) {
+               if (hide) hiddenTopics[k] = 1; else delete hiddenTopics[k];
+               rebuild();
+             },
+             // Toggle the whole "other" bucket as a group: hide all when any is shown, else show all.
+             toggleOther: function () {
+               var o = topicLegend().other; if (!o) return;
+               var hide = !o.hidden;
+               o.keys.forEach(function (k) { if (hide) hiddenTopics[k] = 1; else delete hiddenTopics[k]; });
+               rebuild();
              } };
   })();
 
@@ -1078,29 +1400,58 @@
   document.getElementById("wiki-name").textContent = BUNDLE.wiki_name || "Wiki";
   renderTags();
   renderSidebar();
-  // Restore the hidden-category filter BEFORE the first layout so the initial map matches last session.
+  // Restore the map's colour mode + both hidden sets BEFORE the first layout so the initial map
+  // matches last session (topic mode is the default). Type and topic hidden sets use separate keys
+  // so switching modes never corrupts either.
+  try {
+    var savedMode = localStorage.getItem("okf_color_mode");
+    // No explicit choice yet: topic colours by default, EXCEPT when the whole wiki is a single
+    // community (e.g. one dense narrative) — topic mode would be monochrome, so start on type.
+    var defMode = Graph.topicCount() > 1 ? "topic" : "type";
+    Graph.setColorInit(savedMode === "type" || savedMode === "topic" ? savedMode : defMode);
+  } catch (e) {}
   try {
     var savedHidden = JSON.parse(localStorage.getItem("okf_hidden_types") || "[]");
     if (Array.isArray(savedHidden)) Graph.setHidden(savedHidden);
   } catch (e) {}
+  try {
+    var savedTopics = JSON.parse(localStorage.getItem("okf_hidden_topics") || "[]");
+    if (Array.isArray(savedTopics)) Graph.setHiddenTopics(savedTopics);
+  } catch (e) {}
   Graph.init();
 
-  // Interactive legend: every category (each page type + the Source layer) is a clickable chip
-  // that toggles its nodes in the map, with a live count; a struck-through chip is hidden.
+  // Interactive legend: every category is a clickable chip that toggles its nodes in the map, with a
+  // live count; a struck-through chip is hidden. In topic mode it lists the top clusters (+ an
+  // "other" bucket); in type mode it lists the page types. The Source-layer chip stays in both.
+  function chip(key, label, color, off, srcSwatch) {
+    return "<span class='lg' data-legend='" + esc(key) + "'" + (off ? " data-off='1'" : "") +
+      "><span class='sw" + (srcSwatch ? " src" : "") + "' style='background:" + color + "'></span>" +
+      esc(label) + " <span class='cnt'>";
+  }
   function renderLegend() {
     var box = document.getElementById("graph-legend");
     if (!box) return;
-    var counts = {};
-    BUNDLE.pages.forEach(function (p) { var k = p.type || "Untyped"; counts[k] = (counts[k] || 0) + 1; });
-    var html = Object.keys(BUNDLE.types).sort().map(function (t) {
-      return "<span class='lg' data-legend='" + esc(t) + "'" + (Graph.isHidden(t) ? " data-off='1'" : "") +
-        "><span class='sw' style='background:" + (typeColor[t] || "#888") + "'></span>" + esc(t) +
-        " <span class='cnt'>" + (counts[t] || 0) + "</span></span>";
-    }).join("");
+    var html = "";
+    if (Graph.colorMode() === "topic") {
+      var tl = Graph.topicLegend();
+      html = tl.top.map(function (c) {
+        return chip(c.key, c.label, c.color, c.hidden, false) + c.size + "</span></span>";
+      }).join("");
+      if (tl.other) {
+        html += chip("__other__", "other", "var(--muted)", tl.other.hidden, false) +
+          tl.other.size + "</span></span>";
+      }
+    } else {
+      var counts = {};
+      BUNDLE.pages.forEach(function (p) { var k = p.type || "Untyped"; counts[k] = (counts[k] || 0) + 1; });
+      html = Object.keys(BUNDLE.types).sort().map(function (t) {
+        return chip(t, t, typeColor[t] || "#888", Graph.isHidden(t), false) +
+          (counts[t] || 0) + "</span></span>";
+      }).join("");
+    }
     if (Object.keys(SOURCES).length) {
       var nSrc = Object.keys(SOURCES).filter(function (id) { return SOURCES[id].cited_by.length; }).length;
-      html += "<span class='lg' data-legend='__source__'" + (Graph.showsSources() ? "" : " data-off='1'") +
-        "><span class='sw src' style='background:" + SOURCE_COLOR + "'></span>Source <span class='cnt'>" +
+      html += chip("__source__", "Source", SOURCE_COLOR, !Graph.showsSources(), true) +
         nSrc + "</span></span>";
     }
     box.innerHTML = html;
@@ -1180,18 +1531,43 @@
     setShowSources(!srcBtn.classList.contains("active"));
   });
 
+  // Colour-by toggle: injected into the map bar (topic clusters vs page type). Created in JS so the
+  // packaged template stays untouched. Default topic; the active (green) state means topic mode.
+  var colorBtn = document.createElement("button");
+  colorBtn.className = "gbtn";
+  colorBtn.id = "g-color";
+  colorBtn.type = "button";
+  colorBtn.innerHTML = "&#9686;";  // half-shaded circle: "colour by"
+  srcBtn.parentNode.insertBefore(colorBtn, srcBtn);
+  function setColorMode(m, initial) {
+    if (!initial) Graph.setColorMode(m);
+    var topic = Graph.colorMode() === "topic";
+    colorBtn.classList.toggle("active", topic);
+    colorBtn.title = topic ? "Colour: topic (click for type)" : "Colour: type (click for topic)";
+    try { localStorage.setItem("okf_color_mode", topic ? "topic" : "type"); } catch (e) {}
+    renderLegend();
+  }
+  colorBtn.addEventListener("click", function () {
+    setColorMode(Graph.colorMode() === "topic" ? "type" : "topic");
+  });
+  setColorMode(Graph.colorMode(), true);  // reflect the restored mode without a rebuild
+
   // The legend needs its own listener: the global document click handler early-returns inside
   // #graph-pane, so a data-legend branch there would never fire.
   document.getElementById("graph-legend").addEventListener("click", function (ev) {
     var el = ev.target.closest ? ev.target.closest("[data-legend]") : null;
     if (!el) return;
     var t = el.getAttribute("data-legend");
-    if (t === "__source__") { setShowSources(!srcBtn.classList.contains("active")); }
-    else {
+    if (t === "__source__") { setShowSources(!srcBtn.classList.contains("active")); return; }
+    if (Graph.colorMode() === "topic") {
+      if (t === "__other__") Graph.toggleOther();
+      else Graph.setHiddenTopic(t, !Graph.isTopicHidden(t));
+      try { localStorage.setItem("okf_hidden_topics", JSON.stringify(Graph.hiddenTopicList())); } catch (e) {}
+    } else {
       Graph.setHiddenType(t, !Graph.isHidden(t));
       try { localStorage.setItem("okf_hidden_types", JSON.stringify(Graph.hiddenList())); } catch (e) {}
-      renderLegend();
     }
+    renderLegend();
   });
 
   // Sidebar collapse (focus/reading mode); the toggle lives in the map bar so it stays reachable.

@@ -102,6 +102,8 @@ mark { background:#fde68a; color:#111; border-radius:2px; padding:0 1px; }
 #graph .node text { font-size:9px; fill:var(--fg); pointer-events:none; }
 #graph line { stroke:var(--line); stroke-width:1; }
 #graph line.src { stroke-dasharray:3 3; }
+/* Tag-similarity springs: barely-visible dashed layout aids (not semantic link edges). */
+#graph line.sim { stroke:var(--muted); stroke-dasharray:2 4; opacity:.15; }
 /* Hover-highlight: dim everything not adjacent to the hovered node (draw-only, no re-layout). */
 #graph .node.dim { opacity:.22; }
 #graph .node.dim text { opacity:0; }
