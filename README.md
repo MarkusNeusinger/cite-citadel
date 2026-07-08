@@ -138,12 +138,12 @@ serves one offline single-file viewer per corpus, regenerated on every push.
 
 ## MCP server
 
-`citadel serve` exposes eight tools over stdio: `wiki_search`, `wiki_read`, `wiki_index`,
-`wiki_sources`, `wiki_tags`, `wiki_validate`, `wiki_lint` (read-only), and `wiki_ingest` (the only
-mutating one). Each carries MCP behavior annotations (`readOnlyHint` etc.) so a client can tell the
-readers from the one mutating tool. Every MCP tool has a CLI counterpart — `citadel read`,
-`citadel index`, `citadel sources`, `citadel lint`, … — so an AI without MCP access can do
-everything through the CLI. Wire it into an MCP client (e.g. Claude Desktop):
+`citadel serve` exposes **eleven tools** over stdio — ten read-only (`wiki_search`, `wiki_define`,
+`wiki_read`, `wiki_raw`, `wiki_neighbors`, `wiki_index`, `wiki_sources`, `wiki_tags`,
+`wiki_validate`, `wiki_lint`) and one mutating (`wiki_ingest`) — each with MCP behavior annotations
+(`readOnlyHint` etc.) so a client can tell them apart. Every tool has a CLI counterpart
+(`citadel read`, `citadel index`, `citadel lint`, …), so an AI without MCP access can do everything
+through the shell. Wire it into an MCP client (e.g. Claude Desktop):
 
 ```json
 {
@@ -151,7 +151,11 @@ everything through the CLI. Wire it into an MCP client (e.g. Claude Desktop):
     "citadel": {
       "command": "citadel",
       "args": ["serve"],
-      "env": { "CITADEL_LLM_CLI": "claude", "CITADEL_INGEST_MODEL": "sonnet" }
+      "env": {
+        "CITADEL_WORKSPACE": "/path/to/your/workspace",
+        "CITADEL_LLM_CLI": "claude",
+        "CITADEL_INGEST_MODEL": "sonnet"
+      }
     }
   }
 }
@@ -159,9 +163,14 @@ everything through the CLI. Wire it into an MCP client (e.g. Claude Desktop):
 
 An AI can then `wiki_index()` to orient, `wiki_search(...)` to find pages, and `wiki_read(...)` to
 pull full cited context — answering from your synthesized wiki instead of re-retrieving documents.
+Full setup (Claude Desktop, Claude Code, a generic stdio client, and "if the server won't start"):
+[**docs/mcp.md**](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/mcp.md).
 
 ## Reference
 
+- [**`docs/`**](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/index.md) — the docs
+  hub: an "I want to…" table pointing at configuration, MCP setup, troubleshooting, the OKF format,
+  and the founding idea.
 - [`citadel/rules/README.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/citadel/rules/README.md) — index of the rules tree the ingest agent
   follows: [`schema.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/citadel/rules/schema.md) (structure, routing, and provenance rules),
   [`core.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/citadel/rules/core.md) (operational behavior), plus the `tasks/`, `formats/`, and
