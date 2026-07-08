@@ -97,6 +97,25 @@ def test_detector_flags_overlong_page_at_hard_threshold(tmp_citadel, seed_page):
     assert "page_length_hard" in _reasons_for(plan, "concepts/huge.md")
 
 
+def test_detector_flags_out_of_range_locator(tmp_citadel, seed_page):
+    """The Z6 locator detector plans a re-curate for a `lines A-B` citation pointing past the end of
+    its text source — the class of the harvested `lines 30-1992` on a 57-line source (#57). Detection
+    reuses lint.check_locators; this locks that build_plan surfaces it as REASON_LOCATOR so the
+    curate lifecycle repairs a hallucinated line range rather than leaving it as a silent advisory."""
+    from citadel import curate
+
+    (tmp_citadel.raw / "notes.md").write_text("line one\nline two\nline three\n", encoding="utf-8")  # 3 lines
+    seed_page(
+        "concepts/topic.md",
+        {"type": "Concept", "title": "Topic", "description": "d", "tags": ["t"], "resource": "raw/notes.md"},
+        "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/notes.md](../../raw/notes.md), lines 30-1992 - out of range\n",
+    )
+
+    plan = curate.build_plan()
+    assert "concepts/topic.md" in _plan_pages(plan)
+    assert curate.REASON_LOCATOR in _reasons_for(plan, "concepts/topic.md")
+
+
 def test_detector_flags_unresolved_contradiction(tmp_citadel, seed_page):
     """A page carrying a `> [!CONTRADICTION]` callout with no resolution line is planned for a
     curate pass (attempt a confident resolution, per schema.md § Contradictions)."""
