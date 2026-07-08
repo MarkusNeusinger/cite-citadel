@@ -8,6 +8,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **`wiki_raw` / `citadel raw` — preserve heading casing in the "not a heading" hint.** When a
+  `§ Heading` locator names a heading the source lacks, the error lists the available headings using
+  the source's ORIGINAL casing and document order (e.g. `§ The One Rule About Temperature`) instead of
+  the case-folded form the internal match set uses. Backed by a new case-preserving
+  `grammar.source_heading_texts`; the case-insensitive match itself is unchanged.
+- **`§ Heading` locators into bold-line sections now verify and resolve.** Many real sources (FAQs,
+  exported Word/Confluence docs) delimit sections with a whole-line `**bold**` header instead of an
+  ATX `#` heading. A new shared `grammar.parse_heading_line` recognizes both, so the ingest agent's
+  `§ Bold Heading` citations no longer trip `citadel lint`'s locator check (42 false advisories on a
+  fresh beverages build) and `wiki_raw` / `citadel raw` resolves them instead of answering "headings
+  present: none". Inline or partial bold is still not a heading; the case-insensitive match is
+  unchanged. Surfaced by the verify-corpus Mode-A harvest.
 - **`citadel lint` — fewer advisory false positives on real ingests.** A `## See also` navigation
   list is no longer counted as a "Missing citations" paragraph (a link title such as
   `Immersion vs. Percolation Brewing` had faked a second sentence — 18 false hits on a fresh

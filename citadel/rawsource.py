@@ -71,7 +71,7 @@ def raw_text(source_key: str, locator: str = "") -> str:
     if loc.heading is not None:
         span = _heading_span(text, loc.heading)
         if span is None:
-            available = ", ".join("§ " + h for h in sorted(grammar.source_headings(text))) or "none"
+            available = ", ".join("§ " + h for h in grammar.source_heading_texts(text)) or "none"
             raise SourceError(f"'§ {loc.heading}' is not a heading in '{source_key}' (headings present: {available})")
         if loc.start is None:  # heading-only: show the whole section
             return _render(source_key, lines, span[0] + 1, span[1])
@@ -129,20 +129,22 @@ def _read_text(source_key: str, path: Path) -> str:
 def _heading_span(text: str, heading: str) -> tuple[int, int] | None:
     """The 0-based ``(start, end)`` half-open line span of the section a ``§ Heading`` names — the
     heading line through the line before the next heading of the same or shallower level — or None
-    when no such heading exists. Fence-aware and candidate-tolerant (a trailing ``- description`` is
-    trimmed) via the shared :func:`grammar.iter_lines` / :func:`grammar.heading_candidates`."""
+    when no such heading exists. Recognizes both ATX ``#`` headings and whole-line ``**bold**``
+    headings via the shared :func:`grammar.parse_heading_line`, so a ``§`` locator into a FAQ /
+    exported-doc section resolves. Fence-aware and candidate-tolerant (a trailing ``- description``
+    is trimmed) via :func:`grammar.iter_lines` / :func:`grammar.heading_candidates`."""
     wanted = {c.lower() for c in grammar.heading_candidates(heading)}
     rows = list(grammar.iter_lines(text))
     start = level = None
     for i, (line, in_code) in enumerate(rows):
         if in_code:
             continue
-        stripped = line.lstrip()
-        if not stripped.startswith("#"):
+        parsed = grammar.parse_heading_line(line)
+        if parsed is None:
             continue
-        this_level = len(stripped) - len(stripped.lstrip("#"))
+        this_level, htext = parsed
         if start is None:
-            if stripped.lstrip("#").strip().lower() in wanted:
+            if htext.lower() in wanted:
                 start, level = i, this_level
             continue
         if this_level <= level:
