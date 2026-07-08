@@ -59,6 +59,41 @@ _ABBREV_REPORT_CAP = 25
 _OP_DUP_RATIO = 0.85
 _OP_DUP_CAP = 50
 
+# A markdown list bullet made ONLY of links (a `## See also`-style navigation line), not factual
+# prose. Skipped by the missing-citation heuristic: a link *title* containing sentence punctuation
+# (`Immersion vs. Percolation Brewing`) otherwise fakes a multi-sentence paragraph and mis-flags the
+# whole nav list as an uncited fact. Handles one-link-per-bullet and several ` - `-joined on a line.
+_LIST_BULLET_RE = re.compile(r"^[-*+]\s")
+_MD_FULL_LINK_RE = re.compile(r"\[[^\]]*\]\([^)]*\)")
+
+# Roman numerals and fiscal-period labels are not glossary abbreviations. A roman numeral is excluded
+# only in an ordinal context (`Chapter IV`), so a real abbreviation that merely parses as a numeral
+# (DC, MC, CI) is still surfaced; `Q1..Q4` / `H1`/`H2` are excluded outright.
+_ROMAN_RE = re.compile(r"^(?=[MDCLXVI])M{0,4}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})$")
+_FISCAL_RE = re.compile(r"^(?:Q[1-4]|H[12])$")
+_ORDINAL_CONTEXT = frozenset(
+    {
+        "chapter",
+        "part",
+        "section",
+        "sec",
+        "vol",
+        "volume",
+        "book",
+        "act",
+        "scene",
+        "appendix",
+        "figure",
+        "fig",
+        "table",
+        "canto",
+        "phase",
+        "step",
+        "tier",
+        "note",
+    }
+)
+
 # --- Z6 locator verification (deterministic, for text-bearing raw sources) ------------------
 # The locator grammar — the link span, `lines A-B` / `§ Heading` / combined `§ Heading, line N`
 # parsing, and the source-heading set — lives in grammar.py (the single home of the citation
@@ -238,6 +273,16 @@ def _is_stale(page: Page, stale_days: int) -> bool:
     return age_days > stale_days
 
 
+def _is_link_list_line(stripped: str) -> bool:
+    """True for a markdown list bullet whose content is only links + separators — a `## See also`
+    navigation line, not a factual sentence. Removing every ``[text](url)`` link must leave no
+    letter/digit behind (``- [Coffee](coffee.md)`` / ``- [A](a) - [B](b)`` -> only bullet + dashes)."""
+    if not _LIST_BULLET_RE.match(stripped):
+        return False
+    residue = _MD_FULL_LINK_RE.sub("", stripped)
+    return not re.search(r"[0-9A-Za-z]", residue)
+
+
 def _missing_cite_preview(page: Page) -> str | None:
     """Return a short preview of the first factual-looking paragraph in the page
     body that lacks a footnote marker, or None if every such paragraph is cited.
@@ -277,6 +322,9 @@ def _missing_cite_preview(page: Page) -> str | None:
         if stripped.startswith(">"):
             # Callout (e.g. contradiction) — not a plain factual paragraph.
             continue
+        if _is_link_list_line(stripped):
+            # A `## See also`-style link list — navigation, not an uncited factual paragraph.
+            continue
         if not stripped:
             preview = flush(paragraph_lines)
             paragraph_lines = []
@@ -311,16 +359,32 @@ def _unlinked_mentions(
     return found
 
 
+def _preceding_word(line: str, index: int) -> str:
+    """The lower-cased word immediately before ``index`` in ``line`` (trailing punctuation stripped),
+    or ``''`` — used to tell a roman numeral in an ordinal context (``Chapter IV``) from a real
+    abbreviation that merely parses as a numeral (``DC``, ``MC``)."""
+    before = line[:index].rstrip()
+    if not before:
+        return ""
+    return before.rsplit(maxsplit=1)[-1].strip(".,;:—–-").lower()
+
+
 def _abbrev_token_uses(body: str) -> set[str]:
     """Abbreviation-shaped tokens (see ABBREV_RE) used in the prose of ``body`` (see
-    :func:`grammar.prose_lines` — headings count, code fences and ``## Sources`` do not),
-    skipping chemistry formulae (a token trailed by a subscript digit, e.g. CO₂)."""
+    :func:`grammar.prose_lines` — headings count, code fences and ``## Sources`` do not), skipping
+    chemistry formulae (a token trailed by a subscript digit, e.g. CO₂), fiscal-period labels
+    (``Q1``..``Q4`` / ``H1``/``H2``), and roman numerals in an ordinal context (``Chapter IV``)."""
     found: set[str] = set()
     for line in grammar.prose_lines(body, skip_sources=True):
         for m in ABBREV_RE.finditer(line):
             if m.end() < len(line) and line[m.end()] in _SCRIPT_DIGITS:
                 continue
-            found.add(m.group(0))
+            token = m.group(0)
+            if _FISCAL_RE.match(token):
+                continue
+            if _ROMAN_RE.match(token) and _preceding_word(line, m.start()) in _ORDINAL_CONTEXT:
+                continue
+            found.add(token)
     return found
 
 
