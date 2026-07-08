@@ -397,10 +397,12 @@ def test_bundle_contains_pages_links_tags(tmp_citadel, seed_page):
     assert set(by_path) == {"concepts/espresso.md", "concepts/caffeine.md"}
     assert by_path["concepts/espresso.md"]["title"] == "Espresso"
     assert by_path["concepts/espresso.md"]["tags"] == ["brewing", "coffee"]
-    # caffeine -> espresso edge; espresso has caffeine as a backlink.
+    # caffeine -> espresso edge; espresso has caffeine as a backlink. The flat top-level "edges"
+    # array is NOT shipped — the graph lives only in per-page outbound/inbound and is rebuilt in the
+    # browser from outbound at boot.
+    assert "edges" not in b
     assert by_path["concepts/caffeine.md"]["outbound"] == ["concepts/espresso.md"]
     assert by_path["concepts/espresso.md"]["inbound"] == ["concepts/caffeine.md"]
-    assert {"source": "concepts/caffeine.md", "target": "concepts/espresso.md"} in b["edges"]
     # tags / types match the store helpers.
     assert set(b["tags"]["coffee"]) == {"concepts/espresso.md", "concepts/caffeine.md"}
     assert b["types"]["Concept"] == ["concepts/caffeine.md", "concepts/espresso.md"]

@@ -67,6 +67,8 @@ mark { background:#fde68a; color:#111; border-radius:2px; padding:0 1px; }
 /* Keep search highlights in step with the explicit theme toggle (not just the OS scheme). */
 :root[data-theme="light"] mark { background:#fde68a; color:#111; }
 :root[data-theme="dark"] mark { background:#7c5e10; color:#fdecc8; }
+/* The current n/N reader hit gets an accent ring so you can see which of many marks you're on. */
+mark.cur { outline:2px solid var(--accent); outline-offset:1px; }
 #page-list details, #source-list details { margin-bottom:8px; }
 #page-list summary, #source-list summary { cursor:pointer; color:var(--muted); font-size:12px;
                      text-transform:uppercase; letter-spacing:.04em; }
@@ -75,6 +77,9 @@ mark { background:#fde68a; color:#111; border-radius:2px; padding:0 1px; }
            text-decoration:none; }
 .navitem:hover { background:var(--card); }
 .navitem.active { background:var(--chip); color:var(--accent); font-weight:600; }
+/* j/k keyboard selection highlight (search results or the page/source nav). */
+.navitem.kbd-sel, .result.kbd-sel { background:var(--chip); outline:2px solid var(--accent);
+                                    outline-offset:-2px; }
 .navitem .cite-count { color:var(--muted); font-size:11px; }
 .navitem.src::before { content:"\201C"; color:var(--source); margin-right:3px; font-weight:700; }
 #content { flex:1; display:flex; flex-direction:column; overflow:hidden; }
@@ -133,7 +138,9 @@ mark { background:#fde68a; color:#111; border-radius:2px; padding:0 1px; }
 /* The reader adapts to the pane: a centered column whose width follows the reading-width toggle.
    Centering via symmetric padding (not margin:auto on children) keeps tables/code left-aligned
    with the prose instead of floating to the middle. */
-#reader { flex:1; overflow:auto; padding:20px 28px; }
+/* font-size comes from the reader font-size toggle (default 15px); headings/lists stay em-relative
+   so they scale with it. */
+#reader { flex:1; overflow:auto; padding:20px 28px; font-size:var(--reader-font, 15px); }
 #content.rw-comfortable #reader { padding-left:max(28px, calc((100% - 900px) / 2));
                                   padding-right:max(28px, calc((100% - 900px) / 2)); }
 #content.rw-wide #reader { padding-left:max(28px, calc((100% - 1320px) / 2));
@@ -217,6 +224,9 @@ a.srclink::after { content:" \2197"; font-size:.8em; opacity:.7; }
 #srcpop .sp-meta { color:var(--muted); font-size:11px; margin-bottom:6px;
                    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
 #srcpop .sp-snip { color:var(--fg); }
+/* Page-link hover preview: a small type chip + an italic description above the excerpt. */
+#srcpop .sp-type { display:inline-block; font-weight:600; color:var(--accent); }
+#srcpop .sp-desc { color:var(--muted); font-style:italic; margin-bottom:6px; }
 #srcpop .sp-hint { color:var(--source); font-size:11px; margin-top:6px; }
 /* The mobile drawer backdrop is inert on desktop (the small-screen media query turns it on). */
 #sb-backdrop { display:none; }
