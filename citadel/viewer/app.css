@@ -116,7 +116,8 @@ mark { background:#fde68a; color:#111; border-radius:2px; padding:0 1px; }
 #content.map-expanded #graph-pane { flex:1; height:auto !important; }
 #content.map-expanded #reader { display:none; }
 /* Draggable splitter between the map and the reader (hidden when the map is collapsed/expanded). */
-#graph-resizer { height:6px; flex:0 0 auto; cursor:row-resize; background:var(--line); }
+#graph-resizer { height:6px; flex:0 0 auto; cursor:row-resize; background:var(--line);
+                 touch-action:none; }
 #graph-resizer:hover, #graph-resizer.drag { background:var(--accent); }
 #content.map-collapsed #graph-resizer, #content.map-expanded #graph-resizer { display:none; }
 /* Focus/reading mode: hide the sidebar (toggle lives in the map bar so it stays reachable). */
@@ -176,6 +177,21 @@ mark { background:#fde68a; color:#111; border-radius:2px; padding:0 1px; }
 .seg-gap { font-size:12px; color:var(--muted); font-style:italic; margin:8px 0; }
 .seg-gap .rawfile { font-style:normal; }
 .fnback { text-decoration:none; }
+/* Compact, grouped "## Sources" section: one collapsed <details> that lists each cited file once
+   (link + date), then that file's citations as a tight run — replacing the tall footnote wall. */
+#reader details.sources { margin:14px 0 4px; }
+#reader details.sources > summary { cursor:pointer; color:var(--muted); font-size:11px; font-weight:600;
+                                    text-transform:uppercase; letter-spacing:.04em; }
+#reader .src-group { margin:6px 0; font-size:13px; line-height:1.45; }
+#reader .src-group-head .src-label { font-weight:600; color:var(--fg); }
+#reader .src-date { color:var(--muted); font-size:11px; }
+#reader .src-cites, #reader .src-cite { color:var(--muted); margin:1px 0 0 14px; }
+#reader .src-cite .fncid { color:var(--fg); }
+#reader .fnloc { color:var(--muted); }
+#reader .src-note { color:var(--muted); }
+/* Transient highlight on the citation an inline [^sN] jumps to. */
+#reader .fncite:target, #reader .src-cite:target { background:var(--chip); border-radius:4px;
+                                                   box-shadow:0 0 0 3px var(--chip); }
 .ext { color:var(--muted); border-bottom:1px dotted var(--muted); cursor:help; }
 #reader a[data-page] { color:var(--accent); }
 #reader a.srclink, a.srclink { color:var(--source); text-decoration:none;
@@ -194,3 +210,44 @@ a.srclink::after { content:" \2197"; font-size:.8em; opacity:.7; }
                    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
 #srcpop .sp-snip { color:var(--fg); }
 #srcpop .sp-hint { color:var(--source); font-size:11px; margin-top:6px; }
+/* The mobile drawer backdrop is inert on desktop (the small-screen media query turns it on). */
+#sb-backdrop { display:none; }
+
+/* ---- Small screens: the sidebar becomes an off-canvas drawer and the map is capped. Desktop
+   (>720px) is untouched — every rule here lives inside the breakpoint. ---- */
+@media (max-width: 720px) {
+  body, #app { overflow-x:hidden; }
+  #sidebar { position:fixed; top:0; left:0; z-index:41; height:100vh; width:min(300px, 85vw);
+             min-width:0; transform:translateX(-100%); transition:transform .2s ease;
+             box-shadow:0 0 24px rgba(0,0,0,.28); background:var(--bg); }
+  #app.sb-open #sidebar { transform:none; }
+  /* Keep the desktop "collapsed = display:none" rule from fighting the drawer's transform. */
+  #app.sb-collapsed #sidebar { display:block; }
+  #app.sb-open #sb-backdrop { display:block; position:fixed; inset:0; z-index:40;
+                              background:rgba(0,0,0,.4); }
+  /* Reader: full width with a small uniform gutter (override the centered rw-* padding formulas). */
+  #reader { padding:16px; }
+  #content.rw-comfortable #reader, #content.rw-wide #reader, #content.rw-full #reader {
+    padding-left:16px; padding-right:16px; }
+  /* Map: cap its height so it can't swallow the viewport (the expanded state still fills the pane). */
+  #content:not(.map-expanded) #graph-pane { max-height:34vh; }
+  /* Keep the map bar a single compact row where possible. */
+  #graph-bar { gap:4px; padding:4px 6px; }
+  #graph-title { display:none; }
+  .gbtn { min-width:22px; height:22px; padding:0 4px; }
+}
+
+/* ---- Print: just the reader, black-on-white, with the Sources section forced open (JS hook). ---- */
+@media print {
+  #sidebar, #graph-pane, #graph-resizer, #srcpop, #sb-backdrop { display:none !important; }
+  #app { display:block; height:auto; }
+  #content { display:block; overflow:visible; }
+  #reader { overflow:visible; padding:0; color:#000; background:#fff; }
+  body { color:#000; background:#fff; }
+  #reader .stats, #reader .toc, #reader .backlinks { display:none; }
+  #reader a { color:#000; text-decoration:none; }
+  #reader details.sources > summary { display:none; }
+  #reader details.sources { margin-top:16px; border-top:1px solid #999; padding-top:8px; }
+  .fnref a { color:#000; }
+  @page { margin:1.6cm; }
+}
