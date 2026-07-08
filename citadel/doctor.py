@@ -20,6 +20,10 @@ One command answering "is my setup sane?" without touching a byte. Each check em
   once).
 - **PDF mode** — ``CITADEL_PDF_MODE=images`` against a non-``claude`` backend may silently ingest a
   PDF's text only, because a non-vision CLI cannot look at the figures.
+- **update** — is a newer ``cite-citadel`` published on PyPI than the installed version? WARN with the
+  exact upgrade command for the *detected* install method (dev checkout / uv tool / uvx / pipx / pip)
+  when behind; OK when current. The PyPI lookup is best-effort over a 2s timeout — any network absence
+  degrades to an OK "check skipped" line, never a WARN/FAIL, so ``doctor`` stays useful fully offline.
 
 Read-only and defensive: every check degrades to a WARN/FAIL line rather than raising, so ``doctor``
 never crashes on a half-configured workspace. Exit code is 0 unless some check FAILs. It opts out of
@@ -28,10 +32,16 @@ the workspace guard (``needs_workspace=False``) precisely so it can diagnose a M
 
 from __future__ import annotations
 
+import json
 import os
+import sys
+import urllib.request
 from collections import Counter
 from dataclasses import dataclass, field
+from itertools import zip_longest
+from pathlib import Path
 
+from . import __version__ as _INSTALLED_VERSION
 from . import config, failures, manifest
 
 
@@ -214,6 +224,94 @@ def check_pdf_mode() -> Check:
     return Check(OK, "PDF mode", f"PDF mode {config.PDF_MODE}")
 
 
+PYPI_JSON_URL = "https://pypi.org/pypi/cite-citadel/json"
+
+
+def _as_int(part: str) -> int | None:
+    """Parse one dotted version segment as an int, or None when it is non-numeric (e.g. ``0rc1``)."""
+    try:
+        return int(part)
+    except ValueError:
+        return None
+
+
+def version_is_newer(candidate: str, baseline: str) -> bool:
+    """True iff ``candidate`` is a strictly newer version than ``baseline`` under a naive dotted
+    compare (no ``packaging`` dependency). Split both on ``.`` and compare segment by segment: numeric
+    pairs compare as ints, and the first difference decides. A non-numeric segment (``0.3.0rc1``) that
+    differs from its counterpart is treated as *unorderable* — the function conservatively returns
+    False (never claims "newer" it cannot prove), so doctor won't nag on a version it can't rank."""
+    for c, b in zip_longest(candidate.split("."), baseline.split("."), fillvalue="0"):
+        if c == b:
+            continue
+        ci, bi = _as_int(c), _as_int(b)
+        if ci is not None and bi is not None:
+            if ci != bi:
+                return ci > bi
+            continue  # numerically equal (e.g. "01" vs "1") — keep comparing
+        return False  # a differing non-numeric segment: not confidently newer
+    return False
+
+
+def detect_update_command(module_file: str | None = None, prefix: str | None = None) -> str:
+    """Return the exact upgrade command for THIS install, from where the package lives on disk.
+
+    Pure and unit-testable: ``module_file`` (defaults to this module's path) and ``prefix`` (defaults
+    to ``sys.prefix``) are injectable. Detection order:
+
+    - **dev checkout** — the package sits next to a repo checkout (a ``pyproject.toml`` one level up
+      alongside a ``.git``/``corpora`` marker) -> ``git pull && uv sync``.
+    - **uv tool** — ``prefix`` has consecutive ``uv``/``tools`` segments -> ``uv tool upgrade``.
+    - **pipx** — a ``pipx`` segment in ``prefix`` -> ``pipx upgrade``.
+    - **uvx ephemeral** — a uv cache env (``archive-v0`` / ``environments-*`` under ``uv``) -> a note
+      that uvx always fetches the latest on the next run.
+    - **generic** — otherwise ``pip install -U``.
+    """
+    if module_file is None:
+        module_file = __file__
+    if prefix is None:
+        prefix = sys.prefix
+
+    repo_root = Path(module_file).resolve().parents[1]
+    if (repo_root / "pyproject.toml").is_file() and ((repo_root / ".git").exists() or (repo_root / "corpora").is_dir()):
+        return "git pull && uv sync"
+
+    parts = [p.lower() for p in Path(prefix).parts]
+    for a, b in zip(parts, parts[1:], strict=False):
+        if a == "uv" and b == "tools":
+            return "uv tool upgrade cite-citadel"
+    if "pipx" in parts:
+        return "pipx upgrade cite-citadel"
+    if "uv" in parts and any(p == "archive-v0" or p.startswith("environments-") or "cache" in p for p in parts):
+        return "uvx cite-citadel (uvx always runs the latest on the next run)"
+    return "pip install -U cite-citadel"
+
+
+def _fetch_latest_pypi_version(timeout: float = 2.0) -> str | None:
+    """Best-effort GET of PyPI's ``info.version`` for cite-citadel over stdlib urllib. Returns None on
+    ANY failure (offline, DNS, timeout, HTTP error, malformed JSON) so the caller can degrade to an OK
+    "check skipped" line — a missing network must never surface as a WARN/FAIL."""
+    try:
+        with urllib.request.urlopen(PYPI_JSON_URL, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        version = str(data["info"]["version"]).strip()
+        return version or None
+    except Exception:
+        return None
+
+
+def check_update(installed: str | None = None) -> Check:
+    """WARN when a newer cite-citadel is on PyPI, naming the exact upgrade command for this install;
+    OK when current, when PyPI is behind (a dev/pre-release build), or when PyPI is unreachable."""
+    installed = installed or _INSTALLED_VERSION
+    latest = _fetch_latest_pypi_version()
+    if latest is None:
+        return Check(OK, "update", "could not reach PyPI - update check skipped")
+    if version_is_newer(latest, installed):
+        return Check(WARN, "update", f"{installed} installed, {latest} on PyPI - run: {detect_update_command()}")
+    return Check(OK, "update", f"{installed} is current")
+
+
 def run() -> DoctorReport:
     """Run every check in order and return the report. Read-only; the caller maps ``ok`` to the exit
     code (0 unless a FAIL)."""
@@ -227,5 +325,6 @@ def run() -> DoctorReport:
             check_failures(),
             check_billing_shadow(),
             check_pdf_mode(),
+            check_update(),
         ]
     )
