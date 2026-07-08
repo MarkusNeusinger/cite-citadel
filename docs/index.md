@@ -30,4 +30,3 @@ docs/
 
 The rules the ingest agent actually follows live in
 [`citadel/rules/`](../citadel/rules/README.md) (packaged with the wheel), not here.
-</content>

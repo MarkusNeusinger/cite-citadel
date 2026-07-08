@@ -17,10 +17,12 @@ the command is just `citadel serve`.
 ## Workspace resolution
 
 `serve` operates on a **workspace** — a directory holding a `citadel.toml` marker (scaffold one with
-`citadel init`). It finds the workspace one of two ways:
+`citadel init`). Discovery order:
 
-- Launch the server with its working directory **inside** a workspace, or
-- set `CITADEL_WORKSPACE=/path/to/workspace` in the server's environment.
+1. `CITADEL_WORKSPACE=/path/to/workspace` in the server's environment (highest priority),
+2. else the nearest `citadel.toml` marker walking up from the server's working directory,
+3. else an **env-dirs workspace**: both `CITADEL_WIKI_DIR` and `CITADEL_RAW_DIR` set (no marker
+   needed — the two directories *are* the workspace).
 
 An MCP client usually launches the server from an arbitrary CWD, so setting `CITADEL_WORKSPACE`
 explicitly is the reliable choice. `wiki/`, `raw/`, and `docs/` can live outside the workspace via
@@ -102,4 +104,3 @@ Any MCP client that speaks stdio launches the same command:
   generates can be quarantined by antivirus.
 
 For anything else, see [troubleshooting.md](troubleshooting.md).
-</content>

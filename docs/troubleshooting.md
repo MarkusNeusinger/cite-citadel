@@ -64,4 +64,3 @@ links stay valid. Details in [configuration.md](configuration.md#paths--multi-ro
 A source that could not be read (unreadable binary, an errored or timed-out session) is persisted
 with its reason and surfaced two ways: in the `citadel status` table, and under a **"Could not
 ingest"** section of `wiki/sources/index.md`. Nothing fails silently.
-</content>
