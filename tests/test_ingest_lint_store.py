@@ -220,3 +220,31 @@ def test_suggested_links_skips_already_linked(tmp_citadel, seed_page):
     report = lint.lint()
     caffeine_suggestions = [t for r, t in report.suggested_links if r == "concepts/caffeine.md"]
     assert not any("espresso.md" in s for s in caffeine_suggestions)
+
+
+def test_see_also_link_list_is_not_a_missing_citation():
+    """#63: a `## See also` navigation list is not a factual paragraph, so the missing-citation
+    heuristic must skip it — even when a link title's `vs.` fakes a second sentence (the bug that
+    mis-flagged 18 pages on a fresh beverages build)."""
+    body = (
+        "One cited fact.[^s1]\n\n"
+        "## See also\n\n"
+        "- [Immersion vs. Percolation Brewing](immersion-vs-percolation-brewing.md)\n"
+        "- [Coffee Extraction Yield](coffee-extraction-yield.md)\n\n"
+        "## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - n\n"
+    )
+    page = okf.Page(rel_path="concepts/x.md", frontmatter={"type": "Concept", "title": "X"}, body=body)
+    assert lint._missing_cite_preview(page) is None
+    # helper contract: link-only bullets are nav; a bullet with real prose is not.
+    assert lint._is_link_list_line("- [A vs. B](a.md) - [C](c.md)")
+    assert lint._is_link_list_line("- [Coffee](coffee.md)")
+    assert not lint._is_link_list_line("- The extraction ratio matters here, in real prose.")
+
+
+def test_undefined_abbrev_skips_fiscal_labels_and_ordinal_roman_numerals():
+    """#63: fiscal-period labels (Q3) and roman numerals in an ordinal context (Chapter IV) are not
+    glossary abbreviations, but a real abbreviation that merely parses as a numeral (DC) still is."""
+    tokens = lint._abbrev_token_uses("Revenue rose in Q3 and again by Chapter IV. DC power stayed on.")
+    assert "Q3" not in tokens
+    assert "IV" not in tokens
+    assert "DC" in tokens  # not preceded by an ordinal word -> a real abbreviation, kept

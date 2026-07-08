@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **`citadel lint` — fewer advisory false positives on real ingests.** A `## See also` navigation
+  list is no longer counted as a "Missing citations" paragraph (a link title such as
+  `Immersion vs. Percolation Brewing` had faked a second sentence — 18 false hits on a fresh
+  beverages build). The undefined-abbreviation nudge now skips fiscal-period labels (`Q1`..`Q4`,
+  `H1`/`H2`) and roman numerals used in an ordinal context (`Chapter IV`), while still surfacing a
+  genuine abbreviation that merely parses as a numeral (`DC`). Advisory-only; no structural gate
+  changes. Surfaced by the verify-corpus Mode-A harvest.
+
 ### Added
 
 - **`wiki_define` / `citadel define` — glossary lookup.** An eleventh read-only MCP tool (+ its CLI
