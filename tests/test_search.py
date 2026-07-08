@@ -7,7 +7,7 @@ callers use for tag filtering, case handling, and robustness) so a future reimpl
 seeded straight into the temp wiki via ``tmp_citadel`` + ``seed_page``.
 
 Scoring model being pinned: token overlap (lowercased alphanumeric tokens, length >= 2)
-weighted title 3.0 / tags 2.0 / description 1.5 / body 1.0, each token scaled by its IDF
+weighted title 3.0 / aliases 2.5 / tags 2.0 / description 1.5 / body 1.0, each token scaled by its IDF
 weight (a rare token outweighs one common to many pages; a token present in every page,
 or in a single-page corpus, weighs exactly 1.0), plus a 0.5 bonus when the raw
 stripped-lowercased query appears as a substring of the title or body. Zero scores are
