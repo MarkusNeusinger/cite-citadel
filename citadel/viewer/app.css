@@ -1,15 +1,15 @@
 :root { --bg:#FAF8F1; --fg:#1A1A17; --muted:#6B6A63; --line:rgba(26,26,23,.15); --accent:#007A59;
-        --chip:rgba(0,158,115,.12); --card:#F5F3EC; --source:#8A5F25; --srcnode:#6b7280; }
+        --chip:rgba(0,158,115,.12); --card:#F5F3EC; --source:#8A5F25; }
 @media (prefers-color-scheme: dark) {
   :root { --bg:#121210; --fg:#F0EFE8; --muted:#A8A79F; --line:rgba(240,239,232,.15); --accent:#009E73;
-          --chip:rgba(0,158,115,.16); --card:#1A1A17; --source:#DDCC77; --srcnode:#9aa0aa; } }
+          --chip:rgba(0,158,115,.16); --card:#1A1A17; --source:#DDCC77; } }
 /* Explicit theme override (the sidebar theme toggle sets data-theme on <html>); with no attribute
    the viewer follows prefers-color-scheme above. Placed after the @media block so a forced choice
    wins by both order and specificity. */
 :root[data-theme="light"] { --bg:#FAF8F1; --fg:#1A1A17; --muted:#6B6A63; --line:rgba(26,26,23,.15); --accent:#007A59;
-        --chip:rgba(0,158,115,.12); --card:#F5F3EC; --source:#8A5F25; --srcnode:#6b7280; }
+        --chip:rgba(0,158,115,.12); --card:#F5F3EC; --source:#8A5F25; }
 :root[data-theme="dark"] { --bg:#121210; --fg:#F0EFE8; --muted:#A8A79F; --line:rgba(240,239,232,.15); --accent:#009E73;
-          --chip:rgba(0,158,115,.16); --card:#1A1A17; --source:#DDCC77; --srcnode:#9aa0aa; }
+          --chip:rgba(0,158,115,.16); --card:#1A1A17; --source:#DDCC77; }
 * { box-sizing:border-box; }
 body { margin:0; font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
        color:var(--fg); background:var(--bg); }
@@ -21,9 +21,10 @@ body { margin:0; font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-ser
              text-overflow:ellipsis; font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
              letter-spacing:-0.02em; }
 /* Subtle green brand marker before the wordmark (a non-text accent, so contrast rules don't apply;
-   green in both themes). \258D is LEFT FIVE EIGHTHS BLOCK — a thin vertical bar that renders cleanly
-   cross-platform (block-element glyph, no emoji-presentation variance). */
-#wiki-name::before { content:"\258D"; color:#009E73; margin-right:4px; }
+   green in both themes). Drawn as an empty inline block, not a glyph, so screen readers never
+   announce it. */
+#wiki-name::before { content:""; display:inline-block; width:4px; height:0.85em; background:#009E73;
+                     border-radius:1px; margin-right:5px; vertical-align:-0.08em; }
 .iconbtn { border:1px solid var(--line); background:var(--bg); color:var(--muted); border-radius:6px;
            height:24px; min-width:26px; cursor:pointer; font-size:13px; line-height:1; padding:0 6px; }
 .iconbtn:hover { border-color:var(--accent); color:var(--accent); }
