@@ -24,6 +24,13 @@ One command answering "is my setup sane?" without touching a byte. Each check em
   exact upgrade command for the *detected* install method (dev checkout / uv tool / uvx / pipx / pip)
   when behind; OK when current. The PyPI lookup is best-effort over a 2s timeout — any network absence
   degrades to an OK "check skipped" line, never a WARN/FAIL, so ``doctor`` stays useful fully offline.
+- **coherence** — do the wiki's ``## Sources`` citations actually resolve UNDER a configured raw/docs
+  root ("workspace coherence")? A wiki whose ``CITADEL_WIKI_DIR`` and ``CITADEL_RAW_DIR`` sit under
+  different parents makes every ``../../raw/x`` citation resolve OUTSIDE the raw root, and everything
+  degrades silently — ``grammar.is_source_citation`` rejects it, ``lint`` reports the sources broken,
+  the viewer's source records lose their names/links — yet nothing else says the roots don't line up.
+  WARN (never FAIL — advisory) naming the count, one example, where it resolved, and the fix; OK when
+  every citation resolves under a root. Read-only over ``store.load`` and O(pages).
 
 Read-only and defensive: every check degrades to a WARN/FAIL line rather than raising, so ``doctor``
 never crashes on a half-configured workspace. Exit code is 0 unless some check FAILs. It opts out of
@@ -312,6 +319,71 @@ def check_update(installed: str | None = None) -> Check:
     return Check(OK, "update", f"{installed} is current")
 
 
+def check_workspace_coherence() -> Check:
+    """WARN when a page's ``## Sources`` citation resolves OUTSIDE every configured raw/docs root while
+    still plainly naming a ``raw``/``docs`` tree — the silent misconfiguration where the wiki and its
+    raw sources sit under different parents (e.g. ``CITADEL_WIKI_DIR`` points into a corpus while
+    ``CITADEL_RAW_DIR`` is left at the default). Every such ``../../raw/x`` citation then fails
+    :func:`grammar.is_source_citation`, so ``lint`` reports the sources broken and the viewer's source
+    records get browser-unreachable identities — yet nothing else says the roots don't line up.
+
+    Reuses the ONE shared citation walk (:func:`grammar.source_definitions` +
+    :func:`grammar.def_link_target`, exactly as ``lint`` and the viewer do) and the grammar's own
+    resolution (:func:`grammar.is_source_citation` / :func:`grammar.link_abs`) — never re-implemented.
+    Read-only over :func:`store.load` (wikis are small; ``lint`` does the same) and O(pages). Skips
+    when no workspace resolved or the wiki has no pages, so ``doctor`` keeps working everywhere; never
+    FAILs (advisory) and, like the other checks, never raises."""
+    if not config.WORKSPACE_FOUND:
+        return Check(OK, "workspace coherence", "no workspace - source-citation coherence not checked")
+    try:
+        from . import grammar, store
+
+        pages = store.load()
+        if not pages:
+            return Check(OK, "workspace coherence", "no pages yet - source-citation coherence not checked")
+        # A resolved citation that names one of these path segments is plainly TRYING to be provenance:
+        # the literal ``raw``/``docs`` conventions plus the configured DOCS_DIR basename (which may be
+        # customized, e.g. ``documentation``).
+        docs_seg = Path(config.DOCS_DIR).name.lower()
+        provenance_segs = {"raw", "docs", docs_seg} - {""}
+        total = incoherent = 0
+        example: tuple[str, str, str] | None = None
+        for page in pages:
+            for _marker_id, rest in grammar.source_definitions(page.body):
+                target = grammar.def_link_target(rest)
+                if target is None or grammar.is_external(target):
+                    continue
+                if grammar.is_source_citation(page.rel_path, target):
+                    total += 1  # resolves under a configured root — coherent
+                    continue
+                abs_path = grammar.link_abs(page.rel_path, target)  # the grammar's own resolution
+                if abs_path is None:
+                    continue
+                if provenance_segs & {p.lower() for p in Path(abs_path).parts}:
+                    total += 1
+                    incoherent += 1
+                    if example is None:
+                        example = (page.rel_path, target, abs_path)
+        if total == 0:
+            return Check(OK, "workspace coherence", "no source citations to check")
+        if incoherent == 0 or example is None:
+            return Check(
+                OK, "workspace coherence", f"all {total} source citations resolve under the configured raw/docs roots"
+            )
+        page_rel, target, abs_path = example
+        suggested = config.WIKI_DIR.parent / "raw"
+        return Check(
+            WARN,
+            "workspace coherence",
+            f"{incoherent}/{total} source citation(s) resolve OUTSIDE the configured raw/docs roots "
+            f"(e.g. {page_rel} cites '{target}' -> {abs_path}); set CITADEL_RAW_DIR (or CITADEL_DOCS_DIR "
+            f"for docs/ citations) to the tree next to the wiki (e.g. {suggested}) or select the "
+            f"workspace with CITADEL_WORKSPACE",
+        )
+    except Exception as exc:  # never raise: doctor must survive a half-built or unreadable wiki
+        return Check(WARN, "workspace coherence", f"could not check workspace coherence: {exc}")
+
+
 def run() -> DoctorReport:
     """Run every check in order and return the report. Read-only; the caller maps ``ok`` to the exit
     code (0 unless a FAIL)."""
@@ -326,5 +398,6 @@ def run() -> DoctorReport:
             check_billing_shadow(),
             check_pdf_mode(),
             check_update(),
+            check_workspace_coherence(),
         ]
     )

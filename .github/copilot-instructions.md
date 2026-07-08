@@ -35,7 +35,7 @@ explicit paths and is refused without them), `curate [--dry-run] [--limit N] [--
 contradictions/fix locators — against a recomputed findings checklist), `status` (read-only
 per-source state table: ingested / failed / skipped-duplicate / ignored / pending), `doctor`
 (read-only setup health check — OK/WARN/FAIL lines for workspace / rules / agent CLI / raw roots /
-manifest / billing / a best-effort PyPI update check; needs no workspace, exits 1 only on a FAIL), `serve` (MCP
+manifest / billing / a best-effort PyPI update check / workspace coherence; needs no workspace, exits 1 only on a FAIL), `serve` (MCP
 stdio server), `search <query> [--tag T] [--limit N]`, `read <rel_path>` / `raw <key> [--locator L]`
 / `neighbors <rel_path>` / `index` / `sources` (CLI twins of the
 `wiki_read`/`wiki_raw`/`wiki_neighbors`/`wiki_index`/`wiki_sources` MCP tools

@@ -59,6 +59,14 @@ absolute path via `CITADEL_WIKI_DIR` / `CITADEL_RAW_DIR` / `CITADEL_DOCS_DIR` (a
 `CITADEL_RAW_DIRS`). Keep `wiki/` and `raw/` under a common parent so the `## Sources` citation
 links stay valid. Details in [configuration.md](configuration.md#paths--multi-root).
 
+If you point `CITADEL_WIKI_DIR` somewhere (say a corpus's `wiki/`) but leave `CITADEL_RAW_DIR` at
+the default, the wiki and its raw sources fall under different parents and every `../../raw/x`
+citation resolves OUTSIDE the configured raw root. Nothing errors out, but it degrades silently: the
+viewer's sources lose their names/links, and `citadel lint` reports the citations as broken. Run
+`citadel doctor` — its **workspace coherence** check flags the mismatch, names one offending
+citation and where it actually resolved, and prints the fix (set `CITADEL_RAW_DIR` to the `raw/`
+tree next to the wiki, or select the workspace with `CITADEL_WORKSPACE`).
+
 ### Where failures are recorded
 
 A source that could not be read (unreadable binary, an errored or timed-out session) is persisted
