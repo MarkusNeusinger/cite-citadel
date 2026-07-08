@@ -342,9 +342,10 @@ def check_workspace_coherence() -> Check:
         if not pages:
             return Check(OK, "workspace coherence", "no pages yet - source-citation coherence not checked")
         # A resolved citation that names one of these path segments is plainly TRYING to be provenance:
-        # literal ``raw`` plus the configured DOCS_DIR basename (usually ``docs``).
+        # the literal ``raw``/``docs`` conventions plus the configured DOCS_DIR basename (which may be
+        # customized, e.g. ``documentation``).
         docs_seg = Path(config.DOCS_DIR).name.lower()
-        provenance_segs = {"raw", docs_seg} if docs_seg else {"raw"}
+        provenance_segs = {"raw", "docs", docs_seg} - {""}
         total = incoherent = 0
         example: tuple[str, str, str] | None = None
         for page in pages:
@@ -375,8 +376,9 @@ def check_workspace_coherence() -> Check:
             WARN,
             "workspace coherence",
             f"{incoherent}/{total} source citation(s) resolve OUTSIDE the configured raw/docs roots "
-            f"(e.g. {page_rel} cites '{target}' -> {abs_path}); set CITADEL_RAW_DIR to the raw/ tree "
-            f"next to the wiki (e.g. {suggested}) or select the workspace with CITADEL_WORKSPACE",
+            f"(e.g. {page_rel} cites '{target}' -> {abs_path}); set CITADEL_RAW_DIR (or CITADEL_DOCS_DIR "
+            f"for docs/ citations) to the tree next to the wiki (e.g. {suggested}) or select the "
+            f"workspace with CITADEL_WORKSPACE",
         )
     except Exception as exc:  # never raise: doctor must survive a half-built or unreadable wiki
         return Check(WARN, "workspace coherence", f"could not check workspace coherence: {exc}")
