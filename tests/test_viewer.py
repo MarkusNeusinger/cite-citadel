@@ -124,12 +124,181 @@ def test_sources_keyed_by_browser_identity_in_nested_layout(tmp_path, make_citad
 
 
 def test_sources_truncated_when_oversized(tmp_citadel, seed_page):
+    # A source too big to embed whole is excerpted, not embedded as a truncated whole body: the
+    # total embedded text is capped at _SOURCE_MAX_CHARS and the record is flagged truncated.
     big = "x" * (viewer._SOURCE_MAX_CHARS + 50)
     (tmp_citadel.raw / "a.md").write_text(big, encoding="utf-8")
     _two_page_wiki(seed_page)
     s = viewer.build_bundle()["sources"]["raw/a.md"]
+    assert "body" not in s
     assert s["truncated"] is True
-    assert len(s["body"]) == viewer._SOURCE_MAX_CHARS
+    assert sum(len(g["text"]) for g in s["segments"]) == viewer._SOURCE_MAX_CHARS
+
+
+# --------------------------------------------------------------------------------------
+# Cited-excerpt embedding: a large source embeds only the passages the wiki cites (plus a few
+# lines of context), keyed by locator, rather than its whole body. Short/mostly-cited files still
+# embed whole (body key). See viewer._source_excerpts / _embed_source.
+# --------------------------------------------------------------------------------------
+
+
+def _numbered_source(n: int) -> str:
+    """A source whose i-th line is literally ``line i`` (1-based), for locator assertions."""
+    return "\n".join(f"line {i}" for i in range(1, n + 1))
+
+
+def _cite(seed_page, defs: str, *, rel: str = "concepts/p.md", body: str = "Fact.[^s1]") -> None:
+    """Seed one page whose ``## Sources`` section is exactly ``defs`` (the footnote def lines)."""
+    seed_page(rel, {"type": "Concept", "title": "P"}, f"{body}\n\n## Sources\n\n{defs}\n")
+
+
+def test_large_source_embeds_only_cited_line_ranges_with_context(tmp_citadel, seed_page):
+    (tmp_citadel.raw / "big.md").write_text(_numbered_source(200), encoding="utf-8")
+    _cite(seed_page, "[^s1]: [big](../../raw/big.md), lines 40-52 (ingested 2026-06-22)")
+    s = viewer.build_bundle()["sources"]["raw/big.md"]
+    assert "body" not in s  # excerpted, not whole
+    assert s["total_lines"] == 200
+    assert s["truncated"] is False
+    assert [(g["start"], g["end"]) for g in s["segments"]] == [(37, 55)]  # 40-52 padded by 3
+    seg = s["segments"][0]
+    assert seg["text"].startswith("line 37")
+    assert seg["text"].endswith("line 55")
+
+
+def test_overlapping_and_near_adjacent_ranges_merge(tmp_citadel, seed_page):
+    (tmp_citadel.raw / "big.md").write_text(_numbered_source(200), encoding="utf-8")
+    # 40-52 -> [37,55] and 50-60 -> [47,63] overlap -> merge to [37,63];
+    # 100-100 -> [97,103] and 108-108 -> [105,111] have a 1-line gap -> merge to [97,111].
+    _cite(
+        seed_page,
+        "[^s1]: [big](../../raw/big.md), lines 40-52\n"
+        "[^s2]: [big](../../raw/big.md), lines 50-60\n"
+        "[^s3]: [big](../../raw/big.md), lines 100-100\n"
+        "[^s4]: [big](../../raw/big.md), lines 108-108",
+        body="A.[^s1] B.[^s2] C.[^s3] D.[^s4]",
+    )
+    s = viewer.build_bundle()["sources"]["raw/big.md"]
+    assert [(g["start"], g["end"]) for g in s["segments"]] == [(37, 63), (97, 111)]
+
+
+def test_line_locator_past_eof_clamps_to_eof(tmp_citadel, seed_page):
+    (tmp_citadel.raw / "big.md").write_text(_numbered_source(200), encoding="utf-8")
+    _cite(seed_page, "[^s1]: [big](../../raw/big.md), lines 500-510")
+    s = viewer.build_bundle()["sources"]["raw/big.md"]
+    assert [(g["start"], g["end"]) for g in s["segments"]] == [(197, 200)]
+    assert s["segments"][0]["text"].endswith("line 200")
+
+
+def test_inverted_line_locator_normalizes(tmp_citadel, seed_page):
+    # lint flags `lines 97-53`, but the viewer must still build sanely: read it as 53-97.
+    (tmp_citadel.raw / "big.md").write_text(_numbered_source(200), encoding="utf-8")
+    _cite(seed_page, "[^s1]: [big](../../raw/big.md), lines 97-53")
+    s = viewer.build_bundle()["sources"]["raw/big.md"]
+    assert [(g["start"], g["end"]) for g in s["segments"]] == [(50, 100)]  # 53-97 padded by 3
+    assert s["segments"][0]["text"].startswith("line 50")
+    assert s["segments"][0]["text"].endswith("line 100")
+
+
+def test_heading_locator_resolves_the_section(tmp_citadel, seed_page):
+    lines = ["# Intro"] + [f"line {i}" for i in range(2, 41)]
+    lines += ["## Section A"] + [f"line {i}" for i in range(42, 59)] + ["## Section B"]
+    lines += [f"line {i}" for i in range(60, 201)]
+    (tmp_citadel.raw / "big.md").write_text("\n".join(lines), encoding="utf-8")
+    _cite(seed_page, "[^s1]: [big](../../raw/big.md), § Section A")
+    s = viewer.build_bundle()["sources"]["raw/big.md"]
+    # Section A spans its heading line (41) up to the line before ## Section B (59) -> [41, 58].
+    assert [(g["start"], g["end"]) for g in s["segments"]] == [(41, 58)]
+    assert s["segments"][0]["text"].startswith("## Section A")
+
+
+def test_heading_locator_section_capped(tmp_citadel, seed_page):
+    lines = ["# Intro"] + [f"line {i}" for i in range(2, 59)] + ["## Section B"]
+    lines += [f"line {i}" for i in range(60, 201)]  # Section B runs 59..200, no further heading
+    (tmp_citadel.raw / "big.md").write_text("\n".join(lines), encoding="utf-8")
+    _cite(seed_page, "[^s1]: [big](../../raw/big.md), § Section B")
+    s = viewer.build_bundle()["sources"]["raw/big.md"]
+    # 59..200 is 142 lines; the section embed is capped at 80 -> [59, 138].
+    assert [(g["start"], g["end"]) for g in s["segments"]] == [(59, 138)]
+
+
+def test_unlocated_citation_gets_head_excerpt(tmp_citadel, seed_page):
+    (tmp_citadel.raw / "big.md").write_text(_numbered_source(200), encoding="utf-8")
+    _cite(seed_page, "[^s1]: [big](../../raw/big.md) - just a note (ingested 2026-06-22)")
+    s = viewer.build_bundle()["sources"]["raw/big.md"]
+    assert [(g["start"], g["end"]) for g in s["segments"]] == [(1, 30)]  # head excerpt
+    assert s["segments"][0]["text"].startswith("line 1")
+
+
+def test_short_source_embeds_whole(tmp_citadel, seed_page):
+    src = _numbered_source(100)  # <= 120 lines: never fragmented
+    (tmp_citadel.raw / "big.md").write_text(src, encoding="utf-8")
+    _cite(seed_page, "[^s1]: [big](../../raw/big.md), lines 10-12")
+    s = viewer.build_bundle()["sources"]["raw/big.md"]
+    assert "segments" not in s
+    assert s["body"] == src
+
+
+def test_mostly_cited_source_embeds_whole(tmp_citadel, seed_page):
+    (tmp_citadel.raw / "big.md").write_text(_numbered_source(150), encoding="utf-8")
+    # lines 1-98 -> [1,101]: 101 of 150 lines >= 2/3, so embed the whole file, not segments.
+    _cite(seed_page, "[^s1]: [big](../../raw/big.md), lines 1-98")
+    s = viewer.build_bundle()["sources"]["raw/big.md"]
+    assert "segments" not in s
+    assert s["body"].endswith("line 150")
+
+
+def test_source_max_chars_guards_total_excerpt(tmp_citadel, seed_page, monkeypatch):
+    monkeypatch.setattr(viewer, "_SOURCE_MAX_CHARS", 40)
+    (tmp_citadel.raw / "big.md").write_text(_numbered_source(200), encoding="utf-8")
+    _cite(seed_page, "[^s1]: [big](../../raw/big.md), lines 40-52")  # [37,55], well over 40 chars
+    s = viewer.build_bundle()["sources"]["raw/big.md"]
+    assert s["truncated"] is True
+    assert sum(len(g["text"]) for g in s["segments"]) <= 40
+
+
+def test_budget_drops_whole_trailing_segments_not_mid_passage(tmp_citadel, seed_page, monkeypatch):
+    # When the budget is exhausted between segments, the remaining WHOLE segments are dropped (and
+    # the record flagged truncated) rather than slicing one off mid-passage — so a hugely-cited
+    # source embeds only the segments that fit, keeping the standalone document small.
+    monkeypatch.setattr(viewer, "_SOURCE_MAX_CHARS", 100)
+    (tmp_citadel.raw / "big.md").write_text(_numbered_source(200), encoding="utf-8")
+    # 10-12 -> [7,15] (~68 chars) fits; 150-152 -> [147,155] (~80 chars) would overflow -> dropped.
+    _cite(
+        seed_page,
+        "[^s1]: [big](../../raw/big.md), lines 10-12\n[^s2]: [big](../../raw/big.md), lines 150-152",
+        body="A.[^s1] B.[^s2]",
+    )
+    s = viewer.build_bundle()["sources"]["raw/big.md"]
+    assert [(g["start"], g["end"]) for g in s["segments"]] == [(7, 15)]  # the overflowing 2nd dropped
+    # The kept segment is whole (its full [7,15] text), not a mid-passage slice.
+    assert s["segments"][0]["text"] == "\n".join(f"line {i}" for i in range(7, 16))
+    assert s["truncated"] is True
+    assert s["total_lines"] == 200  # so the viewer shows the un-embedded tail as a gap
+
+
+def test_oversized_but_mostly_cited_source_still_segments(tmp_citadel, seed_page, monkeypatch):
+    # The >= 2/3 coverage whole-embed fallback must NOT fire when the whole body is too big to embed:
+    # a blindly truncated 200k prefix would drop the file's entire middle and end, so it emits
+    # segments (the cited passages) instead. Regression for the pemberley showcase (a book cited
+    # chapter by chapter to ~95% coverage).
+    monkeypatch.setattr(viewer, "_SOURCE_MAX_CHARS", 200)
+    (tmp_citadel.raw / "big.md").write_text(_numbered_source(300), encoding="utf-8")
+    _cite(seed_page, "[^s1]: [big](../../raw/big.md), lines 1-290")  # covers >= 2/3 of the file
+    s = viewer.build_bundle()["sources"]["raw/big.md"]
+    assert "body" not in s  # too big to embed whole despite high coverage
+    assert "segments" in s
+    assert s["truncated"] is True
+
+
+def test_excerpt_bundle_round_trips_and_renders(tmp_citadel, seed_page):
+    (tmp_citadel.raw / "big.md").write_text(_numbered_source(200), encoding="utf-8")
+    _cite(seed_page, "[^s1]: [big](../../raw/big.md), lines 40-52")
+    html = viewer.build_html()
+    _blob, bundle = _embedded_bundle(html)
+    assert bundle == viewer.build_bundle()  # deterministic, JSON round-trips the segments
+    # The viewer script knows how to render segmented sources and their gap indicators.
+    assert "renderSegments" in html
+    assert "seg-gap" in html
 
 
 def test_manifest_model_and_repo_and_uncited(tmp_citadel, seed_page):

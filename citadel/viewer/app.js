@@ -26,7 +26,11 @@
   });
   Object.keys(SOURCES).forEach(function (id) {
     var s = SOURCES[id];
-    s.flat = (s.body || "").replace(/\s+/g, " ").trim();
+    // Full-text search runs over whatever text is embedded: the whole body, or — when only cited
+    // excerpts are embedded — the concatenation of the segment texts.
+    var embedded = s.body != null ? s.body
+      : (s.segments || []).map(function (g) { return g.text; }).join("\n");
+    s.flat = embedded.replace(/\s+/g, " ").trim();
     s.lowBody = s.flat.toLowerCase();
     s.lowTitle = (s.title || "").toLowerCase();
     s.lowId = id.toLowerCase();
@@ -762,6 +766,31 @@
       "' target='_blank' rel='noopener'>" + label + " ↗</a>";
   }
 
+  function lineSpan(a, b) { return a === b ? ("line " + a) : ("lines " + a + "–" + b); }
+
+  // A muted "⋯ lines X–Y not embedded" row between/around embedded segments, with an
+  // open-the-original affordance (reusing the source's href) for the elided passage.
+  function segGap(s, from, to) {
+    var link = rawFileLink(s, "open the original file");
+    return "<div class='seg-gap'>⋯ " + lineSpan(from, to) + " not embedded" +
+      (link ? " — " + link : "") + "</div>";
+  }
+
+  // Render a source that embedded only its cited excerpts: each segment headed by a small "lines
+  // A–B" label, with gap rows for the un-embedded stretches before/between/after them.
+  function renderSegments(s, sid) {
+    var out = [], prev = 0, total = s.total_lines || 0;
+    (s.segments || []).forEach(function (g) {
+      if (g.start > prev + 1) out.push(segGap(s, prev + 1, g.start - 1));
+      out.push("<div class='seg' data-seg-start='" + g.start + "' data-seg-end='" + g.end +
+        "'><div class='seg-label'>" + lineSpan(g.start, g.end) + "</div>" +
+        mdToHtml(g.text, sid, {}) + "</div>");
+      prev = g.end;
+    });
+    if (total > prev) out.push(segGap(s, prev + 1, total));
+    return out.join("\n");
+  }
+
   function openSource(sid) {
     var s = SOURCES[sid];
     if (!s) return;
@@ -789,7 +818,7 @@
     } else {
       body = (s.kind === "office"
         ? "<p class='desc'>Text extracted from the original document.</p>" : "") +
-        mdToHtml(s.body, sid, {});
+        (s.segments ? renderSegments(s, sid) : mdToHtml(s.body, sid, {}));
       if (s.truncated) {
         body += "<div class='callout'><div class='callout-title'>TRUNCATED</div>" +
           "<div class='callout-body'>This source was longer than the embed limit and was " +
