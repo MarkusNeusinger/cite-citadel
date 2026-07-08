@@ -1,5 +1,5 @@
 """``ingest --force`` (offline): deliberately re-read a source whose sha already matches the
-manifest — docs/refactor-plan.md Z4, pinned tests-first. The decided semantics:
+manifest, pinned tests-first. The decided semantics:
 
 - a forced sha-matching FILE lands in pending and runs ``kind="reconcile"`` (never plain ingest —
   the reconcile brief carries the forced-re-read note), and the manifest is re-stamped with the

@@ -2,7 +2,7 @@
 segments folded in over several passes; PDFs and disabled chunking stay single-pass; a failed
 pass leaves the source pending.
 
-PROMOTE-ONCE (docs/refactor-plan.md Z11, "no silently partial imports"): all segments of one
+PROMOTE-ONCE ("no silently partial imports"): all segments of one
 chunked source fold into a SINGLE staging copy; validation runs after EVERY segment (fail fast)
 but PROMOTION happens exactly once, after the last segment passes — the live wiki only ever
 contains fully-imported sources. Trade-off accepted: a failure at segment N discards the whole

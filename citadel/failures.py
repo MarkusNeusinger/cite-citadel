@@ -34,7 +34,7 @@ ERROR = "error"  # the agent session failed (bad edit, CLI error, validation, te
 TIMEOUT = "timeout"  # the agent session exceeded CITADEL_LLM_TIMEOUT
 DUPLICATE = "duplicate"  # skipped: same basename as another format that was ingested instead
 CURATE = "curate"  # a `citadel curate` cluster session failed its gate; keyed by the PAGE rel_path
-# with an additive integer ``attempts`` field (docs/refactor-plan.md Z5): attempt-capped, never
+# with an additive integer ``attempts`` field: attempt-capped, never
 # auto-retried once it reaches the cap, until an explicit `citadel curate --retry` rerun.
 
 

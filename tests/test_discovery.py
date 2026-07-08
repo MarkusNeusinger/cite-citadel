@@ -1,4 +1,4 @@
-"""Target-behavior suite for PR4 — incremental discovery + multi-root (docs/refactor-plan.md Z3).
+"""Target-behavior suite for PR4 — incremental discovery + multi-root.
 
 Covers the manifest-as-scan-cache (stat quick check, zero content reads on an unchanged corpus),
 the racy-timestamp guard (source clock, 3 s window, mtime as an OPAQUE EQUALITY token), the
@@ -267,7 +267,7 @@ def test_racy_timestamp_entries_are_rehashed_despite_matching_stat(tmp_citadel, 
 
 
 def test_same_stat_edit_within_racy_window_is_still_detected(tmp_citadel, fake_agent):
-    """The end-to-end property the racy-window guard exists for (docs/refactor-plan.md Z3): a
+    """The end-to-end property the racy-window guard exists for: a
     source rewritten with the SAME byte length and the SAME mtime_ns (mtime granularity / clock
     skew / a backdating ``utime`` can produce exactly this) is still detected as changed when the
     entry is inside the racy window — its recorded mtime is not comfortably before its recorded

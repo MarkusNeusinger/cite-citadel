@@ -1,5 +1,4 @@
-"""Tests for PR6 `citadel curate` + `citadel status` + MCP/CLI parity (docs/refactor-plan.md
-Z5, Z11, Z6).
+"""Tests for PR6 `citadel curate` + `citadel status` + MCP/CLI parity.
 
 Covers the whole surface: the offline detectors, the recompute-per-run plan, the
 ``--dry-run``/``--limit``/``--stale-rules``/``--diff`` driver, the attempt-capped revert-and-stop

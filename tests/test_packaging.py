@@ -60,10 +60,9 @@ def test_pyproject_metadata_is_free_of_vendor_marks():
 
 
 def test_sdist_excludes_dev_and_corpora_trees():
-    """The sdist must not carry the test corpora, CI/agent config, or dev-only files (refactor-plan
-    Z8). The wheel target ships only the `citadel` package, so it is unaffected either way."""
+    """The sdist must not carry the test corpora, CI/agent config, or dev-only files. The wheel target ships only the `citadel` package, so it is unaffected either way."""
     exclude = _pyproject()["tool"]["hatch"]["build"]["targets"]["sdist"]["exclude"]
-    for expected in ("/corpora", "/.claude", "/.github", "/uv.lock", "/CLAUDE.md", "/docs/refactor-plan.md"):
+    for expected in ("/corpora", "/.claude", "/.github", "/uv.lock", "/CLAUDE.md"):
         assert expected in exclude, f"{expected} must be excluded from the sdist"
 
 

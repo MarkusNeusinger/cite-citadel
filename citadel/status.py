@@ -1,4 +1,4 @@
-"""``citadel status`` — a read-only snapshot of the corpus state (docs/refactor-plan.md Z11).
+"""``citadel status`` — a read-only snapshot of the corpus state.
 
 One command answering "what state is my corpus in?": per raw source, which lifecycle bucket it
 sits in —

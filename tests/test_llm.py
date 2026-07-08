@@ -483,7 +483,7 @@ def test_workspace_override_shadows_packaged_core(tmp_citadel):
     assert config.rel_or_abs_posix(tmp_citadel.packaged_rules / "core.md") not in prompt
 
 
-# --- packaged rules: prompt validation + access grants (refactor-plan Z1/Z2) ---------------
+# --- packaged rules: prompt validation + access grants ---------------
 
 
 @pytest.fixture

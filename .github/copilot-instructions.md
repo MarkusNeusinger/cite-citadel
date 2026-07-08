@@ -180,7 +180,7 @@ it is itself a workspace.
   to canonicalize YAML and stamp the timestamp) after **every** agent pass, repairs renamed-page
   links, and **only on a fully clean source promotes staging onto the live wiki — exactly once per
   source** — with a non-destructive copy-over-then-prune. A chunked large source folds ALL its
-  segments into that one staging copy before the single promote (refactor-plan Z11: the live wiki
+  segments into that one staging copy before the single promote (the live wiki
   never holds a partially imported source; the accepted trade-off is that a failure at segment N
   discards the earlier segments' work and the source retries from segment 1 next run). Any
   failure/timeout/Ctrl+C leaves the live wiki exactly as it was; the source is retried next run.

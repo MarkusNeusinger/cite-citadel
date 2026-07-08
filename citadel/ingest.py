@@ -190,7 +190,7 @@ class _Walk:
     error (a flaky SMB subdirectory), the roots that could not be entered at all (an unmounted
     share), and the roots discovery actually ENTERED (top-level scandir succeeded). A root that
     is missing, errors at top level, or hides files behind a flaky listing must NEVER read as
-    "the user deleted these sources" (docs/refactor-plan.md Z3): any error anywhere zeroes the
+    "the user deleted these sources": any error anywhere zeroes the
     sweep for the whole run, so entered-vs-clean needs no per-root error bookkeeping."""
 
     files: list[tuple[Path, os.stat_result]] = field(default_factory=list)
@@ -300,7 +300,7 @@ def _sweep_gone(keys, exclude_keys: set[str], swept_roots: list[Path] | None) ->
     references get repointed, not a deletion). ``swept_roots`` is the caller's ONE sweep
     decision: None = no sweep at all (a path-scoped run, a degraded walk, or the
     workspace-identity guard), else exactly the roots discovery entered this run. The remaining
-    guards, in order (operational safety is the point — docs/refactor-plan.md Z3):
+    guards, in order (operational safety is the point):
 
     - a key under NO configured root (``config.root_covering``) whose file is gone lands in
       ``out_of_root`` (an explicit out-of-root ingest, a root removed from the config) —
@@ -562,7 +562,7 @@ def _partition_sources(
     sha+stat the same way, so an unchanged stuck source (duplicate twin, unreadable binary) is
     re-evaluated without being re-hashed. ``full_rescan`` bypasses both quick checks.
 
-    ``force`` (``ingest --force``, docs/refactor-plan.md Z4) goes one deliberate step further:
+    ``force`` (``ingest --force``) goes one deliberate step further:
     it bypasses the quick checks AND the sha short-circuit, so an unchanged already-ingested
     candidate lands in ``pending`` and is re-read by the agent — the caller's changed-keys logic
     then gives a tracked key ``kind="reconcile"``, never a plain ingest (the rationale lives on
@@ -1218,8 +1218,7 @@ def _run_agent_sessions(session_fns, rel_key: str, extra_check=None, allow_empty
     staging copy. After the last session an optional ``extra_check()`` post-condition runs (used
     by deletion cleanup to assert no reference to the removed source survived).
 
-    PROMOTION HAPPENS EXACTLY ONCE, after the last session passes (docs/refactor-plan.md Z11 —
-    no silently partial imports): the non-destructive copy-over-then-prune that can never empty
+    PROMOTION HAPPENS EXACTLY ONCE, after the last session passes (no silently partial imports): the non-destructive copy-over-then-prune that can never empty
     or half-write the live wiki, which thus only ever contains FULLY imported sources. Trade-off
     accepted and documented (Z11): a failure/timeout/interrupt at segment N discards the whole
     staging copy — N-1 segments' agent work — and the source retries from segment 1 next run;
@@ -1294,7 +1293,7 @@ def _run_agent_sessions(session_fns, rel_key: str, extra_check=None, allow_empty
 @dataclass
 class _SourceJob:
     """ONE per-source unit of agent-driven work — the shared shape behind :func:`ingest`'s single
-    per-source loop (docs/refactor-plan.md Z7: the three near-duplicate loops — pending files,
+    per-source loop (the three near-duplicate loops — pending files,
     repos, deletion cleanups — collapse behind this; :func:`_run_source_jobs` owns the
     emit/report/failures vocabulary once).
 
@@ -1559,7 +1558,7 @@ def ingest(
     ``--full-rescan`` flag — distrusts that cache and re-hashes everything; sha stays the sole
     arbiter, so unchanged sources are re-stamped, not re-ingested).
 
-    ``force`` (the ``--force`` flag — docs/refactor-plan.md Z4) deliberately re-reads the
+    ``force`` (the ``--force`` flag) deliberately re-reads the
     requested sources even when nothing changed: the quick check AND the sha short-circuit are
     bypassed, so a sha-matching tracked source lands in pending and runs ``kind="reconcile"``,
     a tracked repo at its stored commit runs ``kind="repo-reconcile"`` over a FULL re-digest
@@ -1572,7 +1571,7 @@ def ingest(
     CLI pre-empts it with the same message and a friendly exit 2), and a path-scoped run never
     sweeps deletions (``swept_roots=None`` below).
 
-    Deletion detection is guarded (docs/refactor-plan.md Z3 — operational safety over
+    Deletion detection is guarded (operational safety over
     thoroughness): candidates come from the walked-seen-set diff, each positively confirmed with
     ``.exists()``; any walk error aborts the entire sweep for the run; an unreachable root
     contributes no candidates; keys under no configured root are logged, never swept; and a

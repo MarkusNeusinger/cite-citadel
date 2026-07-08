@@ -273,7 +273,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     writes a per-source transcript. With ``--verbose`` the spinner is suppressed so the streamed
     transcript is not overwritten by the in-place progress line.
 
-    ``--force`` requires explicit paths (docs/refactor-plan.md Z4): a forced re-read runs one
+    ``--force`` requires explicit paths: a forced re-read runs one
     agent session per source, so forcing the ENTIRE corpus must never happen by accident — the
     flag alone is refused with exit 2, before ``ingest.ingest`` is ever called."""
     from . import config, ingest
@@ -309,7 +309,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
 
 
 def cmd_curate(args: argparse.Namespace) -> int:
-    """Run one curate pass and print the report (docs/refactor-plan.md Z5). ``--dry-run`` recomputes
+    """Run one curate pass and print the report. ``--dry-run`` recomputes
     the plan and runs zero sessions; ``--limit``/``--stale-rules`` shape the plan; ``--diff`` writes a
     change report; ``--retry`` includes attempt-capped clusters (maps to ``curate(force=True)``).
     Returns 1 when a cluster failed its gate (surfaced for CI), else 0."""
@@ -323,7 +323,7 @@ def cmd_curate(args: argparse.Namespace) -> int:
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    """Print the per-source corpus state (docs/refactor-plan.md Z11) — ingested / failed /
+    """Print the per-source corpus state — ingested / failed /
     skipped-duplicate / ignored / pending, read from the manifest + failures catalog with one
     stat-only walk. Read-only: always returns 0."""
     from . import status
@@ -333,7 +333,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
-    """Print the environment/setup diagnostics (docs/refactor-plan.md Z8) — one OK/WARN/FAIL line
+    """Print the environment/setup diagnostics — one OK/WARN/FAIL line
     per check (workspace resolution, rules tree, agent CLI on PATH, raw-root reachability, manifest
     parse + workspace-stamp match, failures summary, the API-key billing-shadow and PDF-vision
     advisories). Read-only and workspace-optional (``needs_workspace=False``) so it can diagnose a

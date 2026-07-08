@@ -150,7 +150,7 @@ class LintReport:
     locator_issues: list[tuple[str, str]] = field(default_factory=list)
     # rel_paths over the SOFT page-length threshold (config.CURATE_PAGE_SOFT_LINES, ~400 body lines):
     # long enough to be worth an eventual topic split. Advisory — "lint warns at soft, curate acts at
-    # hard" (docs/refactor-plan.md Z5): this does NOT flip ok(); `citadel curate` only plans a split
+    # hard": this does NOT flip ok(); `citadel curate` only plans a split
     # once a page crosses the HARD threshold.
     long_pages: list[str] = field(default_factory=list)
 
@@ -541,8 +541,7 @@ def _locator_problem(page_rel: str, target: str, tail: str, cache: dict[str, str
 
 
 def check_locators(pages: list[Page]) -> list[tuple[str, str]]:
-    """Deterministically verify every ``[^sN]`` citation locator against its text-bearing raw source
-    (docs/refactor-plan.md Z6): a ``lines A-B`` range past the file's end, or a ``§ Heading`` naming
+    """Deterministically verify every ``[^sN]`` citation locator against its text-bearing raw source: a ``lines A-B`` range past the file's end, or a ``§ Heading`` naming
     a heading the source lacks, is a ``(rel_path, detail)`` warning. PDF/Office page locators stay
     agent-verified (no Python PDF reader by design). Shared by :func:`lint` and ``citadel curate``;
     reuses the one citation/link/fence grammar (:func:`grammar.source_definitions`), so it agrees

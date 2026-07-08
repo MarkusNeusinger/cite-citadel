@@ -212,8 +212,7 @@ def citing_pages_map(keys, pages: list[Page] | None = None) -> dict[str, list[st
     """The BATCH inverse of :func:`find_raw_references`: for every source ``key`` in ``keys``, the
     sorted rel_paths of wiki pages that reference it — built in ONE wiki-body traversal instead of
     one scan per key. :func:`rebuild_indexes` feeds BOTH the sources catalog and the index.md
-    ``## Sources`` section from a single call, replacing the old O(sources × pages) scan run twice
-    (docs/refactor-plan.md Z7).
+    ``## Sources`` section from a single call, replacing the old O(sources × pages) scan run twice.
 
     Matching shares the normal form with :func:`_link_points_at_key` by construction: a page
     references a key via its ``resource`` frontmatter (exact key-string equality) OR a citation link

@@ -34,7 +34,7 @@ def test_ingest_emits_progress_events(tmp_citadel, fake_agent, transformer_page)
 def test_mixed_run_progress_vocabulary_and_order_are_pinned(
     repo_wiki, fake_agent, seed_cited_deleted_source, make_repo, cite_page
 ):
-    """SourceJob unification pin (docs/refactor-plan.md Z7): the progress-event vocabulary for a
+    """SourceJob unification pin: the progress-event vocabulary for a
     MIXED run — one pending file + one repo + one deleted source — is frozen exactly as it is
     today, so collapsing the three per-source loops behind one job loop cannot change what a
     progress consumer sees: the event names, the exact payload keys of every event, and the

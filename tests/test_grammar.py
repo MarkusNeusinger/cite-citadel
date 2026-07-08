@@ -142,7 +142,7 @@ def test_is_source_citation_reads_config_roots_at_call_time(tmp_citadel):
 
 
 def test_absolute_citation_targets_are_source_links():
-    """Pre-paves docs/refactor-plan.md Z3: non-sibling raw roots are cited by ABSOLUTE posix
+    """Non-sibling raw roots are cited by ABSOLUTE posix
     path, which must classify as a source citation (skipped by rewriters/detectors), never as
     a rewritable wiki cross-link — pinned NOW so PR4 cannot silently miscategorize it."""
     assert grammar.resolves_to_source("/mnt/share/raw-archive/x.md")
