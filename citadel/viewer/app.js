@@ -1209,8 +1209,10 @@
     setTheme(THEMES[(THEMES.indexOf(cur) + 1) % THEMES.length]);
   });
 
-  // Draggable splitter to resize the map height (its own drag flag, independent of node drag/pan;
-  // both window handlers early-return unless their own flag is set). Re-fit only on release.
+  // Draggable splitter to resize the map height (its own drag flag, independent of node drag/pan).
+  // pointerdown starts the drag on the splitter; move/up/cancel are WINDOW listeners that
+  // early-return unless the flag is set, so the drag ends reliably even when setPointerCapture is
+  // unavailable and the pointer leaves the 6px splitter. Re-fit only on release.
   var gRez = document.getElementById("graph-resizer"), gPane = document.getElementById("graph-pane");
   var gDrag = false;
   gRez.addEventListener("pointerdown", function (ev) {
@@ -1218,7 +1220,7 @@
     try { gRez.setPointerCapture(ev.pointerId); } catch (e) {}
     ev.preventDefault();
   });
-  gRez.addEventListener("pointermove", function (ev) {
+  window.addEventListener("pointermove", function (ev) {
     if (!gDrag) return;
     var top = content.getBoundingClientRect().top;
     gPane.style.height = Math.max(120, Math.min(content.clientHeight - 120, ev.clientY - top)) + "px";
@@ -1229,8 +1231,8 @@
     try { localStorage.setItem("okf_map_h", gPane.style.height); } catch (e) {}
     Graph.refit();
   }
-  gRez.addEventListener("pointerup", endResize);
-  gRez.addEventListener("pointercancel", endResize);
+  window.addEventListener("pointerup", endResize);
+  window.addEventListener("pointercancel", endResize);
 
   // Restore persisted view state, then re-fit once the pane geometry is final.
   try { var mh = localStorage.getItem("okf_map_h"); if (mh) gPane.style.height = mh; } catch (e) {}
