@@ -244,6 +244,14 @@ def test_source_headings_are_fence_aware():
     assert grammar.source_headings(text) == {"real heading", "second"}
 
 
+def test_source_heading_texts_preserve_casing_order_and_dedupe():
+    # Case- and order-preserving twin of source_headings (issue #58): original casing, document
+    # order, de-duplicated, and fence-aware. source_headings is exactly this, case-folded to a set.
+    text = "## Second\n\n```\n# Fenced Pseudo\n```\n# The One Rule\n## Second\n"
+    assert grammar.source_heading_texts(text) == ["Second", "The One Rule"]
+    assert grammar.source_headings(text) == {"second", "the one rule"}
+
+
 def test_heading_candidates_drops_trailing_spaced_dash():
     assert list(grammar.heading_candidates("Nonexistent Heading - x")) == [
         "Nonexistent Heading - x",

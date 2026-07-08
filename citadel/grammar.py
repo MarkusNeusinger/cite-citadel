@@ -261,15 +261,25 @@ def heading_candidates(text: str) -> Iterator[str]:
             yield candidate
 
 
+def source_heading_texts(text: str) -> list[str]:
+    """The markdown headings in a raw source ``text`` — each heading line's text with the leading
+    ``#``/space stripped, ORIGINAL casing preserved, in document order, de-duplicated. Feeds
+    human-facing hints (e.g. ``wiki_raw``'s "not a heading" error) that want the source's own casing;
+    :func:`source_headings` is this same set case-folded for matching. Fence-aware via
+    :func:`iter_lines`: a ``# comment`` inside a ``` code fence is prose, not a heading."""
+    seen: dict[str, None] = {}  # dict keeps first-seen order while de-duplicating
+    for line, in_code in iter_lines(text):
+        if not in_code and line.lstrip().startswith("#"):
+            seen.setdefault(line.lstrip().lstrip("#").strip(), None)
+    return list(seen)
+
+
 def source_headings(text: str) -> set[str]:
     """The set of markdown headings in a raw source ``text`` — each heading line's text with the
-    leading ``#``/space stripped and case-folded — that a ``§ Heading`` locator may name. Fence-aware
-    via :func:`iter_lines`: a ``# comment`` inside a ``` code fence is prose, not a heading."""
-    return {
-        line.lstrip().lstrip("#").strip().lower()
-        for line, in_code in iter_lines(text)
-        if not in_code and line.lstrip().startswith("#")
-    }
+    leading ``#``/space stripped and case-folded — that a ``§ Heading`` locator may name. The
+    case- and order-preserving variant is :func:`source_heading_texts`. Fence-aware via
+    :func:`iter_lines`: a ``# comment`` inside a ``` code fence is prose, not a heading."""
+    return {h.lower() for h in source_heading_texts(text)}
 
 
 def prose_lines(body: str, *, skip_sources: bool = False) -> Iterator[str]:

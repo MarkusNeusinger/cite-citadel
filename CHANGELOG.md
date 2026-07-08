@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **`wiki_raw` / `citadel raw` — preserve heading casing in the "not a heading" hint.** When a
+  `§ Heading` locator names a heading the source lacks, the error lists the available headings using
+  the source's ORIGINAL casing and document order (e.g. `§ The One Rule About Temperature`) instead of
+  the case-folded form the internal match set uses. Backed by a new case-preserving
+  `grammar.source_heading_texts`; the case-insensitive match itself is unchanged.
+
 ### Added
 
 - **`wiki_define` / `citadel define` — glossary lookup.** An eleventh read-only MCP tool (+ its CLI
