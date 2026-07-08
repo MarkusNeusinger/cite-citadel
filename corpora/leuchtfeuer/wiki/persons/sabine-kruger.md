@@ -38,7 +38,7 @@ reporting rhythm.[^s7] The same session assigned her to communicate the pilot we
 Walle-routed traffic (action AP-8), due 14 February 2025.[^s8]
 
 She took the minutes for a status handover meeting at Bremen-Walle on 30 June 2025.[^s9] There, together with
-[Jörn Albers](j-rn-albers.md), she reviewed the cutover weekend from the site's perspective, reporting the
+[Jörn Albers](jorn-albers.md), she reviewed the cutover weekend from the site's perspective, reporting the
 data takeover as complete with no unresolved discrepancies.[^s10] She also presented the pilot's consolidated
 operating figures: 12,400 shipments processed through QUAYSTONE in the first week after cutover, a 0.4% error
 rate across all transaction types within the agreed corridor, and picking performance back to its

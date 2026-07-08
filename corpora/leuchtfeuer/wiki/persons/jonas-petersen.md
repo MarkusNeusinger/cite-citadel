@@ -21,7 +21,7 @@ Revision B supersedes Version 1.0 of 14 May 2024 in full.[^s3] The charter also 
 him, as PMO, the keeper of the programme's record.[^s4]
 
 He also took the minutes for the steering committee's extraordinary session on 10 February 2025, conducted
-in English at guest [Tomás Iglesias](../persons/tom-s-iglesias.md)'s request; the minutes note that the German-language protokoll series
+in English at guest [Tomás Iglesias](tomas-iglesias.md)'s request; the minutes note that the German-language protokoll series
 resumes at the next session, the Lenkungsausschuss meeting of 11 March 2025 in Bremen.[^s5]
 
 On 3 March 2025, Tomás Iglesias's week-one vendor summary of the SEAGULL cutover noted that the full pilot
@@ -39,7 +39,7 @@ on 8 April 2026.[^s8]
 - [SEAGULL](../projects/seagull.md)
 - [SEAGULL (customer portal programme)](../projects/seagull-customer-portal-programme.md)
 - [Blauwal Logistik GmbH](../organizations/blauwal-logistik-gmbh.md)
-- [Tomás Iglesias](../persons/tom-s-iglesias.md)
+- [Tomás Iglesias](tomas-iglesias.md)
 
 ## Sources
 

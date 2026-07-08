@@ -13,51 +13,51 @@ See also: [abbreviations](abbreviations/index.md) · [objects](objects/index.md)
 
 ## Object
 - [MDE Device](objects/mde-device.md) — Handheld mobile data capture (MDE) terminal used in Blauwal Logistik GmbH's warehouses; 180 new units were approved to replace devices incompatible with QUAYSTONE.
-  - ↳ referenced by: [MDE — Mobile Data Capture](abbreviations/mde-mobile-data-capture.md), [Jörn Albers](persons/j-rn-albers.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL](projects/seagull.md)
+  - ↳ referenced by: [MDE — Mobile Data Capture](abbreviations/mde-mobile-data-capture.md), [Jörn Albers](persons/jorn-albers.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL](projects/seagull.md)
 
 ## Organization
 - [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md) — Logistics company headquartered in Bremen, running Projekt LEUCHTFEUER to replace its KOMET warehouse management system with QUAYSTONE.
-  - ↳ referenced by: [MDE — Mobile Data Capture](abbreviations/mde-mobile-data-capture.md), [WMS — Warehouse Management System](abbreviations/wms-warehouse-management-system.md), [MDE Device](objects/mde-device.md), [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md), [Werftmann & Partner Softwarehaus GmbH](organizations/werftmann-partner-softwarehaus-gmbh.md), [Heike Brandt](persons/heike-brandt.md), [Jörn Albers](persons/j-rn-albers.md), [Jonas Petersen](persons/jonas-petersen.md), [Marek Duszek](persons/marek-duszek.md), [Petra Vogelsang](persons/petra-vogelsang.md), [Sabine Krüger](persons/sabine-kr-ger.md), [Tomás Iglesias](persons/tom-s-iglesias.md), [Yasmin Okafor](persons/yasmin-okafor.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL (customer portal programme)](projects/seagull-customer-portal-programme.md), [SEAGULL](projects/seagull.md), [BasaltDB](systems/basaltdb.md), [KOMET](systems/komet.md), [KorallenDB](systems/korallendb.md), [QUAYSTONE](systems/quaystone.md)
+  - ↳ referenced by: [MDE — Mobile Data Capture](abbreviations/mde-mobile-data-capture.md), [WMS — Warehouse Management System](abbreviations/wms-warehouse-management-system.md), [MDE Device](objects/mde-device.md), [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md), [Werftmann & Partner Softwarehaus GmbH](organizations/werftmann-partner-softwarehaus-gmbh.md), [Heike Brandt](persons/heike-brandt.md), [Jonas Petersen](persons/jonas-petersen.md), [Jörn Albers](persons/jorn-albers.md), [Marek Duszek](persons/marek-duszek.md), [Petra Vogelsang](persons/petra-vogelsang.md), [Sabine Krüger](persons/sabine-kruger.md), [Tomás Iglesias](persons/tomas-iglesias.md), [Yasmin Okafor](persons/yasmin-okafor.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL (customer portal programme)](projects/seagull-customer-portal-programme.md), [SEAGULL](projects/seagull.md), [BasaltDB](systems/basaltdb.md), [KOMET](systems/komet.md), [KorallenDB](systems/korallendb.md), [QUAYSTONE](systems/quaystone.md)
 - [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md) — Hamburg-based software vendor supplying the QUAYSTONE cloud WMS platform and implementation services to Blauwal Logistik GmbH.
-  - ↳ referenced by: [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Tomás Iglesias](persons/tom-s-iglesias.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [KorallenDB](systems/korallendb.md), [QUAYSTONE](systems/quaystone.md)
+  - ↳ referenced by: [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Tomás Iglesias](persons/tomas-iglesias.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [KorallenDB](systems/korallendb.md), [QUAYSTONE](systems/quaystone.md)
 - [Werftmann & Partner Softwarehaus GmbH](organizations/werftmann-partner-softwarehaus-gmbh.md) — Original vendor of KOMET, Blauwal Logistik GmbH's legacy warehouse management system; insolvent since 2017.
   - ↳ referenced by: [KOMET](systems/komet.md)
 
 ## Person
 - [Heike Brandt](persons/heike-brandt.md) — Commercial Director at Blauwal Logistik GmbH; confirmed the Projekt LEUCHTFEUER budget.
   - ↳ referenced by: [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL (customer portal programme)](projects/seagull-customer-portal-programme.md), [KOMET](systems/komet.md), [KorallenDB](systems/korallendb.md)
-- [Jörn Albers](persons/j-rn-albers.md) — Leads the warehouse team at Blauwal Logistik GmbH's Bremen-Walle site, host of the SEAGULL pilot.
-  - ↳ referenced by: [MDE Device](objects/mde-device.md), [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Sabine Krüger](persons/sabine-kr-ger.md), [Tomás Iglesias](persons/tom-s-iglesias.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL](projects/seagull.md)
 - [Jonas Petersen](persons/jonas-petersen.md) — PMO member at Blauwal Logistik GmbH who took minutes for the Projekt LEUCHTFEUER kickoff meeting.
   - ↳ referenced by: [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL (customer portal programme)](projects/seagull-customer-portal-programme.md), [SEAGULL](projects/seagull.md)
+- [Jörn Albers](persons/jorn-albers.md) — Leads the warehouse team at Blauwal Logistik GmbH's Bremen-Walle site, host of the SEAGULL pilot.
+  - ↳ referenced by: [MDE Device](objects/mde-device.md), [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Sabine Krüger](persons/sabine-kruger.md), [Tomás Iglesias](persons/tomas-iglesias.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL](projects/seagull.md)
 - [Marek Duszek](persons/marek-duszek.md) — Lead architect at Blauwal Logistik GmbH; owns the KOMET estate assessment and dissented from the choice of KorallenDB for QUAYSTONE.
-  - ↳ referenced by: [TCO — Total Cost of Ownership](abbreviations/tco-total-cost-of-ownership.md), [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md), [Werftmann & Partner Softwarehaus GmbH](organizations/werftmann-partner-softwarehaus-gmbh.md), [Heike Brandt](persons/heike-brandt.md), [Tomás Iglesias](persons/tom-s-iglesias.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL (customer portal programme)](projects/seagull-customer-portal-programme.md), [SEAGULL](projects/seagull.md), [BasaltDB](systems/basaltdb.md), [KOMET](systems/komet.md), [KorallenDB](systems/korallendb.md), [QUAYSTONE](systems/quaystone.md)
+  - ↳ referenced by: [TCO — Total Cost of Ownership](abbreviations/tco-total-cost-of-ownership.md), [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md), [Werftmann & Partner Softwarehaus GmbH](organizations/werftmann-partner-softwarehaus-gmbh.md), [Heike Brandt](persons/heike-brandt.md), [Tomás Iglesias](persons/tomas-iglesias.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL (customer portal programme)](projects/seagull-customer-portal-programme.md), [SEAGULL](projects/seagull.md), [BasaltDB](systems/basaltdb.md), [KOMET](systems/komet.md), [KorallenDB](systems/korallendb.md), [QUAYSTONE](systems/quaystone.md)
 - [Petra Vogelsang](persons/petra-vogelsang.md) — Head of IT at Blauwal Logistik GmbH and programme lead of Projekt LEUCHTFEUER.
-  - ↳ referenced by: [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md), [Heike Brandt](persons/heike-brandt.md), [Marek Duszek](persons/marek-duszek.md), [Sabine Krüger](persons/sabine-kr-ger.md), [Tomás Iglesias](persons/tom-s-iglesias.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL (customer portal programme)](projects/seagull-customer-portal-programme.md), [SEAGULL](projects/seagull.md), [BasaltDB](systems/basaltdb.md), [KOMET](systems/komet.md), [QUAYSTONE](systems/quaystone.md)
-- [Sabine Krüger](persons/sabine-kr-ger.md) — Head of Warehouse Operations at Blauwal Logistik GmbH; owns the article master data cleansing ahead of the QUAYSTONE pilot.
+  - ↳ referenced by: [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md), [Heike Brandt](persons/heike-brandt.md), [Marek Duszek](persons/marek-duszek.md), [Sabine Krüger](persons/sabine-kruger.md), [Tomás Iglesias](persons/tomas-iglesias.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL (customer portal programme)](projects/seagull-customer-portal-programme.md), [SEAGULL](projects/seagull.md), [BasaltDB](systems/basaltdb.md), [KOMET](systems/komet.md), [QUAYSTONE](systems/quaystone.md)
+- [Sabine Krüger](persons/sabine-kruger.md) — Head of Warehouse Operations at Blauwal Logistik GmbH; owns the article master data cleansing ahead of the QUAYSTONE pilot.
   - ↳ referenced by: [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL (customer portal programme)](projects/seagull-customer-portal-programme.md), [SEAGULL](projects/seagull.md)
-- [Tomás Iglesias](persons/tom-s-iglesias.md) — Account manager at Gezeitenwerk Software GmbH for the Projekt LEUCHTFEUER engagement with Blauwal Logistik GmbH.
-  - ↳ referenced by: [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md), [Jörn Albers](persons/j-rn-albers.md), [Jonas Petersen](persons/jonas-petersen.md), [Marek Duszek](persons/marek-duszek.md), [Petra Vogelsang](persons/petra-vogelsang.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL](projects/seagull.md), [BasaltDB](systems/basaltdb.md), [KorallenDB](systems/korallendb.md), [QUAYSTONE](systems/quaystone.md)
+- [Tomás Iglesias](persons/tomas-iglesias.md) — Account manager at Gezeitenwerk Software GmbH for the Projekt LEUCHTFEUER engagement with Blauwal Logistik GmbH.
+  - ↳ referenced by: [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md), [Jonas Petersen](persons/jonas-petersen.md), [Jörn Albers](persons/jorn-albers.md), [Marek Duszek](persons/marek-duszek.md), [Petra Vogelsang](persons/petra-vogelsang.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL](projects/seagull.md), [BasaltDB](systems/basaltdb.md), [KorallenDB](systems/korallendb.md), [QUAYSTONE](systems/quaystone.md)
 - [Yasmin Okafor](persons/yasmin-okafor.md) — Product owner of the customer self-service portal at Blauwal Logistik GmbH; chairs the SEAGULL portal programme.
   - ↳ referenced by: [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [SEAGULL (customer portal programme)](projects/seagull-customer-portal-programme.md)
 
 ## Project
 - [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md) — Blauwal Logistik GmbH's programme to replace its KOMET warehouse management system with the QUAYSTONE cloud WMS platform.
-  - ↳ referenced by: [MDE — Mobile Data Capture](abbreviations/mde-mobile-data-capture.md), [TCO — Total Cost of Ownership](abbreviations/tco-total-cost-of-ownership.md), [WMS — Warehouse Management System](abbreviations/wms-warehouse-management-system.md), [MDE Device](objects/mde-device.md), [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md), [Heike Brandt](persons/heike-brandt.md), [Jörn Albers](persons/j-rn-albers.md), [Jonas Petersen](persons/jonas-petersen.md), [Marek Duszek](persons/marek-duszek.md), [Petra Vogelsang](persons/petra-vogelsang.md), [Sabine Krüger](persons/sabine-kr-ger.md), [Tomás Iglesias](persons/tom-s-iglesias.md), [SEAGULL](projects/seagull.md), [KOMET](systems/komet.md), [KorallenDB](systems/korallendb.md), [QUAYSTONE](systems/quaystone.md)
+  - ↳ referenced by: [MDE — Mobile Data Capture](abbreviations/mde-mobile-data-capture.md), [TCO — Total Cost of Ownership](abbreviations/tco-total-cost-of-ownership.md), [WMS — Warehouse Management System](abbreviations/wms-warehouse-management-system.md), [MDE Device](objects/mde-device.md), [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md), [Heike Brandt](persons/heike-brandt.md), [Jonas Petersen](persons/jonas-petersen.md), [Jörn Albers](persons/jorn-albers.md), [Marek Duszek](persons/marek-duszek.md), [Petra Vogelsang](persons/petra-vogelsang.md), [Sabine Krüger](persons/sabine-kruger.md), [Tomás Iglesias](persons/tomas-iglesias.md), [SEAGULL](projects/seagull.md), [KOMET](systems/komet.md), [KorallenDB](systems/korallendb.md), [QUAYSTONE](systems/quaystone.md)
 - [SEAGULL (customer portal programme)](projects/seagull-customer-portal-programme.md) — Blauwal Logistik GmbH's 2026 programme to build a customer self-service portal on QUAYSTONE's APIs — codename SEAGULL, reused from the unrelated, closed 2024–25 pilot rollout.
-  - ↳ referenced by: [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Heike Brandt](persons/heike-brandt.md), [Jonas Petersen](persons/jonas-petersen.md), [Marek Duszek](persons/marek-duszek.md), [Petra Vogelsang](persons/petra-vogelsang.md), [Sabine Krüger](persons/sabine-kr-ger.md), [Yasmin Okafor](persons/yasmin-okafor.md), [SEAGULL](projects/seagull.md), [KOMET](systems/komet.md), [QUAYSTONE](systems/quaystone.md)
+  - ↳ referenced by: [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Heike Brandt](persons/heike-brandt.md), [Jonas Petersen](persons/jonas-petersen.md), [Marek Duszek](persons/marek-duszek.md), [Petra Vogelsang](persons/petra-vogelsang.md), [Sabine Krüger](persons/sabine-kruger.md), [Yasmin Okafor](persons/yasmin-okafor.md), [SEAGULL](projects/seagull.md), [KOMET](systems/komet.md), [QUAYSTONE](systems/quaystone.md)
 - [SEAGULL](projects/seagull.md) — Pilot rollout of QUAYSTONE at Blauwal Logistik GmbH's Bremen-Walle warehouse, the first site to go live under Projekt LEUCHTFEUER.
-  - ↳ referenced by: [MDE Device](objects/mde-device.md), [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md), [Jörn Albers](persons/j-rn-albers.md), [Jonas Petersen](persons/jonas-petersen.md), [Marek Duszek](persons/marek-duszek.md), [Petra Vogelsang](persons/petra-vogelsang.md), [Sabine Krüger](persons/sabine-kr-ger.md), [Tomás Iglesias](persons/tom-s-iglesias.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL (customer portal programme)](projects/seagull-customer-portal-programme.md), [BasaltDB](systems/basaltdb.md), [KOMET](systems/komet.md), [QUAYSTONE](systems/quaystone.md)
+  - ↳ referenced by: [MDE Device](objects/mde-device.md), [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md), [Jonas Petersen](persons/jonas-petersen.md), [Jörn Albers](persons/jorn-albers.md), [Marek Duszek](persons/marek-duszek.md), [Petra Vogelsang](persons/petra-vogelsang.md), [Sabine Krüger](persons/sabine-kruger.md), [Tomás Iglesias](persons/tomas-iglesias.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL (customer portal programme)](projects/seagull-customer-portal-programme.md), [BasaltDB](systems/basaltdb.md), [KOMET](systems/komet.md), [QUAYSTONE](systems/quaystone.md)
 
 ## System
 - [BasaltDB](systems/basaltdb.md) — Database platform now running as the persistence layer for Blauwal Logistik GmbH's QUAYSTONE deployment, replacing KorallenDB per a January 2025 Lenkungsausschuss decision — the platform Marek Duszek had argued for from the start.
-  - ↳ referenced by: [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md), [Heike Brandt](persons/heike-brandt.md), [Marek Duszek](persons/marek-duszek.md), [Tomás Iglesias](persons/tom-s-iglesias.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL](projects/seagull.md), [KorallenDB](systems/korallendb.md), [QUAYSTONE](systems/quaystone.md)
+  - ↳ referenced by: [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md), [Heike Brandt](persons/heike-brandt.md), [Marek Duszek](persons/marek-duszek.md), [Tomás Iglesias](persons/tomas-iglesias.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL](projects/seagull.md), [KorallenDB](systems/korallendb.md), [QUAYSTONE](systems/quaystone.md)
 - [KOMET](systems/komet.md) — Blauwal Logistik GmbH's legacy, in-house-customised warehouse management system, being replaced by QUAYSTONE under Projekt LEUCHTFEUER.
-  - ↳ referenced by: [TCO — Total Cost of Ownership](abbreviations/tco-total-cost-of-ownership.md), [WMS — Warehouse Management System](abbreviations/wms-warehouse-management-system.md), [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md), [Werftmann & Partner Softwarehaus GmbH](organizations/werftmann-partner-softwarehaus-gmbh.md), [Heike Brandt](persons/heike-brandt.md), [Marek Duszek](persons/marek-duszek.md), [Petra Vogelsang](persons/petra-vogelsang.md), [Sabine Krüger](persons/sabine-kr-ger.md), [Tomás Iglesias](persons/tom-s-iglesias.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL (customer portal programme)](projects/seagull-customer-portal-programme.md), [SEAGULL](projects/seagull.md), [QUAYSTONE](systems/quaystone.md)
+  - ↳ referenced by: [TCO — Total Cost of Ownership](abbreviations/tco-total-cost-of-ownership.md), [WMS — Warehouse Management System](abbreviations/wms-warehouse-management-system.md), [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md), [Werftmann & Partner Softwarehaus GmbH](organizations/werftmann-partner-softwarehaus-gmbh.md), [Heike Brandt](persons/heike-brandt.md), [Marek Duszek](persons/marek-duszek.md), [Petra Vogelsang](persons/petra-vogelsang.md), [Sabine Krüger](persons/sabine-kruger.md), [Tomás Iglesias](persons/tomas-iglesias.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL (customer portal programme)](projects/seagull-customer-portal-programme.md), [SEAGULL](projects/seagull.md), [QUAYSTONE](systems/quaystone.md)
 - [KorallenDB](systems/korallendb.md) — Database platform originally selected as the persistence layer for Blauwal Logistik GmbH's QUAYSTONE deployment, later replaced by BasaltDB.
-  - ↳ referenced by: [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md), [Heike Brandt](persons/heike-brandt.md), [Marek Duszek](persons/marek-duszek.md), [Tomás Iglesias](persons/tom-s-iglesias.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [BasaltDB](systems/basaltdb.md), [QUAYSTONE](systems/quaystone.md)
+  - ↳ referenced by: [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md), [Heike Brandt](persons/heike-brandt.md), [Marek Duszek](persons/marek-duszek.md), [Tomás Iglesias](persons/tomas-iglesias.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [BasaltDB](systems/basaltdb.md), [QUAYSTONE](systems/quaystone.md)
 - [QUAYSTONE](systems/quaystone.md) — Cloud warehouse management system platform sold by Gezeitenwerk Software GmbH, replacing KOMET at Blauwal Logistik GmbH under Projekt LEUCHTFEUER.
-  - ↳ referenced by: [MDE — Mobile Data Capture](abbreviations/mde-mobile-data-capture.md), [TCO — Total Cost of Ownership](abbreviations/tco-total-cost-of-ownership.md), [WMS — Warehouse Management System](abbreviations/wms-warehouse-management-system.md), [MDE Device](objects/mde-device.md), [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md), [Heike Brandt](persons/heike-brandt.md), [Marek Duszek](persons/marek-duszek.md), [Petra Vogelsang](persons/petra-vogelsang.md), [Sabine Krüger](persons/sabine-kr-ger.md), [Tomás Iglesias](persons/tom-s-iglesias.md), [Yasmin Okafor](persons/yasmin-okafor.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL (customer portal programme)](projects/seagull-customer-portal-programme.md), [SEAGULL](projects/seagull.md), [BasaltDB](systems/basaltdb.md), [KOMET](systems/komet.md), [KorallenDB](systems/korallendb.md)
+  - ↳ referenced by: [MDE — Mobile Data Capture](abbreviations/mde-mobile-data-capture.md), [TCO — Total Cost of Ownership](abbreviations/tco-total-cost-of-ownership.md), [WMS — Warehouse Management System](abbreviations/wms-warehouse-management-system.md), [MDE Device](objects/mde-device.md), [Blauwal Logistik GmbH](organizations/blauwal-logistik-gmbh.md), [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md), [Heike Brandt](persons/heike-brandt.md), [Marek Duszek](persons/marek-duszek.md), [Petra Vogelsang](persons/petra-vogelsang.md), [Sabine Krüger](persons/sabine-kruger.md), [Tomás Iglesias](persons/tomas-iglesias.md), [Yasmin Okafor](persons/yasmin-okafor.md), [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md), [SEAGULL (customer portal programme)](projects/seagull-customer-portal-programme.md), [SEAGULL](projects/seagull.md), [BasaltDB](systems/basaltdb.md), [KOMET](systems/komet.md), [KorallenDB](systems/korallendb.md)
 
 ## Tags
 
@@ -71,11 +71,11 @@ See also: [abbreviations](abbreviations/index.md) · [objects](objects/index.md)
 - [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md)
 - [Werftmann & Partner Softwarehaus GmbH](organizations/werftmann-partner-softwarehaus-gmbh.md)
 - [Heike Brandt](persons/heike-brandt.md)
-- [Jörn Albers](persons/j-rn-albers.md)
 - [Jonas Petersen](persons/jonas-petersen.md)
+- [Jörn Albers](persons/jorn-albers.md)
 - [Marek Duszek](persons/marek-duszek.md)
 - [Petra Vogelsang](persons/petra-vogelsang.md)
-- [Sabine Krüger](persons/sabine-kr-ger.md)
+- [Sabine Krüger](persons/sabine-kruger.md)
 - [Yasmin Okafor](persons/yasmin-okafor.md)
 - [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md)
 - [SEAGULL (customer portal programme)](projects/seagull-customer-portal-programme.md)
@@ -94,7 +94,7 @@ See also: [abbreviations](abbreviations/index.md) · [objects](objects/index.md)
 
 ### gezeitenwerk (4)
 - [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md)
-- [Tomás Iglesias](persons/tom-s-iglesias.md)
+- [Tomás Iglesias](persons/tomas-iglesias.md)
 - [KorallenDB](systems/korallendb.md)
 - [QUAYSTONE](systems/quaystone.md)
 
@@ -123,12 +123,12 @@ See also: [abbreviations](abbreviations/index.md) · [objects](objects/index.md)
 - [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md)
 - [Werftmann & Partner Softwarehaus GmbH](organizations/werftmann-partner-softwarehaus-gmbh.md)
 - [Heike Brandt](persons/heike-brandt.md)
-- [Jörn Albers](persons/j-rn-albers.md)
 - [Jonas Petersen](persons/jonas-petersen.md)
+- [Jörn Albers](persons/jorn-albers.md)
 - [Marek Duszek](persons/marek-duszek.md)
 - [Petra Vogelsang](persons/petra-vogelsang.md)
-- [Sabine Krüger](persons/sabine-kr-ger.md)
-- [Tomás Iglesias](persons/tom-s-iglesias.md)
+- [Sabine Krüger](persons/sabine-kruger.md)
+- [Tomás Iglesias](persons/tomas-iglesias.md)
 - [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md)
 - [SEAGULL](projects/seagull.md)
 - [BasaltDB](systems/basaltdb.md)
@@ -137,7 +137,7 @@ See also: [abbreviations](abbreviations/index.md) · [objects](objects/index.md)
 - [QUAYSTONE](systems/quaystone.md)
 
 ### master-data (1)
-- [Sabine Krüger](persons/sabine-kr-ger.md)
+- [Sabine Krüger](persons/sabine-kruger.md)
 
 ### mde (2)
 - [MDE — Mobile Data Capture](abbreviations/mde-mobile-data-capture.md)
@@ -152,7 +152,7 @@ See also: [abbreviations](abbreviations/index.md) · [objects](objects/index.md)
 - [WMS — Warehouse Management System](abbreviations/wms-warehouse-management-system.md)
 - [MDE Device](objects/mde-device.md)
 - [Gezeitenwerk Software GmbH](organizations/gezeitenwerk-software-gmbh.md)
-- [Tomás Iglesias](persons/tom-s-iglesias.md)
+- [Tomás Iglesias](persons/tomas-iglesias.md)
 - [Projekt LEUCHTFEUER](projects/projekt-leuchtfeuer.md)
 - [SEAGULL (customer portal programme)](projects/seagull-customer-portal-programme.md)
 - [SEAGULL](projects/seagull.md)
@@ -161,16 +161,16 @@ See also: [abbreviations](abbreviations/index.md) · [objects](objects/index.md)
 - [QUAYSTONE](systems/quaystone.md)
 
 ### seagull (6)
-- [Jörn Albers](persons/j-rn-albers.md)
-- [Tomás Iglesias](persons/tom-s-iglesias.md)
+- [Jörn Albers](persons/jorn-albers.md)
+- [Tomás Iglesias](persons/tomas-iglesias.md)
 - [Yasmin Okafor](persons/yasmin-okafor.md)
 - [SEAGULL (customer portal programme)](projects/seagull-customer-portal-programme.md)
 - [SEAGULL](projects/seagull.md)
 - [BasaltDB](systems/basaltdb.md)
 
 ### warehouse (2)
-- [Jörn Albers](persons/j-rn-albers.md)
-- [Sabine Krüger](persons/sabine-kr-ger.md)
+- [Jörn Albers](persons/jorn-albers.md)
+- [Sabine Krüger](persons/sabine-kruger.md)
 
 ### wms (5)
 - [WMS — Warehouse Management System](abbreviations/wms-warehouse-management-system.md)
