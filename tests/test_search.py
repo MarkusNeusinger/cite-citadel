@@ -7,7 +7,7 @@ callers use for tag filtering, case handling, and robustness) so a future reimpl
 seeded straight into the temp wiki via ``tmp_citadel`` + ``seed_page``.
 
 Scoring model being pinned: token overlap (lowercased alphanumeric tokens, length >= 2)
-weighted title 3.0 / tags 2.0 / description 1.5 / body 1.0, each token scaled by its IDF
+weighted title 3.0 / aliases 2.5 / tags 2.0 / description 1.5 / body 1.0, each token scaled by its IDF
 weight (a rare token outweighs one common to many pages; a token present in every page,
 or in a single-page corpus, weighs exactly 1.0), plus a 0.5 bonus when the raw
 stripped-lowercased query appears as a substring of the title or body. Zero scores are
@@ -67,6 +67,28 @@ def test_field_weight_ladder_title_tags_description_body(tmp_citadel, seed_page)
         ("concepts/tag-hit.md", 2.0),
         ("concepts/body-hit.md", 1.5),
         ("concepts/desc-hit.md", 1.5),
+    ]
+
+
+def test_alias_hit_ranks_between_title_and_tags(tmp_citadel, seed_page):
+    """A page's declared `aliases` are scored (weight 2.5), so a paraphrase that matches only an
+    alias still reaches the page — above a tags hit (2.0), below a title hit (3.0). Search-lane
+    harvest (#69): without this an alias-only term never ranked its page. 'cardamom' is in all 3
+    pages so IDF ~1.0; the title page also gets the +0.5 substring bonus."""
+    seed_page("concepts/title-hit.md", {"type": "concept", "title": "Cardamom"}, "Nothing.\n")
+    seed_page(
+        "concepts/alias-hit.md",
+        {"type": "concept", "title": "Green Pod Spice", "aliases": ["cardamom"]},
+        "Nothing here.\n",
+    )
+    seed_page("concepts/tag-hit.md", {"type": "concept", "title": "Beta", "tags": ["cardamom"]}, "Nothing.\n")
+
+    hits = store.search("cardamom")
+
+    assert [(p.rel_path, s) for p, s in hits] == [
+        ("concepts/title-hit.md", 3.5),
+        ("concepts/alias-hit.md", 2.5),
+        ("concepts/tag-hit.md", 2.0),
     ]
 
 
