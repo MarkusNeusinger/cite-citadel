@@ -1,15 +1,15 @@
-:root { --bg:#fff; --fg:#1a1a1a; --muted:#666; --line:#e2e2e2; --accent:#2563eb;
-        --chip:#eef2ff; --card:#f8f9fb; --source:#b45309; --srcnode:#6b7280; }
+:root { --bg:#FAF8F1; --fg:#1A1A17; --muted:#6B6A63; --line:rgba(26,26,23,.15); --accent:#007A59;
+        --chip:rgba(0,158,115,.12); --card:#F5F3EC; --source:#8A5F25; --srcnode:#6b7280; }
 @media (prefers-color-scheme: dark) {
-  :root { --bg:#0f1115; --fg:#e6e6e6; --muted:#9aa0aa; --line:#2a2f3a; --accent:#6ea8fe;
-          --chip:#1c2333; --card:#161a22; --source:#f0b366; --srcnode:#9aa0aa; } }
+  :root { --bg:#121210; --fg:#F0EFE8; --muted:#A8A79F; --line:rgba(240,239,232,.15); --accent:#009E73;
+          --chip:rgba(0,158,115,.16); --card:#1A1A17; --source:#DDCC77; --srcnode:#9aa0aa; } }
 /* Explicit theme override (the sidebar theme toggle sets data-theme on <html>); with no attribute
    the viewer follows prefers-color-scheme above. Placed after the @media block so a forced choice
    wins by both order and specificity. */
-:root[data-theme="light"] { --bg:#fff; --fg:#1a1a1a; --muted:#666; --line:#e2e2e2; --accent:#2563eb;
-        --chip:#eef2ff; --card:#f8f9fb; --source:#b45309; --srcnode:#6b7280; }
-:root[data-theme="dark"] { --bg:#0f1115; --fg:#e6e6e6; --muted:#9aa0aa; --line:#2a2f3a; --accent:#6ea8fe;
-          --chip:#1c2333; --card:#161a22; --source:#f0b366; --srcnode:#9aa0aa; }
+:root[data-theme="light"] { --bg:#FAF8F1; --fg:#1A1A17; --muted:#6B6A63; --line:rgba(26,26,23,.15); --accent:#007A59;
+        --chip:rgba(0,158,115,.12); --card:#F5F3EC; --source:#8A5F25; --srcnode:#6b7280; }
+:root[data-theme="dark"] { --bg:#121210; --fg:#F0EFE8; --muted:#A8A79F; --line:rgba(240,239,232,.15); --accent:#009E73;
+          --chip:rgba(0,158,115,.16); --card:#1A1A17; --source:#DDCC77; --srcnode:#9aa0aa; }
 * { box-sizing:border-box; }
 body { margin:0; font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
        color:var(--fg); background:var(--bg); }
@@ -18,7 +18,12 @@ body { margin:0; font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-ser
            padding:12px; }
 #side-head { display:flex; align-items:center; gap:6px; margin-bottom:10px; }
 #wiki-name { flex:1; font-weight:700; font-size:14px; white-space:nowrap; overflow:hidden;
-             text-overflow:ellipsis; }
+             text-overflow:ellipsis; font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+             letter-spacing:-0.02em; }
+/* Subtle green brand marker before the wordmark (a non-text accent, so contrast rules don't apply;
+   green in both themes). \258D is LEFT FIVE EIGHTHS BLOCK — a thin vertical bar that renders cleanly
+   cross-platform (block-element glyph, no emoji-presentation variance). */
+#wiki-name::before { content:"\258D"; color:#009E73; margin-right:4px; }
 .iconbtn { border:1px solid var(--line); background:var(--bg); color:var(--muted); border-radius:6px;
            height:24px; min-width:26px; cursor:pointer; font-size:13px; line-height:1; padding:0 6px; }
 .iconbtn:hover { border-color:var(--accent); color:var(--accent); }

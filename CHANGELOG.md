@@ -48,6 +48,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Viewer adopts the project's warm brand palette.** The offline HTML viewer's tokens move to the
+  warm paper/ink scheme with the green brand accent (`#009E73` family): a monospace wordmark carrying
+  a small green brand marker, and a colorblind-safe map palette (the brand green pinned first). The
+  link/accent green is AA-checked per theme — the light `--accent` uses the darker `#007A59` (5.0:1
+  on the paper background, where plain `#009E73` reached only ~3.2:1) while dark keeps `#009E73`
+  (5.5:1), and the light `--source` gold is darkened to clear 4.5:1 wherever it renders as citation
+  text. Viewer assets only (`app.css`/`app.js`); no Python or template change.
 - **Viewer: compact, grouped Sources + a mobile/touch/print pass.** A page's trailing `## Sources`
   section no longer renders as a tall footnote wall (the same raw file repeated once per citation,
   each with its own link, date, and back-arrow). It is now a **collapsed `Sources (N)` `<details>`**
