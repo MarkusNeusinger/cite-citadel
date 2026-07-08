@@ -56,6 +56,24 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Viewer search + reading UX (final viewer batch).** The offline HTML viewer's full-text search is
+  now **tokenized**: every whitespace-separated term must match (AND) across title/tags/path/body
+  (and source bodies), fixing a real miss where a two-word query like `adenosine blocking` returned
+  nothing though both words are prominent (search had been a single whole-string `indexOf`). Field
+  weights are summed per term and an exact full-phrase match adds a bonus so contiguous phrases still
+  rank top, and result snippets center on the first term hit and highlight every term. Two operators
+  compose with the bare terms and the sidebar tag/facet filters: `tag:x` (prefix match) and `type:y`
+  (case-insensitive); an unknown `prefix:` is treated as a literal term. The placeholder hints them
+  (`tag:x type:y, / to focus`). Alongside search: the viewer files shrink ~5-6% by dropping the
+  redundant top-level `edges` array from the bundle (the same graph was serialized ~3x) and rebuilding
+  it in the browser from each page's `outbound` at boot; the reader **remembers your scroll position**
+  per page/source (session-scoped, restored on return unless a query is active); **wiki-page links get
+  a hover preview** (title, type, description, first ~200 chars — mouse-only, reusing the source
+  popover); a page shows a **"Related:" row** of up to 6 pages sharing a tag (ranked by shared-tag
+  count, excluding already-linked pages); **keyboard navigation** adds `j`/`k` to move a selection
+  through the visible list + Enter to open, and `n`/`N` to step the reader's highlighted hits; and a
+  **reader font-size toggle** (15 -> 17 -> 19 px, persisted) sits next to the width control. All still
+  offline, deterministic, zero-dependency.
 - **Viewer map now clusters by topic.** The offline HTML viewer's graph is reworked from a single
   ring into a topic map: communities are detected by deterministic label propagation over the
   combined graph (real cross-links + IDF-weighted tag-similarity KNN edges) and each is named by its
@@ -66,8 +84,12 @@ All notable changes to this project are documented here. The format is based on
   8-hue colorblind-safe brand palette; a type-colour toggle in the map bar, persisted — and a wiki
   that collapses to a single community, like one dense novel, defaults to type colours), the legend
   lists the top clusters with an "other" bucket and per-cluster show/hide, and labels declutter —
-  only hubs, hovered neighbours, and zoomed-in views draw text. Deterministic (no `Math.random`),
-  vanilla JS, zero deps. Viewer assets only (`app.css`/`app.js`).
+  only hubs, hovered neighbours, and zoomed-in views draw text. When a single community would
+  otherwise swallow more than two thirds of a dense, uniformly cross-linked wiki, it is refined ONE
+  level — the same deterministic label propagation re-runs inside that community over the
+  tag-similarity edges alone — so `kelvarra`, `leuchtfeuer`, and `pemberley` resolve into several
+  sensible sub-topics instead of collapsing to one blob (and falling back to flat type colours).
+  Deterministic (no `Math.random`), vanilla JS, zero deps. Viewer assets only (`app.css`/`app.js`).
 - **Viewer adopts the project's warm brand palette.** The offline HTML viewer's tokens move to the
   warm paper/ink scheme with the green brand accent (`#009E73` family): a monospace wordmark carrying
   a small green brand marker, and a colorblind-safe map palette (the brand green pinned first). The
@@ -83,7 +105,10 @@ All notable changes to this project are documented here. The format is based on
   (`s1 (§ Heading), s5 (lines 23-25), …`) or, when they carry distinct notes, one muted line each.
   Every citation keeps its own `id`, so an inline `[^sN]` still jumps to its definition (opening the
   collapsed section first) and hover popovers still work per citation; the back-arrows are dropped
-  (the inline marker is the way back). The sidebar "Sources" axis now defaults **closed** (with a
+  (the inline marker is the way back). The grouping is robust to a misconfigured workspace whose
+  citations don't resolve to an embedded source (so a citation renders as a bare file-name span, not
+  a source link): each still groups per cited file under a plain file-name header, instead of every
+  citation collapsing into one nameless `↩` group. The sidebar "Sources" axis now defaults **closed** (with a
   persisted toggle). The viewer also gained its **first responsive breakpoint** (≤ 720px): the
   sidebar becomes an off-canvas drawer toggled by the existing hamburger / backslash shortcut, the
   reader goes full-width, and the map defaults collapsed and height-capped — no horizontal scroll at
