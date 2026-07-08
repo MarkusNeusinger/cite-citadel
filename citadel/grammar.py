@@ -261,16 +261,48 @@ def heading_candidates(text: str) -> Iterator[str]:
             yield candidate
 
 
+# A line that is ONLY a bold span (``**Heading**`` / ``__Heading__``, nothing else) is treated as a
+# section heading — the convention many real sources use instead of ATX ``#`` headings (FAQs, exported
+# Word/Confluence docs). It sits at a sentinel level DEEPER than any ATX heading (1–6), so a bold
+# "section" nests under any ``#`` heading and runs until the next heading of any kind. Recognizing it
+# lets ``§ Heading`` locators into such sections verify (lint) and resolve (wiki_raw) instead of
+# hitting "headings present: none".
+_BOLD_HEADING_LEVEL = 7
+
+
+def parse_heading_line(line: str) -> tuple[int, str] | None:
+    """Classify a source ``line`` (already known to be OUTSIDE a code fence) as a section heading,
+    returning ``(level, text)`` or None. An ATX heading (``## Foo``) has ``level`` = the number of
+    leading ``#`` (1–6 for a spec-valid heading; the count is not clamped) and ``text`` the remainder;
+    a line that is ONLY a bold span (``**Foo**`` / ``__Foo__``,
+    nothing else) is a bold heading at :data:`_BOLD_HEADING_LEVEL`. Plain prose, a line with merely
+    *inline* bold, or a bold span with trailing text is None. The single home of "what a raw-source
+    heading is", shared by :func:`source_heading_texts` and ``rawsource._heading_span`` so lint and
+    ``wiki_raw`` agree by construction."""
+    stripped = line.strip()
+    if stripped.startswith("#"):
+        return len(stripped) - len(stripped.lstrip("#")), stripped.lstrip("#").strip()
+    for delim in ("**", "__"):
+        if stripped.startswith(delim) and stripped.endswith(delim) and len(stripped) > 2 * len(delim):
+            inner = stripped[len(delim) : -len(delim)].strip()
+            if inner and delim not in inner:  # a single bold span, not `**a** text **b**`
+                return _BOLD_HEADING_LEVEL, inner
+    return None
+
+
 def source_heading_texts(text: str) -> list[str]:
-    """The markdown headings in a raw source ``text`` — each heading line's text with the leading
-    ``#``/space stripped, ORIGINAL casing preserved, in document order, de-duplicated. Feeds
-    human-facing hints (e.g. ``wiki_raw``'s "not a heading" error) that want the source's own casing;
-    :func:`source_headings` is this same set case-folded for matching. Fence-aware via
-    :func:`iter_lines`: a ``# comment`` inside a ``` code fence is prose, not a heading."""
+    """The section headings in a raw source ``text`` — each heading line's text (ATX ``#`` heading or
+    a whole-line ``**bold**`` heading, via :func:`parse_heading_line`), ORIGINAL casing preserved, in
+    document order, de-duplicated. Feeds human-facing hints (e.g. ``wiki_raw``'s "not a heading"
+    error) that want the source's own casing; :func:`source_headings` is this same set case-folded for
+    matching. Fence-aware via :func:`iter_lines`: a ``# comment`` inside a ``` code fence is prose."""
     seen: dict[str, None] = {}  # dict keeps first-seen order while de-duplicating
     for line, in_code in iter_lines(text):
-        if not in_code and line.lstrip().startswith("#"):
-            seen.setdefault(line.lstrip().lstrip("#").strip(), None)
+        if in_code:
+            continue
+        parsed = parse_heading_line(line)
+        if parsed is not None:
+            seen.setdefault(parsed[1], None)
     return list(seen)
 
 

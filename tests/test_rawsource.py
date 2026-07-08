@@ -116,6 +116,18 @@ def test_missing_heading_lists_the_available_ones_with_original_casing(tmp_citad
     assert "the one rule about temperature" not in msg  # never the case-folded form
 
 
+def test_bold_line_heading_locator_resolves_the_section(tmp_citadel):
+    # Issue #62: a FAQ source structured with whole-line **bold** headers (not `#`) — a `§ Heading`
+    # locator into a bold section must resolve, not raise "headings present: none".
+    text = "**Q: How does caffeine work?**\n\nIt blocks adenosine.\n\n**Q: What about tea?**\n\nLess.\n"
+    key = _cite(tmp_citadel, "faq.md", text)
+
+    out = rawsource.raw_text(key, "§ Q: How does caffeine work?")
+
+    assert "It blocks adenosine" in out
+    assert "What about tea" not in out and "Less" not in out
+
+
 def test_large_source_is_capped_with_a_narrowing_hint(tmp_citadel):
     key = _cite(tmp_citadel, "big.md", "".join(f"line {i}\n" for i in range(20000)))
 
