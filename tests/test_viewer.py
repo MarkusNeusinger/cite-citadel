@@ -189,6 +189,16 @@ def test_line_locator_past_eof_clamps_to_eof(tmp_citadel, seed_page):
     assert s["segments"][0]["text"].endswith("line 200")
 
 
+def test_inverted_line_locator_normalizes(tmp_citadel, seed_page):
+    # lint flags `lines 97-53`, but the viewer must still build sanely: read it as 53-97.
+    (tmp_citadel.raw / "big.md").write_text(_numbered_source(200), encoding="utf-8")
+    _cite(seed_page, "[^s1]: [big](../../raw/big.md), lines 97-53")
+    s = viewer.build_bundle()["sources"]["raw/big.md"]
+    assert [(g["start"], g["end"]) for g in s["segments"]] == [(50, 100)]  # 53-97 padded by 3
+    assert s["segments"][0]["text"].startswith("line 50")
+    assert s["segments"][0]["text"].endswith("line 100")
+
+
 def test_heading_locator_resolves_the_section(tmp_citadel, seed_page):
     lines = ["# Intro"] + [f"line {i}" for i in range(2, 41)]
     lines += ["## Section A"] + [f"line {i}" for i in range(42, 59)] + ["## Section B"]

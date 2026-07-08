@@ -227,8 +227,10 @@ def _source_title(body: str, view_id: str) -> str:
 
 def _source_snippet(body: str, limit: int = 240) -> str:
     """A short, whitespace-collapsed preview of a source's prose (headings dropped) for the hover
-    popover."""
-    prose = " ".join(line for line in body.splitlines() if not line.lstrip().startswith("#"))
+    popover. Only a bounded head of the body is scanned — the snippet needs ``limit`` chars, so
+    collapsing a multi-hundred-KB source whole would be pure waste."""
+    head = body[: limit * 40]
+    prose = " ".join(line for line in head.splitlines() if not line.lstrip().startswith("#"))
     return " ".join(prose.split())[:limit]
 
 
@@ -323,9 +325,12 @@ def _clamp_range(lo: int, hi: int, n: int) -> tuple[int, int]:
 
 
 def _line_range(start: int, end: int, n: int) -> tuple[int, int]:
-    """The embed range for a ``lines A-B`` locator: the locator lines first clamped to EOF (a range
-    past the file's end anchors at EOF, not off it), THEN padded by :data:`_LINE_CONTEXT` lines each
-    side and clamped to ``[1, n]`` — so a past-EOF locator still shows a few lines of trailing context."""
+    """The embed range for a ``lines A-B`` locator: the locator lines first normalized (an inverted
+    ``lines 10-5`` — lint flags it, but the viewer must still build sanely — reads as ``5-10``) and
+    clamped to EOF (a range past the file's end anchors at EOF, not off it), THEN padded by
+    :data:`_LINE_CONTEXT` lines each side and clamped to ``[1, n]`` — so a past-EOF locator still
+    shows a few lines of trailing context."""
+    start, end = sorted((start, end))
     start, end = min(start, n), min(end, n)
     return _clamp_range(start - _LINE_CONTEXT, end + _LINE_CONTEXT, n)
 
