@@ -99,7 +99,10 @@ All notable changes to this project are documented here. The format is based on
   level — the same deterministic label propagation re-runs inside that community over the
   tag-similarity edges alone — so `kelvarra`, `leuchtfeuer`, and `pemberley` resolve into several
   sensible sub-topics instead of collapsing to one blob (and falling back to flat type colours).
-  Deterministic (no `Math.random`), vanilla JS, zero deps. Viewer assets only (`app.css`/`app.js`).
+  The live drag physics is damped (velocity decay 0.78, softened collision push, a lower jump cap)
+  so dragging a node nudges its neighbourhood instead of shaking the whole map, while staying
+  responsive. Deterministic (no `Math.random`), vanilla JS, zero deps. Viewer assets only
+  (`app.css`/`app.js`).
 - **Viewer adopts the project's warm brand palette.** The offline HTML viewer's tokens move to the
   warm paper/ink scheme with the green brand accent (`#009E73` family): a monospace wordmark carrying
   a small green brand marker, and a colorblind-safe map palette (the brand green pinned first). The
