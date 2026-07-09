@@ -125,6 +125,25 @@ def test_commit_identity_falls_back_when_none_is_configured(tmp_citadel, wiki_gi
     assert _run_git(tmp_citadel.wiki, "log", "-1", "--format=%ae") == "citadel@localhost"
 
 
+@needs_git
+def test_commit_identity_fallback_fills_only_the_missing_half(tmp_citadel, wiki_git_mode, monkeypatch):
+    """A partially-configured identity (email set, name missing) must also commit — git requires
+    BOTH halves — and the configured half wins over the fallback."""
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_citadel.root / "no-such-gitconfig"))
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", str(tmp_citadel.root / "no-such-system"))
+    wiki_git_mode("auto")
+    _run_git(tmp_citadel.wiki, "init", "-q")
+    _run_git(tmp_citadel.wiki, "config", "commit.gpgsign", "false")
+    _run_git(tmp_citadel.wiki, "config", "user.email", "me@example.com")  # email set, name missing
+    (tmp_citadel.wiki / "page.md").write_text("x\n", encoding="utf-8")
+
+    note = wikigit.autocommit("msg")
+
+    assert note is not None and note.startswith("wiki git: committed")
+    assert _run_git(tmp_citadel.wiki, "log", "-1", "--format=%an") == "cite-citadel"  # fallback name
+    assert _run_git(tmp_citadel.wiki, "log", "-1", "--format=%ae") == "me@example.com"  # configured email kept
+
+
 # --- init mode: first-use `git init`, embedded-repo refusal -----------------------------------
 
 

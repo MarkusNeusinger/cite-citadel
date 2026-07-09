@@ -92,11 +92,15 @@ def repo_state(wiki_dir: Path) -> str:
 
 
 def _identity_args(wiki_dir: Path) -> list[str]:
-    """``-c user.name/user.email`` fallbacks when no commit identity is configured, else []."""
-    res = _git(wiki_dir, "config", "user.email")
-    if res is not None and res[0] == 0 and res[1]:
-        return []
-    return ["-c", f"user.name={_FALLBACK_NAME}", "-c", f"user.email={_FALLBACK_EMAIL}"]
+    """``-c user.name``/``-c user.email`` fallbacks for whichever identity half is NOT configured
+    (git refuses to commit without both), else []. Per-field, so a partially-configured box (email
+    set, name missing — or vice versa) keeps its configured half and still commits."""
+    args: list[str] = []
+    for key, fallback in (("user.name", _FALLBACK_NAME), ("user.email", _FALLBACK_EMAIL)):
+        res = _git(wiki_dir, "config", key)
+        if res is None or res[0] != 0 or not res[1]:
+            args += ["-c", f"{key}={fallback}"]
+    return args
 
 
 def autocommit(message: str) -> str | None:
@@ -111,14 +115,19 @@ def autocommit(message: str) -> str | None:
     wiki_dir = Path(config.WIKI_DIR)
     if not wiki_dir.is_dir():
         return None
+    if not (wiki_dir / ".git").exists() and mode != "init":
+        # auto mode: history is opt-in until the wiki dir is its own repo. Decided on the
+        # filesystem alone, BEFORE the git-binary lookup — the common not-opted-in run must never
+        # pay a subprocess call (or a hung-git timeout).
+        return None
     if shutil.which("git") is None:
         # Only worth a note when the user explicitly opted in; auto mode stays silent.
         return "wiki git: git not found on PATH; wiki history skipped" if mode == "init" else None
 
     state = repo_state(wiki_dir)
     if state != REPO:
-        if mode != "init":
-            return None  # auto mode: history is opt-in until the wiki dir is its own repo
+        # Only reachable in init mode: auto without a .git returned above, and a .git dir/file
+        # always classifies as REPO.
         if state == NESTED:
             return (
                 f"wiki git: {wiki_dir} sits inside another git working tree; refusing to init an "
