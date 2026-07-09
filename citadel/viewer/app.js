@@ -794,12 +794,16 @@
         acc.x += nodes[i].x; acc.y += nodes[i].y; acc.n++;
       }
       for (var ck in cen) { cen[ck].x /= cen[ck].n; cen[ck].y /= cen[ck].n; }
-      var REP = 2400, GRAV = 0.012, DAMP = 0.9, MAXV = 50, MIN = 22;
+      // DAMP retains that fraction of velocity per frame. The old 0.9 was underdamped (a drag
+      // jolted the whole neighbourhood into visible oscillation), 0.6 felt syrupy — 0.78 keeps the
+      // map lively but lets a jolt die out within a few frames. The halved collision push below is
+      // part of the same fix (overlap resolution used to bounce).
+      var REP = 2400, REPCAP = 40, GRAV = 0.012, DAMP = 0.78, MAXV = 30, MIN = 22;
       for (i = 0; i < n; i++) for (j = i + 1; j < n; j++) {
         var dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
         var d2 = dx * dx + dy * dy + 0.01, d = Math.sqrt(d2);
-        var f = Math.min(REP / d2, 40);
-        if (d < MIN) f += (MIN - d) * 0.5;  // hard collision separation for overlapping nodes
+        var f = Math.min(REP / d2, REPCAP);
+        if (d < MIN) f += (MIN - d) * 0.25;  // gentle collision separation for overlapping nodes
         var ux = dx / d * f, uy = dy / d * f;
         nodes[i].vx += ux; nodes[i].vy += uy;
         nodes[j].vx -= ux; nodes[j].vy -= uy;
