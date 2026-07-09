@@ -88,6 +88,7 @@ description: A self-attention architecture.   # REQUIRED by `check` — one line
 resource: raw/attention.md    # REQUIRED by `check` — the PRIMARY raw file this page was derived from
 tags: [ml, architecture]      # REQUIRED by `check` — ≥1 lowercase tag
 timestamp: 2026-06-21T12:00:00Z   # set automatically on every write — do NOT author
+citadel_version: 0.3.0        # set automatically on every write — do NOT author
 ---
 ```
 
@@ -95,7 +96,9 @@ timestamp: 2026-06-21T12:00:00Z   # set automatically on every write — do NOT 
   (≥1), and `resource` as required alongside `type` — a missing one is a hard error. Extra fields
   beyond these are allowed and preserved — notably `aliases` (see § Aliases), the alternate names a
   reader might search by.
-- **Do NOT write a `timestamp` field** — the system stamps it on every write.
+- **Do NOT write a `timestamp` or `citadel_version` field** — the system stamps both on every
+  write (`timestamp` = when the page last changed, `citadel_version` = which cite-citadel release
+  wrote it).
 - **Never put a second `---` YAML block inside the body.** The body is markdown only.
 - **Filename** is the slug of the title: lowercase, runs of non-alphanumeric → `-`, trimmed
   (title `Self-Attention` → `wiki/concepts/self-attention.md`).

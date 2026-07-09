@@ -16,7 +16,7 @@ import os
 import re
 from datetime import datetime, timezone
 
-from . import config, okf
+from . import __version__, config, okf
 from .okf import Page
 
 
@@ -380,7 +380,10 @@ def _is_reserved_name(rel_path: str) -> bool:
 
 def write_page(rel_path: str, frontmatter: dict, body: str) -> Page:
     """okf.validate(frontmatter); target = okf.safe_join(WIKI_DIR, rel_path)
-    (rejects '..'/absolute FIRST); mkdir -p; set frontmatter['timestamp']=utc_now_iso();
+    (rejects '..'/absolute FIRST); mkdir -p; set frontmatter['timestamp']=utc_now_iso() and
+    frontmatter['citadel_version']=__version__ (which cite-citadel release last wrote the page —
+    provenance a reader/curate can compare against the installed version, stamped like the
+    timestamp so it can never go stale or be authored by hand);
     write okf.dump(frontmatter, body). Return the Page. Overwrites if exists.
 
     Refuses the generated/reserved files (index.md, any per-folder ``*/index.md``, log.md,
@@ -393,6 +396,7 @@ def write_page(rel_path: str, frontmatter: dict, body: str) -> Page:
     config.robust_mkdir(target.parent)
     frontmatter = dict(frontmatter)
     frontmatter["timestamp"] = utc_now_iso()
+    frontmatter["citadel_version"] = __version__
     target.write_text(okf.dump(frontmatter, body), encoding="utf-8")
     return Page(rel_path=rel_path, frontmatter=frontmatter, body=body)
 

@@ -83,6 +83,23 @@ def test_write_page_refuses_generated_files(tmp_citadel, rel_path):
         assert (wiki / rel_path).read_bytes() == before
 
 
+def test_write_page_stamps_timestamp_and_citadel_version(tmp_citadel):
+    """Every write stamps BOTH provenance fields: `timestamp` (when the page last changed) and
+    `citadel_version` (which cite-citadel release wrote it) — authored values are overwritten, so
+    neither can go stale or be forged by an agent session."""
+    import citadel
+
+    page = store.write_page(
+        "concepts/stamped.md",
+        {"type": "Concept", "title": "Stamped", "timestamp": "1999-01-01T00:00:00Z", "citadel_version": "0.0.0"},
+        "body\n",
+    )
+    assert page.frontmatter["citadel_version"] == citadel.__version__
+    assert page.frontmatter["timestamp"] != "1999-01-01T00:00:00Z"
+    on_disk = (tmp_citadel.wiki / "concepts" / "stamped.md").read_text(encoding="utf-8")
+    assert f"citadel_version: {citadel.__version__}" in on_disk
+
+
 def test_lint_allows_and_surfaces_llm_sourced_fact(tmp_citadel, seed_page):
     """A model-supplied [^llmN] fact is NOT flagged as fabricated, but IS surfaced under
     llm_facts for transparency; the page still passes lint."""

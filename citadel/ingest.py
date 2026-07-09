@@ -40,7 +40,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from . import config, extract, failures, llm, manifest, okf, repo, store, validate
+from . import config, extract, failures, llm, manifest, okf, repo, store, validate, wikigit
 from .okf import Page
 
 
@@ -87,6 +87,9 @@ class IngestReport:
     # rel-keys of tracked sources that VANISHED from disk (a full run only): their provenance is
     # reconciled out of the wiki by a cleanup agent session, then the manifest key is dropped.
     sources_deleted: list[str] = field(default_factory=list)
+    # The wiki-history note from wikigit.autocommit ("wiki git: committed <sha>", or a warning
+    # naming what was skipped and why) — empty when the history layer had nothing to say.
+    wiki_git: str = ""
 
     def render(self) -> str:
         """Human-readable multi-line summary for CLI/MCP."""
@@ -141,6 +144,8 @@ class IngestReport:
         if self.errors:
             lines.append("Errors:")
             lines.extend(f"  - {e}" for e in self.errors)
+        if self.wiki_git:
+            lines.append(self.wiki_git)
         return "\n".join(lines)
 
 
@@ -1066,8 +1071,10 @@ def _make_staging(live: Path) -> Path:
     try:
         if live.is_dir():
             # Skip any half-written *.citadeltmp left in live by an interrupted promote, so a stray
-            # temp never rides along into staging (and back out again).
-            shutil.copytree(live, staging, dirs_exist_ok=True, ignore=shutil.ignore_patterns("*.citadeltmp"))
+            # temp never rides along into staging (and back out again). A wiki-history `.git`
+            # (wikigit) stays out too: _promote never syncs hidden dirs anyway, and copying a
+            # whole repository per source would only burn I/O.
+            shutil.copytree(live, staging, dirs_exist_ok=True, ignore=shutil.ignore_patterns("*.citadeltmp", ".git"))
         else:
             config.robust_mkdir(staging)
     except OSError:
@@ -1180,9 +1187,14 @@ def _promote(staging: Path, live: Path, allow_emptying: bool = False) -> None:
                 tmp.unlink()
 
     # 4. Drop directories left empty by the prune (bottom-up), but keep the live root itself.
+    #    Hidden trees are exempt, exactly like the sync/prune above (_content_files skips them):
+    #    a wiki-history `.git` legitimately holds empty dirs (a fresh repo's objects/ and refs/ —
+    #    removing them corrupts the repository), and the same goes for e.g. an `.obsidian/`.
     for dirpath, _dirs, _files in os.walk(live, topdown=False):
         d = Path(dirpath)
         if d == live:
+            continue
+        if any(part.startswith(".") for part in d.relative_to(live).parts):
             continue
         with contextlib.suppress(OSError):
             if not any(d.iterdir()):
@@ -2004,6 +2016,18 @@ def ingest(
                 f"raw source {key} was deleted from disk; reconciled its citations out of the "
                 "wiki and dropped it from the manifest"
             )
+        # The wiki-history commit comes LAST, after the log/index/failures writes above, so one
+        # commit captures the run's complete state. Best-effort by contract: the wiki is already
+        # promoted, so a git problem is a report note, never a failed run.
+        report.wiki_git = (
+            wikigit.autocommit(
+                f"citadel ingest: {len(report.processed)} processed, "
+                f"{len(report.sources_deleted)} sources removed -> "
+                f"{len(report.pages_created)} created, {len(report.pages_updated)} updated, "
+                f"{len(report.pages_deleted)} deleted (model: {model})"
+            )
+            or ""
+        )
         emit(
             "done",
             processed=len(report.processed),

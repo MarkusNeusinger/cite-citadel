@@ -108,6 +108,22 @@ $env:CITADEL_LLM_CLI = "copilot"
 | `CITADEL_REPO_DIGEST_MAX_CHARS` | `120000` | Total character budget for one repo digest. |
 | `CITADEL_REPO_PER_FILE_MAX_CHARS` | `8000` | Per-file cap inside a digest (longer files are truncated with a marker). |
 
+## Wiki history (git)
+
+After every run that changed the wiki (ingest or curate), citadel can commit the whole wiki
+directory — pages, indexes, `log.md`, the manifest — so every change is a reviewable diff and the
+wiki accumulates a long-term audit trail (much richer than `log.md`'s one-line entries: the diff
+shows exactly what changed in which page, which also makes it easy to judge the quality of a
+model's edits). Commits are best-effort by design: any git problem becomes a one-line note on the
+run report, never a failed run.
+
+| Variable | Default | What it does |
+|----------|---------|--------------|
+| `CITADEL_WIKI_GIT` | `auto` | `auto` commits only when the wiki dir is already **its own** git repository (run `git init` inside `wiki/` once to opt in). `1` additionally `git init`s the wiki dir on first use — refused (with a note) when the wiki dir sits inside another git working tree, e.g. a project checkout; `git init` it yourself to overrule. `0` never touches git. |
+| `CITADEL_WIKI_GIT_REMOTE` | (off) | Push target for the wiki-history commits: a remote NAME (e.g. `origin`) or URL (GitHub, GitLab, any git host), passed verbatim to `git push <value> HEAD` after each commit. Empty = commit locally only. A failed push is a report note, never a failed run. |
+
+`citadel doctor` reports the layer's state (mode, whether the wiki dir is a repo, the push target).
+
 ## Paths & multi-root
 
 Relative values resolve against the **workspace root** (not your shell's CWD); absolute values are

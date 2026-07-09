@@ -34,7 +34,7 @@ explicit paths and is refused without them), `curate [--dry-run] [--limit N] [--
 contradictions/fix locators — against a recomputed findings checklist), `status` (read-only
 per-source state table: ingested / failed / skipped-duplicate / ignored / pending), `doctor`
 (read-only setup health check — OK/WARN/FAIL lines for workspace / rules / agent CLI / raw roots /
-manifest / billing / a best-effort PyPI update check / workspace coherence; needs no workspace, exits 1 only on a FAIL), `serve` (MCP
+manifest / billing / wiki-git state / a best-effort PyPI update check / workspace coherence; needs no workspace, exits 1 only on a FAIL), `serve` (MCP
 stdio server), `search <query> [--tag T] [--limit N]`, `read <rel_path>` / `raw <key> [--locator L]`
 / `neighbors <rel_path>` / `index` / `sources` (CLI twins of the
 `wiki_read`/`wiki_raw`/`wiki_neighbors`/`wiki_index`/`wiki_sources` MCP tools
@@ -265,7 +265,12 @@ and legacy OLE `.ppt`/`.doc`/`.xls` via the CFBF reader + best-effort text salva
 `status.py` is the read-only per-source state view; `doctor.py` (`citadel doctor`) is the read-only
 setup health check (OK/WARN/FAIL lines over workspace resolution, the rules tree, the agent CLI on
 PATH, raw-root reachability, manifest parse + stamp, failures summary, the API-key/PDF
-advisories, and a best-effort PyPI update check naming the right upgrade command per install method). `server.py` is the FastMCP stdio server (11
+advisories, the wiki-git state, and a best-effort PyPI update check naming the right upgrade command per install method).
+`wikigit.py` is the best-effort wiki-HISTORY layer: after every run that changed the wiki (ingest or
+curate) it commits the whole wiki dir as ONE commit (and pushes to `CITADEL_WIKI_GIT_REMOTE` when
+set), so every change is a reviewable diff; `auto` (default) only acts when the wiki dir is already
+its own git repo, `CITADEL_WIKI_GIT=1` also `git init`s it on first use (refusing an embedded repo
+inside another working tree), and any git problem is a report note, never a failed run. `server.py` is the FastMCP stdio server (11
 tools — 10 read-only incl. `wiki_raw` (the cited-source reader, backed by `rawsource.py`),
 `wiki_neighbors` (a page's links-out/backlinks/cited-sources graph) and `wiki_lint`, only
 `wiki_ingest` mutates; every tool carries MCP behavior
@@ -308,7 +313,10 @@ the MCP tools as subcommands (full parity: `read`/`raw`/`neighbors`/`index`/`sou
   `desktop.ini`, `~$` locks, …; a `+` prefix extends the built-in defaults), `CITADEL_WIKI_LANG`
   (target language of all wiki prose, default `en`; verbatim quotes stay original),
   `CITADEL_PDF_MODE` (`text` | `images` — whether the agent also reads a PDF's figures),
-  `CITADEL_STYLE_PROFILES` (opt-in persona/style capture on `persons/` pages, default `0`), the
+  `CITADEL_STYLE_PROFILES` (opt-in persona/style capture on `persons/` pages, default `0`),
+  `CITADEL_WIKI_GIT` (wiki-history auto-commit after ingest/curate: `auto` acts only when the wiki
+  dir is its own git repo, `1` also `git init`s it, `0` off) + `CITADEL_WIKI_GIT_REMOTE` (optional
+  push target — remote name or URL), the
   `CITADEL_*_DIR` path overrides, `CITADEL_RAW_DIRS` (multi-root: a comma/newline-separated list of
   raw roots discovery walks; replaces the walk list when set, `CITADEL_RAW_DIR` stays the primary
   root), and `*_CLI_PATH` binary overrides.

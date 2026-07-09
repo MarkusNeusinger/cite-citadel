@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import urllib.request
 from collections import Counter
@@ -49,7 +50,7 @@ from itertools import zip_longest
 from pathlib import Path
 
 from . import __version__ as _INSTALLED_VERSION
-from . import config, failures, manifest
+from . import config, failures, manifest, wikigit
 
 
 OK = "OK"
@@ -231,6 +232,37 @@ def check_pdf_mode() -> Check:
     return Check(OK, "PDF mode", f"PDF mode {config.PDF_MODE}")
 
 
+def check_wiki_git() -> Check:
+    """Advisory line for the wiki-history layer (:mod:`citadel.wikigit`): which mode is active and
+    whether an autocommit would actually run. WARN only when the user explicitly opted in
+    (``CITADEL_WIKI_GIT=1``) but the layer cannot deliver (no git binary, or the wiki dir sits
+    inside another git working tree); the default auto-without-repo state is a plain OK note."""
+    mode = config.WIKI_GIT
+    if mode == "off":
+        return Check(OK, "wiki git", "off (CITADEL_WIKI_GIT=0) - wiki changes are not committed")
+    if shutil.which("git") is None:
+        detail = "git not found on PATH - wiki history skipped"
+        return Check(WARN if mode == "init" else OK, "wiki git", detail)
+    state = wikigit.repo_state(Path(config.WIKI_DIR))
+    remote = f" (push: {config.WIKI_GIT_REMOTE})" if config.WIKI_GIT_REMOTE else ""
+    if state == wikigit.REPO:
+        return Check(OK, "wiki git", f"wiki dir is a git repo - changes commit after each ingest/curate{remote}")
+    if state == wikigit.NESTED:
+        if mode == "init":
+            return Check(
+                WARN,
+                "wiki git",
+                "CITADEL_WIKI_GIT=1 but the wiki dir sits inside another git working tree - "
+                "init refused; `git init` it yourself to overrule",
+            )
+        return Check(OK, "wiki git", "wiki dir sits inside another git working tree - auto-commit stays off")
+    if mode == "init":
+        return Check(OK, "wiki git", f"wiki dir will be `git init`ed on the next ingest/curate{remote}")
+    return Check(
+        OK, "wiki git", "wiki dir is not a git repo - `git init` it (or set CITADEL_WIKI_GIT=1) to keep wiki history"
+    )
+
+
 PYPI_JSON_URL = "https://pypi.org/pypi/cite-citadel/json"
 
 
@@ -397,6 +429,7 @@ def run() -> DoctorReport:
             check_failures(),
             check_billing_shadow(),
             check_pdf_mode(),
+            check_wiki_git(),
             check_update(),
             check_workspace_coherence(),
         ]

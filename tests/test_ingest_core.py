@@ -29,8 +29,9 @@ def test_ingest_creates_pages(tmp_citadel, fake_agent, transformer_page):
     assert "[^s1]" in text
     assert "## Sources" in text
     assert "../../raw/notes.md" in text
-    # write_page (the re-stamp) stamps a timestamp into frontmatter.
+    # write_page (the re-stamp) stamps the provenance fields into frontmatter.
     assert "timestamp:" in text
+    assert "citadel_version:" in text
     assert "resource: raw/notes.md" in text
 
     assert "concepts/transformer.md" in report.pages_written
