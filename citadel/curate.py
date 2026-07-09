@@ -47,7 +47,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import config, failures, grammar, ingest, lint, llm, manifest, okf, store
+from . import config, failures, grammar, ingest, lint, llm, manifest, okf, store, wikigit
 from .okf import Page
 
 
@@ -138,6 +138,8 @@ class CurateReport:
     noop: list[str] = field(default_factory=list)
     failed: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
+    # The wiki-history note from wikigit.autocommit — empty when the history layer had nothing to say.
+    wiki_git: str = ""
 
     def render(self) -> str:
         lines = ["Curate report", "=============", ""]
@@ -152,6 +154,9 @@ class CurateReport:
             lines.append(f"{label}: {len(group)}")
             for page in group:
                 lines.append(f"  - {page}")
+        if self.wiki_git:
+            lines.append("")
+            lines.append(self.wiki_git)
         return "\n".join(lines)
 
 
@@ -721,6 +726,11 @@ def curate(
     failures.save(failures_dict)
     if report.applied:
         store.rebuild_indexes()
+        # One wiki-history commit for the whole run, after the log/index writes so it captures the
+        # complete state. Best-effort by contract — a git problem is a report note, never a failure.
+        report.wiki_git = (
+            wikigit.autocommit(f"citadel curate: {len(report.applied)} cluster(s) applied (model: {model})") or ""
+        )
 
     if diff:
         _write_diff_report(diff, before_map, _texts_on_disk(), report)

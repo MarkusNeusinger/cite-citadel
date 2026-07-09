@@ -39,6 +39,27 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Wiki history: auto-commit the wiki to git after every mutating run.** A new best-effort layer
+  (`citadel/wikigit.py`) commits the whole wiki directory — pages, indexes, `log.md`, the manifest —
+  as ONE commit after every ingest or curate run that changed it, so every change becomes a
+  reviewable diff and the wiki accumulates a long-term audit trail (the diff also makes it easy to
+  judge the quality of a model's edits). `CITADEL_WIKI_GIT=auto` (default) commits only when the
+  wiki dir is already its own git repository (`git init` inside `wiki/` once to opt in); `1`
+  additionally `git init`s it on first use, refusing — with a note, never an error — when the wiki
+  dir sits inside another git working tree (an embedded repo would confuse the outer checkout);
+  `0` turns the layer off. `CITADEL_WIKI_GIT_REMOTE` names an optional push target (a remote name
+  or URL — GitHub, GitLab, any git host) pushed after each commit. Everything is best-effort by
+  contract: the wiki is already promoted when the commit runs, so any git problem (no binary, no
+  identity, a rejected push) becomes a one-line note on the run report, never a failed run. A new
+  `citadel doctor` line reports the layer's state, and the per-source staging copy now excludes a
+  wiki `.git` (promote never synced hidden dirs anyway).
+- **Pages now record which cite-citadel release wrote them.** `store.write_page` stamps a
+  `citadel_version` frontmatter field alongside the existing `timestamp` on every write (authored
+  values are overwritten, so neither can go stale or be forged), giving each page visible
+  provenance: WHEN it last changed and WITH WHAT version. The refresh path for pages built by an
+  older rulebook stays `citadel curate --stale-rules`, which re-runs pages whose sources were
+  ingested under an older effective-rules hash — re-reading the cited raw files as part of the
+  cluster.
 - **`citadel doctor` now checks workspace coherence.** A new check catches the silent
   misconfiguration where `CITADEL_WIKI_DIR` and `CITADEL_RAW_DIR` sit under different parents (e.g.
   the wiki points into a corpus but the raw root is left at the default): every `../../raw/x`

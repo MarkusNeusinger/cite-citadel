@@ -578,6 +578,34 @@ DEDUP_BY_BASENAME: bool = os.environ.get("CITADEL_DEDUP_BY_BASENAME", "1").strip
 # to disable) for a very large one.
 MAX_SOURCE_CHARS: int = int(os.environ.get("CITADEL_MAX_SOURCE_CHARS", "300000"))
 
+# Wiki history (git). After every run that CHANGED the wiki (ingest or curate), citadel can commit
+# the whole wiki directory so every change is a reviewable diff — the long-term audit trail
+# log.md cannot give you. Modes (CITADEL_WIKI_GIT):
+#   auto (default) — commit only when the wiki directory is already ITS OWN git repository (holds a
+#                    .git); otherwise do nothing, silently. Citadel never creates repositories
+#                    behind the user's back — `git init` the wiki dir (or set the knob below) to
+#                    opt in.
+#   1/init         — additionally `git init` the wiki dir on first use when it is not a repo yet.
+#                    Refused (with a warning, never an error) when the wiki dir sits INSIDE another
+#                    git working tree — an embedded repo would confuse the outer checkout (the dev
+#                    workspace, a corpus wiki committed to this repo, a wiki inside a project
+#                    repo). `git init` it yourself to overrule.
+#   0/off          — never touch git.
+# Commits are best-effort: any git failure becomes a one-line note on the report, never a failed
+# run — the wiki itself is already promoted by then.
+_WIKI_GIT_RAW = os.environ.get("CITADEL_WIKI_GIT", "").strip().lower()
+WIKI_GIT: str = (
+    "off"
+    if _WIKI_GIT_RAW in ("0", "false", "no", "off")
+    else "init"
+    if _WIKI_GIT_RAW in ("1", "true", "yes", "on", "init")
+    else "auto"
+)
+# Optional push target for the wiki-history commits: a remote NAME (e.g. `origin`) or URL (GitHub,
+# GitLab, any git host) passed verbatim to `git push <value> HEAD` after each commit. Empty
+# (default) = commit locally only. A failed push is a report note, never a failed run.
+WIKI_GIT_REMOTE: str = os.environ.get("CITADEL_WIKI_GIT_REMOTE", "").strip()
+
 # Curate page-length thresholds, measured in BODY lines. `citadel lint`
 # only WARNS at the soft threshold; `citadel curate` ACTS (plans a topic split, every fact keeping
 # its citation) at the hard one. Deliberately module constants, not env knobs — one KISS default the

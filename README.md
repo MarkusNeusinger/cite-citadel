@@ -100,6 +100,14 @@ This renders on GitHub, is trivially greppable, and needs zero custom tooling. A
 cited is dropped, never invented; conflicting sources produce a `> [!CONTRADICTION]` callout. The
 `wiki/` folder also opens **as-is** as an [Obsidian](https://obsidian.md) vault.
 
+Every page's frontmatter records **when it last changed and which cite-citadel release wrote it**
+(`timestamp` + `citadel_version`, both stamped automatically), and `citadel curate --stale-rules`
+refreshes pages whose sources were ingested under an older rulebook. For a full audit trail, `git
+init` the `wiki/` folder once (or set `CITADEL_WIKI_GIT=1`): citadel then **auto-commits the wiki
+after every ingest/curate run** — each change a reviewable diff — and can push to a remote
+(GitHub/GitLab) via `CITADEL_WIKI_GIT_REMOTE`. See
+[`docs/configuration.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/configuration.md) § Wiki history.
+
 ## Test corpora
 
 Five synthetic corpora live under [`corpora/`](https://github.com/MarkusNeusinger/cite-citadel/tree/main/corpora), each ingestible on its own or all
