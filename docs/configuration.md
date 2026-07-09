@@ -115,7 +115,8 @@ directory — pages, indexes, `log.md`, the manifest — so every change is a re
 wiki accumulates a long-term audit trail (much richer than `log.md`'s one-line entries: the diff
 shows exactly what changed in which page, which also makes it easy to judge the quality of a
 model's edits). Commits are best-effort by design: any git problem becomes a one-line note on the
-run report, never a failed run.
+run report, never a failed run. They are also always **unsigned** (`--no-gpg-sign`) — a
+`commit.gpgsign=true` machine would otherwise stall every run on an interactive pinentry.
 
 | Variable | Default | What it does |
 |----------|---------|--------------|

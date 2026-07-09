@@ -144,6 +144,24 @@ def test_commit_identity_fallback_fills_only_the_missing_half(tmp_citadel, wiki_
     assert _run_git(tmp_citadel.wiki, "log", "-1", "--format=%ae") == "me@example.com"  # configured email kept
 
 
+@needs_git
+def test_commit_is_never_gpg_signed(tmp_citadel, wiki_git_mode):
+    """A `commit.gpgsign=true` repo must still commit instantly and unsigned: without an explicit
+    --no-gpg-sign, an automated run would stall on an interactive pinentry (or fail outright when
+    no signing key exists — as in this test environment)."""
+    wiki_git_mode("auto")
+    _run_git(tmp_citadel.wiki, "init", "-q")
+    _run_git(tmp_citadel.wiki, "config", "user.email", "t@t.t")
+    _run_git(tmp_citadel.wiki, "config", "user.name", "t")
+    _run_git(tmp_citadel.wiki, "config", "commit.gpgsign", "true")
+    (tmp_citadel.wiki / "page.md").write_text("x\n", encoding="utf-8")
+
+    note = wikigit.autocommit("msg")
+
+    assert note is not None and note.startswith("wiki git: committed")
+    assert _run_git(tmp_citadel.wiki, "log", "-1", "--format=%G?") == "N"  # no signature
+
+
 # --- init mode: first-use `git init`, embedded-repo refusal -----------------------------------
 
 

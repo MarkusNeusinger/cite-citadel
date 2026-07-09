@@ -17,6 +17,9 @@ Design rules (all load-bearing):
   refused (an embedded repo would confuse the outer checkout: the dev workspace, a corpus wiki
   committed to this repo, a wiki inside a project repo). ``git init`` it yourself to overrule.
 - **Bounded git calls** (like :mod:`citadel.repo`): a hung git must never hang an ingest run.
+  The same contract forces ``--no-gpg-sign`` on the commit: a ``commit.gpgsign=true`` machine
+  would otherwise stall every run on an interactive pinentry. These are automated audit commits —
+  sign by hand if a signed history matters.
 
 Config is read at call time (``config.WIKI_GIT`` / ``config.WIKI_GIT_REMOTE`` / ``config.WIKI_DIR``)
 so tests monkeypatch it like everything else.
@@ -152,7 +155,10 @@ def autocommit(message: str) -> str | None:
     if not res[1]:
         return None  # clean tree — this run changed nothing git doesn't already have
 
-    res = _git(wiki_dir, *_identity_args(wiki_dir), "commit", "-q", "-m", message)
+    # --no-gpg-sign: these are automated audit commits, and a `commit.gpgsign=true` machine would
+    # otherwise hang every run on an interactive pinentry until the timeout. Deliberate — the
+    # never-stall contract outranks a signing preference on a bot commit (sign by hand if needed).
+    res = _git(wiki_dir, *_identity_args(wiki_dir), "commit", "-q", "--no-gpg-sign", "-m", message)
     if res is None or res[0] != 0:
         return f"wiki git: commit failed ({_brief(res[1]) if res else 'git error'})"
     sha = _git(wiki_dir, "rev-parse", "--short", "HEAD")
