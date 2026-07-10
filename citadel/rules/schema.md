@@ -112,9 +112,17 @@ The raw files are the primary source of truth:
   raw fact.
 - **Counterfactuals are preserved as stated.** When a source claims something you believe is
   wrong, the wiki records what the *source* says, cited to it — never "correct" a sourced fact
-  from model world knowledge. You may add a clearly separated `[^llmN]` note that the claim
-  conflicts with your knowledge (or flag a source-vs-source clash per *Contradictions*), but the
+  from model world knowledge (a source-vs-source clash is flagged per *Contradictions*). The
   sourced statement itself stays as stated.
+- **Quarantine is MANDATORY for two claim classes.** When a claim (a) conflicts with
+  well-established world knowledge, or (b) is a self-promotional / marketing claim the subject
+  makes about itself, you MUST write it **attributed to the source's voice** ("the brochure
+  states …") AND add a `[^llmN]` note recording the conflict. Never let such a claim become the
+  page's own unattributed voice — not in the body, not in the frontmatter `description`, not in
+  the page **title**, not in a `## See also` gloss.
+  - WRONG: a page titled *Vitamin C as a cold cure* — "Vitamin C cures the common cold.[^s1]"
+  - RIGHT: "The brochure claims vitamin C cures the common cold.[^s1] This conflicts with
+    established medical consensus.[^llm1]"
 - You **may** add a fact from your own knowledge **only** when all three hold: the fact is
   **essential** to understanding the topic, you are **highly confident** it is correct, and it
   stays **strictly on topic** (no padding, no tangents). When in doubt, leave it out.
@@ -158,10 +166,19 @@ pins where in the source the cited fact lives:
 - **Forms:** `p. 12` / `pp. 3-5` (a paginated source), `line 40` / `lines 40-52` (a text file),
   `§ Heading name` (a heading in the source, copied verbatim).
 - **Required** for every citation into a **PDF or Office** source, and for citations into a
-  **text source beyond ~200 lines**. Optional (but welcome) elsewhere.
+  **text source over 200 lines**. Everywhere else, add one whenever the fact's place is
+  determinable — a bare file citation with no locator is a last resort, not a default.
+- **Self-verify every locator before writing it.** A `§ Heading` locator must copy a heading that
+  LITERALLY exists in the raw file — never a paraphrase, a compound "A and B", a parenthetical
+  "(the X section)", or a date/diary line that is not a heading. A `lines A-B` range must lie
+  within the file's real length — check the line count. Prefer a `lines` range over inventing a
+  heading. If your locator does not resolve against the source, fix it or drop to a plain file
+  citation.
 - One definition = one location. Facts from different places in the same file get **separate
   markers**, each defined with its own locator (`[^s2]` and `[^s3]` above both cite
-  `report.pdf`).
+  `report.pdf`). Never stretch one whole-file range over facts from many places:
+  - WRONG: one `[^s2]`, `lines 1-114`, reused behind facts from the top and the bottom of the file.
+  - RIGHT: `[^s2]`, `lines 12-18`, for the first fact; `[^s3]`, `lines 90-96`, for the second.
 - A locator names a place in the **current** raw file; raw files are immutable, so locators are
   stable — and when a source *does* change, the reconcile task re-checks them.
 - Reserved for later: appending a short verbatim quote after the locator
@@ -189,7 +206,16 @@ If you are not confident, leave the contradiction flagged without taking sides �
 Every marker used — the `[^sN]` sources and the `[^llmN]` resolution — must be defined in
 `## Sources`. (Multiple sources that *agree* on a fact are simply cited together behind it:
 `... fact.[^s1][^s2]`. Two *dated* values of a changeable attribute are usually an evolution, not
-a contradiction — see `genres/meeting-minutes.md`.)
+a contradiction — keep BOTH, the superseded value as a dated `## Change Log` line, never dropped:
+see `genres/meeting-minutes.md` and `tasks/reconcile.md`.)
+
+**Cross-source sweep — run it before finalizing a page.** Compare every quantitative or
+categorical claim you are writing against the value stated for the SAME attribute elsewhere — in
+the other raw sources and on pages already in the wiki (search for the attribute; never rely on
+memory). A brand's or house's claim about itself (a temperature, a percentage, a
+"lowest/best/only" superlative) that diverges from the corpus's reference facts IS a
+contradiction even though the two sources never cite each other. Co-locate both sides in ONE
+callout on the page a reader would land on — never one side on each of two pages.
 
 ## Links — the knowledge graph
 

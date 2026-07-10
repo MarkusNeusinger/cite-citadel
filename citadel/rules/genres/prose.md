@@ -11,5 +11,9 @@ article, blog post, book chapter, report narrative, or documentation page.
   about the study — cite it as such. "I believe X will fail" is the author's position — write it
   attributed per `schema.md` § Opinions & style ("X argues …"[^sN]), never as unattributed world
   fact.
+- **Marketing / promotional prose is quarantined.** A bulletin's or article's claim that
+  conflicts with well-established knowledge, or promotes its own subject, is written attributed +
+  `[^llmN]`-flagged (mandatory — `schema.md` § Grounding) and compared against the same attribute
+  elsewhere on the wiki (`schema.md` § Contradictions, cross-source sweep).
 - Locators are required here for longer prose — see `schema.md` § Locators for the forms and
-  the length threshold.
+  the length threshold — and every locator is self-verified against the file before you write it.
