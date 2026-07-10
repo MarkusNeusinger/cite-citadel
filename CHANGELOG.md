@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A malformed env knob no longer crashes every command.** A numeric `CITADEL_*` setting whose
+  value is blank or not a number (e.g. `CITADEL_LLM_TIMEOUT=20 min`) used to raise at import and
+  take down every subcommand; it now falls back to the knob's default and `citadel doctor` gained a
+  config check that surfaces exactly which values didn't parse.
+- **`citadel check` / `wiki_validate` — a nonexistent page path is now an error.** Naming a page
+  that doesn't exist (a typo'd path) reported "OK — no validation issues." with exit 0; both now
+  answer `error: no such page: …` (exit 1 on the CLI), so a mistyped CI invocation can't pass
+  false-green.
 - **`wiki_raw` / `citadel raw` — preserve heading casing in the "not a heading" hint.** When a
   `§ Heading` locator names a heading the source lacks, the error lists the available headings using
   the source's ORIGINAL casing and document order (e.g. `§ The One Rule About Temperature`) instead of
@@ -39,6 +47,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **One exclusive run lock per workspace.** Ingest and curate now take a run lock (a
+  `.citadel_run.lock` sibling of the wiki dir; stale locks from a dead process are reclaimed
+  automatically), so a second concurrent mutating run fails loud instead of silently destroying the
+  first one's staging and promotes. Manifest and failures-catalog saves are now atomic
+  (temp-sibling + `os.replace`), so a crash mid-write can never leave a torn file behind.
+- **Docs: `docs/maintenance.md` — maintain & customize.** A new user page covering `citadel curate`
+  (what the second lifecycle does, when to run it, all flags including the previously undocumented
+  `--retry`), `citadel status`, and the rules-customization story (`rules list|show|eject`, the
+  workspace `rules/` overlay, additive `rules/local.md` house rules), linked from the docs hub and
+  the README. Alongside it, `.github/copilot-instructions.md` is re-synced with `CLAUDE.md` and
+  both agent docs pick up `citadel define` and `curate --retry`.
 - **Wiki history: auto-commit the wiki to git after every mutating run.** A new best-effort layer
   (`citadel/wikigit.py`) commits the whole wiki directory — pages, indexes, `log.md`, the manifest —
   as ONE commit after every ingest or curate run that changed it, so every change becomes a
@@ -78,8 +97,8 @@ All notable changes to this project are documented here. The format is based on
   Deliberately no self-executing `citadel --update` — citadel cannot know which package manager
   owns it, and a running `citadel.exe` cannot replace itself on Windows. Stdlib-only (`urllib` +
   a naive dotted-version compare that never nags on a pre-release it cannot rank).
-- **`wiki_define` / `citadel define` — glossary lookup.** An eleventh read-only MCP tool (+ its CLI
-  twin) answers a short "what does X stand for / mean?" as a *lookup* rather than full-text
+- **`wiki_define` / `citadel define` — glossary lookup.** An eleventh MCP tool — the tenth
+  read-only — plus its CLI twin answers a short "what does X stand for / mean?" as a *lookup* rather than full-text
   retrieval: it surfaces a `type: Abbreviation` glossary hit (matching the short form, expansion,
   title, or an alias, rendered `SHORT — Expansion`) first, then an exact-title/alias page of any
   type, then falls back to the closest `wiki_search` hits when nothing matches exactly. Backed by the
@@ -314,7 +333,7 @@ All notable changes to this project are documented here. The format is based on
   ingest".
 - `lint` and `check` agree on citation/link grammar by construction (shared `grammar.py`).
 
-## [0.1.0] — 2026-07-02
+## [0.1.0] - 2026-07-02
 
 First public, pip-installable release (`pip install cite-citadel`), and the PyPI name reservation.
 

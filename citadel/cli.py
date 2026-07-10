@@ -4,7 +4,7 @@
 
     citadel init [DIR]           # scaffold a workspace (citadel.toml marker, .env, raw/, wiki/)
     citadel ingest [paths ...]   # fold raw/ (or explicit paths) into the wiki
-    citadel curate [--dry-run] [--limit N] [--stale-rules] [--diff PATH]  # improve existing pages
+    citadel curate [--dry-run] [--limit N] [--stale-rules] [--diff PATH] [--retry]  # improve existing pages
     citadel status               # per-source corpus state (ingested/failed/skipped/ignored/pending)
     citadel doctor               # read-only environment/setup health check (OK/WARN/FAIL lines)
     citadel serve                # run the MCP stdio server
@@ -137,7 +137,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="Write a per-page change report (unified diffs) for this run to PATH.",
     )
-    p_curate.add_argument("--retry", action="store_true", help="include attempt-capped clusters in this run")
+    p_curate.add_argument("--retry", action="store_true", help="Include attempt-capped clusters in this run.")
     p_curate.set_defaults(func=cmd_curate)
 
     p_status = sub.add_parser(

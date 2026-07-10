@@ -11,6 +11,8 @@ quickstart; come here when you know what you want to do.
 | Configure the knobs / run a local model | [configuration.md](configuration.md) |
 | Keep the wiki's history in git (auto-commit after ingest, push to GitHub/GitLab) | [configuration.md § Wiki history](configuration.md#wiki-history-git) |
 | Hook up an AI client (Claude Desktop, Claude Code, …) over MCP | [mcp.md](mcp.md) |
+| Improve/clean up existing pages | [maintenance.md § Curate](maintenance.md#curate) |
+| Change how the wiki is built | [maintenance.md § Rules](maintenance.md#rules) |
 | Fix something that's broken | [troubleshooting.md](troubleshooting.md) |
 | Understand the OKF page format | [okf-reference.md](okf-reference.md) |
 | Read the founding idea | [karpathy-llm-wiki.md](karpathy-llm-wiki.md) |
@@ -23,6 +25,7 @@ quickstart; come here when you know what you want to do.
 docs/
 ├── index.md               ← you are here
 ├── configuration.md       every CITADEL_* env var + local-model (Ollama) recipes
+├── maintenance.md         curate, status, and customizing the rules (eject / local.md)
 ├── mcp.md                 wire the MCP server into an AI client
 ├── troubleshooting.md     symptom → cause → fix; leads with `citadel doctor`
 ├── okf-reference.md       the Open Knowledge Format the wiki pages use
