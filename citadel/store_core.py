@@ -226,17 +226,20 @@ def _normalize_rel_path(rel_path: str) -> str:
 
 
 def read_page_text(rel_path: str) -> str:
-    """The full VERBATIM text of one wiki page — the file's bytes as UTF-8, never re-serialized
-    (re-dumping through ``okf.dump`` gave a frontmatter-less generated file like ``index.md`` a
-    spurious empty ``{}`` frontmatter block; canonical pages round-trip identically either way).
-    Raises FileNotFoundError (no such page), okf.OKFError (unsafe/traversal path), or an
-    OS/decoding error (an undecodable file) — the callers translate those into a CLI exit code or
-    an MCP error string."""
+    """The full text of one wiki page as written on disk — never re-serialized (re-dumping
+    through ``okf.dump`` gave a frontmatter-less generated file like ``index.md`` a spurious
+    empty ``{}`` frontmatter block; canonical pages round-trip identically either way). Two
+    encoding-artifact normalizations only, so the page's CONTENT is untouched: a leading UTF-8
+    BOM is stripped (``utf-8-sig``, mirroring ``okf.parse`` — a BOM'd page must not leak a
+    ``\\ufeff`` before its frontmatter into MCP/CLI output) and text mode applies universal
+    newlines. Raises FileNotFoundError (no such page), okf.OKFError (unsafe/traversal path), or
+    an OS/decoding error (an undecodable file) — the callers translate those into a CLI exit
+    code or an MCP error string."""
     rel_path = _normalize_rel_path(rel_path)
     target = okf.safe_join(config.WIKI_DIR, rel_path)
     if not target.is_file():
         raise FileNotFoundError(rel_path)
-    return target.read_text(encoding="utf-8")
+    return target.read_text(encoding="utf-8-sig")
 
 
 def neighbors_text(rel_path: str) -> str:

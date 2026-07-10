@@ -343,6 +343,17 @@ def test_read_generated_index_is_verbatim(seeded_wiki):
     assert "{}" not in out
 
 
+def test_read_strips_a_leading_bom(seeded_wiki):
+    """A BOM'd page (common on Windows) must not leak a \\ufeff before its frontmatter into
+    MCP/CLI output — read_page_text mirrors okf.parse's encoding-artifact stripping."""
+    path = seeded_wiki.wiki / "misc" / "bommed.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"\xef\xbb\xbf---\ntype: Note\ntitle: Bommed\n---\n\nBody.\n")
+    out = server.wiki_read("misc/bommed.md")
+    assert not out.startswith("\ufeff")
+    assert out.startswith("---\n")
+
+
 def test_read_undecodable_file_returns_error_string(seeded_wiki):
     """NEVER-RAISES contract: a non-UTF-8 file inside the wiki (e.g. dropped there by hand)
     surfaces as an error string, not a UnicodeDecodeError."""
