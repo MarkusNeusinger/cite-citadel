@@ -221,7 +221,10 @@ missed — do not hard-fail a single soft miss; ingest is non-deterministic). So
 **findability** bucket: per `## Retrieval battery` row, the rank band (`rank 1` / `top-3` / `top-8` /
 `index-or-tags only` / `unfindable`), `reads`, and the tier that found it. The exact hard/soft split is
 the **Scoring** section at the bottom of each corpus's ground-truth — read it and use it verbatim (it
-is the single authority for that corpus's hard/soft split; do not restate it here).
+is the single authority for that corpus's hard/soft split; do not restate it here). A ground-truth may
+also commit `st-*` **stretch guarantees** (model-discriminating; beverages does): report those as
+their own `stretch N/M` score line with the measured numbers — they never gate the pass; they exist so
+a strong and a weak model can't tie at the top (bench-model grades on them).
 
 **The grade is not just pass/fail — its misses are an actionable improvement backlog.** Route every
 miss into one of two lanes so the results feed the next optimization:
