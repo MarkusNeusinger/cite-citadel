@@ -85,6 +85,21 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Five new genre briefs** close the biggest coverage gaps found by the 2026-07 rules audit —
+  each a one-file rules change the agent applies by content judgment, no code involved:
+  `genres/publication.md` (scientific/academic papers: hedged findings stay hedged, a paper's
+  own findings vs claims it cites, methods/sample caveats travel with the claim, abstract-vs-body
+  gaps noted, authors/venue/year captured), `genres/contract.md` (contracts/legal/financial:
+  amounts/dates/parties/defined terms verbatim, "shall" never paraphrased into "may",
+  effective/termination dates as dated facts, amendments supersede with a Change-Log trace, no
+  legal-advice voice), `genres/social.md` (posts and threads: author+date+platform attribution,
+  thread order, engagement numbers as dated snapshots, irony is not fact, quote-posts carry two
+  voices, promotional accounts quarantined), `genres/transcript.md` (multi-speaker transcripts
+  incl. SRT/VTT: per-speaker attribution, unlabeled speakers stay roles, cleanup never adds
+  precision, host reads/ads skipped, line-range locators), and `genres/cv.md` (CVs/applications:
+  every claim self-reported and attributed, self-assessments are opinions, claims vs
+  corroborating evidence, a newer CV supersedes). All five are enumerated automatically by the
+  existing `genres/*.md` discovery and indexed in `citadel/rules/README.md`.
 - **One exclusive run lock per workspace.** Ingest and curate now take a run lock (a
   `.citadel_run.lock` sibling of the wiki dir; stale locks from a dead process are reclaimed
   automatically), so a second concurrent mutating run fails loud instead of silently destroying the
@@ -165,6 +180,13 @@ All notable changes to this project are documented here. The format is based on
   long-form explanations live in `docs/configuration.md`, which stays the full reference for all
   knobs. No knob was added or removed and every default is unchanged; existing `.env` files are
   never touched (init never overwrites one).
+- **Two `schema.md` rule tightenings from the small-model hardening gate.** § Locators now forbids
+  compound locator strings outright — a `§` locator names exactly ONE heading, never several joined
+  with commas or "and"; a fact drawn from several passages gets several markers or one real `lines`
+  range (compound headings were the remaining non-resolving locator class on cheap models). And the
+  mandatory quarantine rule gains a self-check bullet on its banned-surfaces list: re-read the
+  frontmatter `description` — it is the wiki's own voice, so it must not assert an attributed claim
+  as fact even when the body is correctly attributed.
 - **Viewer search + reading UX (final viewer batch).** The offline HTML viewer's full-text search is
   now **tokenized**: every whitespace-separated term must match (AND) across title/tags/path/body
   (and source bodies), fixing a real miss where a two-word query like `adenosine blocking` returned
