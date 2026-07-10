@@ -47,7 +47,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import config, failures, grammar, ingest, lint, llm, manifest, okf, store, wikigit
+from . import config, failures, grammar, ingest, lint, llm, manifest, okf, runlock, store, wikigit
 from .okf import Page
 
 
@@ -680,60 +680,68 @@ def curate(
         emit("plan", clusters=len(plan.items))
         return report
 
-    pages_by_path = {p.rel_path: p for p in pages}
-    before_map = _texts_for(pages) if diff else {}
-    emit("start", clusters=len(plan.items))
-    for page_rel in plan.skipped:
-        emit("cluster_skipped", page=page_rel)
+    # ONE mutating run per workspace, shared with ingest: the staging machinery, promote, and the
+    # failures save are all destructive under concurrency (see runlock's module docstring). The
+    # dry-run path above stays lock-free — it is read-only by contract.
+    with runlock.hold("curate"):
+        ingest._sweep_stale_staging(config.WIKI_DIR)
+        pages_by_path = {p.rel_path: p for p in pages}
+        before_map = _texts_for(pages) if diff else {}
+        emit("start", clusters=len(plan.items))
+        for page_rel in plan.skipped:
+            emit("cluster_skipped", page=page_rel)
 
-    with _curate_model_active():
-        model = config.ingest_model_label()
-        for index, item in enumerate(plan.items, 1):
-            page_rel = item.page
-            page = pages_by_path.get(page_rel)
-            if page is None:  # vanished since the plan was computed (nothing to curate)
-                continue
-            emit("cluster_start", index=index, total=len(plan.items), page=page_rel)
-            read_path, tmpdir = _write_findings(item, page, pages)
-            try:
-                session = [lambda pr=page_rel, rp=read_path: llm.run_ingest_session(pr, kind="curate", read_path=rp)]
-                outcome = ingest._run_agent_sessions(session, page_rel)
-            finally:
-                shutil.rmtree(tmpdir, ignore_errors=True)
+        with _curate_model_active():
+            model = config.ingest_model_label()
+            for index, item in enumerate(plan.items, 1):
+                runlock.heartbeat()
+                page_rel = item.page
+                page = pages_by_path.get(page_rel)
+                if page is None:  # vanished since the plan was computed (nothing to curate)
+                    continue
+                emit("cluster_start", index=index, total=len(plan.items), page=page_rel)
+                read_path, tmpdir = _write_findings(item, page, pages)
+                try:
+                    session = [
+                        lambda pr=page_rel, rp=read_path: llm.run_ingest_session(pr, kind="curate", read_path=rp)
+                    ]
+                    outcome = ingest._run_agent_sessions(session, page_rel)
+                finally:
+                    shutil.rmtree(tmpdir, ignore_errors=True)
 
-            if not outcome.ok:
-                report.failed.append(page_rel)
-                _record_cluster_failure(failures_dict, page_rel, outcome, model)
-                emit("cluster_failed", index=index, total=len(plan.items), page=page_rel)
-                continue
+                if not outcome.ok:
+                    report.failed.append(page_rel)
+                    _record_cluster_failure(failures_dict, page_rel, outcome, model)
+                    emit("cluster_failed", index=index, total=len(plan.items), page=page_rel)
+                    continue
 
-            # A clean session: clear any prior stuck record. The staging diff is the sole arbiter of
-            # applied vs NOOP — a non-empty promoted diff is a real edit, an empty one is a NOOP.
-            failures.clear(failures_dict, page_rel)
-            if outcome.created or outcome.updated or outcome.deleted:
-                report.applied.append(page_rel)
-                store.append_log(
-                    f"curate {page_rel}: {len(outcome.created)} created, {len(outcome.updated)} updated, "
-                    f"{len(outcome.deleted)} deleted (model: {model})"
-                )
-                emit("cluster_applied", index=index, total=len(plan.items), page=page_rel)
-            else:
-                report.noop.append(page_rel)
-                emit("cluster_noop", index=index, total=len(plan.items), page=page_rel)
+                # A clean session: clear any prior stuck record. The staging diff is the sole arbiter of
+                # applied vs NOOP — a non-empty promoted diff is a real edit, an empty one is a NOOP.
+                failures.clear(failures_dict, page_rel)
+                if outcome.created or outcome.updated or outcome.deleted:
+                    report.applied.append(page_rel)
+                    store.append_log(
+                        f"curate {page_rel}: {len(outcome.created)} created, {len(outcome.updated)} updated, "
+                        f"{len(outcome.deleted)} deleted (model: {model})"
+                    )
+                    emit("cluster_applied", index=index, total=len(plan.items), page=page_rel)
+                else:
+                    report.noop.append(page_rel)
+                    emit("cluster_noop", index=index, total=len(plan.items), page=page_rel)
 
-    # Persist the failures catalog (attempt counters / cleared records) regardless of outcome, then —
-    # only when the wiki actually changed — apply the deterministic index rebuild (the offline fix).
-    failures.save(failures_dict)
-    if report.applied:
-        store.rebuild_indexes()
-        # One wiki-history commit for the whole run, after the log/index writes so it captures the
-        # complete state. Best-effort by contract — a git problem is a report note, never a failure.
-        report.wiki_git = (
-            wikigit.autocommit(f"citadel curate: {len(report.applied)} cluster(s) applied (model: {model})") or ""
-        )
+        # Persist the failures catalog (attempt counters / cleared records) regardless of outcome, then —
+        # only when the wiki actually changed — apply the deterministic index rebuild (the offline fix).
+        failures.save(failures_dict)
+        if report.applied:
+            store.rebuild_indexes()
+            # One wiki-history commit for the whole run, after the log/index writes so it captures the
+            # complete state. Best-effort by contract — a git problem is a report note, never a failure.
+            report.wiki_git = (
+                wikigit.autocommit(f"citadel curate: {len(report.applied)} cluster(s) applied (model: {model})") or ""
+            )
 
-    if diff:
-        _write_diff_report(diff, before_map, _texts_on_disk(), report)
+        if diff:
+            _write_diff_report(diff, before_map, _texts_on_disk(), report)
 
     emit("done", applied=len(report.applied), noop=len(report.noop), failed=len(report.failed))
     return report

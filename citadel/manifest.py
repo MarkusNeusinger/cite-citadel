@@ -391,7 +391,7 @@ def save(manifest: dict[str, Entry]) -> None:
     config.robust_mkdir(path.parent)
     data = {"meta": {"format": MANIFEST_FORMAT, "workspace": _workspace_stamp()}, "sources": manifest}
     text = json.dumps(data, sort_keys=True, indent=2) + "\n"
-    path.write_text(text, encoding="utf-8")
+    config.atomic_write_text(path, text)
 
 
 def mark_done(

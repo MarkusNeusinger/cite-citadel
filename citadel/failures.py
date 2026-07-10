@@ -65,7 +65,7 @@ def save(failures: dict[str, dict]) -> None:
             pass
         return
     config.robust_mkdir(path.parent)
-    path.write_text(json.dumps(failures, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    config.atomic_write_text(path, json.dumps(failures, sort_keys=True, indent=2) + "\n")
 
 
 def reason_for(detail: str) -> str:

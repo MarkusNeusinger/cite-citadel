@@ -31,6 +31,7 @@ NOTE: other modules reference ``config.WIKI_DIR`` / ``config.INGEST_MODEL`` /
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import time
@@ -366,6 +367,31 @@ def robust_mkdir(path: Path | str, attempts: int = 5) -> None:
             if attempt == attempts - 1:
                 raise
             time.sleep(0.2 * (attempt + 1))
+
+
+def atomic_write_text(path: Path | str, text: str, attempts: int = 4) -> None:
+    """Write ``text`` to ``path`` atomically: a same-directory temp sibling + ``os.replace``, so a
+    concurrent reader never sees a torn file and a crash mid-write leaves the previous version
+    intact (the manifest and failures catalog are last-write-wins WHOLE files — a partial write
+    would silently un-record completed sources). The temp carries the ``.citadeltmp`` suffix the
+    staging copy already skips, and the replace retries briefly to ride out the transient sharing
+    violations SMB shares and AV scanners cause on Windows (the ``_robust_*`` pattern)."""
+    p = Path(path)
+    tmp = p.with_name(f"{p.name}.{os.getpid()}.citadeltmp")
+    tmp.write_text(text, encoding="utf-8")
+    try:
+        for attempt in range(attempts):
+            try:
+                os.replace(tmp, p)
+                return
+            except OSError:
+                if attempt == attempts - 1:
+                    raise
+                time.sleep(0.2 * (attempt + 1))
+    except OSError:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+        raise
 
 
 # The rules layer the agentic CLI reads (by path) each run — a TREE of markdown files packaged

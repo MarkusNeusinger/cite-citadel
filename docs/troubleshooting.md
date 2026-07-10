@@ -6,6 +6,14 @@ value didn't parse silently falls back to its default — doctor is where that b
 agent CLI on PATH, raw-root reachability, the manifest, and the API-key/PDF advisories — it needs
 no workspace and exits non-zero only on a FAIL. Most problems below show up there first.
 
+### "another citadel run is already running on this workspace"
+
+Ingest and curate take one exclusive run lock per workspace (a `.citadel_run.lock` file next to
+the wiki directory), because two concurrent runs would silently destroy each other's work. Wait
+for the other run to finish — or, if it crashed hard, the lock frees itself (a dead process or a
+stale lock is reclaimed automatically on the next run); deleting the named lockfile by hand is
+always safe once you are sure no run is alive.
+
 ### The agent CLI isn't installed or logged in
 
 Ingest shells out to a coding-agent CLI *you* provide (`claude` / `copilot` / `gemini`) — there is

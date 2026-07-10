@@ -190,7 +190,12 @@ it is itself a workspace.
   vanished source's stale provenance before any pending session touches a page that still cites it
   (else that pre-existing bad citation would fail the pending session's validation and roll it
   back). This all-or-nothing + network-share-hardened machinery (`_robust_*`, `robust_mkdir`) is
-  load-bearing — don't simplify it away.
+  load-bearing — don't simplify it away. **One mutating run per workspace**: ingest and curate take
+  an exclusive run lock (`runlock.py`, a dotfile sibling of the wiki; stale locks reclaimed via
+  dead-pid/mtime, refreshed per source) so a second concurrent run fails loud instead of silently
+  destroying the first one's staging/promotes; manifest + failures saves are atomic
+  (`config.atomic_write_text`, temp-sibling + `os.replace`), and the stale-staging sweep runs once
+  at run start under the lock, never per source.
 
 **`llm.py` is the ONLY place that talks to an LLM**, and it does so by shelling out to a CLI in
 agentic mode (`cwd` = workspace root, autonomous file tools). The prompt is **paths-only** — it references
