@@ -123,9 +123,11 @@ The raw files are the primary source of truth:
   - WRONG: a page titled *Vitamin C as a cold cure* — "Vitamin C cures the common cold.[^s1]"
   - RIGHT: "The brochure claims vitamin C cures the common cold.[^s1] This conflicts with
     established medical consensus.[^llm1]"
-- You **may** add a fact from your own knowledge **only** when all three hold: the fact is
-  **essential** to understanding the topic, you are **highly confident** it is correct, and it
-  stays **strictly on topic** (no padding, no tangents). When in doubt, leave it out.
+- Beyond the mandatory quarantine notes above (which are always allowed — they are the one
+  required use of your own knowledge), you **may** add a fact from your own knowledge **only**
+  when all three hold: the fact is **essential** to understanding the topic, you are **highly
+  confident** it is correct, and it stays **strictly on topic** (no padding, no tangents). When
+  in doubt, leave it out.
 - A raw-derived claim you cannot tie to a raw file: **drop it.** Never invent provenance or
   disguise a model-supplied fact as a raw citation — label it `[^llmN]`.
 
