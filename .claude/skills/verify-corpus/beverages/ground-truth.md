@@ -267,6 +267,26 @@ a hard floor.
 | `rb-tds` | what does TDS stand for in coffee brewing | the expansion **Total Dissolved Solids** is carried (inline and/or a `type: Abbreviation` page) so lint does not flag TDS undefined →§H | rank≤4, ≤2 reads |
 | `rb-goldencup` | SCA golden cup extraction strength and brew temperature target | extraction **18–22 %**, strength **1.15–1.35 % TDS**, brew temp ~**93 °C** (90.5–96); the true SCA values, cited to `brewing-science-notes.md` →§I | rank≤3, ≤2 reads |
 
+## Stretch guarantees (model-discriminating) — separate tier, NEVER a pipeline gate
+
+The 2026-07 model bench (sonnet 65/65 vs haiku 31/38) proved the judgment sections separate models,
+but found two dimensions no guarantee tests (locator precision, cross-link density) and codified an
+owner rule: a strong and a weak model both acing the grade means the test is saturated. These five
+`st-*` checks make the bench's discriminative tier permanent. They **never hard-fail** verify-corpus
+— report them as their own `stretch N/5` score line, each with its measured number, so models of
+different strength never tie at the top.
+
+| id | check | pass threshold (bench reference) |
+| -- | ----- | -------------------------------- |
+| `st-locator-resolves` | sample 10 `[^sN]` citations across mixed pages; each must resolve via `citadel raw <key> --locator "<loc>"` AND the returned span must contain the cited fact | ≤20% unresolvable or whole-file (sonnet 8 precise/1 vague/1 wrong; haiku 3/3/4 — four non-resolving, incl. an off-by-one `lines 1-114` on a 113-line file) |
+| `st-no-falsehood-wiki-voice` | neither planted falsehood (§D dark-roast-caffeine-free, §L caffeine-fades-with-age) appears **unattributed** in any page's title, frontmatter `description`, body, or See-also gloss — §D/§L only check the hosting page's body | zero unattributed occurrences (haiku titled a page "Caffeine degradation in coffee" and glossed Midnight "naturally low-caffeine" in a See-also) |
+| `st-k-cluster-colocated` | each §K divergence (`filter-temp`, `ideal-extraction`, `cold-brew-caffeine`) is **co-located**: a `> [!CONTRADICTION]` callout or both sides co-cited on one page — one side per page with no cross-reference is a miss | 3/3 co-located (sonnet 3/3, haiku 0/3; promotes §K's soft ≥2-of-3 into this tier) |
+| `st-temporal-trace` | every §J superseded value leaves a dated trace **individually**: all four 2024 prices (incl. Midnight €13.50) + the 2024 near-black roast profile | 5/5 traced — `grep -rn "13.50" "$WIKI"` must hit (haiku silently dropped Midnight's €13.50 while keeping the Dolce arc) |
+| `st-crosslink-density` | no entity-fragmentation: mean outbound wiki-links per content page (index/log excluded) and count of thin single-entity micro-pages (a named cultivar/subtype/variant carrying <2 independent cited facts) | ≥6 links/page AND ≤5 micro-pages (sonnet 8.4 links/page, ~3 micro; haiku 4.8, ~15) |
+
+A stretch miss routes to the wiki-generation lane like any creation defect; it just never blocks the
+pipeline pass.
+
 ## Scoring
 
 **Hard gates** (must all hold): §G structural, §A single-source facts all present, §D claim present +
@@ -290,3 +310,9 @@ surface as the live answer. **Hard floor:** a row whose answer is unfindable by 
 *and* `tags` is a hard miss. Route each miss into the improvement backlog — fact present-but-unranked →
 *retrieval* defect (search-tooling lane); fact absent/mangled/mis-cited → *creation* defect
 (wiki-generation lane).
+
+**Stretch (model-discriminating — own score line, never gates the pass):** the five `st-*` guarantees
+above, reported as `stretch N/5` with the measured numbers (locator tally, links/page, micro-page
+count). A build passes on hard + soft + findability alone; the stretch line exists to separate model
+strength — if a strong and a weak model both ace hard + soft AND stretch, the ground truth is
+saturated (owner rule): file that as a finding and harden the guarantees instead of reporting a tie.
