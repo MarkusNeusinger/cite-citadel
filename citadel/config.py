@@ -157,6 +157,27 @@ def _split_list_env(value: str) -> list[str]:
     return [p.strip() for p in value.replace("\n", ",").split(",") if p.strip()]
 
 
+# Problems found while parsing env settings at import, surfaced by ``citadel doctor`` as a WARN
+# line. This module must never crash on a bad value: it is imported before any subcommand runs,
+# so an import-time ValueError would take down every command — including doctor, the one tool
+# built to diagnose exactly this class of misconfiguration.
+CONFIG_WARNINGS: list[str] = []
+
+
+def _int_env(key: str, default: int) -> int:
+    """Read an integer env setting tolerantly: blank/missing means "unset" and yields the
+    default; an unparseable value yields the default AND records the problem in
+    :data:`CONFIG_WARNINGS` instead of crashing at import."""
+    raw = os.environ.get(key, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        CONFIG_WARNINGS.append(f"{key}={raw!r} is not an integer - using the default {default}")
+        return default
+
+
 def _resolve_dir_entry(value: str) -> Path:
     """Resolve ONE configured-directory value to an absolute Path: expand a leading ``~``, take
     an ABSOLUTE value AS-IS — including a Windows mapped-drive path (``T:\\team-wiki\\wiki``) or
@@ -490,7 +511,7 @@ INGEST_MODEL: str = os.environ.get("CITADEL_INGEST_MODEL", "sonnet")
 # knob is authoritative there; copilot/gemini run their own model regardless (see
 # ingest_model_label). Read at call time / swapped in by curate.py so tests can monkeypatch it.
 CURATE_MODEL: str = os.environ.get("CITADEL_CURATE_MODEL", "").strip()
-LLM_TIMEOUT: int = int(os.environ.get("CITADEL_LLM_TIMEOUT", "1200"))
+LLM_TIMEOUT: int = _int_env("CITADEL_LLM_TIMEOUT", 1200)
 
 # Observability for the otherwise-headless agent session — by default the CLI's stdout/stderr is
 # captured only to detect failure and then DISCARDED, so there is no record of what the model
@@ -517,8 +538,8 @@ REPO_SUPPORT: bool = os.environ.get("CITADEL_REPO_SUPPORT", "1").strip().lower()
 # Total character budget for one repo digest, and the per-file cap inside it (a long file is
 # truncated with a marker). Generous defaults so the transform/pipeline core fits; raise for big
 # repos, lower to keep sessions cheap.
-REPO_DIGEST_MAX_CHARS: int = int(os.environ.get("CITADEL_REPO_DIGEST_MAX_CHARS", "120000"))
-REPO_PER_FILE_MAX_CHARS: int = int(os.environ.get("CITADEL_REPO_PER_FILE_MAX_CHARS", "8000"))
+REPO_DIGEST_MAX_CHARS: int = _int_env("CITADEL_REPO_DIGEST_MAX_CHARS", 120000)
+REPO_PER_FILE_MAX_CHARS: int = _int_env("CITADEL_REPO_PER_FILE_MAX_CHARS", 8000)
 
 # Image sources. When on (default), a raw file that is a recognized image (screenshot, scan,
 # diagram, chart, photo) is handed to the agent to READ VISUALLY — the coding-agent CLI's file
@@ -576,7 +597,7 @@ DEDUP_BY_BASENAME: bool = os.environ.get("CITADEL_DEDUP_BY_BASENAME", "1").strip
 # them whole). The default (~75k tokens) is generous — modern models rarely have less context — so
 # only genuinely large sources are split; lower it for a small-context backend, raise it (or set 0
 # to disable) for a very large one.
-MAX_SOURCE_CHARS: int = int(os.environ.get("CITADEL_MAX_SOURCE_CHARS", "300000"))
+MAX_SOURCE_CHARS: int = _int_env("CITADEL_MAX_SOURCE_CHARS", 300000)
 
 # Wiki history (git). After every run that CHANGED the wiki (ingest or curate), citadel can commit
 # the whole wiki directory so every change is a reviewable diff — the long-term audit trail

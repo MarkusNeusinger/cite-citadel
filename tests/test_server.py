@@ -427,10 +427,22 @@ def test_validate_normalizes_backslash_rel_path(seeded_wiki, seed_page):
     assert "misc/bad.md:" in out and "[error]" in out
 
 
-def test_validate_unknown_page_reports_ok(seeded_wiki):
-    """Pins current behavior: filtering to a rel_path with no issues (including one that does
-    not exist) yields the OK message rather than a not-found error."""
-    assert server.wiki_validate("concepts/missing.md") == "OK — no validation issues."
+def test_validate_unknown_page_is_an_error(seeded_wiki):
+    """A rel_path that names no page must be an error string, never a clean "OK" — a page with
+    zero issues and a typo'd path were previously indistinguishable (false green)."""
+    assert server.wiki_validate("concepts/missing.md") == "error: no such page: concepts/missing.md"
+
+
+def test_validate_generated_file_is_named_not_validated(seeded_wiki):
+    # index.md exists on disk but is generated — excluded from validation, so name that.
+    (seeded_wiki.wiki / "index.md").write_text("# Index\n", encoding="utf-8")
+    out = server.wiki_validate("index.md")
+    assert out.startswith("error: not a validated page: index.md")
+
+
+def test_validate_traversal_path_reports_no_such_page(seeded_wiki):
+    # An escaping path is never probed on disk (safe_join rejects it) — plain not-found error.
+    assert server.wiki_validate("../../etc/passwd") == "error: no such page: ../../etc/passwd"
 
 
 def test_validate_never_raises(tmp_citadel, monkeypatch):

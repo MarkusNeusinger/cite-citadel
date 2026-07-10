@@ -8,6 +8,9 @@ One command answering "is my setup sane?" without touching a byte. Each check em
   when none resolved (nearly every other command needs one).
 - **rules** — does the effective rules tree resolve (packaged defaults + any workspace overrides),
   and how many files? FAIL when the packaged tree is missing entirely.
+- **config** — did every env setting parse? A numeric knob whose value is not an integer
+  (``CITADEL_MAX_SOURCE_CHARS=300k``, say) silently falls back to its default at import — this WARN
+  line is where that fallback becomes visible.
 - **agent CLI** — is the ``CITADEL_LLM_CLI`` binary on PATH (which path does it resolve to)? WARN,
   not FAIL — the CLI is only needed to *ingest*, and doctor must stay useful before it is installed.
 - **raw roots** — is every configured raw root reachable (a dir on disk)?
@@ -119,6 +122,15 @@ def check_rules() -> Check:
     detail = f"{len(names)} effective rules file(s)"
     detail += f", {overrides} workspace override(s)" if overrides else ", no workspace overrides"
     return Check(OK, "rules", detail)
+
+
+def check_config() -> Check:
+    """WARN when config fell back on a default because an env setting failed to parse (a
+    non-integer numeric knob, say) — the value in effect is the default, not what the ``.env``
+    says. OK when every setting parsed."""
+    if config.CONFIG_WARNINGS:
+        return Check(WARN, "config", "; ".join(config.CONFIG_WARNINGS))
+    return Check(OK, "config", "all env settings parsed")
 
 
 def check_agent_cli() -> Check:
@@ -423,6 +435,7 @@ def run() -> DoctorReport:
         checks=[
             check_workspace(),
             check_rules(),
+            check_config(),
             check_agent_cli(),
             check_raw_roots(),
             check_manifest(),

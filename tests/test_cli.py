@@ -424,6 +424,27 @@ def test_check_accepts_absolute_file_path_inside_wiki(good_page, seed_page):
     assert cli.main(["check", str(bad)]) == 1
 
 
+def test_check_nonexistent_page_is_an_error(good_page, capsys):
+    # A typo'd path must never read as a clean "OK" (false green in CI).
+    assert cli.main(["check", "concepts/no-such-page.md"]) == 1
+    assert "error: no such page: concepts/no-such-page.md" in capsys.readouterr().out
+
+
+def test_check_generated_file_is_named_not_validated(good_page, capsys):
+    # index.md exists on disk but is generated — excluded from validation, so name that
+    # instead of pretending it was checked.
+    (good_page.wiki / "index.md").write_text("# Index\n", encoding="utf-8")
+    assert cli.main(["check", "index.md"]) == 1
+    assert "error: not a validated page: index.md" in capsys.readouterr().out
+
+
+def test_check_reports_missing_alongside_existing_pages(good_page, capsys):
+    # One existing clean page + one typo: the miss is an error, the clean page still reports.
+    assert cli.main(["check", "concepts/transformer.md", "concepts/typo.md"]) == 1
+    out = capsys.readouterr().out
+    assert "error: no such page: concepts/typo.md" in out
+
+
 # --- view: writes the offline viewer, never opens a real browser ----------------------------
 
 
