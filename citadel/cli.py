@@ -510,7 +510,8 @@ def cmd_check(args: argparse.Namespace) -> int:
 
     from . import config, okf, store, validate
 
-    issues = validate.validate_all()
+    pages = store.load()
+    issues = validate.validate_all(pages)
     missing: list[str] = []
     if args.paths:
         wiki_root = config.WIKI_DIR.resolve()
@@ -526,7 +527,7 @@ def cmd_check(args: argparse.Namespace) -> int:
             wanted.add(rel)
         # A named page that does not exist must be an error, not a silent "OK" — a page with
         # zero issues and a typo'd path would otherwise be indistinguishable (false green in CI).
-        known = {p.rel_path for p in store.load()}
+        known = {p.rel_path for p in pages}
         for rel in sorted(wanted - known):
             try:
                 on_disk = okf.safe_join(config.WIKI_DIR, rel).is_file()

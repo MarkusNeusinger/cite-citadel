@@ -280,12 +280,13 @@ def wiki_validate(rel_path: str = "") -> str:
     from . import config, okf, store, validate
 
     try:
-        issues = validate.validate_all()
+        pages = store.load()
+        issues = validate.validate_all(pages)
         if rel_path.strip():
             want = rel_path.strip().replace("\\", "/")
             # A named page that does not exist must be an error, not a clean "OK" — a page
             # with zero issues and a typo'd path would otherwise be indistinguishable.
-            if want not in {p.rel_path for p in store.load()}:
+            if want not in {p.rel_path for p in pages}:
                 try:
                     on_disk = okf.safe_join(config.WIKI_DIR, want).is_file()
                 except okf.OKFError:
