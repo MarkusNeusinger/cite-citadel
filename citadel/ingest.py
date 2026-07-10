@@ -40,7 +40,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from . import config, extract, failures, llm, manifest, okf, repo, store, validate, wikigit
+from . import config, extract, failures, llm, manifest, okf, repo, runlock, store, validate, wikigit
 from .okf import Page
 
 
@@ -1043,6 +1043,19 @@ def _staging_prefix(live: Path) -> str:
     return f".{live.name}.staging."
 
 
+def _sweep_stale_staging(live: Path) -> None:
+    """Best-effort removal of EVERY staging sibling of ``live`` — called ONCE at run start,
+    under the exclusive workspace run lock (:mod:`runlock`), where any staging dir on disk is
+    by definition a leftover from a dead run (they are inert dotfiles, but we don't let them
+    pile up). This used to run inside every :func:`_make_staging` call, which is exactly what
+    made two concurrent runs destructive: the first run's next source rm-tree'd the second
+    run's IN-FLIGHT staging copy mid-session."""
+    with contextlib.suppress(OSError):
+        for sibling in live.parent.iterdir():
+            if sibling.name.startswith(_staging_prefix(live)):
+                _robust_rmtree(sibling)
+
+
 def _make_staging(live: Path) -> Path:
     """Create a fresh STAGING copy of the live wiki and return its path.
 
@@ -1053,18 +1066,14 @@ def _make_staging(live: Path) -> Path:
 
     The staging name is UNIQUE per call (pid + a monotonic counter), so a copy can NEVER merge into
     leftover content from a crashed run and resurrect pages that were deleted — the live wiki is
-    always copied into a brand-new directory. Stale staging siblings from earlier crashes are swept
-    best-effort first (they are inert dotfiles, but we don't let them pile up). On a copy failure the
+    always copied into a brand-new directory. Stale siblings from earlier crashed runs are swept
+    once at run start (:func:`_sweep_stale_staging`), never here — a per-call sweep would delete a
+    concurrent run's in-flight staging. On a copy failure the
     partial staging is cleaned up before the error propagates (the caller reports it and the live
     wiki is untouched). When the live wiki does not exist yet (first run) staging starts empty."""
     global _STAGING_SEQ
     parent = live.parent
     prefix = _staging_prefix(live)
-    # Best-effort sweep of leftovers from prior crashed runs (this tool ingests one run at a time).
-    with contextlib.suppress(OSError):
-        for sibling in parent.iterdir():
-            if sibling.name.startswith(prefix):
-                _robust_rmtree(sibling)
     _STAGING_SEQ += 1
     staging = parent / f"{prefix}{os.getpid()}.{_STAGING_SEQ}"
     _robust_rmtree(staging)  # paranoia: clear an identical-named leftover before a clean copy
@@ -1355,6 +1364,9 @@ def _run_source_jobs(jobs: list[_SourceJob], emit, report: IngestReport, failure
     session runner's ``finally``."""
     total = len(jobs)
     for index, job in enumerate(jobs, 1):
+        # Keep the run lock's mtime fresh at every source boundary, so a long multi-source run
+        # never crosses the staleness window another process could reclaim the lock through.
+        runlock.heartbeat()
         emit("source_start", index=index, total=total, source=job.key)
         sha, st = job.sha_stat
         # Plan the session(s). A prepare failure (a temp write, a digest build) is a per-source
@@ -1621,6 +1633,17 @@ def ingest(
             "--force requires explicit paths (a forced re-read runs one agent session per "
             "source; name the files or directories to force, e.g. `citadel ingest --force raw/notes.md`)."
         )
+
+    # ONE mutating run per workspace: the staging sweep, promote's prune, and the manifest/
+    # failures saves are all destructive under concurrency (see runlock's module docstring).
+    # A second run fails loud here instead of silently eating the first one's work.
+    with runlock.hold("ingest"):
+        _sweep_stale_staging(config.WIKI_DIR)
+        return _ingest_run(paths, progress, full_rescan=full_rescan, force=force)
+
+
+def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: bool) -> IngestReport:
+    """The body of :func:`ingest`, running under the exclusive workspace run lock."""
 
     def emit(event: str, **data) -> None:
         if progress is not None:
