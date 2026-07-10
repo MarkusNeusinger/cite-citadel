@@ -66,7 +66,7 @@ human team would give up.
 
 | Karpathy's pattern        | This repository                                              |
 | ------------------------- | ----------------------------------------------------------- |
-| Raw sources (immutable)   | `raw/*.md` — drop arbitrary markdown here                   |
+| Raw sources (immutable)   | `raw/` — drop arbitrary text-bearing files here             |
 | The wiki (LLM-generated)  | `wiki/` as an [OKF](./okf-reference.md) bundle              |
 | The schema/config         | the [`citadel/rules/`](../citadel/rules/README.md) tree     |
 | Ingest / Query / Lint     | the `citadel` CLI (`ingest`, `lint`) + the MCP server      |

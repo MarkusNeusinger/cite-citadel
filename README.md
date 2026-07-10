@@ -112,7 +112,7 @@ after every ingest/curate run** — each change a reviewable diff — and can pu
 
 Five synthetic corpora live under [`corpora/`](https://github.com/MarkusNeusinger/cite-citadel/tree/main/corpora), each ingestible on its own or all
 together. The **everyday showcase** is [`corpora/beverages/`](https://github.com/MarkusNeusinger/cite-citadel/tree/main/corpora/beverages) — a deliberately
-overlapping **coffee + tea** corpus of 10 files in mixed styles (reference, prose, lab notes, FAQ,
+overlapping **coffee + tea** corpus in mixed styles (reference, prose, lab notes, FAQ,
 brand blog) with facts that repeat, contradict, and hide in one place, plus one deliberately-false
 sourced claim. Two more corpora stress the hardest guarantees:
 [`corpora/kelvarra/`](https://github.com/MarkusNeusinger/cite-citadel/tree/main/corpora/kelvarra) is a coherent fictional world whose
@@ -190,6 +190,8 @@ Full setup (Claude Desktop, Claude Code, a generic stdio client, and "if the ser
 - [`docs/karpathy-llm-wiki.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/karpathy-llm-wiki.md) ·
   [`docs/okf-reference.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/okf-reference.md) — the pattern and the format.
 - [`docs/configuration.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/configuration.md) — every `CITADEL_*` config knob.
+- [`docs/maintenance.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/maintenance.md) — maintain & customize: `citadel curate`,
+  `citadel status`, and forking the rules (`citadel rules eject`).
 - `CLAUDE.md` — architecture notes for contributors.
 - [`CONTRIBUTING.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/CONTRIBUTING.md) ·
   [`CHANGELOG.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/CHANGELOG.md) ·
