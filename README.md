@@ -148,12 +148,12 @@ serves one offline single-file viewer per corpus, regenerated on every push.
 
 ## MCP server
 
-`citadel serve` exposes **eleven tools** over stdio — ten read-only (`wiki_search`, `wiki_define`,
-`wiki_read`, `wiki_raw`, `wiki_neighbors`, `wiki_index`, `wiki_sources`, `wiki_tags`,
-`wiki_validate`, `wiki_lint`) and one mutating (`wiki_ingest`) — each with MCP behavior annotations
-(`readOnlyHint` etc.) so a client can tell them apart. Every tool has a CLI counterpart
-(`citadel read`, `citadel index`, `citadel lint`, …), so an AI without MCP access can do everything
-through the shell. Wire it into an MCP client (e.g. Claude Desktop):
+`citadel serve` exposes **twelve tools** over stdio — eleven read-only (`wiki_search`,
+`wiki_define`, `wiki_read`, `wiki_raw`, `wiki_neighbors`, `wiki_index`, `wiki_sources`,
+`wiki_tags`, `wiki_validate`, `wiki_lint`, `wiki_status`) and one mutating (`wiki_ingest`) — each
+with MCP behavior annotations (`readOnlyHint` etc.) so a client can tell them apart. Every tool has
+a CLI counterpart (`citadel read`, `citadel index`, `citadel lint`, …), so an AI without MCP access
+can do everything through the shell. Wire it into an MCP client (e.g. Claude Desktop):
 
 ```json
 {

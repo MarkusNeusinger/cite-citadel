@@ -5,7 +5,7 @@
     citadel init [DIR]           # scaffold a workspace (citadel.toml marker, .env, raw/, wiki/)
     citadel ingest [paths ...]   # fold raw/ (or explicit paths) into the wiki
     citadel curate [--dry-run] [--limit N] [--stale-rules] [--diff PATH] [--retry]  # improve existing pages
-    citadel status               # per-source corpus state (ingested/failed/skipped/ignored/pending)
+    citadel status               # per-source corpus state (ingested/failed/skipped/ignored/pending; mirrors wiki_status)
     citadel doctor               # read-only environment/setup health check (OK/WARN/FAIL lines)
     citadel serve                # run the MCP stdio server
     citadel search <query> [--limit N] [--tag T]
@@ -21,8 +21,9 @@
     citadel view [--out PATH] [--no-open] [--obsidian]   # offline single-file HTML viewer
     citadel rules list|show|eject   # inspect / fork the rules files the ingest agent reads
 
-The define/read/raw/neighbors/index/sources/lint subcommands give an AI without MCP access full parity with
-the server's tools (`lint`/`view` stay CLI-only; `wiki_lint` closes the gap from the MCP side).
+The define/read/raw/neighbors/index/sources/lint/status subcommands give an AI without MCP access full parity
+with the server's tools (`view` stays CLI-only; `wiki_lint`/`wiki_status` close the `lint`/`status`
+gaps from the MCP side).
 
 Every subcommand except ``init`` and ``rules`` needs a resolved WORKSPACE (see config's discovery
 order); ``main`` fails loud with exit 2 — pointing at ``citadel init`` and ``CITADEL_WORKSPACE``
@@ -32,9 +33,11 @@ eject`` checks for a workspace itself (the copy has nowhere to land without one)
 
 Exit codes are CI-friendly: ingest returns 1 if any source errored OR a structural
 problem remains (a broken cross-link or a page that failed validation — a missing or
-unusable LLM CLI also surfaces as a per-source error), lint returns 2 if the report is
-not clean, check returns 1 on any validation error, and any RuntimeError raised by a
-subcommand prints to stderr and returns 1.
+unusable LLM CLI also surfaces as a per-source error), lint returns 3 if the report is
+not clean (its OWN code, so "wiki has structural problems" is distinguishable from the
+usage/no-workspace exit 2 argparse and the workspace guard use), check returns 1 on any
+validation error, and any RuntimeError raised by a subcommand prints to stderr and
+returns 1.
 
 ``serve`` imports the MCP server lazily inside cmd_serve, so merely importing
 this module never requires the ``mcp`` package.
@@ -154,7 +157,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_doctor.set_defaults(func=cmd_doctor, needs_workspace=False)
 
-    p_serve = sub.add_parser("serve", help="Run the MCP stdio server (wiki_search/wiki_read/wiki_index/wiki_ingest).")
+    p_serve = sub.add_parser(
+        "serve", help="Run the MCP stdio server (12 tools: 11 read-only + the mutating wiki_ingest)."
+    )
     p_serve.set_defaults(func=cmd_serve)
 
     p_read = sub.add_parser("read", help="Print the full OKF text of one wiki page (mirrors the wiki_read MCP tool).")
@@ -186,7 +191,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_search = sub.add_parser("search", help="Keyword search across the wiki pages.")
     p_search.add_argument("query", help="Search query.")
-    p_search.add_argument("--limit", type=int, default=8, help="Maximum number of hits to return (default: 8).")
+    p_search.add_argument(
+        "--limit", type=int, default=8, help="Maximum number of hits to return (default: 8; <= 0 falls back to 8)."
+    )
     p_search.add_argument(
         "--tag", default=None, help="Restrict the search to pages carrying this tag (case-insensitive)."
     )
@@ -203,7 +210,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_tags.set_defaults(func=cmd_tags)
 
     p_lint = sub.add_parser(
-        "lint", help="Static health check (contradictions/orphans/missing-cites/broken-links/missing-type/stale)."
+        "lint",
+        help="Static health check (contradictions/orphans/missing-cites/broken-links/missing-type/stale). "
+        "Exit codes: 0 clean, 3 report not clean (2 stays the usage/no-workspace code).",
     )
     p_lint.add_argument(
         "--stale-days", type=int, default=365, help="Pages older than this many days are flagged stale (default: 365)."
@@ -356,7 +365,7 @@ def cmd_read(args: argparse.Namespace) -> int:
         print(f"error: page not found: {args.rel_path}", file=sys.stderr)
         return 1
     except okf.OKFError as e:
-        print(f"error: unsafe path: {e}", file=sys.stderr)
+        print(f"error: {e}", file=sys.stderr)  # the OKFError text already says "unsafe path: …"
         return 1
     print(text, end="" if text.endswith("\n") else "\n")
     return 0
@@ -388,7 +397,7 @@ def cmd_neighbors(args: argparse.Namespace) -> int:
         print(f"error: page not found: {args.rel_path}", file=sys.stderr)
         return 1
     except okf.OKFError as e:
-        print(f"error: unsafe path: {e}", file=sys.stderr)
+        print(f"error: {e}", file=sys.stderr)  # the OKFError text already says "unsafe path: …"
         return 1
     print(text, end="" if text.endswith("\n") else "\n")
     return 0
@@ -429,7 +438,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 
 def cmd_search(args: argparse.Namespace) -> int:
-    """Print ranked search hits for the query (optionally filtered to a tag); return 0."""
+    """Print ranked search hits for the query (optionally filtered to a tag); return 0.
+    A ``--limit`` <= 0 is treated as unset and falls back to the default (8) — matching
+    ``wiki_search``, so a miscomputed limit never reads as "no matches"."""
     from . import store
 
     pages = None
@@ -440,7 +451,7 @@ def cmd_search(args: argparse.Namespace) -> int:
             print(f"No pages tagged {args.tag!r}.")
             return 0
 
-    hits = store.search(args.query, pages=pages, limit=args.limit)
+    hits = store.search(args.query, pages=pages, limit=args.limit if args.limit > 0 else 8)
     if not hits:
         scope = f" (tag {args.tag!r})" if args.tag else ""
         print(f"No matches for {args.query!r}{scope}.")
@@ -493,12 +504,14 @@ def cmd_tags(args: argparse.Namespace) -> int:
 
 
 def cmd_lint(args: argparse.Namespace) -> int:
-    """Print the lint report; return 0 if clean, else 2."""
+    """Print the lint report; return 0 if clean, else 3 — lint's OWN not-clean code, so a CI
+    consumer can tell "structural wiki problems found" (3) from "invoked wrong / no workspace"
+    (2, the argparse convention) and "unexpected error" (1) by exit code alone."""
     from . import lint
 
     report = lint.lint(stale_days=args.stale_days)
     print(report.render())
-    return 0 if report.ok() else 2
+    return 0 if report.ok() else 3
 
 
 def cmd_check(args: argparse.Namespace) -> int:

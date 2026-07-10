@@ -44,6 +44,32 @@ All notable changes to this project are documented here. The format is based on
   (`j-rn-albers` → `jorn-albers`, `sabine-kr-ger` → `sabine-kruger`, `tom-s-iglesias` →
   `tomas-iglesias`) with their inbound links and indexes repaired, so all five committed corpora
   stay advisory-clean.
+- **`wiki_read` / `wiki_neighbors` / `citadel read` / `citadel neighbors` — error-text polish on the
+  traversal-rejection path.** An unsafe path used to answer with a doubled prefix
+  (`error: unsafe path: unsafe path: '…'`) because the callers re-wrapped the already-self-describing
+  `okf.OKFError` message; the prefix now appears exactly once, on the CLI and MCP surfaces alike.
+- **`wiki_search` / `citadel search --limit` — a limit `<= 0` no longer answers a factually wrong
+  "No matches".** A negative/zero limit (an LLM client miscomputing the argument) sliced the hit list
+  empty and asserted there were no matches; it is now treated as unset and falls back to the default
+  (8), documented in the tool docstring and `--limit` help.
+- **`wiki_read` / `wiki_neighbors` now normalize Windows-style backslash rel_paths.** `wiki_validate`
+  already accepted `concepts\espresso.md` while the other two 404'd on the identical page; all
+  rel_path-taking tools (and their CLI twins, which share the same providers) now apply the same
+  backslash→slash normalization.
+- **`wiki_read` / `citadel read` return generated index files verbatim.** Reading a
+  frontmatter-less generated file (`index.md`, `sources/index.md`, `open-points/index.md`) used to
+  prepend a spurious empty `---\n{}\n---` frontmatter block from the `okf.dump` re-serialization,
+  contradicting the tool's "verbatim" contract and reading as page corruption to an AI consumer;
+  the provider now returns the file text byte-for-byte (canonical pages round-trip identically).
+- **`citadel doctor` raw-roots check now follows the ACTUAL ingest walk list.** It used to iterate
+  the wider `source_roots()` union, so a primary `raw/` configured OUT of `CITADEL_RAW_DIRS` read as
+  "reachable" while its files were silently never scanned; the check now walks `CITADEL_RAW_DIRS`
+  exactly like discovery and WARNs when the excluded primary `raw/` holds files, naming the fix
+  (include `raw` in `CITADEL_RAW_DIRS`).
+- **Unrecognized `CITADEL_WIKI_GIT` values are no longer silent.** Anything that is not
+  `0/off`, `1/init`, or `auto` still falls back to `auto` (the safe, never-creates-a-repo default),
+  but the value is now surfaced by `citadel doctor`'s config check — a typo of "off" (`of`, `fasle`)
+  used to silently keep auto-committing (and pushing).
 
 ### Added
 
@@ -103,6 +129,18 @@ All notable changes to this project are documented here. The format is based on
   title, or an alias, rendered `SHORT — Expansion`) first, then an exact-title/alias page of any
   type, then falls back to the closest `wiki_search` hits when nothing matches exactly. Backed by the
   new `store.define_text`. Read-only, no new dependency.
+- **`wiki_status` — a twelfth MCP tool (the eleventh read-only).** The MCP twin of `citadel status`:
+  the per-source corpus state table (ingested with model + rules version and the `(stale)` flag,
+  failed with reason and attempts, skipped-duplicate, ignored, pending), built from the manifest +
+  failures catalog + one stat-only walk. Closes the one parity gap an AI wiki-manager actually
+  feels: it could trigger `wiki_ingest` but had no read-only way to see what is pending, stale, or
+  stuck. Read-only annotations, never raises.
+- **`wiki_lint` gained a `stale_days` parameter.** The staleness threshold CLI users had via
+  `citadel lint --stale-days N` (default 365) is now tunable from MCP clients too.
+- **The MCP server sets `initialize.instructions`.** Clients that surface it (Claude Code among
+  them) get the recommended tool flow for free: orient with `wiki_index`, find with
+  `wiki_search`/`wiki_define`, answer from `wiki_read`, spot-check citations with `wiki_raw`;
+  `wiki_ingest` is the only mutating tool.
 
 ### Changed
 
@@ -217,6 +255,26 @@ All notable changes to this project are documented here. The format is based on
   subprocesses a session spawns and keep every write inside the wiki — no functional change to the
   wiki that gets produced. (Editing any `rules/` file bumps `rules_version`, so `citadel status`
   shows previously ingested sources as `(stale)` — expected, cosmetic.)
+- **`citadel lint` exits 3 (was 2) when the report is not clean.** Exit 2 collided with the
+  usage/no-workspace code (argparse's own convention, also used by the workspace guard and the
+  `ingest --force`-without-paths refusal), so a CI consumer could not tell "the wiki has structural
+  problems" from "invoked wrong". Lint's codes are now: 0 clean, 1 unexpected error, 2
+  usage/no-workspace, 3 report not clean. Scripts checking `!= 0` (as CI's corpus lint gate does)
+  are unaffected; only a literal `== 2` check on lint's not-clean state needs updating.
+- **`wiki_raw` / `citadel raw` — an unresolvable locator is now a clear error.** A locator that
+  parses to nothing offline-resolvable (an Office `p. 12` page locator, a garbled/typo'd form) used
+  to silently return the WHOLE capped source with only a header note and exit 0 — undetectable by a
+  script or an MCP client checking the `error:` prefix, unlike every other bad locator. It now
+  errors (exit 1 / `error: …` string) naming the recognized forms (`lines A-B`, `§ Heading`,
+  `§ Heading, lines A-B`) and the escape hatch: omit the locator to read the whole source.
+- **Blank boolean env values now mean "unset", and all boolean knobs share one parser.** Three
+  hand-rolled parsers disagreed on blank: a bare `CITADEL_IMAGE_SUPPORT=` /
+  `CITADEL_REPO_SUPPORT=` / `CITADEL_DEDUP_BY_BASENAME=` (an uncommented-but-emptied `.env` line)
+  silently DISABLED those default-on features, while blank meant "default" for every other knob
+  family. All five boolean knobs now parse through one `_bool_env`: blank/missing keeps the
+  default, `1/true/yes/on` and `0/false/no/off` are recognized, and anything else falls back to
+  the default with a `citadel doctor` config warning. Anyone deliberately disabling a feature via a
+  bare `KNOB=` must now write `KNOB=0`.
 
 ## [0.3.0] - 2026-07-06
 

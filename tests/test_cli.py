@@ -274,6 +274,22 @@ def test_search_query_and_limit_reach_store_search(monkeypatch, capsys):
     assert "No matches for 'coffee'." in capsys.readouterr().out
 
 
+def test_search_nonpositive_limit_falls_back_to_default(monkeypatch, capsys):
+    """``--limit 0`` (or negative) is treated as unset: the default 8 reaches store.search —
+    matching wiki_search — instead of slicing the hits empty and printing a false "No matches"."""
+    seen = {}
+
+    def fake_search(query, pages=None, limit=8):
+        seen["limit"] = limit
+        return []
+
+    monkeypatch.setattr(store_mod, "search", fake_search)
+    assert cli.main(["search", "coffee", "--limit", "0"]) == 0
+    assert seen["limit"] == 8
+    assert cli.main(["search", "coffee", "--limit", "-3"]) == 0
+    assert seen["limit"] == 8
+
+
 def test_search_tag_prefilters_pages_case_insensitively(monkeypatch, tmp_citadel, seed_page):
     seed_page("concepts/ml.md", {"type": "Concept", "title": "ML", "tags": ["ML"]})
     seed_page("concepts/bio.md", {"type": "Concept", "title": "Bio", "tags": ["bio"]})
@@ -360,6 +376,34 @@ def test_tags_unknown_tag(tmp_citadel, seed_page, capsys):
     assert "No pages tagged 'nope'." in capsys.readouterr().out
 
 
+# --- read / neighbors / raw: error-path exit codes + messages -------------------------------
+
+
+@pytest.mark.parametrize("command", ["read", "neighbors"])
+def test_read_and_neighbors_unsafe_path_exits_1_without_doubled_prefix(tmp_citadel, command, capsys):
+    """A traversal path exits 1 with ONE 'unsafe path:' prefix — cmd_read/cmd_neighbors used to
+    wrap the already-self-describing OKFError into "error: unsafe path: unsafe path: …"."""
+    assert cli.main([command, "../citadel.toml"]) == 1
+    err = capsys.readouterr().err
+    assert "error: unsafe path:" in err
+    assert err.count("unsafe path:") == 1
+
+
+def test_raw_unresolvable_locator_exits_1(tmp_citadel, capsys):
+    """An unparseable --locator is a clear error (exit 1) like every other bad locator — it used
+    to silently print the whole source with exit 0, undetectable by scripts."""
+    from citadel import config, manifest
+
+    (tmp_citadel.raw / "notes.md").write_text("hello\nworld\n", encoding="utf-8")
+    key = config.rel_or_abs_posix(tmp_citadel.raw / "notes.md")
+    manifest.save({key: manifest.make_entry("aa" * 32)})
+
+    assert cli.main(["raw", key, "--locator", "gibberish locator"]) == 1
+    captured = capsys.readouterr()
+    assert "not offline-resolvable" in captured.err
+    assert "hello" not in captured.out  # no silent whole-source fallback
+
+
 # --- lint: exit codes + flag plumbing -------------------------------------------------------
 
 
@@ -368,9 +412,11 @@ def test_lint_clean_wiki_exits_0(tmp_citadel, capsys):
     assert "Lint report" in capsys.readouterr().out
 
 
-def test_lint_structural_error_exits_2(tmp_citadel, seed_page):
+def test_lint_structural_error_exits_3(tmp_citadel, seed_page):
+    """An unclean report exits with lint's OWN code 3 — 2 previously collided with the
+    usage/no-workspace code, so CI could not tell "wiki has problems" from "invoked wrong"."""
     seed_page("concepts/untyped.md", {"title": "No Type", "tags": []})  # missing `type` -> structural
-    assert cli.main(["lint"]) == 2
+    assert cli.main(["lint"]) == 3
 
 
 def test_lint_advisory_findings_keep_exit_0(good_page):

@@ -1,15 +1,15 @@
 """MCP stdio server exposing the OKF wiki to AI clients.
 
-A FastMCP instance over stdio with eleven tools: ten read-only
+A FastMCP instance over stdio with twelve tools: eleven read-only
 (wiki_search / wiki_define / wiki_read / wiki_raw / wiki_neighbors / wiki_index / wiki_sources /
-wiki_tags / wiki_validate / wiki_lint) and one mutating (wiki_ingest). Every tool returns a plain
-markdown/text string, which an LLM consumes best, and NEVER raises out of the tool: not-found /
-unsafe-path / missing-or-unusable-LLM-CLI conditions are returned as clear error strings
+wiki_tags / wiki_validate / wiki_lint / wiki_status) and one mutating (wiki_ingest). Every tool
+returns a plain markdown/text string, which an LLM consumes best, and NEVER raises out of the tool:
+not-found / unsafe-path / missing-or-unusable-LLM-CLI conditions are returned as clear error strings
 so the server stays up.
 
 Each tool carries MCP **behavior annotations** (``readOnlyHint`` / ``destructiveHint`` /
 ``idempotentHint`` / ``openWorldHint``) so a client can reason about a tool before calling it: the
-ten readers are read-only, and only ``wiki_ingest`` mutates (non-destructive, idempotent via the
+eleven readers are read-only, and only ``wiki_ingest`` mutates (non-destructive, idempotent via the
 sha manifest, and open-world because it spawns your external coding-agent CLI). If the installed
 ``mcp`` predates tool annotations, they are silently omitted — a client that ignores hints is
 unaffected.
@@ -34,11 +34,23 @@ def _annotations(**hints):
     return ToolAnnotations(**hints) if ToolAnnotations is not None else None
 
 
-# The nine readers share this profile; wiki_ingest overrides it at its decorator.
+# The eleven readers share this profile; wiki_ingest overrides it at its decorator.
 _READ_ONLY = {"readOnlyHint": True, "openWorldHint": False}
 
 
-mcp = FastMCP("citadel")
+# Handed to clients in the ``initialize`` result (``instructions``) — the orientation an AI needs
+# before its first tool call, kept to the flow the module docstring describes.
+_INSTRUCTIONS = (
+    "citadel serves an LLM-maintained, fully-cited wiki. Orient with wiki_index (the page catalog), "
+    "find pages with wiki_search / wiki_define, and answer from wiki_read's full cited page text — "
+    "the wiki is the synthesized, cited layer, so prefer it over re-reading raw files. wiki_raw "
+    "verifies a single [^sN] citation against its raw source (a spot-check, not bulk retrieval); "
+    "wiki_neighbors walks the link graph; wiki_status shows per-source corpus state. wiki_ingest is "
+    "the ONLY mutating tool (it spawns the configured coding-agent CLI and may take minutes); every "
+    "other tool is read-only, and errors always come back as plain 'error: …' strings."
+)
+
+mcp = FastMCP("citadel", instructions=_INSTRUCTIONS)
 
 _SNIPPET_CHARS = 200
 
@@ -77,11 +89,15 @@ def wiki_search(query: str, limit: int = 8, tag: str = "") -> str:
     Optionally restrict to pages carrying ``tag`` (case-insensitive). Returns a
     ranked markdown list; each entry gives the page rel_path, its score, the
     title, its tags, and a short body snippet around the first matching token.
-    The primary 'make the wiki usable' tool: an AI searches the synthesized wiki
-    instead of re-retrieving the raw sources.
+    A ``limit`` <= 0 is treated as unset and falls back to the default (8) — a
+    miscomputed limit must not read as a confident "No matches". The primary
+    'make the wiki usable' tool: an AI searches the synthesized wiki instead of
+    re-retrieving the raw sources.
     """
     from . import store
 
+    if limit <= 0:
+        limit = 8
     try:
         pages = None
         if tag.strip():
@@ -168,7 +184,8 @@ def wiki_define(term: str) -> str:
 def wiki_read(rel_path: str) -> str:
     """Return the full verbatim OKF page text for a rel_path like
     'concepts/transformer.md' (frontmatter + body, including all per-fact
-    [^sN] citations and the trailing ## Sources section).
+    [^sN] citations and the trailing ## Sources section). A Windows-style
+    rel_path (backslashes) is normalized, matching wiki_validate.
 
     Path-safety is enforced via okf.safe_join. Returns a clear error string
     on not-found / unsafe path rather than raising.
@@ -180,7 +197,7 @@ def wiki_read(rel_path: str) -> str:
     except FileNotFoundError:
         return f"error: page not found: {rel_path!r}"
     except okf.OKFError as e:
-        return f"error: unsafe path: {e}"
+        return f"error: {e}"  # the OKFError text already says "unsafe path: …"
     except Exception as e:  # never raise out of the tool
         return f"error: could not read {rel_path!r}: {e}"
 
@@ -197,7 +214,7 @@ def wiki_raw(source_key: str, locator: str = "") -> str:
     VERIFIES the synthesized wiki against its provenance; to ANSWER a question use wiki_search /
     wiki_read (the wiki is the cited layer — this is the trust-but-verify spot-check, not bulk
     re-retrieval). Returns a clear error string (not a cited source / missing on disk / no offline
-    text / locator out of range) rather than raising.
+    text / locator out of range or not offline-resolvable) rather than raising.
     """
     from . import rawsource
 
@@ -216,7 +233,8 @@ def wiki_neighbors(rel_path: str) -> str:
     For a rel_path like 'concepts/transformer.md', returns three sections: **Links out** (its wiki
     cross-links, resolved to rel_paths, each flagged '(missing)' if the target page does not exist),
     **Linked from** (the pages that link to it — the backlink graph), and **Cites sources** (the raw/
-    docs source keys it cites, with a per-source count — the keys to hand to wiki_raw).
+    docs source keys it cites, with a per-source count — the keys to hand to wiki_raw). A
+    Windows-style rel_path (backslashes) is normalized, matching wiki_validate.
 
     Returns a clear error string on not-found / unsafe path rather than raising.
     """
@@ -227,7 +245,7 @@ def wiki_neighbors(rel_path: str) -> str:
     except FileNotFoundError:
         return f"error: page not found: {rel_path!r}"
     except okf.OKFError as e:
-        return f"error: unsafe path: {e}"
+        return f"error: {e}"  # the OKFError text already says "unsafe path: …"
     except Exception as e:  # never raise out of the tool
         return f"error: could not read {rel_path!r}: {e}"
 
@@ -322,10 +340,11 @@ def wiki_ingest(paths: list[str] | None = None) -> str:
 
 
 @mcp.tool(annotations=_annotations(**_READ_ONLY))
-def wiki_lint() -> str:
+def wiki_lint(stale_days: int = 365) -> str:
     """Run the offline wiki health check and return its report — contradictions, orphans,
     missing citations, broken links, missing types, stale pages, fabricated sources, undefined
-    abbreviations, and locator issues.
+    abbreviations, and locator issues. Pages older than ``stale_days`` are flagged stale
+    (default 365, matching ``citadel lint --stale-days``).
 
     This is the read-only companion to wiki_validate: ``wiki_validate`` is the strict per-page
     gate (required fields, honest citations, non-broken links), while ``wiki_lint`` is the
@@ -335,9 +354,29 @@ def wiki_lint() -> str:
     from . import lint
 
     try:
-        return lint.lint().render()
+        return lint.lint(stale_days=stale_days).render()
     except Exception as e:  # never raise out of the tool
         return f"error: lint failed: {e}"
+
+
+@mcp.tool(annotations=_annotations(**_READ_ONLY))
+def wiki_status() -> str:
+    """Per-source corpus state — the read-only twin of ``citadel status``.
+
+    One bucket per lifecycle state: **ingested** (with the importing model + the rules version it
+    ran under, flagged ``(stale)`` when that predates the current rulebook), **failed** (unreadable /
+    errored / timed-out, with the reason and attempt count), **skipped-duplicate**, **ignored**
+    (OS/junk files), and **pending** (on disk under a raw root but not yet ingested). Built from the
+    manifest + failures catalog + one stat-only walk — it never re-hashes a byte and never mutates,
+    so it is the cheap check to run before/after ``wiki_ingest`` to see what is pending, stale, or
+    stuck. Never raises out of the tool.
+    """
+    from . import status
+
+    try:
+        return status.build_status().render()
+    except Exception as e:  # never raise out of the tool
+        return f"error: could not read corpus status: {e}"
 
 
 def main() -> None:

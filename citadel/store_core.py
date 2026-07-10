@@ -218,12 +218,25 @@ def read_page(rel_path: str) -> Page:
 # typed error the caller maps to its own contract, so the behavior lives exactly once.
 
 
+def _normalize_rel_path(rel_path: str) -> str:
+    """Normalize a caller-supplied page rel_path: whitespace stripped, backslashes (Windows input)
+    to forward slashes — the SAME normalization ``wiki_validate`` applies, so every rel_path-taking
+    surface (MCP tool or its CLI twin) accepts a Windows-style path identically."""
+    return rel_path.strip().replace("\\", "/")
+
+
 def read_page_text(rel_path: str) -> str:
-    """The full verbatim OKF text of one wiki page (frontmatter + body). Raises FileNotFoundError
-    (no such page), okf.OKFError (unsafe/traversal path), or an OS/decoding error (an undecodable
-    file) — the callers translate those into a CLI exit code or an MCP error string."""
-    page = read_page(rel_path)
-    return okf.dump(page.frontmatter, page.body)
+    """The full VERBATIM text of one wiki page — the file's bytes as UTF-8, never re-serialized
+    (re-dumping through ``okf.dump`` gave a frontmatter-less generated file like ``index.md`` a
+    spurious empty ``{}`` frontmatter block; canonical pages round-trip identically either way).
+    Raises FileNotFoundError (no such page), okf.OKFError (unsafe/traversal path), or an
+    OS/decoding error (an undecodable file) — the callers translate those into a CLI exit code or
+    an MCP error string."""
+    rel_path = _normalize_rel_path(rel_path)
+    target = okf.safe_join(config.WIKI_DIR, rel_path)
+    if not target.is_file():
+        raise FileNotFoundError(rel_path)
+    return target.read_text(encoding="utf-8")
 
 
 def neighbors_text(rel_path: str) -> str:
@@ -232,12 +245,14 @@ def neighbors_text(rel_path: str) -> str:
     **Links out** (this page's resolved wiki cross-links, each flagged ``(missing)`` when it names no
     existing page), **Linked from** (the pages that link to this one — the backlink graph), and
     **Cites sources** (the distinct raw/docs source keys in its ``## Sources``, with how many
-    footnotes cite each — the handoff key for ``wiki_raw``). Raises FileNotFoundError (no such page) /
+    footnotes cite each — the handoff key for ``wiki_raw``). The rel_path is normalized like
+    ``read_page_text``'s (backslashes to slashes). Raises FileNotFoundError (no such page) /
     okf.OKFError (unsafe path), which the CLI/MCP surfaces map to an exit code / error string. ONE
     ``load()`` powers the target page, the backlink graph, and the link titles — the file is parsed
     once, not re-read on top of the corpus scan."""
     from . import grammar, linkgraph
 
+    rel_path = _normalize_rel_path(rel_path)
     okf.safe_join(config.WIKI_DIR, rel_path)  # validate the path (raises okf.OKFError on traversal/escape)
     pages = load()
     by_path = {p.rel_path: p for p in pages}
