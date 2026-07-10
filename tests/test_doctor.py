@@ -96,6 +96,25 @@ def test_rules_fail_when_packaged_tree_is_missing(tmp_citadel, monkeypatch, tmp_
     assert "packaged rules tree is missing" in c.detail
 
 
+# --- config ---------------------------------------------------------------------------------
+
+
+def test_config_ok_when_all_settings_parsed(monkeypatch):
+    monkeypatch.setattr(config, "CONFIG_WARNINGS", [])
+    c = doctor.check_config()
+    assert (c.status, c.name) == (doctor.OK, "config")
+    assert "parsed" in c.detail
+
+
+def test_config_warns_on_recorded_parse_fallback(monkeypatch):
+    monkeypatch.setattr(
+        config, "CONFIG_WARNINGS", ["CITADEL_MAX_SOURCE_CHARS='300k' is not an integer - using the default 300000"]
+    )
+    c = doctor.check_config()
+    assert c.status == doctor.WARN
+    assert "300k" in c.detail
+
+
 # --- agent CLI ---------------------------------------------------------------------------
 
 
@@ -508,6 +527,7 @@ def test_run_emits_the_full_check_inventory(tmp_citadel, monkeypatch):
     assert names == [
         "workspace",
         "rules",
+        "config",
         "agent CLI",
         "raw roots",
         "manifest",

@@ -1,9 +1,10 @@
 # Troubleshooting
 
 **Start here:** run `citadel doctor`. It's a read-only setup health check that prints OK/WARN/FAIL
-lines over workspace resolution, the rules tree, the agent CLI on PATH, raw-root reachability, the
-manifest, and the API-key/PDF advisories — it needs no workspace and exits non-zero only on a FAIL.
-Most problems below show up there first.
+lines over workspace resolution, the rules tree, env-setting parse fallbacks (a numeric knob whose
+value didn't parse silently falls back to its default — doctor is where that becomes visible), the
+agent CLI on PATH, raw-root reachability, the manifest, and the API-key/PDF advisories — it needs
+no workspace and exits non-zero only on a FAIL. Most problems below show up there first.
 
 ### The agent CLI isn't installed or logged in
 

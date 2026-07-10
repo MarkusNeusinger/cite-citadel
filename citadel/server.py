@@ -277,12 +277,22 @@ def wiki_validate(rel_path: str = "") -> str:
     list. The ingest agent should call this on each page it created or changed before
     finishing, and fix every reported error. Never raises out of the tool.
     """
-    from . import validate
+    from . import config, okf, store, validate
 
     try:
         issues = validate.validate_all()
         if rel_path.strip():
             want = rel_path.strip().replace("\\", "/")
+            # A named page that does not exist must be an error, not a clean "OK" — a page
+            # with zero issues and a typo'd path would otherwise be indistinguishable.
+            if want not in {p.rel_path for p in store.load()}:
+                try:
+                    on_disk = okf.safe_join(config.WIKI_DIR, want).is_file()
+                except okf.OKFError:
+                    on_disk = False
+                if on_disk:
+                    return f"error: not a validated page: {want} (generated/reserved files are not checked)"
+                return f"error: no such page: {want}"
             issues = [i for i in issues if i.rel_path == want]
         return validate.render_issues(issues)
     except Exception as e:  # never raise out of the tool
