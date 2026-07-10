@@ -10,6 +10,9 @@ what already exists.
   file instead (a PDF, Office file, image, or git repo; the run instruction says which applies).
 - Apply the matching **genre briefs** (`core.md` § Genres) — judged from the content you just
   read.
+- **Pre-write dedup.** Before writing a canonical, headline fact, search the wiki for it: if the
+  same fact already lives on a page, add your `[^sN]` marker beside the existing statement there
+  (`schema.md` § Per-fact provenance) instead of restating the fact on another page.
 - If the source adds nothing new, make no edits and stop (`core.md`).
 
 ## Large sources — segmented passes

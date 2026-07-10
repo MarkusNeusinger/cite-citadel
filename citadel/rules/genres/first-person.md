@@ -12,6 +12,11 @@ transcript, a voice-memo transcript, letters, personal emails, a diary or journa
   per `schema.md` § Opinions & style — on the relevant topic pages and, when the person carries a
   `persons/` page, linked from there. An opinion presented as an unattributed world fact is a
   hard error.
+- **Quarantine, sweep, and locators still apply.** A claim in the person's voice that conflicts
+  with well-established knowledge, or promotes the person or their organization, must be written
+  as an attributed claim + `[^llmN]`-flagged (mandatory — `schema.md` § Grounding) and compared
+  against the same attribute elsewhere on the wiki (`schema.md` § Contradictions, cross-source
+  sweep). Self-verify locators: a diary's date line is NOT a heading (`schema.md` § Locators).
 
 ## Style profile — ONLY when your run instruction says style profiling is ON
 

@@ -9,6 +9,11 @@ changed since the first ingest).
 next to the new one:
 
 - **Update** every existing fact whose number, name, or claim changed in the current contents.
+- **Supersession keeps the superseded value.** When the current contents change a **dated**
+  attribute (a price, a spec, a profile), the new value becomes the live cited fact and the OLD
+  value MUST stay on the page with its date — as a dated `## Change Log` line
+  (`genres/meeting-minutes.md`) — never silently dropped. If you write a 2026 value for an
+  attribute the page held a 2024 value for, the 2024 value must still appear on the page.
 - Where the current file **no longer supports** a fact, remove THIS source's `[^sN]` marker and
   its `## Sources` definition — and delete the whole sentence ONLY if no other `[^sN]` source
   remains on it (a co-cited fact `...fact.[^s1][^s2]` stays; drop just this marker).

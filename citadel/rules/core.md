@@ -99,6 +99,10 @@ when needed:
 
 - **Route to the best home.** Prefer extending or merging into an existing page; create a new
   page only when no existing page fits.
+- **Granularity floor.** Do not create a standalone page for every named sub-entity you meet — a
+  cultivar, a product variant, a sub-process. A named entity earns its own page only when it
+  carries **several independent cited facts**; until then, fold it into its parent concept page
+  as a linkable section. Prefer fewer dense, well-cross-linked pages over many thin stubs.
 - **Split** a page that has grown too large or mixes unrelated topics: write the focused new
   files carrying the moved facts **with their `[^sN]` citations**, then delete the original.
 - **Merge** two pages on the same topic: write the survivor with the full merged body (citations
