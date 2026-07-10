@@ -157,10 +157,34 @@ def test_raw_roots_warn_when_a_root_is_unreachable(tmp_citadel, monkeypatch, tmp
 
 
 def test_raw_roots_warn_when_none_configured(tmp_citadel, monkeypatch):
-    monkeypatch.setattr(config, "source_roots", lambda: [])
+    monkeypatch.setattr(config, "RAW_DIRS", [])
     c = doctor.check_raw_roots()
     assert c.status == doctor.WARN
     assert "no raw roots configured" in c.detail
+
+
+def test_raw_roots_warn_when_primary_raw_is_configured_out_of_the_walk(tmp_citadel, monkeypatch, tmp_path):
+    """A CITADEL_RAW_DIRS that replaced the walk list without re-listing the primary raw/ used to
+    read as '[OK] 2 roots reachable' while raw/'s files were silently never scanned — the check
+    now follows the ACTUAL walk list (config.RAW_DIRS) and names the fix."""
+    other = tmp_path / "otherroot"
+    other.mkdir()
+    (tmp_citadel.raw / "never-walked.md").write_text("x\n", encoding="utf-8")
+    monkeypatch.setattr(config, "RAW_DIRS", [other])
+    c = doctor.check_raw_roots()
+    assert c.status == doctor.WARN
+    assert "not in the CITADEL_RAW_DIRS walk list" in c.detail
+    assert "include `raw` in CITADEL_RAW_DIRS" in c.detail
+
+
+def test_raw_roots_ok_when_excluded_primary_raw_is_empty(tmp_citadel, monkeypatch, tmp_path):
+    """An excluded primary raw/ holding NO files is a deliberate layout, not a footgun — no WARN."""
+    other = tmp_path / "otherroot"
+    other.mkdir()
+    monkeypatch.setattr(config, "RAW_DIRS", [other])
+    c = doctor.check_raw_roots()
+    assert c.status == doctor.OK
+    assert "1 walked raw root(s) reachable" in c.detail
 
 
 # --- manifest ----------------------------------------------------------------------------

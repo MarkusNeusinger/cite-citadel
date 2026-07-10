@@ -165,9 +165,16 @@ def test_empty_source_renders_a_valid_header(tmp_citadel):
     assert "1-0" not in out
 
 
-def test_page_locator_shows_whole_source_with_a_note(tmp_citadel):
+@pytest.mark.parametrize("locator", ["p. 3", "gibberish locator"])
+def test_unresolvable_locator_is_an_error_not_a_silent_fallback(tmp_citadel, locator):
+    """A locator that parses to nothing offline-resolvable (an Office page locator, a garbled
+    form) raises like every other bad locator — it used to silently return the whole source with
+    a header note and exit 0, so a typo'd locator was undetectable. The error names the
+    recognized forms and the omit-the-locator escape hatch."""
     key = _cite(tmp_citadel, "notes.md", "a\nb\nc\n")
 
-    out = rawsource.raw_text(key, "p. 3")  # a page locator is not offline-resolvable
+    with pytest.raises(rawsource.SourceError, match="not offline-resolvable") as exc:
+        rawsource.raw_text(key, locator)
 
-    assert "not offline-resolvable" in out and "1 | a" in out
+    msg = str(exc.value)
+    assert "lines A-B" in msg and "§ Heading" in msg and "omit the locator" in msg

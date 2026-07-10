@@ -4,6 +4,11 @@ Every cite-citadel setting is a `CITADEL_*` (or provider) environment variable. 
 scaffolds a workspace `.env` that is auto-loaded (process env > workspace `.env` > packaged
 defaults). This page is the reference for pip users who never see the template file.
 
+Parsing is tolerant across every knob family: a **blank** value (an uncommented-but-emptied `.env`
+line) means "unset" and keeps the default, and a value that doesn't parse (a non-integer number, an
+unrecognized boolean/mode token) falls back to the default — `citadel doctor`'s config check names
+every such fallback. Booleans accept `1/true/yes/on` and `0/false/no/off`.
+
 > **Source of truth:** [`citadel/templates/env.example`](../citadel/templates/env.example) — the
 > commented template `citadel init` writes. Keep this page in sync with it when a knob changes.
 
@@ -120,7 +125,7 @@ run report, never a failed run. They are also always **unsigned** (`--no-gpg-sig
 
 | Variable | Default | What it does |
 |----------|---------|--------------|
-| `CITADEL_WIKI_GIT` | `auto` | `auto` commits only when the wiki dir is already **its own** git repository (run `git init` inside `wiki/` once to opt in). `1` additionally `git init`s the wiki dir on first use — refused (with a note) when the wiki dir sits inside another git working tree, e.g. a project checkout; `git init` it yourself to overrule. `0` never touches git. |
+| `CITADEL_WIKI_GIT` | `auto` | `auto` commits only when the wiki dir is already **its own** git repository (run `git init` inside `wiki/` once to opt in). `1` additionally `git init`s the wiki dir on first use — refused (with a note) when the wiki dir sits inside another git working tree, e.g. a project checkout; `git init` it yourself to overrule. `0` never touches git. An unrecognized value falls back to `auto` and `citadel doctor`'s config check flags it (so a typo of "off" can't silently keep committing). |
 | `CITADEL_WIKI_GIT_REMOTE` | (off) | Push target for the wiki-history commits: a remote NAME (e.g. `origin`) or URL (GitHub, GitLab, any git host), passed verbatim to `git push <value> HEAD` after each commit. Empty = commit locally only. A failed push is a report note, never a failed run. |
 
 `citadel doctor` reports the layer's state (mode, whether the wiki dir is a repo, the push target).
@@ -136,5 +141,5 @@ drive). Keep `wiki/` and `raw/` under a common parent so the `## Sources` citati
 | `CITADEL_WIKI_DIR` | `wiki` | The wiki bundle (the "database"). |
 | `CITADEL_RAW_DIR` | `raw` | The primary raw root the agent prompt names. |
 | `CITADEL_DOCS_DIR` | `docs` | Reference docs. |
-| `CITADEL_RAW_DIRS` | (single `raw/`) | Comma/newline-separated list of raw roots, each walked by ingest. **Replaces** the walk list (include `raw` to keep the workspace root). A page citing a source in a non-sibling root cites it by absolute posix path. Deletion detection is scoped per root — an unmounted root never reads as deleted sources. |
+| `CITADEL_RAW_DIRS` | (single `raw/`) | Comma/newline-separated list of raw roots, each walked by ingest. **Replaces** the walk list (include `raw` to keep the workspace root — `citadel doctor` warns when the primary `raw/` holds files but is missing from the list). A page citing a source in a non-sibling root cites it by absolute posix path. Deletion detection is scoped per root — an unmounted root never reads as deleted sources. |
 | `CITADEL_WORKSPACE` | (walk up for `citadel.toml`) | Force the workspace root (useful for `citadel serve` launched from an arbitrary CWD). |

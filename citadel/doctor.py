@@ -13,7 +13,9 @@ One command answering "is my setup sane?" without touching a byte. Each check em
   line is where that fallback becomes visible.
 - **agent CLI** — is the ``CITADEL_LLM_CLI`` binary on PATH (which path does it resolve to)? WARN,
   not FAIL — the CLI is only needed to *ingest*, and doctor must stay useful before it is installed.
-- **raw roots** — is every configured raw root reachable (a dir on disk)?
+- **raw roots** — is every raw root ingest actually walks (``CITADEL_RAW_DIRS``) reachable (a dir
+  on disk)? Also WARNs when the primary ``raw/`` was configured OUT of the walk list while holding
+  files — those would silently never be ingested.
 - **manifest** — does ``wiki/.citadel_ingested.json`` parse, with its format version, source count,
   and a workspace stamp matching the current root?
 - **failures** — a summary of the sources the failures catalog says could not be ingested.
@@ -151,10 +153,27 @@ def check_agent_cli() -> Check:
     return Check(OK, "agent CLI", f"{cli!r} -> {path}")
 
 
+def _primary_raw_excluded_from_walk(walked: list[Path]) -> bool:
+    """True when the primary ``RAW_DIR`` is NOT among the walked roots (a ``CITADEL_RAW_DIRS``
+    that replaced the walk list without re-listing it) while it exists and holds at least one
+    entry — files that are citable but will never be scanned. Same path-identity normalization
+    as :func:`config.source_roots`; degrades to False on any OS error (doctor never raises)."""
+    primary = os.path.normcase(os.path.normpath(str(config.RAW_DIR)))
+    if any(os.path.normcase(os.path.normpath(str(r))) == primary for r in walked):
+        return False
+    try:
+        return Path(config.RAW_DIR).is_dir() and any(Path(config.RAW_DIR).iterdir())
+    except OSError:
+        return False
+
+
 def check_raw_roots() -> Check:
-    """WARN when any configured raw root is not a reachable directory (an unmounted share, a not-yet-
-    created raw/); else OK with the reachable root count."""
-    roots = config.source_roots()
+    """The raw roots ingest actually WALKS (``config.RAW_DIRS`` — exactly discovery's list, not
+    the wider :func:`config.source_roots` union, which counts cite-only roots as reachable). WARN
+    when a walked root is not a reachable directory (an unmounted share, a not-yet-created raw/),
+    and when the primary ``raw/`` is configured OUT of the walk list while holding files — its
+    sources would silently never be ingested; else OK with the walked root count."""
+    roots = [Path(r) for r in config.RAW_DIRS]
     if not roots:
         return Check(WARN, "raw roots", "no raw roots configured")
     missing = [r for r in roots if not r.is_dir()]
@@ -162,9 +181,16 @@ def check_raw_roots() -> Check:
         return Check(
             WARN,
             "raw roots",
-            f"{len(missing)}/{len(roots)} raw root(s) unreachable: " + ", ".join(str(r) for r in missing),
+            f"{len(missing)}/{len(roots)} walked raw root(s) unreachable: " + ", ".join(str(r) for r in missing),
         )
-    return Check(OK, "raw roots", f"{len(roots)} raw root(s) reachable")
+    if _primary_raw_excluded_from_walk(roots):
+        return Check(
+            WARN,
+            "raw roots",
+            f"primary raw/ ({config.RAW_DIR}) is not in the CITADEL_RAW_DIRS walk list - its files "
+            "are never scanned; include `raw` in CITADEL_RAW_DIRS to walk it",
+        )
+    return Check(OK, "raw roots", f"{len(roots)} walked raw root(s) reachable")
 
 
 def check_manifest() -> Check:

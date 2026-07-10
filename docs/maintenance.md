@@ -45,7 +45,8 @@ source — **ingested** (with the importing model and rules version, plus `(stal
 was ingested under an older rulebook than the current one), **failed** (with the reason and attempt
 count), **skipped-duplicate**, **ignored** (which pattern matched), or **pending** (not yet
 ingested — the next `citadel ingest` will pick it up). It never runs an agent and never re-hashes
-sources, so it is always cheap to run.
+sources, so it is always cheap to run. An MCP client gets the same table via the read-only
+`wiki_status` tool (see [mcp.md](mcp.md)).
 
 ## Rules
 

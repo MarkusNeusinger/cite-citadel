@@ -30,9 +30,11 @@ the `CITADEL_*_DIR` overrides — see [configuration.md](configuration.md#paths-
 
 ## Tools
 
-`citadel serve` exposes **eleven tools** — ten read-only and one mutating (`wiki_ingest`). Each
+`citadel serve` exposes **twelve tools** — eleven read-only and one mutating (`wiki_ingest`). Each
 carries MCP behavior annotations (`readOnlyHint` etc.) so a client can tell the readers from the one
-mutating tool, and none ever raises — errors come back as plain strings.
+mutating tool, and none ever raises — errors come back as plain strings. The server also hands the
+recommended tool flow up through `initialize.instructions`, so a client that surfaces it gets the
+orientation for free.
 
 | Tool | What it does |
 |------|--------------|
@@ -45,7 +47,8 @@ mutating tool, and none ever raises — errors come back as plain strings.
 | `wiki_sources` | The `sources/index.md` provenance catalog — one row per ingested source and the pages citing it. |
 | `wiki_tags` | Browse by tag: every tag and its pages, or one tag's pages. |
 | `wiki_validate` | The strict per-page gate (required fields, honest citations, non-broken links). |
-| `wiki_lint` | The whole-wiki advisory health check (contradictions, orphans, missing cites, …). |
+| `wiki_lint` | The whole-wiki advisory health check (contradictions, orphans, missing cites, …; tunable `stale_days`). |
+| `wiki_status` | Per-source corpus state (ingested/failed/skipped/ignored/pending) — the read-only twin of `citadel status`. |
 | `wiki_ingest` | **The only mutating tool** — fold new/changed raw files into the wiki (idempotent via the sha manifest). |
 
 ## Claude Desktop
@@ -68,8 +71,8 @@ Add citadel to `claude_desktop_config.json` (Settings → Developer → Edit Con
 }
 ```
 
-`CITADEL_LLM_CLI` / `CITADEL_INGEST_MODEL` only matter if you let the AI call `wiki_ingest`; the ten
-read-only tools need neither. On Windows, set `"command": "uv"` and
+`CITADEL_LLM_CLI` / `CITADEL_INGEST_MODEL` only matter if you let the AI call `wiki_ingest`; the
+eleven read-only tools need neither. On Windows, set `"command": "uv"` and
 `"args": ["run", "python", "-m", "citadel", "serve"]` to sidestep the antivirus-quarantined
 `citadel.exe` (see below).
 

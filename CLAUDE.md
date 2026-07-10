@@ -32,7 +32,8 @@ session, `--log-dir DIR` writes a transcript per source, `--quiet` drops the pro
 explicit paths and is refused without them), `curate [--dry-run] [--limit N] [--stale-rules]
 [--diff PATH] [--retry]` (the SECOND lifecycle: improve EXISTING pages — re-sort/split/re-ground/resolve
 contradictions/fix locators — against a recomputed findings checklist), `status` (read-only
-per-source state table: ingested / failed / skipped-duplicate / ignored / pending), `doctor`
+per-source state table: ingested / failed / skipped-duplicate / ignored / pending; MCP twin
+`wiki_status`), `doctor`
 (read-only setup health check — OK/WARN/FAIL lines for workspace / rules / config-parse fallbacks /
 agent CLI / raw roots /
 manifest / billing / wiki-git state / a best-effort PyPI update check / workspace coherence; needs no workspace, exits 1 only on a FAIL), `serve` (MCP
@@ -40,7 +41,8 @@ stdio server), `search <query> [--tag T] [--limit N]`, `define <term>` / `read <
 `raw <key> [--locator L]` / `neighbors <rel_path>` / `index` / `sources` (CLI twins of the
 `wiki_define`/`wiki_read`/`wiki_raw`/`wiki_neighbors`/`wiki_index`/`wiki_sources` MCP tools
 — full CLI↔MCP parity),
-`tags [tag]`, `lint [--stale-days N]`, `check [paths…]`, `view [--out PATH] [--no-open]
+`tags [tag]`, `lint [--stale-days N]` (exit 3 when the report is not clean — its own code, distinct
+from the usage/no-workspace exit 2), `check [paths…]`, `view [--out PATH] [--no-open]
 [--obsidian]`, `rules list|show|eject`. `citadel --version` prints the version and (like `--help`)
 needs no workspace.
 
@@ -222,7 +224,8 @@ raw source). A large source is split into segments and folded in over several pa
   open points, and **locator issues** — a `lines A-B` range past a text source's end or a
   `§ Heading` naming a heading the source lacks, via `lint.check_locators`, shared with curate).
   Only *structural* problems (missing type, broken links, bad sources, wikilinks) flip its non-zero
-  exit; the rest — locator issues included — are advisory. Both layers parse citations/links/fences
+  exit (code 3 — lint's own, so CI can tell "wiki has problems" from the usage/no-workspace exit 2);
+  the rest — locator issues included — are advisory. Both layers parse citations/links/fences
   through `grammar.py`, so lint and `citadel check` agree by construction: a citation into `raw/` or
   `docs/` is legal provenance (never a broken link), and a link inside a ``` code fence is literal text.
 
@@ -279,16 +282,18 @@ per install method, and workspace coherence).
 curate) it commits the whole wiki dir as ONE commit (and pushes to `CITADEL_WIKI_GIT_REMOTE` when
 set), so every change is a reviewable diff; `auto` (default) only acts when the wiki dir is already
 its own git repo, `CITADEL_WIKI_GIT=1` also `git init`s it on first use (refusing an embedded repo
-inside another working tree), and any git problem is a report note, never a failed run. `server.py` is the FastMCP stdio server (11
-tools — 10 read-only incl. `wiki_raw` (the cited-source reader, backed by `rawsource.py`),
-`wiki_neighbors` (a page's links-out/backlinks/cited-sources graph) and `wiki_lint`, only
+inside another working tree), and any git problem is a report note, never a failed run. `server.py` is the FastMCP stdio server (12
+tools — 11 read-only incl. `wiki_raw` (the cited-source reader, backed by `rawsource.py`),
+`wiki_neighbors` (a page's links-out/backlinks/cited-sources graph), `wiki_lint` (with a tunable
+`stale_days`) and `wiki_status` (the per-source state view), only
 `wiki_ingest` mutates; every tool carries MCP behavior
-annotations — `readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint` — and never raises,
-returning error strings instead). The `viewer/` subpackage builds the self-contained offline HTML
+annotations — `readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint` — never raises,
+returning error strings instead, and hands the recommended tool flow up through
+`initialize.instructions`). The `viewer/` subpackage builds the self-contained offline HTML
 viewer (build logic in `__init__.py`; `template.html`/`app.css`/`app.js` are real package-data
 assets loaded via `importlib.resources`). `config.py` resolves all paths/settings. `cli.py` mirrors
 the MCP tools as subcommands (full parity: `define`/`read`/`raw`/`neighbors`/`index`/`sources` twin the reader tools;
-`lint`/`view` stay CLI-only and `wiki_lint` closes the gap from the MCP side). `rawsource.py` backs
+`view` stays CLI-only and `wiki_lint`/`wiki_status` close the `lint`/`status` gaps from the MCP side). `rawsource.py` backs
 `wiki_raw`/`citadel raw`: the provenance-gated, locator-aware reader for the raw source behind a
 `[^sN]` citation (verify-only — the wiki stays the synthesized layer for retrieval).
 

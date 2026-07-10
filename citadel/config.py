@@ -179,6 +179,32 @@ def _int_env(key: str, default: int) -> int:
         return default
 
 
+# The ONE pair of recognized boolean token sets — every boolean knob parses through _bool_env,
+# so "what counts as on/off" can never drift between knobs again.
+_TRUTHY_TOKENS = ("1", "true", "yes", "on")
+_FALSY_TOKENS = ("0", "false", "no", "off")
+
+
+def _bool_env(key: str, default: bool) -> bool:
+    """Read a boolean env setting tolerantly, mirroring :func:`_int_env`: blank/missing means
+    "unset" and yields the default (an uncommented-but-emptied ``.env`` line is not an opt-out —
+    previously a bare ``CITADEL_IMAGE_SUPPORT=`` silently DISABLED a default-on feature); a
+    recognized truthy/falsy token yields its value; anything else yields the default AND records
+    the problem in :data:`CONFIG_WARNINGS` instead of silently coercing."""
+    raw = os.environ.get(key, "").strip().lower()
+    if not raw:
+        return default
+    if raw in _TRUTHY_TOKENS:
+        return True
+    if raw in _FALSY_TOKENS:
+        return False
+    CONFIG_WARNINGS.append(
+        f"{key}={raw!r} is not a recognized boolean (1/true/yes/on or 0/false/no/off) - "
+        f"using the default {'1' if default else '0'}"
+    )
+    return default
+
+
 def _resolve_dir_entry(value: str) -> Path:
     """Resolve ONE configured-directory value to an absolute Path: expand a leading ``~``, take
     an ABSOLUTE value AS-IS — including a Windows mapped-drive path (``T:\\team-wiki\\wiki``) or
@@ -550,9 +576,9 @@ LLM_TIMEOUT: int = _int_env("CITADEL_LLM_TIMEOUT", 1200)
 #   capturing it silently — so you can watch the model work ("see everything") without dropping
 #   the non-interactive pipeline. copilot/gemini stream their full agentic transcript; the claude
 #   CLI (run with --output-format json) only emits its final result envelope, so prefer a transcript
-#   log there. Truthy: 1/true/yes/on.
+#   log there.
 LLM_LOG_DIR: str = os.environ.get("CITADEL_LLM_LOG_DIR", "").strip()
-LLM_VERBOSE: bool = os.environ.get("CITADEL_LLM_VERBOSE", "").strip().lower() in ("1", "true", "yes", "on")
+LLM_VERBOSE: bool = _bool_env("CITADEL_LLM_VERBOSE", False)
 
 # Git-repository sources. A sub-folder under raw/ that is a git checkout (holds a ``.git``) — or
 # carries an opt-in ``.citadelsource`` marker for a git-less snapshot — is ingested as ONE source: a
@@ -560,7 +586,7 @@ LLM_VERBOSE: bool = os.environ.get("CITADEL_LLM_VERBOSE", "").strip().lower() in
 # layer, the data-transform/pipeline core, entry points) is folded in by a SINGLE agent session,
 # and the source is tracked by its HEAD commit so a later commit re-ingests only the diff. Set
 # CITADEL_REPO_SUPPORT=0 to fall back to the old per-file walk (every file its own source).
-REPO_SUPPORT: bool = os.environ.get("CITADEL_REPO_SUPPORT", "1").strip().lower() not in ("0", "false", "no", "off", "")
+REPO_SUPPORT: bool = _bool_env("CITADEL_REPO_SUPPORT", True)
 # Total character budget for one repo digest, and the per-file cap inside it (a long file is
 # truncated with a marker). Generous defaults so the transform/pipeline core fits; raise for big
 # repos, lower to keep sessions cheap.
@@ -571,13 +597,7 @@ REPO_PER_FILE_MAX_CHARS: int = _int_env("CITADEL_REPO_PER_FILE_MAX_CHARS", 8000)
 # diagram, chart, photo) is handed to the agent to READ VISUALLY — the coding-agent CLI's file
 # reader can display images — instead of being rejected as a NUL-byte binary. Set
 # CITADEL_IMAGE_SUPPORT=0 to keep images out of the wiki (they then log as unreadable, as before).
-IMAGE_SUPPORT: bool = os.environ.get("CITADEL_IMAGE_SUPPORT", "1").strip().lower() not in (
-    "0",
-    "false",
-    "no",
-    "off",
-    "",
-)
+IMAGE_SUPPORT: bool = _bool_env("CITADEL_IMAGE_SUPPORT", True)
 
 # The wiki's TARGET LANGUAGE (BCP 47-ish code, default "en"): all wiki prose, titles, headings,
 # descriptions, and tags are written in it REGARDLESS of the raw sources' languages (including a
@@ -598,8 +618,8 @@ PDF_MODE: str = "images" if os.environ.get("CITADEL_PDF_MODE", "").strip().lower
 # preferences as attributed, dated, cited statements and a per-person style profile backed by
 # verbatim cited examples. Off (the default), such sources still yield facts and load-bearing
 # attributed positions, but no style profiling — in a many-person corpus every second document
-# has a different, irrelevant style. Truthy: 1/true/yes/on.
-STYLE_PROFILES: bool = os.environ.get("CITADEL_STYLE_PROFILES", "").strip().lower() in ("1", "true", "yes", "on")
+# has a different, irrelevant style.
+STYLE_PROFILES: bool = _bool_env("CITADEL_STYLE_PROFILES", False)
 
 # Same-basename document dedup. When on (default), if two or more raw files in the SAME folder
 # share a basename and are all document-export formats (a deck saved as both report.pptx AND
@@ -607,13 +627,7 @@ STYLE_PROFILES: bool = os.environ.get("CITADEL_STYLE_PROFILES", "").strip().lowe
 # skip is recorded in the failures report, pointing at the file that was kept). Preference order is
 # PDF first, then modern Office, then legacy. Re-evaluated every run, so deleting the kept file
 # promotes another. Set CITADEL_DEDUP_BY_BASENAME=0 to ingest every format separately.
-DEDUP_BY_BASENAME: bool = os.environ.get("CITADEL_DEDUP_BY_BASENAME", "1").strip().lower() not in (
-    "0",
-    "false",
-    "no",
-    "off",
-    "",
-)
+DEDUP_BY_BASENAME: bool = _bool_env("CITADEL_DEDUP_BY_BASENAME", True)
 
 # Large-source chunking. A single raw source whose extractable/readable text exceeds this many
 # characters is ingested in several sequential agent passes (segments split on paragraph
@@ -640,14 +654,27 @@ MAX_SOURCE_CHARS: int = _int_env("CITADEL_MAX_SOURCE_CHARS", 300000)
 #   0/off          — never touch git.
 # Commits are best-effort: any git failure becomes a one-line note on the report, never a failed
 # run — the wiki itself is already promoted by then.
-_WIKI_GIT_RAW = os.environ.get("CITADEL_WIKI_GIT", "").strip().lower()
-WIKI_GIT: str = (
-    "off"
-    if _WIKI_GIT_RAW in ("0", "false", "no", "off")
-    else "init"
-    if _WIKI_GIT_RAW in ("1", "true", "yes", "on", "init")
-    else "auto"
-)
+
+
+def _wiki_git_mode() -> str:
+    """Resolve ``CITADEL_WIKI_GIT`` to one of ``off``/``init``/``auto``. Blank/unset and the
+    explicit ``auto`` mean auto; an UNRECOGNIZED value also falls back to auto (the safe,
+    never-creates-a-repo default) but records a :data:`CONFIG_WARNINGS` entry — a typo of "off"
+    (``of``, ``fasle``) must surface in ``citadel doctor`` instead of silently keeping
+    auto-commits (and pushes) on."""
+    raw = os.environ.get("CITADEL_WIKI_GIT", "").strip().lower()
+    if raw in _FALSY_TOKENS:
+        return "off"
+    if raw in (*_TRUTHY_TOKENS, "init"):
+        return "init"
+    if raw and raw != "auto":
+        CONFIG_WARNINGS.append(
+            f"CITADEL_WIKI_GIT={raw!r} is not a recognized mode (0/off, 1/init, auto) - using 'auto'"
+        )
+    return "auto"
+
+
+WIKI_GIT: str = _wiki_git_mode()
 # Optional push target for the wiki-history commits: a remote NAME (e.g. `origin`) or URL (GitHub,
 # GitLab, any git host) passed verbatim to `git push <value> HEAD` after each commit. Empty
 # (default) = commit locally only. A failed push is a report note, never a failed run.

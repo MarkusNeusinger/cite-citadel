@@ -56,7 +56,7 @@ def seeded_wiki(tmp_citadel, seed_page):
 
 
 def test_all_tools_registered():
-    """The FastMCP instance exposes exactly the eleven documented tools (ten read-only + the
+    """The FastMCP instance exposes exactly the twelve documented tools (eleven read-only + the
     one mutating wiki_ingest) — a rename or a lost decorator would silently drop a tool from
     every MCP client."""
     tools = asyncio.run(server.mcp.list_tools())
@@ -70,6 +70,7 @@ def test_all_tools_registered():
         "wiki_read",
         "wiki_search",
         "wiki_sources",
+        "wiki_status",
         "wiki_tags",
         "wiki_validate",
     ]
@@ -93,10 +94,19 @@ def test_read_only_tools_are_annotated_read_only():
         "wiki_tags",
         "wiki_validate",
         "wiki_lint",
+        "wiki_status",
     )
     for name in readers:
         assert tools[name].annotations is not None and tools[name].annotations.readOnlyHint is True
     assert tools["wiki_ingest"].annotations.readOnlyHint is False
+
+
+def test_initialize_instructions_are_set():
+    """The server hands orientation guidance up through ``initialize.instructions`` (previously
+    null) — clients that surface it get the recommended tool flow for free."""
+    assert server.mcp.instructions
+    assert "wiki_index" in server.mcp.instructions
+    assert "wiki_ingest" in server.mcp.instructions
 
 
 # --- _snippet ----------------------------------------------------------------------------
@@ -158,6 +168,15 @@ def test_search_no_match_message_names_tag_scope(seeded_wiki):
 def test_search_empty_wiki_returns_message(tmp_citadel):
     out = server.wiki_search("anything")
     assert out == "No matches for 'anything'."
+
+
+@pytest.mark.parametrize("bad_limit", [0, -1])
+def test_search_nonpositive_limit_falls_back_to_default(seeded_wiki, bad_limit):
+    """A limit <= 0 (an LLM client miscomputing the argument) must fall back to the default,
+    never slice the hit list empty and assert a confident, factually wrong "No matches"."""
+    out = server.wiki_search("transformer", limit=bad_limit)
+    assert "concepts/transformer.md (score" in out
+    assert "No matches" not in out
 
 
 def test_search_never_raises(tmp_citadel, monkeypatch):
@@ -298,9 +317,41 @@ def test_read_not_found_returns_error_string(seeded_wiki):
 @pytest.mark.parametrize("bad", ["../x.md", "concepts/../../x.md", "/etc/passwd", ""])
 def test_read_rejects_path_traversal(seeded_wiki, bad):
     """Pins the okf.safe_join guard on wiki_read: a traversal/absolute/empty rel_path must come
-    back as an 'unsafe path' error STRING — it must neither raise nor read outside the wiki."""
+    back as an 'unsafe path' error STRING — it must neither raise nor read outside the wiki. The
+    prefix appears exactly once (the tool used to wrap the already-self-describing OKFError text
+    into a doubled "unsafe path: unsafe path: …")."""
     out = server.wiki_read(bad)
     assert out.startswith("error: unsafe path:")
+    assert out.count("unsafe path:") == 1
+
+
+def test_read_normalizes_backslash_rel_path(seeded_wiki):
+    """A Windows-style rel_path resolves like its POSIX twin — wiki_validate already normalized
+    backslashes while wiki_read 404'd on the same page."""
+    out = server.wiki_read("concepts\\transformer.md")
+    assert "title: Transformer" in out
+
+
+def test_read_generated_index_is_verbatim(seeded_wiki):
+    """A generated, frontmatter-less file (index.md) comes back byte-for-byte — the okf.dump
+    re-serialization used to prepend a spurious empty `---\\n{}\\n---` frontmatter block,
+    contradicting the tool's "verbatim" contract."""
+    store.rebuild_indexes()
+    on_disk = seeded_wiki.index_path.read_text(encoding="utf-8")
+    out = server.wiki_read("index.md")
+    assert out == on_disk
+    assert "{}" not in out
+
+
+def test_read_strips_a_leading_bom(seeded_wiki):
+    """A BOM'd page (common on Windows) must not leak a \\ufeff before its frontmatter into
+    MCP/CLI output — read_page_text mirrors okf.parse's encoding-artifact stripping."""
+    path = seeded_wiki.wiki / "misc" / "bommed.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"\xef\xbb\xbf---\ntype: Note\ntitle: Bommed\n---\n\nBody.\n")
+    out = server.wiki_read("misc/bommed.md")
+    assert not out.startswith("\ufeff")
+    assert out.startswith("---\n")
 
 
 def test_read_undecodable_file_returns_error_string(seeded_wiki):
@@ -335,6 +386,21 @@ def test_raw_uncited_key_returns_error_string(tmp_citadel):
     assert out.startswith("error:") and "not a source the wiki cites" in out
 
 
+def test_raw_unresolvable_locator_returns_error_string(tmp_citadel):
+    """A locator that parses to nothing offline-resolvable is an ERROR STRING like every other bad
+    locator — it used to silently dump the whole source with only a header note, which an MCP
+    client checking the 'error:' prefix could not detect."""
+    from citadel import config, manifest
+
+    (tmp_citadel.raw / "notes.md").write_text("hello\nworld\n", encoding="utf-8")
+    key = config.rel_or_abs_posix(tmp_citadel.raw / "notes.md")
+    manifest.save({key: manifest.make_entry("aa" * 32)})
+
+    out = server.wiki_raw(key, "gibberish locator")
+    assert out.startswith("error:") and "not offline-resolvable" in out
+    assert "hello" not in out  # no silent whole-source fallback
+
+
 # --- wiki_neighbors ----------------------------------------------------------------------
 
 
@@ -348,6 +414,19 @@ def test_neighbors_lists_the_three_sections(seeded_wiki):
 def test_neighbors_not_found_returns_error_string(seeded_wiki):
     """NEVER-RAISES contract: a missing page comes back as an error string."""
     assert server.wiki_neighbors("concepts/nope.md").startswith("error: page not found:")
+
+
+def test_neighbors_unsafe_path_error_is_not_doubled(seeded_wiki):
+    """A traversal rel_path errors with a single 'unsafe path:' prefix (same B11 fix as read)."""
+    out = server.wiki_neighbors("../x.md")
+    assert out.startswith("error: unsafe path:")
+    assert out.count("unsafe path:") == 1
+
+
+def test_neighbors_normalizes_backslash_rel_path(seeded_wiki):
+    """A Windows-style rel_path resolves like its POSIX twin, matching wiki_read/wiki_validate."""
+    out = server.wiki_neighbors("concepts\\transformer.md")
+    assert out.startswith("# Neighbors of concepts/transformer.md")
 
 
 # --- wiki_index --------------------------------------------------------------------------
@@ -512,3 +591,74 @@ def test_ingest_generic_error_becomes_error_string(tmp_citadel, monkeypatch):
     monkeypatch.setattr(ingest, "ingest", boom)
     out = server.wiki_ingest()
     assert out == "error: ingest failed: kaboom"
+
+
+# --- wiki_lint ----------------------------------------------------------------------------
+
+
+def test_lint_returns_report_text(seeded_wiki):
+    out = server.wiki_lint()
+    assert "Lint report" in out
+
+
+def test_lint_stale_days_parameter_reaches_lint(tmp_citadel, monkeypatch):
+    """``stale_days`` plumbs through to lint.lint — the knob CLI users had via --stale-days but
+    MCP clients could never tune."""
+    from citadel import lint as lint_mod
+
+    seen = {}
+
+    def fake_lint(pages=None, stale_days=365):
+        seen["stale_days"] = stale_days
+        return lint_mod.LintReport()
+
+    monkeypatch.setattr(lint_mod, "lint", fake_lint)
+    server.wiki_lint(stale_days=30)
+    assert seen["stale_days"] == 30
+    server.wiki_lint()
+    assert seen["stale_days"] == 365  # documented default, matching the CLI's
+
+
+def test_lint_never_raises(tmp_citadel, monkeypatch):
+    """NEVER-RAISES contract: a crashing lint comes back as an error string."""
+    from citadel import lint as lint_mod
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("lint exploded")
+
+    monkeypatch.setattr(lint_mod, "lint", boom)
+    out = server.wiki_lint()
+    assert out.startswith("error: lint failed:")
+
+
+# --- wiki_status --------------------------------------------------------------------------
+
+
+def test_status_reports_per_source_buckets(tmp_citadel):
+    """wiki_status renders the same per-source state table as ``citadel status``: an ingested
+    (manifested) source and a pending on-disk one each land in their bucket."""
+    from citadel import config, manifest
+
+    (tmp_citadel.raw / "done.md").write_text("done\n", encoding="utf-8")
+    (tmp_citadel.raw / "todo.md").write_text("todo\n", encoding="utf-8")
+    key = config.rel_or_abs_posix(tmp_citadel.raw / "done.md")
+    manifest.save({key: manifest.make_entry("aa" * 32, model="claude:sonnet")})
+
+    out = server.wiki_status()
+
+    assert out.startswith("Corpus status")
+    assert "Ingested (1)" in out and key in out
+    assert "Pending (1)" in out and "raw/todo.md" in out
+
+
+def test_status_never_raises(tmp_citadel, monkeypatch):
+    """NEVER-RAISES contract: a crashing status build comes back as an error string."""
+    from citadel import status
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("status exploded")
+
+    monkeypatch.setattr(status, "build_status", boom)
+    out = server.wiki_status()
+    assert out.startswith("error: could not read corpus status:")
+    assert "status exploded" in out
