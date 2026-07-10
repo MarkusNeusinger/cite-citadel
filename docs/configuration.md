@@ -2,7 +2,9 @@
 
 Every cite-citadel setting is a `CITADEL_*` (or provider) environment variable. `citadel init`
 scaffolds a workspace `.env` that is auto-loaded (process env > workspace `.env` > packaged
-defaults). This page is the reference for pip users who never see the template file.
+defaults). This page is the reference for pip users who never see the template file. The
+template's top section is all most setups need — everything under its "Advanced" line is optional
+tuning whose defaults suit most workspaces, documented in full here.
 
 Parsing is tolerant across every knob family: a **blank** value (an uncommented-but-emptied `.env`
 line) means "unset" and keeps the default, and a value that doesn't parse (a non-integer number, an
@@ -23,7 +25,7 @@ lives once in the README:
 
 | Variable | Default | What it does |
 |----------|---------|--------------|
-| `CITADEL_LLM_CLI` | `claude` | Which CLI ingest shells out to: `claude` \| `copilot` \| `gemini`. Run agentically (claude with acceptEdits + allowlist, copilot `--allow-all-tools`, gemini `--approval-mode yolo`); the CLI must be installed and logged in. |
+| `CITADEL_LLM_CLI` | `claude` | Which CLI ingest shells out to: `claude` \| `copilot` \| `gemini`. Run agentically (claude with acceptEdits + allowlist, copilot `--allow-all-tools`, gemini `--approval-mode yolo`); the CLI must be installed and logged in. If your workspace is a git checkout, run ingest on a clean working tree so any stray edit shows up (git is optional otherwise). |
 | `CITADEL_INGEST_MODEL` | `sonnet` | Model for the `claude` backend — an alias (`sonnet`/`opus`/`haiku`) or full id. copilot/gemini use their own default. |
 | `CITADEL_CURATE_MODEL` | (reuses ingest model) | Cheaper/faster model for `citadel curate` sessions (claude backend, via `--model`). |
 | `CLAUDE_CODE_PATH` / `COPILOT_CLI_PATH` / `GEMINI_CLI_PATH` | (PATH lookup) | Override the CLI binary path when it isn't on `PATH`. |

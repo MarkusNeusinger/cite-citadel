@@ -144,6 +144,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **`citadel init` now writes a two-tier `.env` template (~half the length, same knobs).** The
+  ~180-line template every init copied verbatim is restructured: a short top section with the five
+  knobs a new user actually sets (`CITADEL_LLM_CLI`, `CITADEL_INGEST_MODEL`, `CITADEL_LLM_TIMEOUT`,
+  `CITADEL_WIKI_LANG`, `CITADEL_LLM_LOG_DIR`), then an "Advanced" section grouping the rest under
+  short banners (paths & multi-root, formats, large sources & repos, wiki history, curate,
+  observability, ignore patterns, style profiles, binary overrides) with condensed comments — the
+  long-form explanations live in `docs/configuration.md`, which stays the full reference for all
+  knobs. No knob was added or removed and every default is unchanged; existing `.env` files are
+  never touched (init never overwrites one).
 - **Viewer search + reading UX (final viewer batch).** The offline HTML viewer's full-text search is
   now **tokenized**: every whitespace-separated term must match (AND) across title/tags/path/body
   (and source bodies), fixing a real miss where a two-word query like `adenosine blocking` returned
