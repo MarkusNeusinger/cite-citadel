@@ -43,7 +43,7 @@ CITADEL_RAW_DIR=$REPO/corpora/<corpus>/raw
 EOF
 # sanity-check the model id first (cheap):  claude --model <model> -p "Reply with exactly: ok"
 CITADEL_WORKSPACE="$SANDBOX" uv run python -m citadel ingest --quiet &   # background; poll:
-python3 -c "import json;print(len(json.load(open('$SANDBOX/wiki/.citadel_ingested.json'))['sources']))"
+uv run python -c "import json;print(len(json.load(open('$SANDBOX/wiki/.citadel_ingested.json'))['sources']))"
 ```
 
 - A killed/interrupted run is safe (all-or-nothing per source) and **resumes idempotently** from the
@@ -65,11 +65,13 @@ and report the `stretch N/M` line. For corpora without a committed stretch secti
 discriminative tier below — identical procedure for every wiki being compared:
 
 1. **Locator precision** — sample ~10 `[^sN]` citations across pages; resolve each with
-   `citadel raw <key> --locator "<loc>"`; check the located span actually contains the cited fact.
+   `uv run python -m citadel raw <key> --locator "<loc>"` (the portable invocation); check the
+   located span actually contains the cited fact.
    Report precise / vague (fact nearby but outside the span) / wrong per wiki.
 2. **Oblique retrieval** — ~8 user-phrased questions that do NOT reuse page-title words
    ("does letting coffee sit make it weaker?", "who started the cafe in Trieste?"). Same queries on
-   every wiki via `citadel search`; score rank-of-relevant-page; unfindable = hard miss.
+   every wiki via `uv run python -m citadel search`; score rank-of-relevant-page; unfindable =
+   hard miss.
 3. **Merge quality** — near-duplicate/overlapping pages (e.g. three caffeine pages), one-page-per-
    source dumps, and whether canonical shared facts (robusta 2×, drip ~95 mg) live in ONE place
    with co-citations or are scattered.
