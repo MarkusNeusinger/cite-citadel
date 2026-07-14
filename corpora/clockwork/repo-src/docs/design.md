@@ -17,8 +17,8 @@ and no worker pool; the design goal is "boring and catch-up-correct" over "fast.
    name. A second scheduler process trying the same job fails to take the lock and moves on,
    so several instances can run for availability with no double-firing.
 5. **Run + retry.** The claimed command is executed. On failure it is retried up to
-   `max_retries` times (default 3) with exponential backoff (`backoff_base ** attempt`
-   seconds).
+   `max_retries` times with exponential backoff (`backoff_base ** attempt` seconds); the
+   default `max_retries` is documented in `src/scheduler.py` and the README.
 6. **Record.** Every attempt is written to the `job_runs` table: the job name, status
    (`success` / `failed`), `started_at`, `finished_at`, and the attempt number.
 
