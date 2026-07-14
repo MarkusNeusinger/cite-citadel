@@ -27,7 +27,7 @@ If you've used us before you know refresh used to take ~5 seconds. That number a
 
 ---
 
-6/ Ok let's clear this up because it's just not true. Skylight does NOT drop events over 1MB. Large events are QUEUED and processed within the retention window — never dropped. It's in the docs, been that way for months: skylight.dev/docs/large-events 📄
+6/ Ok let's clear this up because it's just not true. Skylight does NOT drop events over 1MB. Large events are QUEUED and processed within the retention window — never dropped. It's in the docs, been that way for months: skylight.example/docs/large-events 📄
 
 ---
 

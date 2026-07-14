@@ -17,7 +17,7 @@ citadel_version: 0.3.0
 
 # Dana Kessler
 
-Dana Kessler is based in Amsterdam, Netherlands, and can be reached at dana.kessler@fastmail.example.[^s1][^s9] Her CV lists her title as "Senior / Staff Platform Engineer."[^s9] In a cover letter dated March 2026,[^s2] she applied for the Senior Platform Engineer role at [Larkspur](../organizations/larkspur.md).[^s3]
+Dana Kessler is based in Amsterdam, Netherlands, and can be reached at dana.kessler@example.com.[^s1][^s9] Her CV lists her title as "Senior / Staff Platform Engineer."[^s9] In a cover letter dated March 2026,[^s2] she applied for the Senior Platform Engineer role at [Larkspur](../organizations/larkspur.md).[^s3]
 
 ## Summary (per CV)
 

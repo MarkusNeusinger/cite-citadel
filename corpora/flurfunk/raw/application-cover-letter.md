@@ -1,5 +1,5 @@
 Dana Kessler
-dana.kessler@fastmail.example
+dana.kessler@example.com
 Amsterdam, Netherlands
 
 March 2026

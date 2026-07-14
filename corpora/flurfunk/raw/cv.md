@@ -1,7 +1,7 @@
 # Dana Kessler
 
 Senior / Staff Platform Engineer
-Amsterdam, Netherlands · dana.kessler@fastmail.example
+Amsterdam, Netherlands · dana.kessler@example.com
 
 ---
 

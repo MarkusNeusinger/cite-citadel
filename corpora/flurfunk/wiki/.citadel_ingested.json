@@ -19,8 +19,8 @@
       "model": "claude:sonnet",
       "mtime_ns": 1784030890859260229,
       "rules_version": "ce77c062190d",
-      "sha256": "3ee3218b12bb4071f1d1a5da5632068c47cb8f4ba4d5a044fe1fab4f72a13fd6",
-      "size": 1760
+      "sha256": "438a8706b37946294e9ff7444c57b5b3a3046dec328a024cbae6669e72233085",
+      "size": 1777
     },
     "raw/cv.md": {
       "ctime_ns": 1784030897755257662,
@@ -28,8 +28,8 @@
       "model": "claude:sonnet",
       "mtime_ns": 1784030897735257671,
       "rules_version": "ce77c062190d",
-      "sha256": "c8820bbaf3fe24f84829bc7f42fc1f3f58c8da87a571bce3c43ce97c27ae60d1",
-      "size": 1339
+      "sha256": "011d324ae0dd36959a61f8a3c76729b31a8890af87d924933e85dba3b2f76502",
+      "size": 1382
     },
     "raw/forum-support-thread.md": {
       "ctime_ns": 1784030918595242594,
@@ -55,8 +55,8 @@
       "model": "claude:sonnet",
       "mtime_ns": 1784030853199246515,
       "rules_version": "ce77c062190d",
-      "sha256": "703c7cc5f39bbde93a08d90daf031f12b38f4ba186875d7b02248c18ce5f6d91",
-      "size": 4427
+      "sha256": "10c13214877c84694ba64910d7c7b21bc3b99cf48917c3a26fdd90c247e1cc39",
+      "size": 4474
     },
     "raw/tweet-thread.md": {
       "ctime_ns": 1784030864331262455,
@@ -64,8 +64,8 @@
       "model": "claude:sonnet",
       "mtime_ns": 1784030864319262459,
       "rules_version": "ce77c062190d",
-      "sha256": "e30220a2814ddb0bc6dfa4fea8494c713e52bca620a6616513c57cf3720167ad",
-      "size": 1577
+      "sha256": "b08528108c2aa36f7a38e4cd214ea192ed4747b30c02d1f035b981b7dad67bb3",
+      "size": 1621
     }
   }
 }
