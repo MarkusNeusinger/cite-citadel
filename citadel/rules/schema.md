@@ -123,6 +123,9 @@ The raw files are the primary source of truth:
   - WRONG: a page titled *Vitamin C as a cold cure* — "Vitamin C cures the common cold.[^s1]"
   - RIGHT: "The brochure claims vitamin C cures the common cold.[^s1] This conflicts with
     established medical consensus.[^llm1]"
+  - Self-check before finishing the page: re-read your frontmatter `description` — does it
+    assert an attributed claim as fact? The `description` is the wiki's own voice; "A cure for
+    the common cold" fails quarantine even when the body is correctly attributed.
 - Beyond the mandatory quarantine notes above (which are always allowed — they are the one
   required use of your own knowledge), you **may** add a fact from your own knowledge **only**
   when all three hold: the fact is **essential** to understanding the topic, you are **highly
@@ -176,6 +179,10 @@ pins where in the source the cited fact lives:
   within the file's real length — check the line count. Prefer a `lines` range over inventing a
   heading. If your locator does not resolve against the source, fix it or drop to a plain file
   citation.
+- **Never a compound locator.** A `§` locator names exactly ONE heading — never several joined
+  with commas or "and" (`§ Intro, Methods` or `§ Setup and Teardown` resolves only if that
+  literal heading exists). A fact drawn from several passages gets several markers, one per
+  place — or one `lines A-B` range that really spans them.
 - One definition = one location. Facts from different places in the same file get **separate
   markers**, each defined with its own locator (`[^s2]` and `[^s3]` above both cite
   `report.pdf`). Never stretch one whole-file range over facts from many places:
