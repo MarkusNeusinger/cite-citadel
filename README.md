@@ -138,7 +138,8 @@ a CLI counterpart (`citadel read`, `citadel index`, `citadel lint`, …), so an 
 can do everything through the shell.
 
 Wire it into any stdio MCP client (Claude Desktop, Claude Code, a generic stdio client) by launching
-`citadel serve` with `CITADEL_WORKSPACE` set to your workspace. An AI then `wiki_index()`s to orient,
+`citadel serve` (portably: `uv run python -m citadel serve`) with `CITADEL_WORKSPACE` set to your
+workspace. An AI then `wiki_index()`s to orient,
 `wiki_search(...)`es to find pages, and `wiki_read(...)`s for full cited context — answering from
 your synthesized wiki instead of re-retrieving documents. Copy-paste config and "if the server won't
 start": [**docs/mcp.md**](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/mcp.md).
