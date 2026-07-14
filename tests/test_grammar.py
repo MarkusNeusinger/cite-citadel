@@ -228,9 +228,15 @@ def test_parse_locator_spaced_dash_note_is_not_absorbed_into_the_range():
     dash is a description separator, never a range. Regression for the lint out-of-range false flag."""
     loc = grammar.parse_locator("line 21 — 1657 founding credit and the roles of Thornbury and Lin")
     assert (loc.kind, loc.start, loc.end) == ("lines", 21, 21)
-    for tail in ("line 21 — 1657", "line 5 – 900 the note", "lines 3-4 — 2020 was the year"):
+    # Exact (start, end): the number after a spaced dash is a NOTE, never the range end — a tight
+    # `3-4` range still parses, then its trailing ` — 2020…` note is dropped.
+    for tail, start, end in [
+        ("line 21 — 1657", 21, 21),
+        ("line 5 – 900 the note", 5, 5),
+        ("lines 3-4 — 2020 was the year", 3, 4),
+    ]:
         loc = grammar.parse_locator(tail)
-        assert loc.kind == "lines" and loc.end < 1000, tail  # the year is never the range end
+        assert (loc.kind, loc.start, loc.end) == ("lines", start, end), tail
 
 
 def test_parse_locator_plain_heading():
