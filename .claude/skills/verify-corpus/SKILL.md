@@ -260,9 +260,11 @@ run it DETACHED and poll a completion marker (cap ~60 min):
 export CITADEL_INGEST_MODEL=claude-sonnet-5 CITADEL_CURATE_MODEL=claude-sonnet-5
 # sanity-check the id first: claude --model claude-sonnet-5 -p "Reply with exactly: ok"
 # fall back to the `sonnet` alias if the concrete id is rejected.
-nohup uv run python -m citadel curate --diff "$SANDBOX/curate.diff.md" > "$SANDBOX/curate.out" 2>&1 &
+# Append an explicit EXIT= marker when curate returns, so the poll below has something to wait on
+# ($SANDBOX is expanded by THIS shell into the detached sh -c; \$? is escaped to evaluate inside it).
+nohup sh -c "uv run python -m citadel curate --diff '$SANDBOX/curate.diff.md' > '$SANDBOX/curate.out' 2>&1; echo EXIT=\$? >> '$SANDBOX/curate.out'" >/dev/null 2>&1 &
 until grep -q '^EXIT=' "$SANDBOX/curate.out" 2>/dev/null; do sleep 30; done
-cat "$SANDBOX/curate.out"                    # the applied / NOOP / failed report
+cat "$SANDBOX/curate.out"                    # the applied / NOOP / failed report, then EXIT=<code>
 ```
 
 Then grade — every one of these must hold:
