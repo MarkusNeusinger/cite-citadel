@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "format": 2,
+    "workspace": ""
+  },
+  "sources": {
+    "raw/announcement.md": {
+      "ctime_ns": 1784030920771240737,
+      "hashed_at_ns": 1784031553867114400,
+      "model": "claude:sonnet",
+      "mtime_ns": 1784030920759240747,
+      "rules_version": "ce77c062190d",
+      "sha256": "443d9e486cea4889b6274fd35007fe107cf544aa30bfc8b34ce7c7db5f1314af",
+      "size": 931
+    },
+    "raw/application-cover-letter.md": {
+      "ctime_ns": 1784030890875260223,
+      "hashed_at_ns": 1784031553867114400,
+      "model": "claude:sonnet",
+      "mtime_ns": 1784030890859260229,
+      "rules_version": "ce77c062190d",
+      "sha256": "3ee3218b12bb4071f1d1a5da5632068c47cb8f4ba4d5a044fe1fab4f72a13fd6",
+      "size": 1760
+    },
+    "raw/cv.md": {
+      "ctime_ns": 1784030897755257662,
+      "hashed_at_ns": 1784030994059228407,
+      "model": "claude:sonnet",
+      "mtime_ns": 1784030897735257671,
+      "rules_version": "ce77c062190d",
+      "sha256": "c8820bbaf3fe24f84829bc7f42fc1f3f58c8da87a571bce3c43ce97c27ae60d1",
+      "size": 1339
+    },
+    "raw/forum-support-thread.md": {
+      "ctime_ns": 1784030918595242594,
+      "hashed_at_ns": 1784031553867114400,
+      "model": "claude:sonnet",
+      "mtime_ns": 1784030918583242604,
+      "rules_version": "ce77c062190d",
+      "sha256": "564568cc7ea37d7df80fac88041511d4775431a31df133bb85e8626207babb73",
+      "size": 2872
+    },
+    "raw/interview-transcript-founder.md": {
+      "ctime_ns": 1784030879771262878,
+      "hashed_at_ns": 1784031553867114400,
+      "model": "claude:sonnet",
+      "mtime_ns": 1784030879767262879,
+      "rules_version": "ce77c062190d",
+      "sha256": "72ce7598b16511b0830af7969f1b46181fdd3d470418a130283830f8f23787f5",
+      "size": 2658
+    },
+    "raw/slack-export-platform-team.txt": {
+      "ctime_ns": 1784030853203246524,
+      "hashed_at_ns": 1784030994059228407,
+      "model": "claude:sonnet",
+      "mtime_ns": 1784030853199246515,
+      "rules_version": "ce77c062190d",
+      "sha256": "703c7cc5f39bbde93a08d90daf031f12b38f4ba186875d7b02248c18ce5f6d91",
+      "size": 4427
+    },
+    "raw/tweet-thread.md": {
+      "ctime_ns": 1784030864331262455,
+      "hashed_at_ns": 1784030987807227547,
+      "model": "claude:sonnet",
+      "mtime_ns": 1784030864319262459,
+      "rules_version": "ce77c062190d",
+      "sha256": "e30220a2814ddb0bc6dfa4fea8494c713e52bca620a6616513c57cf3720167ad",
+      "size": 1577
+    }
+  }
+}

@@ -1,0 +1,63 @@
+Slack export — #platform
+Workspace: Larkspur
+Channel: #platform
+Exported: 2026-02-11
+
+[2026-02-09 09:02] Tom Alvarez: morning all ☕
+[2026-02-09 09:03] Wei Chen: morning
+[2026-02-09 09:03] Sofia Ruiz: mornin 👋
+[2026-02-09 09:11] Tom Alvarez: ok before standup — the event retention thing. we still have no default set and staging is basically hoarding events forever
+[2026-02-09 09:12] Wei Chen: yeah the disk graph looks like a hockey stick lol
+[2026-02-09 09:12] Wei Chen: https://media.giphy.com/media/xT9IgzoKnwFNmISR8I/giphy.gif
+[2026-02-09 09:13] Sofia Ruiz: 😂 accurate
+[2026-02-09 09:15] Tom Alvarez: so proposal: default event-retention window = 7 days. keeps storage sane, most dashboards only look at the last few days anyway
+[2026-02-09 09:16] Wei Chen: 7 days works for me. easy to reason about and we can always bump per-customer if someone screams
+[2026-02-09 09:16] Tom Alvarez: 👍
+[2026-02-09 09:17] Sofia Ruiz: no objection from me, ship it
+[2026-02-09 09:18] Tom Alvarez: cool. so decision: Skylight default event-retention = 7 days. I'll do the config PR after standup
+[2026-02-09 09:19] Wei Chen: 🔥
+[2026-02-09 09:31] Tom Alvarez: unrelated but does anyone actually know why retention-svc is named retention-svc. it does like four unrelated cleanup jobs now
+[2026-02-09 09:32] Wei Chen: because past-us was lazy
+[2026-02-09 09:33] Sofia Ruiz: it's basically a janitor at this point
+[2026-02-09 09:33] Tom Alvarez: honestly let's just rename it. retention-svc -> janitor
+[2026-02-09 09:34] Wei Chen: lol yes. janitor it is
+[2026-02-09 09:34] Sofia Ruiz: 🧹 approved
+[2026-02-09 09:35] Tom Alvarez: k I'll add a rename ticket, low prio
+[2026-02-09 12:41] Wei Chen: anyone want to grab lunch? the ramen place on 4th reopened
+[2026-02-09 12:42] Sofia Ruiz: yesss I've been waiting weeks for that
+[2026-02-09 12:42] Tom Alvarez: in. give me 5, finishing this deploy
+[2026-02-09 12:43] Wei Chen: the spicy miso is untouchable btw
+[2026-02-09 12:44] Sofia Ruiz: hard agree 🙃
+[2026-02-09 12:58] Tom Alvarez: ok done, lets go
+
+[2026-02-10 10:04] Wei Chen: retention default PR is merged and rolled to prod fyi. 7 days everywhere now
+[2026-02-10 10:05] Tom Alvarez: nice
+[2026-02-10 10:22] Sofia Ruiz: quick heads up, Northwind opened a ticket, they say some dashboards are empty for older ranges
+[2026-02-10 10:23] Tom Alvarez: older as in?
+[2026-02-10 10:23] Sofia Ruiz: like 10-12 days back
+[2026-02-10 10:24] Wei Chen: that'd be the 7 day window doing its job tbh
+[2026-02-10 10:25] Sofia Ruiz: right, just flagging. told them I'd dig in
+[2026-02-10 10:26] Tom Alvarez: k keep me posted
+[2026-02-10 15:47] Wei Chen: the deploy dashboard is so pretty now that refresh is instant, still not over it
+[2026-02-10 15:48] Sofia Ruiz: 🔥🔥
+[2026-02-10 16:30] Tom Alvarez: heading out early, dentist. back tmrw
+
+[2026-02-11 08:51] Sofia Ruiz: ok so the Northwind thing is worse than I thought. they needed 3 weeks of event history for a compliance audit and it's just... gone. aged out under the 7 day window
+[2026-02-11 08:52] Sofia Ruiz: they are not happy and honestly fair
+[2026-02-11 08:53] Tom Alvarez: oof. yeah 7 was too aggressive
+[2026-02-11 08:54] Wei Chen: agreed, we optimized for our disk graph not for actual customers
+[2026-02-11 08:55] Sofia Ruiz: proposal: bump the default event-retention window to 30 days. covers a normal audit/reporting cycle and it's still bounded
+[2026-02-11 08:56] Tom Alvarez: 30 works. do it
+[2026-02-11 08:56] Wei Chen: +1 on 30
+[2026-02-11 08:57] Sofia Ruiz: ok. decision: default event-retention = 30 days, reverting the 7 day default. I'll own the PR and the changelog note
+[2026-02-11 08:58] Tom Alvarez: 👍 thank you
+[2026-02-11 09:20] Sofia Ruiz: PR up. also adding a note that customers on audit-heavy plans should confirm their window explicitly
+[2026-02-11 09:21] Wei Chen: good call
+[2026-02-11 09:40] Sofia Ruiz: merged + rolling out. new default is 30 days as of now
+[2026-02-11 09:41] Tom Alvarez: 🎉
+[2026-02-11 09:42] Wei Chen: rip 7 days, we hardly knew ye
+[2026-02-11 09:43] Sofia Ruiz: 😂
+[2026-02-11 11:12] Wei Chen: btw did the janitor rename ever happen
+[2026-02-11 11:13] Tom Alvarez: ticket exists, still low prio, but yeah retention-svc is officially getting renamed to janitor whenever someone has a slow afternoon
+[2026-02-11 11:14] Sofia Ruiz: I'll take it, slow afternoon incoming
+[2026-02-11 11:14] Wei Chen: legend

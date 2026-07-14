@@ -8,6 +8,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Two new test corpora — `clockwork` and `flurfunk` — with committed, graded showcase wikis
+  (seven corpora total).** `clockwork` is the first corpus whose source is a whole **git repository**,
+  folded in as ONE digest (`CITADEL_REPO_SUPPORT`, `kind=repo`), then re-ingested after a second
+  commit changes a documented default (`max_retries` 3 → 5) — the first end-to-end coverage of
+  `kind=repo`/`repo-reconcile`, folder-keyed provenance, and a `type: System` page for an external
+  store. Its committed inputs are the `repo-src/` + `repo-src-wave2/` trees the sandbox materializes
+  into a checkout (a git repo can't be committed inside this repo). `flurfunk` is seven
+  **informal-genre** sources — a Slack export, an X/Twitter thread, a podcast interview, a job
+  application (cover letter + CV), a forum thread, and an announcement — grading **attribution** ("X
+  said Y" ≠ "Y is true"), an in-thread decision reversal, a quote-tweet negative row, and CV-timeline
+  completeness. Both ship a hidden `ground-truth.md`, are wired into the `verify-corpus` skill, and
+  are linted by CI + published in the Pages gallery.
 - **verify-corpus Mode C — an end-to-end grader for the `curate` lifecycle.** Modes A/B grade
   ingest; Mode C grades `citadel curate` end-to-end: it builds a throwaway curate-defect sandbox from
   the beverages showcase (re-stamping the manifest and neutralizing the showcase's own open

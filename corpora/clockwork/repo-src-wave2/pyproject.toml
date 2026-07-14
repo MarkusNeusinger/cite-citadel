@@ -1,0 +1,20 @@
+[project]
+name = "clockwork-scheduler"
+version = "0.4.0"
+description = "A lightweight Python job scheduler with PostgreSQL-backed state and catch-up."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "The clockwork authors" }]
+dependencies = [
+    "psycopg[binary]>=3.1",   # PostgreSQL driver — job state store
+    "croniter>=2.0",          # cron-syntax schedule parsing
+    "pyyaml>=6.0",            # clockwork.yml job definitions
+]
+
+[project.scripts]
+clockwork = "scheduler:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

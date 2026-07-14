@@ -1,12 +1,13 @@
 ---
 name: verify-corpus
-description: End-to-end test + grader for the citadel ingest pipeline over the shipped test corpora — beverages (coffee+tea showcase), kelvarra (a coherent fictional world whose facts contradict reality), leuchtfeuer (a 3-year programme ingested in dated waves that drives reconcile/delete/force), pemberley (all of Pride and Prejudice as one large-source chunking + narrative stress test), and injection-resistance (mundane documents with adversarial instructions the agent must treat as content). Mode A ingests a corpus into a throwaway SANDBOX workspace (never a live wiki), runs the structural gates (citadel check + lint), then grades the result the way a user consumes it — driving citadel's own read tools (search/read/index/tags) to check each hidden ground-truth.md guarantee is both correct+cited and easily findable, dropping to a file-level grep only to separate a wiki-creation defect from a retrieval one and route the miss into an improvement backlog (single-source facts, merges, contradictions, counterfactuals kept-as-stated, temporal supersession, delete propagation, cross-links, abbreviations, chunking integrity, injection non-execution). Use whenever the user wants to run the e2e / corpus test, verify or grade a corpus, (re)build the demo/showcase wiki, prove citations and contradictions still surface, or check that a change to ingest, llm, the rules tree (citadel/rules/), the ingest prompts, or the store still folds a corpus correctly — even if they do not say the word "skill". Takes a corpus name (beverages | kelvarra | leuchtfeuer | pemberley | injection-resistance | all) and optional --grade-only.
+description: End-to-end test + grader for the citadel ingest pipeline over the shipped test corpora — beverages (coffee+tea showcase), kelvarra (a coherent fictional world whose facts contradict reality), leuchtfeuer (a 3-year programme ingested in dated waves that drives reconcile/delete/force), pemberley (all of Pride and Prejudice as one large-source chunking + narrative stress test), injection-resistance (mundane documents with adversarial instructions the agent must treat as content), clockwork (a whole git repository folded in as one digest, with a second commit driving repo-reconcile), and flurfunk (informal genres — chat, social, interview, application, forum — grading attribution and in-thread reversal). Mode A ingests a corpus into a throwaway SANDBOX workspace (never a live wiki), runs the structural gates (citadel check + lint), then grades the result the way a user consumes it — driving citadel's own read tools (search/read/index/tags) to check each hidden ground-truth.md guarantee is both correct+cited and easily findable, dropping to a file-level grep only to separate a wiki-creation defect from a retrieval one and route the miss into an improvement backlog (single-source facts, merges, contradictions, counterfactuals kept-as-stated, temporal supersession, delete propagation, repo digests, cross-links, abbreviations, chunking integrity, attribution, injection non-execution). Use whenever the user wants to run the e2e / corpus test, verify or grade a corpus, (re)build the demo/showcase wiki, prove citations and contradictions still surface, or check that a change to ingest, llm, the rules tree (citadel/rules/), the ingest prompts, or the store still folds a corpus correctly — even if they do not say the word "skill". Takes a corpus name (beverages | kelvarra | leuchtfeuer | pemberley | injection-resistance | clockwork | flurfunk | all) and optional --grade-only.
 ---
 
 # Verify a corpus end-to-end
 
-Five shipped corpora, each a `corpora/<name>/` bundle (`raw/`, sometimes `stages/`, a `README.md`)
-plus a hidden answer key at `.claude/skills/verify-corpus/<name>/ground-truth.md`. The ingest agent
+Seven shipped corpora, each a `corpora/<name>/` bundle (`raw/`, sometimes `stages/` or a
+materializable repo tree, a `README.md`) plus a hidden answer key at
+`.claude/skills/verify-corpus/<name>/ground-truth.md`. The ingest agent
 **never sees the key** — it lives outside the corpus, and Mode A points `CITADEL_RAW_DIR` at the
 corpus `raw/` only (defense in depth). This skill runs the real pipeline into a **sandbox**, then
 grades that sandbox wiki against the key. Grading is a **two-phase FACTS-style gate**: phase 1 =
@@ -17,7 +18,7 @@ end-to-end — it seeds known defects into a sandbox, proves the offline detecto
 then runs real curate sessions and grades that the model FIXES them without breaking valid pages.
 
 **Usage:** `verify-corpus
-<beverages|kelvarra|leuchtfeuer|pemberley|injection-resistance|all> [--grade-only]`
+<beverages|kelvarra|leuchtfeuer|pemberley|injection-resistance|clockwork|flurfunk|all> [--grade-only]`
 
 | corpus | what it stresses | sandbox note | ground-truth |
 | ------ | ---------------- | ------------ | ------------ |
@@ -26,6 +27,8 @@ then runs real curate sessions and grades that the model FIXES them without brea
 | `leuchtfeuer` | reconcile / delete / force across 3 dated waves; temporal supersession; German→English; opinions & style | 3 waves (see the wave protocol) | `.claude/skills/verify-corpus/leuchtfeuer/ground-truth.md` |
 | `pemberley` | large-source multi-segment chunking; relationship extraction; in-novel misinformation; narrative supersession | **one ~730k-char file → ~18 segments, HOURS** — set a **LONG timeout** and force chunking (see the pemberley note) | `.claude/skills/verify-corpus/pemberley/ground-truth.md` |
 | `injection-resistance` | embedded adversarial instructions treated as content, never executed; real facts still extracted | 3 files, 3 quick sessions | `.claude/skills/verify-corpus/injection-resistance/ground-truth.md` |
+| `clockwork` | a whole git repo folded in as ONE digest (`kind=repo`), then a second commit driving `kind=repo-reconcile`; folder-keyed provenance; one documented default superseded | materialize the repo + 2 commits (see the clockwork note) | `.claude/skills/verify-corpus/clockwork/ground-truth.md` |
+| `flurfunk` | informal genres (chat / social / interview / application / forum); attribution ("X said Y" ≠ "Y is true"), in-thread reversal, a quote-tweet negative row, CV timeline | 7 files, one pass each | `.claude/skills/verify-corpus/flurfunk/ground-truth.md` |
 
 Mode A shells out to the ingest CLI (slow, uses your subscription). For fast iteration on the grader
 use **Mode B** (`--grade-only`) against a sandbox you already built. **Mode C** grades the *curate*
@@ -126,6 +129,49 @@ uv run python -m citadel ingest --force "$RAW/2024-03-05-minutes-kickoff.md"
 
 Expected session kinds per wave are enumerated in the wave protocol of
 `leuchtfeuer/ground-truth.md` (authoritative). Watch the report per wave.
+
+### clockwork — the two-commit repo protocol (repo + repo-reconcile)
+
+`clockwork`'s source is a whole **git repository**, so the sandbox **materializes** it (a git repo
+cannot be committed inside this repo): `repo-src/` is the v0.3.0 state, `repo-src-wave2/` the overlay
+landing v0.4.0. `CITADEL_REPO_SUPPORT=1` is required. Neither `repo-src*/` tree is ever pointed at
+the agent — only the materialized checkout under the sandbox raw.
+
+```bash
+export CITADEL_RAW_DIR="$SANDBOX/raw"; RAW="$CITADEL_RAW_DIR"; WIKI="$SANDBOX/wiki"
+export CITADEL_REPO_SUPPORT=1
+SRC="$REPO/corpora/clockwork"
+
+# wave 1 — materialize at v0.3.0 as a real checkout, then ingest (kind=repo)
+mkdir -p "$RAW/clockwork-repo" && cp -r "$SRC/repo-src/." "$RAW/clockwork-repo/"
+( cd "$RAW/clockwork-repo" && git init -q && git add -A && \
+  git -c user.email=t@e.test -c user.name=t commit -qm "clockwork v0.3.0" )
+uv run python -m citadel ingest
+
+# wave 2 — apply the overlay, new commit → reconcile (kind=repo-reconcile)
+cp -r "$SRC/repo-src-wave2/." "$RAW/clockwork-repo/"
+( cd "$RAW/clockwork-repo" && git add -A && \
+  git -c user.email=t@e.test -c user.name=t commit -qm "clockwork v0.4.0" )
+uv run python -m citadel ingest
+
+# idempotency — no new commit → NOOP
+uv run python -m citadel ingest
+```
+
+Expected kinds: wave 1 = one **repo** session (one manifest entry keyed by HEAD commit, NOT per-file);
+wave 2 = one **repo-reconcile** session (the changed default `max_retries` 3→5 is superseded, not
+duplicated); the final re-run is a **NOOP**. Grade against `clockwork/ground-truth.md` — the key
+guarantees are the single folder-keyed digest, a `type: System` PostgreSQL page, and the 3→5
+supersession.
+
+### flurfunk — informal genres (attribution + reversal)
+
+`flurfunk` is 7 informal sources read one pass each from the committed `raw/` (like beverages). Pair
+with `CITADEL_STYLE_PROFILES=1` (the CV + interview give voices to profile). The grade's spine is
+**attribution** ("X said Y" ≠ "Y is true") — the interviewee's self-serving claims and the
+quote-tweet's false claim must stay attributed/refuted, never wiki-voice — plus the Slack retention
+reversal (30 days current, 7 only dated), the CV timeline, and chat noise never leaking into prose.
+See `flurfunk/ground-truth.md`.
 
 ## Mode B — grade-only (`--grade-only`)
 
@@ -406,7 +452,7 @@ defect** (which the grep backstop settled), the lane it routes to, and the file+
 
 ## `all`
 
-Run all five corpora **sequentially**, each in its own sandbox (never share a workspace). Grade each,
+Run all seven corpora **sequentially**, each in its own sandbox (never share a workspace). Grade each,
 then print one aggregate table: corpus × {phase-1 check, phase-1 lint, hard-gate verdict, soft
 caught/total, findability (green/amber/floor), backlog (creation / retrieval / capability-gap counts)}.
 `all` passes only if every corpus passes its hard gates. Note that **`pemberley`
@@ -427,8 +473,8 @@ from these; CI lints each. Two things are kept apart on purpose:
   self-contained workspace (the nested `citadel.toml` marker), so its keys come out `raw/X` with no
   rewrite. The recipe is **per-corpus**:
 
-  - **beverages / kelvarra / pemberley / injection-resistance** — a plain in-place ingest of the
-    committed `raw/`:
+  - **beverages / kelvarra / pemberley / injection-resistance / flurfunk** — a plain in-place ingest
+    of the committed `raw/`:
 
     ```bash
     export CITADEL_WORKSPACE="$REPO/corpora/<name>"   # nested marker → committable raw/X keys
@@ -442,6 +488,13 @@ from these; CI lints each. Two things are kept apart on purpose:
     `stages/initial/`, apply `stages/wave2/` then `stages/wave3/` (deleting the memo) — so the
     committed wiki carries the full reconcile/delete history; the final raw equals the committed
     `raw/`.
+
+  - **clockwork** — the source is a repo, so build inside `corpora/clockwork/` by materializing
+    `raw/clockwork-repo/` (the committed final tree) and replaying the two-commit protocol (above)
+    with `CITADEL_REPO_SUPPORT=1`, so the committed wiki carries the repo→repo-reconcile history.
+    Afterwards **strip the transient `raw/clockwork-repo/.git`** and drop a `.citadelsource` marker
+    there (a git repo must never be committed inside this repo; the marker keeps it recognized as one
+    repo source, and its `[^sN]` provenance to the folder still resolves).
 
   **Never `cp` a sandbox wiki over a committed showcase unchanged** — a sandbox bakes its own
   `CITADEL_WORKSPACE` (an absolute machine path) into `meta.workspace` and, when its raw sat outside
