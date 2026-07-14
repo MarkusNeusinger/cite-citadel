@@ -178,8 +178,12 @@ def source_definitions(body: str) -> Iterator[tuple[str, str]]:
 
 # The full link span `](path)` / `](<path>)` on a definition line; what follows is the locator tail.
 _LINK_SPAN_RE = re.compile(r"\]\((?:<[^>]*>|[^)]*)\)")
-# A line-range locator matched as a PREFIX of the tail: `lines 40-52` (single or en/em-dash range).
-_LOC_LINES_RE = re.compile(r"^lines?\s+(\d+)(?:\s*[-–—]\s*(\d+))?", re.IGNORECASE)
+# A line-range locator matched as a PREFIX of the tail: `lines 40-52`. The range separator is a
+# hyphen (spaces allowed: `40 - 52`) or a TIGHT en/em-dash (`40–52`) — but NOT a SPACED en/em-dash,
+# because ` — ` / ` – ` is the description separator (`_SPACED_DASH_RE`), not a range. So a citation
+# whose note begins with a number (`line 21 — 1657 founding credit`) parses as the single line 21
+# with the rest a note, instead of the greedy range `21-1657` that used to fail lint's range check.
+_LOC_LINES_RE = re.compile(r"^lines?\s+(\d+)(?:(?:\s*-\s*|[–—])(\d+))?", re.IGNORECASE)
 # The trailing `(ingested YYYY-MM-DD)` stamp the citation emitter always appends last — the one
 # suffix strippable unambiguously before reading the locator.
 _INGESTED_SUFFIX_RE = re.compile(r"\s*\(ingested[^)]*\)\s*$", re.IGNORECASE)

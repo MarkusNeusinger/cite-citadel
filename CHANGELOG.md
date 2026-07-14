@@ -20,6 +20,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **`lines N` locator — a note that begins with a number is no longer swallowed into the range.** A
+  citation like `line 21 — 1657 founding credit` parsed as the range `lines 21-1657` (the `1657` is
+  the year the note describes, not a line), which `citadel lint` then flagged as out-of-range. The
+  line-range separator now accepts only a hyphen (spaces allowed) or a TIGHT en/em-dash, never a
+  SPACED ` — ` / ` – ` — which is a description separator — so the locator reads as the single line
+  21 with the rest a note. Surfaced by the verify-corpus genre-briefs gate.
 - **A malformed env knob no longer crashes every command.** A numeric `CITADEL_*` setting whose
   value is blank or not a number (e.g. `CITADEL_LLM_TIMEOUT=20 min`) used to raise at import and
   take down every subcommand; it now falls back to the knob's default and `citadel doctor` gained a
