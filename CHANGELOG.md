@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **verify-corpus Mode C — an end-to-end grader for the `curate` lifecycle.** Modes A/B grade
+  ingest; Mode C grades `citadel curate` end-to-end: it builds a throwaway curate-defect sandbox from
+  the beverages showcase (re-stamping the manifest and neutralizing the showcase's own open
+  contradictions so the baseline is clean), seeds a small KNOWN set of defects (resort / orphan /
+  contradiction / locator), proves `curate --dry-run` detects EXACTLY those offline (the deterministic
+  tier), then runs real `kind=curate` sessions and grades that the model FIXES each defect while
+  `check`/`lint` stay at exit 0 and the staged-promote arbitration (applied / NOOP / failed) matches
+  reality. It is the real-session complement to the offline detector coverage in `tests/test_curate.py`.
+
 ### Changed
 
 - **README trimmed to ~175 lines (from ~220) with no information loss.** Cut content that only

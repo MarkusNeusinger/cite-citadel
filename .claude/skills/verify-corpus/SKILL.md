@@ -12,6 +12,10 @@ corpus `raw/` only (defense in depth). This skill runs the real pipeline into a 
 grades that sandbox wiki against the key. Grading is a **two-phase FACTS-style gate**: phase 1 =
 `citadel check` + `lint` exit 0 (structural eligibility); phase 2 = answer-key content grading.
 
+Modes A/B grade the **ingest** lifecycle. **Mode C** (below) grades the **curate** lifecycle
+end-to-end — it seeds known defects into a sandbox, proves the offline detectors flag exactly them,
+then runs real curate sessions and grades that the model FIXES them without breaking valid pages.
+
 **Usage:** `verify-corpus
 <beverages|kelvarra|leuchtfeuer|pemberley|injection-resistance|all> [--grade-only]`
 
@@ -24,7 +28,8 @@ grades that sandbox wiki against the key. Grading is a **two-phase FACTS-style g
 | `injection-resistance` | embedded adversarial instructions treated as content, never executed; real facts still extracted | 3 files, 3 quick sessions | `.claude/skills/verify-corpus/injection-resistance/ground-truth.md` |
 
 Mode A shells out to the ingest CLI (slow, uses your subscription). For fast iteration on the grader
-use **Mode B** (`--grade-only`) against a sandbox you already built.
+use **Mode B** (`--grade-only`) against a sandbox you already built. **Mode C** grades the *curate*
+lifecycle instead of ingest — a separate recipe, at the end of this file.
 
 ## Preconditions
 
@@ -127,6 +132,160 @@ Expected session kinds per wave are enumerated in the wave protocol of
 Skip the build; grade a sandbox wiki already on disk. Set `SANDBOX`/`WIKI`/`RAW`/`CITADEL_*_DIR` to
 that existing build, then run phase 1 + phase 2 below. Use this to iterate on the grader or a
 ground-truth without re-spending an ingest.
+
+## Mode C — grade the curate lifecycle (real sessions)
+
+Modes A/B grade **ingest**. Mode C grades the **second lifecycle** — `citadel curate` — end-to-end:
+it seeds a KNOWN set of curate defects into a throwaway sandbox, proves the **offline detectors** flag
+exactly those (deterministic), then runs a **real** curate LLM session per cluster and grades that the
+model actually FIXES each defect without breaking valid pages. It is the real-session complement to
+`tests/test_curate.py`, which already covers every offline detector and the fake-agent diff plumbing
+but NEVER drives a live session. Run it after any change to `curate.py`, the `tasks/curate.md` brief,
+or the curate prompt frame in `llm.py`.
+
+Curate mechanics this leans on (all in `curate.py`): `curate --dry-run` recomputes the plan from the
+offline detectors and runs ZERO sessions (the deterministic detection tier); a real `citadel curate`
+runs ONE staged `kind=curate` session per planned page CLUSTER, and the **staging diff-by-hash is the
+sole arbiter** — empty=NOOP, clean-promoted=applied, check-fail/exception=failed→revert-and-stop
+(attempt-capped at 2). The CLI `curate` takes NO path scope, so the sandbox must be built so the plan
+is EXACTLY the seeded defects — that is why the baseline is neutralized first.
+
+### C1 — build a clean curate-defect sandbox (never a live wiki)
+
+Copy the committed **beverages** showcase into a scratch sandbox, put its raw as a sibling, and
+neutralize the showcase's OWN curate triggers so the only flagged pages are the ones you seed:
+
+```bash
+REPO="$(git rev-parse --show-toplevel)"
+SANDBOX="$(mktemp -d)/modec"                          # a scratch workspace OUTSIDE the repo
+uv run python -m citadel init "$SANDBOX"
+cp -r "$REPO/corpora/beverages/wiki/." "$SANDBOX/wiki/"
+cp -r "$REPO/corpora/beverages/raw/."  "$SANDBOX/raw/"   # raw MUST be a sibling of wiki: the copied
+                                                          # pages' [^sN] links are ../../raw/X, resolved
+                                                          # ON DISK relative to the page (not via a key)
+export CITADEL_WORKSPACE="$SANDBOX" CITADEL_WIKI_DIR="$SANDBOX/wiki" CITADEL_RAW_DIR="$SANDBOX/raw"
+export CITADEL_CURATE_MODEL=sonnet
+```
+
+Then re-stamp the copied manifest and neutralize the showcase's own open contradictions. WITHOUT this
+the baseline is NOT clean: all 46 pages drift on `rules_version`, the rolling reverify sampler picks 3
+sha-unchanged cited pages EVERY run, and the showcase keeps ~5 fictional open date-conflicts curate
+would legitimately flag — any of which pollutes "exactly the seeded defects".
+
+```python
+# prep_baseline.py  —  run:  uv run python prep_baseline.py "$SANDBOX/wiki"
+import json, sys
+from pathlib import Path
+from citadel import config, grammar, store
+wiki = Path(sys.argv[1]); rv = config.rules_version()
+# 1. manifest: rules_version -> current (kills rules_version_drift on every page); sha -> neutralized
+#    (stands down the rolling reverify sampler, which else samples 3 sha-unchanged cited pages/run).
+m = wiki / ".citadel_ingested.json"; d = json.loads(m.read_text())
+for e in d["sources"].values():
+    e["rules_version"] = rv
+    e["sha256"] = "0" * 64
+m.write_text(json.dumps(d, indent=2, sort_keys=True))
+# 2. neutralize the showcase's pre-existing UNRESOLVED `> [!CONTRADICTION]` callouts by giving each a
+#    Resolution line — mirrors curate._has_unresolved_contradiction so it agrees by construction.
+for page in store.load():
+    fp = wiki / page.rel_path; body = fp.read_text(encoding="utf-8"); lines = body.splitlines()
+    out, i, n, changed = [], 0, len(lines), False
+    while i < n:
+        if grammar.CONTRADICTION_LINE_RE.match(lines[i]):
+            blk, j = [], i
+            while j < n and lines[j].lstrip().startswith(">"): blk.append(lines[j]); j += 1
+            txt = "\n".join(blk); out += blk
+            if "resolution" not in txt.lower() and not grammar.LLM_MARKER_RE.search(txt):
+                out.append("> Resolution: sandbox baseline neutralization (kept open in the showcase by design)."); changed = True
+            i = j
+        else:
+            out.append(lines[i]); i += 1
+    if changed: fp.write_text("\n".join(out) + ("\n" if body.endswith("\n") else ""), encoding="utf-8")
+```
+
+Confirm the baseline is clean BEFORE seeding — this is the guard that makes "exactly the seeded
+defects" honest:
+
+```bash
+uv run python -m citadel check              # "OK — no validation issues." (0 errors)
+uv run python -m citadel lint                # exit 0
+uv run python -m citadel curate --dry-run    # MUST print "No curate work: every page is clean."
+```
+
+### C2 — seed a small, known defect set (one per detector)
+
+Seed ~4 defects, each mapping 1:1 to a curate detector; document each precisely so the grade is
+unambiguous:
+
+| page | defect → detector | how to seed it |
+| ---- | ----------------- | -------------- |
+| `objects/misfiled-note.md` (NEW) | **resort** | `type: Concept` (routes to `concepts/`) placed in `objects/`; valid frontmatter, one cited fact, one `## See also` link so it is not ALSO an orphan |
+| `concepts/orphan-island.md` (NEW) | **orphan** | valid, cited, NO wiki links in or out (no `## See also`) |
+| `concepts/cold-brew-coffee.md` | **contradiction** | append an UNRESOLVED `> [!CONTRADICTION]` callout with two cited sides (reuse the page's already-defined `[^s6]` bench "≈2.5× the caffeine" vs `[^s20]` Aurora "lowest-caffeine"), NO resolution line, NO `[^llm]` |
+| `concepts/caffeine.md` | **locator** | change one `[^sN]` locator to an out-of-range span (`lines 900-950` — the cited source has 81 lines) |
+
+Keep it ~4 so the real run is a handful of clusters (~15-40 min on sonnet). Reuse already-defined
+`[^sN]` markers and bare/valid locators on the seeded pages so `citadel check` stays green (a resort
+page draws only an ADVISORY routing note, never an error). A locator seed keeps `lint` at exit 0 too
+(locator issues are advisory) — it is the curate plan, not lint, that must show it.
+
+### C3 — detection tier (offline, deterministic — the reproducible heart of Mode C)
+
+```bash
+uv run python -m citadel curate --dry-run
+```
+
+ASSERT the plan lists EXACTLY the seeded pages with the expected reason codes and nothing else:
+
+```
+Curate plan (4 cluster(s)):
+  - objects/misfiled-note.md [resort]
+  - concepts/cold-brew-coffee.md [contradiction]
+  - concepts/caffeine.md [locator]
+  - concepts/orphan-island.md [orphan]
+```
+
+If a detector does NOT fire, or an unexpected page appears, FIX THE SEED/BASELINE before spending any
+LLM time — this de-risks the whole run. A spurious extra page almost always means the baseline was not
+fully neutralized (an un-restamped `rules_version`, a live reverify sha, or a showcase open
+contradiction); a MISSING seeded page means that seed did not actually trip its detector (re-read the
+detector in `curate.build_plan`).
+
+### C4 — fix tier (real sessions) + grade
+
+`citadel curate` runs one real session per cluster; a foreground call outlasts the shell timeout, so
+run it DETACHED and poll a completion marker (cap ~60 min):
+
+```bash
+export CITADEL_INGEST_MODEL=claude-sonnet-5 CITADEL_CURATE_MODEL=claude-sonnet-5
+# sanity-check the id first: claude --model claude-sonnet-5 -p "Reply with exactly: ok"
+# fall back to the `sonnet` alias if the concrete id is rejected.
+nohup uv run python -m citadel curate --diff "$SANDBOX/curate.diff.md" > "$SANDBOX/curate.out" 2>&1 &
+until grep -q '^EXIT=' "$SANDBOX/curate.out" 2>/dev/null; do sleep 30; done
+cat "$SANDBOX/curate.out"                    # the applied / NOOP / failed report
+```
+
+Then grade — every one of these must hold:
+
+1. **Each seeded defect is RESOLVED** (grade semantically, not by exact edit): the misfiled page moved
+   to `concepts/` (or re-typed to `Object`); the orphan linked into a real neighbor (or merged away);
+   the contradiction resolved with a labeled `[^llm]` line (or the unsupported side corrected); the
+   bad locator fixed to the place the fact actually lives (or the citation repaired). The
+   `--diff` report is the before/after evidence.
+2. **Structural gates still hold**: re-run `citadel check` and `citadel lint` — both exit 0.
+3. **Arbitration matches reality**: the report's Applied / NOOP / Failed counts are what actually
+   happened, and a post-fix `curate --dry-run` is empty (the defect is gone). A NOOP (model found
+   nothing to fix) or a Failed cluster (rolled back) is a FINDING, not a pass.
+
+### C5 — what Mode C uniquely exercises
+
+Mode C is the ONLY test that drives the real model's curate EDIT quality and the **staged-promote
+arbitration on a real wiki** — offline `test_curate.py` covers the detectors and the fake-agent diff
+plumbing, never a live session. Curate is non-deterministic (which side a contradiction resolves to,
+whether an orphan is linked vs merged, the exact split point), so grade SEMANTICS, not exact edits; a
+defect the model NOOPs is a soft regression to note and route back into the curate rules
+(`tasks/curate.md`, `_REASON_GUIDANCE` in `curate.py`), not a hard fail unless the wiki came out
+structurally broken (`check`/`lint` non-zero — that IS a hard fail).
 
 ## Phase 1 — structural gates (hard pass/fail, pure code)
 
