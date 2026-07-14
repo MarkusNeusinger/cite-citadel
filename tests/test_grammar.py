@@ -215,6 +215,24 @@ def test_parse_locator_line_range():
     assert (single.kind, single.start, single.end) == ("lines", 7, 7)
 
 
+def test_parse_locator_range_accepts_spaced_hyphen_and_tight_dashes():
+    """A range separator is a hyphen (spaces allowed) or a TIGHT en/em-dash."""
+    for tail, end in [("lines 40 - 52", 52), ("lines 40–52", 52), ("lines 40—52", 52)]:
+        loc = grammar.parse_locator(tail)
+        assert (loc.kind, loc.start, loc.end) == ("lines", 40, end), tail
+
+
+def test_parse_locator_spaced_dash_note_is_not_absorbed_into_the_range():
+    """A citation whose note begins with a number after a SPACED dash (` — 1657 founding…`, the real
+    thornbury-lin case) parses as the single line, not the greedy range `21-1657` — a spaced em/en
+    dash is a description separator, never a range. Regression for the lint out-of-range false flag."""
+    loc = grammar.parse_locator("line 21 — 1657 founding credit and the roles of Thornbury and Lin")
+    assert (loc.kind, loc.start, loc.end) == ("lines", 21, 21)
+    for tail in ("line 21 — 1657", "line 5 – 900 the note", "lines 3-4 — 2020 was the year"):
+        loc = grammar.parse_locator(tail)
+        assert loc.kind == "lines" and loc.end < 1000, tail  # the year is never the range end
+
+
 def test_parse_locator_plain_heading():
     loc = grammar.parse_locator("§ Making a Matcha Latte")
     assert (loc.kind, loc.heading, loc.start) == ("heading", "Making a Matcha Latte", None)
