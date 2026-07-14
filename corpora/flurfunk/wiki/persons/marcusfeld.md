@@ -32,7 +32,7 @@ role or employer.[^s3][^s5]
 Replying to the thread the same day, X user @dataskeptic claimed Skylight "silently DROPS any
 event larger than 1MB."[^s6] @marcusfeld disputed this, stating Skylight does not drop events over
 1MB — large events are instead queued and processed within the retention window — and pointing to
-Skylight's documentation (skylight.dev/docs/large-events) as evidence this has been the platform's
+Skylight's documentation (skylight.example/docs/large-events) as evidence this has been the platform's
 behavior for months.[^s7] He allowed that a source could be misconfigured upstream to reject
 oversized payloads before they reach Skylight, but maintained that is distinct from the platform
 itself dropping them.[^s8]

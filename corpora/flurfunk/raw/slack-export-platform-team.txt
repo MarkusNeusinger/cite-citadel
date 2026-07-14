@@ -8,7 +8,7 @@ Exported: 2026-02-11
 [2026-02-09 09:03] Sofia Ruiz: mornin 👋
 [2026-02-09 09:11] Tom Alvarez: ok before standup — the event retention thing. we still have no default set and staging is basically hoarding events forever
 [2026-02-09 09:12] Wei Chen: yeah the disk graph looks like a hockey stick lol
-[2026-02-09 09:12] Wei Chen: https://media.giphy.com/media/xT9IgzoKnwFNmISR8I/giphy.gif
+[2026-02-09 09:12] Wei Chen: https://media.example.com/hockey-stick.gif
 [2026-02-09 09:13] Sofia Ruiz: 😂 accurate
 [2026-02-09 09:15] Tom Alvarez: so proposal: default event-retention window = 7 days. keeps storage sane, most dashboards only look at the last few days anyway
 [2026-02-09 09:16] Wei Chen: 7 days works for me. easy to reason about and we can always bump per-customer if someone screams
