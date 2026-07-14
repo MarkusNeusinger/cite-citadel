@@ -783,3 +783,129 @@ def test_run_session_verbose_uses_streaming_not_capture(monkeypatch):
     monkeypatch.setattr(subprocess, "run", fake_run)
     llm._run_session("copilot", ["copilot", "-p", "x"], None)  # no raise
     assert used == {"stream": 1, "run": 0}
+
+
+# --- _stream_subprocess: the live-tee runner (hermetic — a fake Popen, never a real process) --
+#
+# The verbose streaming path itself (test_run_session_verbose_uses_streaming_not_capture above
+# only proves _run_session ROUTES to it). We fake subprocess.Popen with a stub that emits lines
+# then "exits", and threading.Timer with a controllable stand-in, so no real process is spawned
+# and the timeout-kill fires deterministically without any wall-clock wait.
+
+
+class _FakeStdin:
+    def __init__(self) -> None:
+        self.written: list[str] = []
+        self.closed = False
+
+    def write(self, s: str) -> None:
+        self.written.append(s)
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _FakePopen:
+    """A stand-in for a spawned agent CLI: ``stdout`` iterates the given lines then stops (the
+    child "exiting"), ``kill`` records that it was killed, ``wait`` is a no-op."""
+
+    def __init__(self, lines: list[str], returncode: int = 0) -> None:
+        self.stdin = _FakeStdin()
+        self.stdout = iter(lines)
+        self.returncode = returncode
+        self.killed = False
+
+    def wait(self) -> None:
+        pass
+
+    def kill(self) -> None:
+        self.killed = True
+
+
+class _NoopTimer:
+    """A threading.Timer that never fires — the child completes before the timeout."""
+
+    def __init__(self, interval, function):
+        self._function = function
+
+    def start(self) -> None:
+        pass
+
+    def cancel(self) -> None:
+        pass
+
+
+class _ImmediateTimer:
+    """A threading.Timer that fires its callback SYNCHRONOUSLY on start — models the timeout
+    elapsing (the deadline reached) without any real wall-clock wait."""
+
+    def __init__(self, interval, function):
+        self._function = function
+
+    def start(self) -> None:
+        self._function()
+
+    def cancel(self) -> None:
+        pass
+
+
+def _install_fake_popen(monkeypatch, lines, returncode=0):
+    """Point subprocess.Popen (the singleton llm shares) at a :class:`_FakePopen`, returning a dict
+    that captures the created proc + the argv/kwargs it was built with for assertions."""
+    created: dict = {}
+
+    def fake_popen(argv, **kwargs):
+        proc = _FakePopen(list(lines), returncode)
+        created.update(proc=proc, argv=argv, kwargs=kwargs)
+        return proc
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    return created
+
+
+def test_stream_subprocess_tees_output_and_returns_like_capture(monkeypatch, capsys):
+    """The happy path: the prompt is written to stdin then closed, every child line is accumulated
+    AND teed to stderr live, and the result matches the captured path's shape — (returncode, merged
+    stdout, empty stderr)."""
+    import threading
+
+    created = _install_fake_popen(monkeypatch, ["first line\n", "second line\n"], returncode=0)
+    monkeypatch.setattr(threading, "Timer", _NoopTimer)
+
+    rc, out, err = llm._stream_subprocess("copilot", ["copilot", "-p"], "the prompt")
+
+    assert (rc, out, err) == (0, "first line\nsecond line\n", "")  # stderr merged into stdout -> ""
+    proc = created["proc"]
+    assert proc.stdin.written == ["the prompt"] and proc.stdin.closed  # prompt written, then closed
+    assert not proc.killed  # completed before any timeout
+    echoed = capsys.readouterr().err  # the live transcript is teed to OUR stderr
+    assert "first line" in echoed and "second line" in echoed
+    assert "session (live)" in echoed and "session end (exit 0)" in echoed
+
+
+def test_stream_subprocess_nonzero_exit_is_returned_not_raised(monkeypatch, capsys):
+    """A non-zero child exit is reported as the returncode (the shared error detection in
+    _run_session decides what to do) — _stream_subprocess itself does not raise on it."""
+    import threading
+
+    _install_fake_popen(monkeypatch, ["boom\n"], returncode=2)
+    monkeypatch.setattr(threading, "Timer", _NoopTimer)
+
+    rc, out, err = llm._stream_subprocess("gemini", ["gemini"], None)
+    assert rc == 2 and out == "boom\n" and err == ""
+
+
+def test_stream_subprocess_timeout_kills_child_and_carries_partial(monkeypatch, capsys):
+    """When the deadline elapses, the child is killed and a TimeoutExpired is raised carrying the
+    PARTIAL output streamed before the kill — so _run_session can log a useful partial transcript
+    instead of an empty one (matching the captured path's TimeoutExpired.output)."""
+    import threading
+
+    created = _install_fake_popen(monkeypatch, ["partial 1\n", "partial 2\n"], returncode=0)
+    monkeypatch.setattr(threading, "Timer", _ImmediateTimer)  # fire the timeout-kill synchronously
+
+    with pytest.raises(subprocess.TimeoutExpired) as exc:
+        llm._stream_subprocess("gemini", ["gemini"], None)
+
+    assert exc.value.output == "partial 1\npartial 2\n"  # partial transcript preserved on the exc
+    assert created["proc"].killed  # the hung child was killed
