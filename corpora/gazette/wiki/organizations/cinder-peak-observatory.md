@@ -18,7 +18,7 @@ The chart accompanying the brief is annotated with the year's single best (lowes
 
 The observatory's new [1.2-metre telescope](../objects/cinder-peak-observatory-1-2-metre-telescope.md) achieved first light on 1 May 2026, replacing its original 0.6-metre telescope.[^s3]
 
-Public viewing nights are suspended for dome resurfacing from 3 to 17 April 2026, and the observatory reopens to visitors on 18 April 2026.[^s4][^s5] Updates appear in the *Meridian Gazette*.[^s4][^s5]
+Public viewing nights are suspended while the dome is resurfaced.[^s4] Per the observatory's public notice, the closure runs from 3 to 17 April 2026, and the observatory reopens to visitors on 18 April 2026.[^s5] Updates appear in the *Meridian Gazette*.[^s4][^s5]
 
 ## See also
 

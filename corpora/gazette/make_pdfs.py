@@ -75,7 +75,8 @@ class PDFBuilder:
         return num
 
     def build(self) -> bytes:
-        assert self.root is not None, "root (catalog) object not set"
+        if self.root is None:  # explicit (not assert): must hold even under python -O
+            raise ValueError("root (catalog) object not set")
         n_objects = self._next - 1
         # All allocated numbers must have a body.
         for i in range(1, n_objects + 1):
@@ -106,7 +107,8 @@ class PDFBuilder:
             # 10-digit offset + space + 5-digit gen + space + 'n' + space + LF
             # == 20 bytes; the fixed width is what makes xref seeking work.
             entry = f"{offsets[i]:010d} 00000 n \n".encode("latin-1")
-            assert len(entry) == 20
+            if len(entry) != 20:  # explicit (not assert): the 20-byte width is load-bearing
+                raise ValueError(f"xref entry must be 20 bytes, got {len(entry)}")
             out += entry
 
         out += b"trailer\n"
@@ -166,7 +168,8 @@ def image_object(width: int, height: int, gray: bytes) -> bytes:
     the TOP row first (PDF images are top-down). Compression is deterministic
     for a given input at a fixed level.
     """
-    assert len(gray) == width * height
+    if len(gray) != width * height:  # explicit (not assert): guards the image stream size
+        raise ValueError(f"gray buffer is {len(gray)} bytes, expected {width * height}")
     compressed = zlib.compress(gray, 9)
     extra = (
         f"/Type /XObject /Subtype /Image /Width {width} /Height {height} "

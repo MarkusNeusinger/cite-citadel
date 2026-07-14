@@ -18,8 +18,7 @@ All notable changes to this project are documented here. The format is based on
   that a preprint's bibliography never materializes as fabricated raw sources. The PDFs report real
   public-domain science (tardigrade cryptobiosis, the 2007 FOTON-M3 orbit experiment) in original
   prose — nothing copied.
-- **Two new test corpora — `clockwork` and `flurfunk` — with committed, graded showcase wikis
-  (seven corpora total).** `clockwork` is the first corpus whose source is a whole **git repository**,
+- **Two new test corpora — `clockwork` and `flurfunk` — with committed, graded showcase wikis.** `clockwork` is the first corpus whose source is a whole **git repository**,
   folded in as ONE digest (`CITADEL_REPO_SUPPORT`, `kind=repo`), then re-ingested after a second
   commit changes a documented default (`max_retries` 3 → 5) — the first end-to-end coverage of
   `kind=repo`/`repo-reconcile`, folder-keyed provenance, and a `type: System` page for an external
