@@ -1,0 +1,3 @@
+# PDFs are byte-exact binaries (their xref table stores absolute byte offsets); never let git
+# apply text/EOL normalization to them, which would corrupt the offsets on checkout.
+*.pdf binary

@@ -8,6 +8,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **New PDF test corpus — `gazette` — with a committed, images-mode showcase wiki (eight corpora
+  total).** Five sources (four PDFs generated deterministically by a committed stdlib-only script
+  `make_pdfs.py`, plus a markdown control) exercise the PDF path end-to-end for the first time: the
+  `%PDF-` magic-sniff dispatch, `formats/pdf.md`, page locators, and — the headline — the
+  `CITADEL_PDF_MODE` **text-vs-images** delta. A key number (`0.42 arcsec`) lives only inside a chart
+  raster and a whole notice page is image-only, so both are **absent-and-honest** in text mode and
+  **present-and-cited** in images mode; the corpus also grades the academic-publications genre and
+  that a preprint's bibliography never materializes as fabricated raw sources. The PDFs report real
+  public-domain science (tardigrade cryptobiosis, the 2007 FOTON-M3 orbit experiment) in original
+  prose — nothing copied.
 - **Two new test corpora — `clockwork` and `flurfunk` — with committed, graded showcase wikis
   (seven corpora total).** `clockwork` is the first corpus whose source is a whole **git repository**,
   folded in as ONE digest (`CITADEL_REPO_SUPPORT`, `kind=repo`), then re-ingested after a second

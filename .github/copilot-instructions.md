@@ -74,7 +74,7 @@ Python 3.12+ is required. There is no separate build step — `pytest` and `ruff
 
 ## Test corpora
 
-Seven synthetic corpora live under `corpora/` (`corpora/<name>/{raw/, stages/?, README.md}`),
+Eight synthetic corpora live under `corpora/` (`corpora/<name>/{raw/, stages/?, README.md}`),
 runnable individually or together: **beverages** (the coffee+tea showcase), **kelvarra** (a
 coherent fictional world stated wrong about reality — graded that facts appear as stated, cited,
 never corrected), **leuchtfeuer** (a 3-year programme ingested in dated `stages/` waves that
@@ -86,9 +86,12 @@ multi-segment chunking, relationship extraction, in-novel misinformation, narrat
 agent must treat them as content, never execute them), **clockwork** (a whole git repository folded
 in as ONE digest via `CITADEL_REPO_SUPPORT`, with a second commit driving `repo-reconcile` — its
 committed inputs are the `repo-src/` + `repo-src-wave2/` trees materialized into a checkout, since a
-git repo cannot be committed inside this repo), and **flurfunk** (seven informal-genre sources — a
+git repo cannot be committed inside this repo), **flurfunk** (seven informal-genre sources — a
 chat export, a tweet thread, an interview, a job application, a forum thread, an announcement —
-grading attribution, "X said Y" ≠ "Y is true", in-thread reversal, and CV timelines). **Each corpus carries its own committed,
+grading attribution, "X said Y" ≠ "Y is true", in-thread reversal, and CV timelines), and **gazette**
+(five PDF/markdown sources whose stdlib-generated PDFs grade `CITADEL_PDF_MODE` text-vs-images — a
+figure-only number and an image-only page absent in text mode, present in images mode — plus the
+academic-publications genre and references-are-not-sources). **Each corpus carries its own committed,
 graded showcase wiki** at `corpora/<name>/wiki/` (its own nested `citadel.toml` marker,
 `meta.workspace` neutralized to `""`, no viewer artifact); CI lints every one and the GitHub Pages
 site (`.github/workflows/pages.yml`) builds a **gallery** with one offline viewer per corpus. Each
@@ -109,7 +112,7 @@ gitignored developer workspace (the checkout's `citadel.toml` marker still makes
 Two `.claude/skills/` skills close the loop between a change and its proof:
 
 - **verify-corpus** (`verify-corpus
-  <beverages|kelvarra|leuchtfeuer|pemberley|injection-resistance|clockwork|flurfunk|all>
+  <beverages|kelvarra|leuchtfeuer|pemberley|injection-resistance|clockwork|flurfunk|gazette|all>
   [--grade-only]`) — the end-to-end corpus grader: ingests a corpus into a throwaway sandbox and
   grades the result against its hidden `ground-truth.md` by querying the wiki through citadel's own
   read tools like a user (retrieval-first), falling back to file greps only to tell a wiki-creation

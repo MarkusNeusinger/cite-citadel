@@ -1,0 +1,53 @@
+{
+  "meta": {
+    "format": 2,
+    "workspace": ""
+  },
+  "sources": {
+    "raw/feature-article.pdf": {
+      "ctime_ns": 1784037875213836788,
+      "hashed_at_ns": 1784037875213836788,
+      "model": "claude:sonnet",
+      "mtime_ns": 1784037875213836788,
+      "rules_version": "ce77c062190d",
+      "sha256": "83ccd35f4000a9df94a4f12a17d23cd246419e9e620eb6e88546d78fb96e36dc",
+      "size": 2251
+    },
+    "raw/figure-brief.pdf": {
+      "ctime_ns": 1784037875213836788,
+      "hashed_at_ns": 1784037875213836788,
+      "model": "claude:sonnet",
+      "mtime_ns": 1784037875213836788,
+      "rules_version": "ce77c062190d",
+      "sha256": "372688640248a91c6608861ead231e7f7863f128f323b25cda78cac437fd35b6",
+      "size": 2100
+    },
+    "raw/preprint.pdf": {
+      "ctime_ns": 1784037875213836788,
+      "hashed_at_ns": 1784037875213836788,
+      "model": "claude:sonnet",
+      "mtime_ns": 1784037875213836788,
+      "rules_version": "ce77c062190d",
+      "sha256": "15bb455be47734576f376446a20ee20d65985cb19f49e08e4f2e1355fdf170bb",
+      "size": 2707
+    },
+    "raw/press-release.md": {
+      "ctime_ns": 1784037249325954927,
+      "hashed_at_ns": 1784037249325954927,
+      "model": "claude:sonnet",
+      "mtime_ns": 1784037249293954928,
+      "rules_version": "ce77c062190d",
+      "sha256": "a33c8ca35630138700c52fbe2a7bf88d1176391f11b4c0fdaf6d72db248bc7fb",
+      "size": 1133
+    },
+    "raw/scanned-notice.pdf": {
+      "ctime_ns": 1784037875225836782,
+      "hashed_at_ns": 1784037875225836782,
+      "model": "claude:sonnet",
+      "mtime_ns": 1784037875225836782,
+      "rules_version": "ce77c062190d",
+      "sha256": "1ff4bbd8ee9693bcdf88e76cd7dbe22a1f4dae67c1e8b1e2d7458db65dd26dc8",
+      "size": 3765
+    }
+  }
+}
