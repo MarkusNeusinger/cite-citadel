@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **README trimmed to ~175 lines (from ~220) with no information loss.** Cut content that only
+  duplicated `docs/` or `CLAUDE.md`: the MCP client JSON block (byte-identical to the one in
+  `docs/mcp.md`) became a short pointer to that page; the per-corpus write-up collapsed to one line
+  per corpus plus the demo-gallery link (full detail already lives in each `corpora/<name>/README.md`
+  and `CLAUDE.md`); the Reference list dropped rows already linked earlier in the README (the rules
+  tree, `env.example`, the per-doc links) down to the docs hub, `CLAUDE.md`, and
+  CONTRIBUTING/CHANGELOG/SECURITY; and the License section's affiliation and credential-handling
+  prose now defers to `NOTICE.md`. The **License & third-party tools** heading (anchored by
+  `doctor.py` and `docs/configuration.md`) and every provider-terms link are unchanged.
+
 ### Fixed
 
 - **A malformed env knob no longer crashes every command.** A numeric `CITADEL_*` setting whose
