@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "format": 2,
+    "workspace": ""
+  },
+  "sources": {
+    "raw/clockwork-repo": {
+      "commit": "9e35bf43e587fd23fd7339af55b525b966c6b703",
+      "kind": "git",
+      "model": "claude:sonnet",
+      "rules_version": "ce77c062190d"
+    }
+  }
+}

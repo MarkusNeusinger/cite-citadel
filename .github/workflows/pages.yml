@@ -39,19 +39,19 @@ jobs:
         # Each committed showcase (corpora/<name>/) is its own self-contained workspace (a nested
         # citadel.toml marker with plain raw/X keys); CITADEL_WORKSPACE points discovery at it while
         # the CWD stays the repo root, so `view --out site/<name>/index.html` writes under ./site.
-        # The loop is unconditional over all five corpora and a MISSING showcase wiki FAILS the
-        # build (all five committed showcases must be present, so an incomplete gallery never
+        # The loop is unconditional over all seven corpora and a MISSING showcase wiki FAILS the
+        # build (all seven committed showcases must be present, so an incomplete gallery never
         # deploys); missing corpora are collected and reported together, not bailed on one-by-one.
         run: |
           mkdir -p site
           cp .github/pages-index.html site/index.html
           missing=""
-          for c in beverages kelvarra leuchtfeuer pemberley injection-resistance; do
+          for c in beverages kelvarra leuchtfeuer pemberley injection-resistance clockwork flurfunk; do
             if [ -f "corpora/$c/wiki/index.md" ]; then
               echo "building viewer for $c"
               CITADEL_WORKSPACE="corpora/$c" uv run python -m citadel view --no-open --out "site/$c/index.html"
             else
-              echo "::error::corpora/$c/wiki/index.md is missing — all five committed showcases must be present"
+              echo "::error::corpora/$c/wiki/index.md is missing — all seven committed showcases must be present"
               missing="$missing $c"
             fi
           done

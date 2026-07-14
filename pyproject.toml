@@ -83,6 +83,7 @@ exclude = [
     ".venv",
     "__pycache__",
     "dist",
+    "corpora",  # synthetic test corpora (raw sources + committed showcase wikis), not project code
 ]
 
 [tool.ruff.lint]
