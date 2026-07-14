@@ -73,6 +73,56 @@ def test_robust_rmtree_retries_then_succeeds(tmp_path, monkeypatch):
     assert not victim.exists()  # tree is gone
 
 
+def test_robust_copy_file_retries_then_succeeds(tmp_path, monkeypatch):
+    """``_robust_copy_file`` retries the transient ``os.replace`` hiccup a network share flakes on
+    (a momentary lock/latency) and lands the copy once it clears — writing a temp sibling then
+    atomically replacing, so ``dst`` is never observed half-written."""
+    src = tmp_path / "src.md"
+    src.write_text("fresh content\n", encoding="utf-8")
+    dst = tmp_path / "dst.md"
+
+    real_replace = ingest.os.replace
+    state = {"n": 0}
+
+    def flaky_replace(a, b, *args, **kwargs):
+        state["n"] += 1
+        if state["n"] < 3:
+            raise OSError("share momentarily locked")  # first two attempts fail
+        return real_replace(a, b, *args, **kwargs)
+
+    monkeypatch.setattr(ingest.os, "replace", flaky_replace)
+    monkeypatch.setattr(ingest.time, "sleep", lambda *_: None)  # keep the retry loop instant
+
+    ingest._robust_copy_file(src, dst, attempts=5)
+
+    assert state["n"] == 3  # retried until the replace went through
+    assert dst.read_text(encoding="utf-8") == "fresh content\n"  # final content is the source
+    assert not (tmp_path / "dst.md.citadeltmp").exists()  # the temp sibling is cleaned up
+
+
+def test_robust_copy_file_leaves_dst_untouched_on_permanent_failure(tmp_path, monkeypatch):
+    """The load-bearing atomicity invariant: when every attempt fails, ``_robust_copy_file`` raises
+    with ``dst`` LEFT EXACTLY AS IT WAS (its previous content, never a truncated half-write) and no
+    temp sibling left behind — so ingest can fail the source and retry next run with the live page
+    intact."""
+    src = tmp_path / "src.md"
+    src.write_text("new content that must not leak\n", encoding="utf-8")
+    dst = tmp_path / "dst.md"
+    dst.write_text("PRE-EXISTING\n", encoding="utf-8")  # the live page's current content
+
+    def always_fail(a, b, *args, **kwargs):
+        raise OSError("share offline")
+
+    monkeypatch.setattr(ingest.os, "replace", always_fail)
+    monkeypatch.setattr(ingest.time, "sleep", lambda *_: None)
+
+    with pytest.raises(OSError):
+        ingest._robust_copy_file(src, dst, attempts=3)
+
+    assert dst.read_text(encoding="utf-8") == "PRE-EXISTING\n"  # never a half-written live page
+    assert not (tmp_path / "dst.md.citadeltmp").exists()  # temp sibling cleaned up even on give-up
+
+
 def test_rollback_survives_undeletable_wiki_on_network_share(tmp_citadel, fake_agent, seed_page, monkeypatch):
     """Regression for the WinError 183 crash that emptied a wiki on a network share. The agent now
     edits a STAGING sibling, so a failed session never touches the live wiki — and even when the

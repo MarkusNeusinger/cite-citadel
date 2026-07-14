@@ -404,6 +404,117 @@ def test_raw_unresolvable_locator_exits_1(tmp_citadel, capsys):
     assert "hello" not in captured.out  # no silent whole-source fallback
 
 
+# --- read / neighbors / raw / index / sources: SUCCESS + not-found dispatch through cli.main -
+#
+# These drive the CLI reader-twin HANDLERS end-to-end (the documented CLI<->MCP parity contract)
+# — exit code + stdout/stderr — over a seeded wiki, complementing the store-level tests in
+# test_define.py / test_neighbors.py / test_rawsource.py which call the providers directly.
+
+
+def test_read_prints_page_text_and_exits_0(good_page, capsys):
+    assert cli.main(["read", "concepts/transformer.md"]) == 0
+    out = capsys.readouterr().out
+    assert "title: Transformer" in out  # the frontmatter
+    assert "Transformers use self-attention." in out  # the body
+    assert out.endswith("\n")  # cmd_read guarantees a trailing newline
+
+
+def test_read_missing_page_exits_1_with_not_found(good_page, capsys):
+    """A typo'd rel_path is a FileNotFoundError inside store.read_page_text — cmd_read maps it to
+    exit 1 with an actionable stderr line, never a silent empty 'OK'."""
+    assert cli.main(["read", "concepts/no-such-page.md"]) == 1
+    assert "error: page not found: concepts/no-such-page.md" in capsys.readouterr().err
+
+
+def test_neighbors_prints_graph_and_exits_0(tmp_citadel, seed_page, capsys):
+    seed_page(
+        "concepts/a.md", {"type": "Concept", "title": "A", "description": "d", "tags": ["t"]}, "A links to [B](b.md).\n"
+    )
+    seed_page("concepts/b.md", {"type": "Concept", "title": "B", "description": "d", "tags": ["t"]}, "Plain B.\n")
+
+    assert cli.main(["neighbors", "concepts/a.md"]) == 0
+    out = capsys.readouterr().out
+    assert "# Neighbors of concepts/a.md — A" in out
+    assert "concepts/b.md — B" in out
+    assert out.endswith("\n")
+
+
+def test_neighbors_missing_page_exits_1_with_not_found(tmp_citadel, capsys):
+    assert cli.main(["neighbors", "concepts/nope.md"]) == 1
+    assert "error: page not found: concepts/nope.md" in capsys.readouterr().err
+
+
+def test_raw_prints_cited_source_and_exits_0(tmp_citadel, capsys):
+    from citadel import config, manifest
+
+    (tmp_citadel.raw / "notes.md").write_text("hello\nworld\n", encoding="utf-8")
+    key = config.rel_or_abs_posix(tmp_citadel.raw / "notes.md")
+    manifest.save({key: manifest.make_entry("aa" * 32)})
+
+    assert cli.main(["raw", key]) == 0
+    out = capsys.readouterr().out
+    assert "hello" in out and "world" in out  # the whole source, line-numbered
+    assert out.endswith("\n")
+
+
+def test_raw_uncited_key_exits_1(tmp_citadel, capsys):
+    """A key the wiki does not cite (absent from the manifest) is a SourceError — cmd_raw maps the
+    provenance-gate rejection to exit 1, never dumping an arbitrary file."""
+    (tmp_citadel.raw / "secret.md").write_text("uncited\n", encoding="utf-8")
+    assert cli.main(["raw", "raw/secret.md"]) == 1
+    captured = capsys.readouterr()
+    assert "error:" in captured.err
+    assert "uncited" not in captured.out  # never leaked an ungated file
+
+
+def test_index_prints_generated_catalog_and_exits_0(tmp_citadel, seed_page, capsys):
+    from citadel import config, manifest
+    from citadel import store as store_module
+
+    (tmp_citadel.raw / "notes.md").write_text("src\n", encoding="utf-8")
+    seed_page(
+        "concepts/x.md",
+        {"type": "Concept", "title": "X", "description": "d", "tags": ["t"], "resource": "raw/notes.md"},
+        "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/notes.md](../../raw/notes.md) - n\n",
+    )
+    manifest.save({"raw/notes.md": manifest.make_entry("aa" * 32, "claude:sonnet", config.rules_version())})
+    store_module.rebuild_indexes()
+
+    assert cli.main(["index"]) == 0
+    out = capsys.readouterr().out
+    assert "# Wiki Index" in out and "concepts/x.md" in out
+
+
+def test_index_without_a_wiki_yet_exits_0_with_hint(tmp_citadel, capsys):
+    """No index.md on disk (never ingested) is not an error — cmd_index prints a build hint and
+    still exits 0 (the FileNotFoundError branch)."""
+    assert cli.main(["index"]) == 0
+    assert "No wiki index yet" in capsys.readouterr().out
+
+
+def test_sources_prints_generated_catalog_and_exits_0(tmp_citadel, seed_page, capsys):
+    from citadel import config, manifest
+    from citadel import store as store_module
+
+    (tmp_citadel.raw / "notes.md").write_text("src\n", encoding="utf-8")
+    seed_page(
+        "concepts/x.md",
+        {"type": "Concept", "title": "X", "description": "d", "tags": ["t"], "resource": "raw/notes.md"},
+        "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/notes.md](../../raw/notes.md) - n\n",
+    )
+    manifest.save({"raw/notes.md": manifest.make_entry("aa" * 32, "claude:sonnet", config.rules_version())})
+    store_module.rebuild_indexes()
+
+    assert cli.main(["sources"]) == 0
+    out = capsys.readouterr().out
+    assert "# Sources" in out and "raw/notes.md" in out
+
+
+def test_sources_without_a_catalog_yet_exits_0_with_hint(tmp_citadel, capsys):
+    assert cli.main(["sources"]) == 0
+    assert "No sources catalog yet" in capsys.readouterr().out
+
+
 # --- lint: exit codes + flag plumbing -------------------------------------------------------
 
 
