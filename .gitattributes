@@ -1,3 +1,16 @@
 # PDFs are byte-exact binaries (their xref table stores absolute byte offsets); never let git
 # apply text/EOL normalization to them, which would corrupt the offsets on checkout.
 *.pdf binary
+
+# Office fixtures are byte-exact binaries too: OOXML packages are ZIP archives and legacy .doc/.ppt/
+# .xls are OLE2 compound files (both generated deterministically by corpora/kontor/make_office.py).
+# EOL normalization would corrupt the container structure on checkout.
+*.docx binary
+*.docm binary
+*.pptx binary
+*.pptm binary
+*.xlsx binary
+*.xlsm binary
+*.doc binary
+*.ppt binary
+*.xls binary

@@ -8,8 +8,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
-- **New PDF test corpus — `gazette` — with a committed, images-mode showcase wiki (eight corpora
-  total).** Five sources (four PDFs generated deterministically by a committed stdlib-only script
+- **New Office-documents test corpus — `kontor` — with a committed, images-mode showcase wiki (the ninth corpus).** Eleven files generated deterministically by a committed stdlib-only script `make_office.py` (no python-pptx/docx/openpyxl/PIL): OOXML `.pptx` (slides + speaker notes + an embedded chart), `.docx` (paragraphs + a table), and `.xlsx` (two sheets), plus legacy OLE `.doc`/`.ppt`/`.xls` (97–2003 compound files), a dedup pair, and OS/Office junk. First end-to-end coverage of the Office extraction path — `citadel/extract.py` (OOXML) and `citadel/extract_ole.py` (CFBF salvage) — with a new **image delta**: the chart's `GROSS MARGIN 34.2%` lives only in pixels, so it is **absent-and-honest** with `CITADEL_IMAGE_SUPPORT=0` and **present-and-cited** with images on. Also exercises `CITADEL_DEDUP_BY_BASENAME` (a `.doc` twin skipped for its `.docx`) and `CITADEL_IGNORE_PATTERNS` (Thumbs.db/desktop.ini/lock files skipped), and plants the usual discriminative judgment traps (a 142-vs-138 contradiction, a tentative Lisbon warehouse, entity-variance merges, a near-miss ≠ contradiction, a dated supersession). Fully fictional (Aldervik Kontor) — nothing copied.
+- **New PDF test corpus — `gazette` — with a committed, images-mode showcase wiki.** Five sources (four PDFs generated deterministically by a committed stdlib-only script
   `make_pdfs.py`, plus a markdown control) exercise the PDF path end-to-end for the first time: the
   `%PDF-` magic-sniff dispatch, `formats/pdf.md`, page locators, and — the headline — the
   `CITADEL_PDF_MODE` **text-vs-images** delta. A key number (`0.42 arcsec`) lives only inside a chart

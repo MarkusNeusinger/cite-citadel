@@ -108,7 +108,7 @@ after every ingest/curate run** — each change a reviewable diff — and can pu
 
 ## Test corpora
 
-Eight synthetic corpora live under [`corpora/`](https://github.com/MarkusNeusinger/cite-citadel/tree/main/corpora),
+Nine synthetic corpora live under [`corpora/`](https://github.com/MarkusNeusinger/cite-citadel/tree/main/corpora),
 each ingestible on its own or all together and each shipping its own committed, CI-linted showcase
 wiki at `corpora/<name>/wiki/`:
 
@@ -136,29 +136,31 @@ detail lives in each `corpora/<name>/README.md` and `CLAUDE.md`.
 Each corpus targets a few capabilities hard rather than all of them shallowly; together they cover
 the pipeline. `●` = a primary, load-bearing test of that capability; `○` = present as a secondary
 check. (Bev = beverages, Kel = kelvarra, Leu = leuchtfeuer, Pem = pemberley, Inj =
-injection-resistance, Clk = clockwork, Flu = flurfunk, Gaz = gazette.)
+injection-resistance, Clk = clockwork, Flu = flurfunk, Gaz = gazette, Kon = kontor.)
 
-| capability | Bev | Kel | Leu | Pem | Inj | Clk | Flu | Gaz |
-| --- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
-| Single-source facts survive + cited | ● | ● | ● | ● | ● | ● | ● | ● |
-| Cross-source merge / co-citation | ● | ● | ● | ● | ○ | | ● | ○ |
-| Multi-source synthesis (answer needs ≥2 files) | ● | ○ | ● | | ● | | ○ | ● |
-| Contradictions surfaced, not silently resolved | ● | ● | ● | ○ | | ● | ○ | ● |
-| Near-miss / approximation ≠ contradiction | ● | | ○ | | ● | ○ | ● | ○ |
-| Counterfactuals kept as stated + cited | ○ | ● | ● | ○ | | | | |
-| Temporal supersession (dated change) | ● | ● | ● | ● | ○ | ● | ● | |
-| Delete / reconcile / force lifecycle | | | ● | | | ● | | |
-| Whole-repo digest | | | | | | ● | | |
-| Large-source multi-segment chunking | | | | ● | | | | |
-| Attribution ("X said Y" ≠ "Y is true") | | | ● | ● | ● | | ● | ● |
-| Injection treated as content, never executed | | | | | ● | | | |
-| PDF text-vs-images mode delta | | | | | | | | ● |
-| Cross-language carry-through (DE→EN) | | | ● | | | | | |
-| Entity-spelling variance → one node | | | ○ | | ● | | | ● |
-| Relative-date resolution | | ● | ○ | | | | ○ | ○ |
-| Distractor noise / filler resistance | ● | ○ | ● | ● | ○ | | ● | ○ |
-| Locator precision (lines / § / page) | ● | ○ | ○ | ● | | ○ | | ● |
-| Abbreviations (defined + undefined-flagged) | ● | ● | ● | | | | | |
+| capability | Bev | Kel | Leu | Pem | Inj | Clk | Flu | Gaz | Kon |
+| --- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
+| Single-source facts survive + cited | ● | ● | ● | ● | ● | ● | ● | ● | ● |
+| Cross-source merge / co-citation | ● | ● | ● | ● | ○ | | ● | ○ | ● |
+| Multi-source synthesis (answer needs ≥2 files) | ● | ○ | ● | | ● | | ○ | ● | ● |
+| Contradictions surfaced, not silently resolved | ● | ● | ● | ○ | | ● | ○ | ● | ● |
+| Near-miss / approximation ≠ contradiction | ● | | ○ | | ● | ○ | ● | ○ | ● |
+| Counterfactuals kept as stated + cited | ○ | ● | ● | ○ | | | | | |
+| Temporal supersession (dated change) | ● | ● | ● | ● | ○ | ● | ● | | ● |
+| Delete / reconcile / force lifecycle | | | ● | | | ● | | | |
+| Whole-repo digest | | | | | | ● | | | |
+| Large-source multi-segment chunking | | | | ● | | | | | |
+| Attribution ("X said Y" ≠ "Y is true") | | | ● | ● | ● | | ● | ● | ● |
+| Injection treated as content, never executed | | | | | ● | | | | |
+| Image-only fact behind a mode flag (PDF / Office media) | | | | | | | | ● | ● |
+| Office text extraction (OOXML + legacy OLE) | | | | | | | | | ● |
+| Dedup-by-basename + ignore-patterns | | | | | | | | | ● |
+| Cross-language carry-through (DE→EN) | | | ● | | | | | | |
+| Entity-spelling variance → one node | | | ○ | | ● | | | ● | ● |
+| Relative-date resolution | | ● | ○ | | | | ○ | ○ | |
+| Distractor noise / filler resistance | ● | ○ | ● | ● | ○ | | ● | ○ | ○ |
+| Locator precision (lines / § / page) | ● | ○ | ○ | ● | | ○ | | ● | ● |
+| Abbreviations (defined + undefined-flagged) | ● | ● | ● | | | | | | |
 
 ### Model results — Opus / Sonnet / Haiku
 
@@ -184,6 +186,7 @@ partial supersession); **—** = not yet benchmarked on the current (hardened) c
 | clockwork | — | — | — |
 | flurfunk | — | — | — |
 | gazette | — | — | — |
+| kontor | — | — | — |
 
 ¹ From the 2026-07 audit on the pre-hardening beverages corpus (14 sources): Sonnet cleared the
 structural + judgment gates with no wiki-defects on its subset; Haiku ran ~2.5× faster and stayed

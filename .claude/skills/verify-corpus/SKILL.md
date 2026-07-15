@@ -1,11 +1,11 @@
 ---
 name: verify-corpus
-description: End-to-end test + grader for the citadel ingest pipeline over the shipped test corpora — beverages (coffee+tea showcase), kelvarra (a coherent fictional world whose facts contradict reality), leuchtfeuer (a 3-year programme ingested in dated waves that drives reconcile/delete/force), pemberley (all of Pride and Prejudice as one large-source chunking + narrative stress test), injection-resistance (mundane documents with adversarial instructions the agent must treat as content), clockwork (a whole git repository folded in as one digest, with a second commit driving repo-reconcile), flurfunk (informal genres — chat, social, interview, application, forum — grading attribution and in-thread reversal), and gazette (PDF sources grading CITADEL_PDF_MODE text-vs-images, the academic-publications genre, and an image-only page). Mode A ingests a corpus into a throwaway SANDBOX workspace (never a live wiki), runs the structural gates (citadel check + lint), then grades the result the way a user consumes it — driving citadel's own read tools (search/read/index/tags) to check each hidden ground-truth.md guarantee is both correct+cited and easily findable, dropping to a file-level grep only to separate a wiki-creation defect from a retrieval one and route the miss into an improvement backlog (single-source facts, merges, contradictions, counterfactuals kept-as-stated, temporal supersession, delete propagation, repo digests, cross-links, abbreviations, chunking integrity, attribution, injection non-execution). Use whenever the user wants to run the e2e / corpus test, verify or grade a corpus, (re)build the demo/showcase wiki, prove citations and contradictions still surface, or check that a change to ingest, llm, the rules tree (citadel/rules/), the ingest prompts, or the store still folds a corpus correctly — even if they do not say the word "skill". Takes a corpus name (beverages | kelvarra | leuchtfeuer | pemberley | injection-resistance | clockwork | flurfunk | gazette | all) and optional --grade-only.
+description: End-to-end test + grader for the citadel ingest pipeline over the shipped test corpora — beverages (coffee+tea showcase), kelvarra (a coherent fictional world whose facts contradict reality), leuchtfeuer (a 3-year programme ingested in dated waves that drives reconcile/delete/force), pemberley (all of Pride and Prejudice as one large-source chunking + narrative stress test), injection-resistance (mundane documents with adversarial instructions the agent must treat as content), clockwork (a whole git repository folded in as one digest, with a second commit driving repo-reconcile), flurfunk (informal genres — chat, social, interview, application, forum — grading attribution and in-thread reversal), and gazette (PDF sources grading CITADEL_PDF_MODE text-vs-images, the academic-publications genre, and an image-only page), and kontor (binary Office documents — OOXML + legacy OLE — grading the Office extraction path, an embedded-image delta via CITADEL_IMAGE_SUPPORT, dedup-by-basename, and ignore-patterns). Mode A ingests a corpus into a throwaway SANDBOX workspace (never a live wiki), runs the structural gates (citadel check + lint), then grades the result the way a user consumes it — driving citadel's own read tools (search/read/index/tags) to check each hidden ground-truth.md guarantee is both correct+cited and easily findable, dropping to a file-level grep only to separate a wiki-creation defect from a retrieval one and route the miss into an improvement backlog (single-source facts, merges, contradictions, counterfactuals kept-as-stated, temporal supersession, delete propagation, repo digests, cross-links, abbreviations, chunking integrity, attribution, injection non-execution). Use whenever the user wants to run the e2e / corpus test, verify or grade a corpus, (re)build the demo/showcase wiki, prove citations and contradictions still surface, or check that a change to ingest, llm, the rules tree (citadel/rules/), the ingest prompts, or the store still folds a corpus correctly — even if they do not say the word "skill". Takes a corpus name (beverages | kelvarra | leuchtfeuer | pemberley | injection-resistance | clockwork | flurfunk | gazette | kontor | all) and optional --grade-only.
 ---
 
 # Verify a corpus end-to-end
 
-Eight shipped corpora, each a `corpora/<name>/` bundle (`raw/`, sometimes `stages/` or a
+Nine shipped corpora, each a `corpora/<name>/` bundle (`raw/`, sometimes `stages/` or a
 materializable repo tree, a `README.md`) plus a hidden answer key at
 `.claude/skills/verify-corpus/<name>/ground-truth.md`. The ingest agent
 **never sees the key** — it lives outside the corpus, and Mode A points `CITADEL_RAW_DIR` at the
@@ -18,7 +18,7 @@ end-to-end — it seeds known defects into a sandbox, proves the offline detecto
 then runs real curate sessions and grades that the model FIXES them without breaking valid pages.
 
 **Usage:** `verify-corpus
-<beverages|kelvarra|leuchtfeuer|pemberley|injection-resistance|clockwork|flurfunk|gazette|all> [--grade-only]`
+<beverages|kelvarra|leuchtfeuer|pemberley|injection-resistance|clockwork|flurfunk|gazette|kontor|all> [--grade-only]`
 
 | corpus | what it stresses | sandbox note | ground-truth |
 | ------ | ---------------- | ------------ | ------------ |
@@ -30,6 +30,7 @@ then runs real curate sessions and grades that the model FIXES them without brea
 | `clockwork` | a whole git repo folded in as ONE digest (`kind=repo`), then a second commit driving `kind=repo-reconcile`; folder-keyed provenance; one documented default superseded | materialize the repo + 2 commits (see the clockwork note) | `.claude/skills/verify-corpus/clockwork/ground-truth.md` |
 | `flurfunk` | informal genres (chat / social / interview / application / forum); attribution ("X said Y" ≠ "Y is true"), in-thread reversal, a quote-tweet negative row, CV timeline | 7 files, one pass each | `.claude/skills/verify-corpus/flurfunk/ground-truth.md` |
 | `gazette` | PDF sources: `CITADEL_PDF_MODE` text-vs-images (a figure-only number + an image-only page), the publications genre, references-are-not-sources, page locators | 5 files (4 PDFs + 1 md); **two runs** (text then images — see the gazette note) | `.claude/skills/verify-corpus/gazette/ground-truth.md` |
+| `kontor` | binary Office documents (OOXML .pptx/.docx/.xlsx + legacy OLE .doc/.ppt/.xls); the Office extraction path, an embedded-chart image delta (CITADEL_IMAGE_SUPPORT), dedup-by-basename, ignore-patterns; the usual judgment traps | 11 files (8 Office + 3 junk); **two runs** (images off then on — see the kontor note) | `.claude/skills/verify-corpus/kontor/ground-truth.md` |
 
 Mode A shells out to the ingest CLI (slow, uses your subscription). For fast iteration on the grader
 use **Mode B** (`--grade-only`) against a sandbox you already built. **Mode C** grades the *curate*
@@ -51,7 +52,7 @@ committed `corpora/**/wiki` are never moved aside:
 
 ```bash
 REPO="$(git rev-parse --show-toplevel)"
-CORPUS=beverages                          # or kelvarra | leuchtfeuer | pemberley | injection-resistance
+CORPUS=beverages                          # or kelvarra | leuchtfeuer | pemberley | injection-resistance | kontor
 SANDBOX="$(mktemp -d)/verify-$CORPUS"     # a scratch workspace OUTSIDE the repo
 uv run python -m citadel init "$SANDBOX"   # scaffolds citadel.toml + .env + raw/ + wiki/
 
@@ -193,6 +194,28 @@ The grade is the **delta** (`gazette/ground-truth.md` §B): the figure-only numb
 the image-only **suspension notice** must be **absent-and-honest** in text mode (inventing either is a
 hard fail — hallucination) and **present-and-cited** in images mode. Images mode needs the claude CLI
 (its reader renders the PDF pages visually). The committed showcase is built in **images** mode.
+
+### kontor — the Office two-mode protocol (images off vs. on)
+
+`kontor` is 8 Office documents (OOXML `.pptx`/`.docx`/`.xlsx` + legacy OLE `.doc`/`.ppt`/`.xls`) plus 3
+junk files, and it grades the **`CITADEL_IMAGE_SUPPORT` delta** on an embedded chart, so run it **twice**
+in two fresh sandboxes. The fixtures are regenerable — run the committed stdlib generator first (it
+needs no python-pptx/docx/openpyxl/PIL):
+
+```bash
+python "$REPO/corpora/kontor/make_office.py"          # rewrites the Office fixtures into raw/
+export CITADEL_RAW_DIR="$REPO/corpora/kontor/raw"; RAW="$CITADEL_RAW_DIR"
+
+CITADEL_IMAGE_SUPPORT=0 uv run python -m citadel ingest   # sandbox 1 — chart NOT read visually
+# … grade, then a FRESH sandbox …
+CITADEL_IMAGE_SUPPORT=1 uv run python -m citadel ingest   # sandbox 2 — chart read visually
+```
+
+The grade is the **delta** (`kontor/ground-truth.md` §B): the chart-only **GROSS MARGIN 34.2 %** must be
+**absent-and-honest** with images off (inventing it is a hard fail — hallucination) and
+**present-and-cited** with images on. Also confirm the **dedup** skip (`report.doc` dropped in favor of
+its `.docx` twin) and the three **ignored** junk files (Thumbs.db / desktop.ini / lock). The committed
+showcase is built in **images** mode.
 
 ## Mode B — grade-only (`--grade-only`)
 
@@ -473,7 +496,7 @@ defect** (which the grep backstop settled), the lane it routes to, and the file+
 
 ## `all`
 
-Run all eight corpora **sequentially**, each in its own sandbox (never share a workspace). Grade each,
+Run all nine corpora **sequentially**, each in its own sandbox (never share a workspace). Grade each,
 then print one aggregate table: corpus × {phase-1 check, phase-1 lint, hard-gate verdict, soft
 caught/total, findability (green/amber/floor), backlog (creation / retrieval / capability-gap counts)}.
 `all` passes only if every corpus passes its hard gates. Note that **`pemberley`
