@@ -81,7 +81,7 @@ creation defect (the embedded chart was not read). The committed images showcase
 - `C1` **OOXML text** — the slide, speaker-notes, table, and both-sheet facts (`F1`–`F4`) are all present.
 - `C2` **Legacy OLE salvage** — the `.doc`/`.ppt`/`.xls` facts (`F5`, `F6`, and the 2019 memo's warehouses) are present, recovered from the binary compound files.
 - `C3` **Cite the ORIGINAL Office file (HARD):** every `[^sN]` behind an Office fact names the original `raw/*.pptx|docx|xlsx|doc|ppt|xls`, **never** an extracted temp file, and carries a locator (`§ Slide 2`, `§ Sheet: Summary`, or a heading anchor per `formats/office.md`).
-- `C4` **Dedup-by-basename (HARD):** `report.doc` is **skipped-duplicate**; the sustainability fact (`F7`) is cited to **`report.docx`**; there is **no** second page/source for `report.doc`. (Surfaced under `citadel status` / `sources/index.md`, not as a failure.)
+- `C4` **Dedup-by-basename (HARD):** `report.doc` is dropped in favour of `report.docx`; the sustainability fact (`F7`) is cited to **`report.docx`**; there is **no** second page for `report.doc` and **no** `[^sN]` pointing at it. The drop is recorded in `wiki/.citadel_failures.json` with reason `duplicate`, so `citadel status` lists it under **skipped-duplicate** (not `failed`) and `sources/index.md` under **Could not ingest** as a `duplicate` — never as an ingested source.
 - `C5` **Ignore-patterns (HARD):** `Thumbs.db`, `desktop.ini`, `~$policy-handbook.docx` produce **no** page, **no** `[^sN]`, and **no** `sources/` entry — skipped silently at discovery.
 
 ## D · Discriminative tier — judgment (separates strong vs weak models)
