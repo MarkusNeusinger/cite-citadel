@@ -119,7 +119,7 @@ verdict: degrades                              # hard | degrades | fail  → the
 ---
 - sources ingested: 5 / 5
 - wall-clock: 14m ; pace: ~2.8 min/source
-- pages: 9 ; [^s citations: 21 ; check: clean ; lint: exit 0
+- pages: 9 ; citations: 21 ; check: clean ; lint: exit 0
 - ground-truth: 11/13 hard gates ; stretch: n/a
 - discriminative tier: locator precise 8/10 ; oblique retrieval 7/8 findable ; orphans: 1
 - wiki-defects (creation lane): missed the 3×-vs-4× area contradiction (xc-area); split "Cinderpeak" into a 2nd node (xe-name)
