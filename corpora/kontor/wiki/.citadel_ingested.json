@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "format": 2,
+    "workspace": ""
+  },
+  "sources": {
+    "raw/budget-2026.xlsx": {
+      "ctime_ns": 1784117411234903173,
+      "hashed_at_ns": 1784117411234903173,
+      "model": "claude:sonnet",
+      "mtime_ns": 1784117411234903173,
+      "rules_version": "ce77c062190d",
+      "sha256": "96df505cdb377d07702ce356f0a9f3ff8ed8c21cff1e8ea7e6e0fe93535af396",
+      "size": 2153
+    },
+    "raw/legacy-deck.ppt": {
+      "ctime_ns": 1784117411234903173,
+      "hashed_at_ns": 1784117411234903173,
+      "model": "claude:sonnet",
+      "mtime_ns": 1784117411234903173,
+      "rules_version": "ce77c062190d",
+      "sha256": "e6ef5531d1b5be749692553a74fcc7d5714418b579f2c1698003b0cb817a4cf2",
+      "size": 5632
+    },
+    "raw/legacy-ledger.xls": {
+      "ctime_ns": 1784117411234903173,
+      "hashed_at_ns": 1784117411234903173,
+      "model": "claude:sonnet",
+      "mtime_ns": 1784117411234903173,
+      "rules_version": "ce77c062190d",
+      "sha256": "d3abeff2d7efe0b1ea548d313c585e5efde8eee127e315f53ce44f4cb9eb1485",
+      "size": 5632
+    },
+    "raw/legacy-memo.doc": {
+      "ctime_ns": 1784117411234903173,
+      "hashed_at_ns": 1784117411234903173,
+      "model": "claude:sonnet",
+      "mtime_ns": 1784117411234903173,
+      "rules_version": "ce77c062190d",
+      "sha256": "f4c644ae768c2a954b0af46a73105cb611b4c3176b0370c8f8b59cb43be275ef",
+      "size": 5632
+    },
+    "raw/policy-handbook.docx": {
+      "ctime_ns": 1784117411234903173,
+      "hashed_at_ns": 1784117411234903173,
+      "model": "claude:sonnet",
+      "mtime_ns": 1784117411234903173,
+      "rules_version": "ce77c062190d",
+      "sha256": "195db238858d6920e79bd4dfa53093194d9a07c016fb7ca5bfa3937a1b5baa15",
+      "size": 1014
+    },
+    "raw/q3-review.pptx": {
+      "ctime_ns": 1784117411234903173,
+      "hashed_at_ns": 1784117411234903173,
+      "model": "claude:sonnet",
+      "mtime_ns": 1784117411234903173,
+      "rules_version": "ce77c062190d",
+      "sha256": "b957ca46791dd6254d34a590f861fc15fb7f1a2f1f58f3780667dc026bc7658e",
+      "size": 10628
+    },
+    "raw/report.docx": {
+      "ctime_ns": 1784117411234903173,
+      "hashed_at_ns": 1784117411234903173,
+      "model": "claude:sonnet",
+      "mtime_ns": 1784117411234903173,
+      "rules_version": "ce77c062190d",
+      "sha256": "5266ae49de6123b8366c653fc53e03f9e18bee0ddc720c16465dfa9631e380da",
+      "size": 845
+    }
+  }
+}
