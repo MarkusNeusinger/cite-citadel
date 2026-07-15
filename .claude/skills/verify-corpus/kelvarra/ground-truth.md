@@ -135,6 +135,14 @@ not the patent clause; do not accept the tea clause as covering this row.)
 | `tmp-hq-move` | the Institute's home | Old Customs House (memoir 1949–, day-book 1961–63, survey 1987; the primer recalls the first lamp trials from its roof) | Corran Hill campus (catalogue 1992, primer 1994, almanac 1998) | almanac + catalogue: the **remove of 1988**; the primer's "since the remove" |
 | `tmp-currency` | the currency | ferling (day-book prices, 1961–62) | skell (catalogue prices, 1992) | almanac: skell **introduced 1971**, one skell = twenty ferlings |
 
+**Relative-date resolution (`tmp-relative`, soft):** the catalogue dates the Ferrick clock's
+**fourth series** only *relatively* — "taken up **two years after the remove**" — and the remove is
+1988 (§F1 `tmp-hq-move`), so the fourth series began **1990**. The absolute **1990 appears nowhere in
+`raw/`** (authoring invariant — re-verify with `grep -rn "1990" "$RAW"` → empty), so a wiki that
+states 1990 resolved the offset correctly; one that only parrots "two years after the remove" without
+grounding it, or gets a different year, missed it. It is a resolution nicety, not a hard gate.
+Evidence: `grep -rn "1990\|two years after the remove" "$WIKI"`.
+
 A passing wiki presents each as a dated change over time (dated prose or a `## Change Log`) with
 the current state live — **not** as a `> [!CONTRADICTION]` between the early and late files, and
 not with the earlier state silently erased. Old-Customs-House-as-current or ferling-as-current =
@@ -216,6 +224,7 @@ by search+index+tags* is a hard floor.
 | `rb-hq` | where is the Institute's campus located now | live: the **Corran Hill** campus since the **remove of 1988**, cited to `almanac-of-kelvarra-1998.md`; the earlier **Old Customs House** home present but dated pre-1988, **NOT** the current location, no early-vs-late contradiction →§F1 (`tmp-hq-move`) | rank≤2, 1 read |
 | `rb-currency` | what currency does Kelvarra use today | live: the **skell** (introduced 1971, one skell = twenty ferlings), cited to `almanac-of-kelvarra-1998.md`; the older **ferling** present only as dated day-book prices, **NOT** the current currency, no contradiction flag →§F1 (`tmp-currency`) | rank≤2, 1 read |
 | `rb-ksb` | what does KSB stand for | **KSB** appears but is left honestly **unexpanded** (no invented full name), cited to primer/survey/catalogue; lint lists it undefined — search must **NOT** surface a manufactured expansion, and any `[^s..]`-cited one is a fabrication FAIL →§H (`abbr-ksb`) | rank≤2, 1 read |
+| `rb-fourthseries` | when did the Ferrick tide clock reach its fourth series | **1990** — the catalogue states it only as "two years after the remove", and the remove is 1988, so the answer requires resolving the offset; cited to `instrument-works-catalogue-1992.md` (dated pivot from §F1) →§F1 (`tmp-relative`) | rank≤3, ≤2 reads |
 
 ## Scoring
 

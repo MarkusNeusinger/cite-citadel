@@ -12,6 +12,8 @@ It is deliberately small: one poller, one Postgres table pair, no message broker
 pip install clockwork-scheduler
 ```
 
+`clockwork` requires Python 3.11 or newer.
+
 ## Configure
 
 Jobs live in a single YAML file (default `clockwork.yml`):

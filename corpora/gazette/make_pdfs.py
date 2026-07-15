@@ -498,21 +498,27 @@ def build_figure_brief() -> bytes:
     """1 page: text body + one embedded chart image (numbers pixels-only)."""
     body = (
         "This brief summarises the median nightly seeing measured at Cinder Peak "
-        "through 2025. Seeing - the blurring of stars by atmospheric turbulence - "
-        "is reported in arcseconds, and lower is sharper. The monthly medians are "
-        "shown in Figure 1. The autumn nights were consistently the sharpest of "
-        "the year."
+        "Observatory, which opened in 1998, through 2025. Seeing - the blurring of "
+        "stars by atmospheric turbulence - is reported in arcseconds, and lower is "
+        "sharper. The monthly medians are shown in Figure 1. The autumn nights were "
+        "consistently the sharpest of the year."
+    )
+    outlook = (
+        "The survey will continue with the observatory's new instrument, which "
+        "offers about three times the light-gathering area of the retired 0.6-metre "
+        "telescope. Raw nightly logs are archived internally and are not reproduced "
+        "here; this brief reports medians only."
     )
     caption = "Figure 1. Median nightly seeing by month, 2025."
 
     W, H, gray = make_chart_raster()
     img_w, img_h = 380, 220  # display size in points (1:1 with the raster px)
-    img_x, img_y = MARGIN, 380  # lower-left placement
+    img_x, img_y = MARGIN, 300  # lower-left placement (below the expanded text body)
 
     content = ""
     content += text_block(MARGIN, 730, 16, 16, ["Atmospheric Seeing Brief - 2025"])
     content += text_block(MARGIN, 710, 10, 12, ["Cinder Peak Observatory"])
-    content += text_block(MARGIN, 685, 11, 15, wrap(body))
+    content += text_block(MARGIN, 685, 11, 15, wrap(body) + [""] + wrap(outlook))
     # Caption sits UNDER where the image is drawn.
     content += text_block(MARGIN, img_y - 18, 9, 11, [caption])
     # Draw the chart: q sw 0 0 sh tx ty cm /Im0 Do Q

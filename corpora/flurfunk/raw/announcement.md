@@ -3,7 +3,8 @@
 **Larkspur · 1 April 2026**
 
 Today we're announcing that **Skylight 2.0**, the latest release of Larkspur's real-time analytics
-dashboard, is **generally available as of 1 April 2026**.
+dashboard, is **generally available as of 1 April 2026**. Reaching this milestone with a team of
+around 30 people is something the whole company is proud of.
 
 Skylight 2.0 is available in **three regions**:
 

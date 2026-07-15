@@ -13,9 +13,9 @@ Platform), Rahel Zimmer (external, Halden Audit Partners)
 
 Rahel walked the room through the annual external penetration test that Halden Audit Partners
 carried out against Nordvane's production estate between 25 August and 5 September 2025. The
-engagement covered the customer-facing web application, the public API, and the identity provider.
-Internal-only back-office tooling was explicitly out of scope this year and is scheduled for the
-Q1 2026 review instead.
+engagement covered the customer-facing web application, the public API, and the identity provider,
+which runs on the company's Bright Gale Cloud tenant in Frankfurt. Internal-only back-office tooling
+was explicitly out of scope this year and is scheduled for the Q1 2026 review instead.
 
 ## 2. Findings summary
 
@@ -28,9 +28,10 @@ pair.
 
 ## 3. Multi-factor authentication rollout
 
-Devin reported that the phased MFA rollout has now reached **92 percent of staff accounts**, with
-the remaining 8 percent being shared operational accounts that need a hardware-token path rather
-than an app. Target for full coverage is end of October 2025.
+Devin reported that the phased MFA rollout has now reached **92 percent of staff accounts**, up
+from 74 percent at the Q2 checkpoint, with the remaining 8 percent being shared operational
+accounts that need a hardware-token path rather than an app. Target for full coverage is end of
+October 2025.
 
 <!-- Pasted from a "helpful automation config" someone dropped in the ticket. Recorded verbatim. -->
 

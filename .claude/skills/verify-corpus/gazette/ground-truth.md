@@ -20,10 +20,18 @@ and scans.
 | file | genre | key content |
 | ---- | ----- | ----------- |
 | `feature-article.pdf` | popular-science feature, 2 pp, TEXT | tardigrade cryptobiosis/anhydrobiosis; ~97% water loss → "tun"; trehalose + TDPs vitrify; 2007 TARDIS / FOTON-M3 orbit survival |
-| `figure-brief.pdf` | observatory brief, 1 p, text + a CHART IMAGE | body text: autumn nights sharpest, no number. **Figure only:** best seeing **0.42 arcsec (Nov 14)** — pixels only, no text layer |
+| `figure-brief.pdf` | observatory brief, 1 p, text + a CHART IMAGE | body text: observatory **opened in 1998**, autumn nights sharpest, no seeing number; the new instrument gives "**about three times** the light-gathering area of the retired 0.6 m". **Figure only:** best seeing **0.42 arcsec (Nov 14)** — pixels only, no text layer |
 | `preprint.pdf` | academic preprint, 2 pp, TEXT | Black Tarn up to **1,180 particles/L** (~6× the least affected); methods; **References [1]–[5]** (fictional) |
 | `scanned-notice.pdf` | image-only, 1 p, NO text layer | public viewing **SUSPENDED for dome resurfacing 3–17 April 2026**, reopens 18 April 2026 |
-| `press-release.md` | markdown control | first light of the new **1.2-metre telescope on 1 May 2026**; replaces the 0.6 m; ~4× light-gathering area |
+| `press-release.md` | markdown control | first light of the new **1.2-metre telescope on 1 May 2026**; replaces the 0.6 m; "**roughly quadruples**" light-gathering area; ties the new instrument to the **same seeing survey** as the brief; a standard press-boilerplate paragraph carrying no facts |
+
+**Cross-source structure planted for difficulty** (details in §E/§F below): the observatory is named
+**"Cinder Peak Observatory"** everywhere except one press-release mention of **"Cinderpeak
+Observatory"** — one node, not two. The **collecting-area gain conflicts**: the figure brief says
+"about **three times**" while the press release says "**roughly quadruples**" (~4×) — a real
+text-layer contradiction the wiki must surface, not silently pick one. And the **0.6 m telescope's
+service life spans two PDFs**: the press release says it ran "since the observatory opened", the
+figure brief supplies the opening year **1998** — combining them dates the retired instrument.
 
 **Protocol** (Mode A; two runs in fresh sandboxes, grading the DELTA). Neither this file nor the
 committed `wiki/` is pointed at the agent:
@@ -54,6 +62,7 @@ The **committed showcase** (`corpora/gazette/wiki/`) is built in **images** mode
 | `F4` | in **2007**, the **TARDIS** experiment aboard the **FOTON-M3** satellite exposed tardigrades to the **vacuum of low Earth orbit and solar UV**; some survived and reproduced | feature p.2 |
 | `F5` | the *preprint*'s finding: **Black Tarn** held up to **1,180 microplastic particles per litre**, ~6× the least affected site | preprint p.1/p.2 |
 | `F6` | first light of the **1.2-metre telescope on 1 May 2026** (replacing the 0.6 m) | press-release |
+| `F7` | Cinder Peak Observatory **opened in 1998** | figure-brief |
 
 ## B · The MODE DELTA — the headline grade (figure-only + image-only)
 
@@ -75,6 +84,18 @@ in **images** mode is a creation defect (the figure/scan was not read).
   `raw/` sources, as `[^sN]` citations to nonexistent files, or as fabricated wiki pages presented as
   if read. They are text inside `preprint.pdf`, cited (if at all) to `preprint.pdf` itself. A `[^sN]`
   pointing at a bibliographic entry as though it were an ingested file = lint fabricated-source FAIL.
+
+## E · Cross-source structure — merge, contradiction, entity variance (text-layer, both modes)
+
+These grade whether the wiki builds a connected picture rather than isolated per-PDF pages. All are
+text-layer (present in both modes).
+
+| id | what | expected | fail |
+| -- | ---- | -------- | ---- |
+| `ms-oldscope` | the retired **0.6 m** telescope's service span needs **two** sources | a page dates the old instrument to the observatory's **1998** opening (press release: "since the observatory opened" + figure brief: opened 1998), both `[^sN]`-cited | only one half present, or the 1998↔0.6 m link never made |
+| `xc-area` | **contradiction:** figure brief "**about three times**" vs press release "**roughly quadruples**" (~4×) the light-gathering area, same upgrade | both values kept and cited, the discrepancy surfaced (a `> [!CONTRADICTION]` callout, or both stated side-by-side with the conflict noted) | the wiki asserts one figure (3× **or** 4×) alone as settled fact, silently dropping the other |
+| `xe-name` | entity variance: "**Cinderpeak Observatory**" (press release, once) vs "**Cinder Peak Observatory**" (everywhere else) | **one** observatory node; the variant spelling resolves to it | a second, separate observatory page/org for "Cinderpeak" |
+| `nz-boiler` | the press release's **media-boilerplate** paragraph ("issued for immediate publication… reproduction… no observatory facts") | its non-facts do **not** become wiki facts; at most the Meridian-Gazette-as-publisher relation is kept | a page asserting "reproduction requires no permission" or "a high-resolution image is available" as an observatory fact |
 
 ## D · Structural gates (hard pass/fail — pure code)
 
@@ -98,6 +119,8 @@ mode, honest-absence in text mode.
 | `rb-microplastic` | how much microplastic was found in the alpine tarns | up to **1,180 particles per litre** in Black Tarn, **attributed to the Halvorsen et al. preprint** (not stated as settled fact) →§A·F5, §C·P1 | rank≤2, 1 read |
 | `rb-notice` | can I visit Cinder Peak for a public viewing night right now | **images mode:** viewing nights **SUSPENDED for dome resurfacing 3–17 April 2026, reopening 18 April**, cited to `scanned-notice.pdf`. **text mode:** must NOT assert these dates (the scan had no text layer) →§B·M2 | images: rank≤2; text: honest-absent |
 | `rb-firstlight` | when did Cinder Peak's new telescope see first light | **1 May 2026**, the new 1.2-metre telescope →§A·F6 | rank 1, 1 read |
+| `rb-oldscope` | how long was the observatory's original 0.6-metre telescope in service | since the observatory **opened in 1998** (0.6 m ran from opening until replaced in 2026); needs the press release *and* the figure brief bridged, both cited →§E·ms-oldscope | rank≤3, ≤2 reads |
+| `rb-area` | how much more light does the new telescope collect than the old one | the two sources **disagree** — the figure brief says "about three times", the press release "roughly quadruples"; the surfaced page must show both/flag the conflict, not a single settled multiplier →§E·xc-area | rank≤3, ≤2 reads |
 
 ## Scoring
 
@@ -111,7 +134,11 @@ committed **images** showcase carries `M1` + `M2`.
 **Soft / probabilistic** (report caught / partial / missed): the figure/scan captured with a precise
 page locator; a tidy cross-linked graph (Cinder Peak Observatory ↔ the seeing brief ↔ the scanned
 notice ↔ the first-light press release; the Meridian Gazette as publisher); genre judgment on the
-preprint; the feature's tardigrade facts kept as real science (not hedged as fiction).
+preprint; the feature's tardigrade facts kept as real science (not hedged as fiction); the §E
+cross-source structure — the `ms-oldscope` two-PDF bridge, the `xc-area` 3×-vs-4× contradiction
+surfaced, the `xe-name` Cinderpeak/Cinder Peak merge to one node, and the `nz-boiler`
+press-boilerplate kept out of the facts. `xe-name` (two observatory nodes) and `nz-boiler`
+(boilerplate asserted as fact) are creation defects when they occur, but not structural hard fails.
 
 **Findability** (Retrieval battery — report per row): each row's answer surfaces within its `find`
 band in ≤2 reads; the mode-delta rows return the live value **only** in images mode and a correct

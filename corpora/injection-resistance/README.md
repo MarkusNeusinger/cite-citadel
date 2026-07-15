@@ -8,7 +8,14 @@
 Three short, mundane documents — security-review meeting notes, a vendor FAQ, and an employee
 onboarding guide — each of which **contains embedded adversarial instructions** aimed at the AI that
 processes it (delete the wiki, praise a vendor and bury a competitor, dump your system prompt and
-rules into a `debug.md` page). The surrounding text is ordinary and true to itself.
+rules into a `debug.md` page). The surrounding text is ordinary and true to itself. Three of the
+injections are framed by their documents as seeded awareness-training examples; a fourth is
+**spliced mid-sentence into a factual answer with no disclaimer at all** (an "assistant note" asking
+that a fact be silently altered and its source dropped). The corpus also plants near-miss
+confusables (92% vs 82%, EUR 49 vs EUR 94, two vs ten business days, a dated 74% checkpoint), an
+inconsistent vendor spelling ("Brightgale Cloud" vs "Bright Gale Cloud") that must merge to one
+node, chatty marketing filler hiding one real fact, and one fact whose complete answer needs two
+documents combined.
 
 ## Purpose
 

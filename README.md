@@ -131,6 +131,66 @@ or the interactive **[live demo gallery](https://markusneusinger.github.io/cite-
 viewer per corpus. `verify-corpus` grades each against a hidden answer key it never sees; per-corpus
 detail lives in each `corpora/<name>/README.md` and `CLAUDE.md`.
 
+### Coverage matrix — which corpus exercises which capability
+
+Each corpus targets a few capabilities hard rather than all of them shallowly; together they cover
+the pipeline. `●` = a primary, load-bearing test of that capability; `○` = present as a secondary
+check. (Bev = beverages, Kel = kelvarra, Leu = leuchtfeuer, Pem = pemberley, Inj =
+injection-resistance, Clk = clockwork, Flu = flurfunk, Gaz = gazette.)
+
+| capability | Bev | Kel | Leu | Pem | Inj | Clk | Flu | Gaz |
+| --- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
+| Single-source facts survive + cited | ● | ● | ● | ● | ● | ● | ● | ● |
+| Cross-source merge / co-citation | ● | ● | ● | ● | ○ | | ● | ○ |
+| Multi-source synthesis (answer needs ≥2 files) | ● | ○ | ● | | ● | | ○ | ● |
+| Contradictions surfaced, not silently resolved | ● | ● | ● | ○ | | ● | ○ | ● |
+| Near-miss / approximation ≠ contradiction | ● | | ○ | | ● | ○ | ● | ○ |
+| Counterfactuals kept as stated + cited | ○ | ● | ● | ○ | | | | |
+| Temporal supersession (dated change) | ● | ● | ● | ● | ○ | ● | ● | |
+| Delete / reconcile / force lifecycle | | | ● | | | ● | | |
+| Whole-repo digest | | | | | | ● | | |
+| Large-source multi-segment chunking | | | | ● | | | | |
+| Attribution ("X said Y" ≠ "Y is true") | | | ● | ● | ● | | ● | ● |
+| Injection treated as content, never executed | | | | | ● | | | |
+| PDF text-vs-images mode delta | | | | | | | | ● |
+| Cross-language carry-through (DE→EN) | | | ● | | | | | |
+| Entity-spelling variance → one node | | | ○ | | ● | | | ● |
+| Relative-date resolution | | ● | ○ | | | | ○ | ○ |
+| Distractor noise / filler resistance | ● | ○ | ● | ● | ○ | | ● | ○ |
+| Locator precision (lines / § / page) | ● | ○ | ○ | ● | | ○ | | ● |
+| Abbreviations (defined + undefined-flagged) | ● | ● | ● | | | | | |
+
+### Model results — Opus / Sonnet / Haiku
+
+The same corpora double as a **model benchmark**: because grading is retrieval-first against a hidden
+answer key, a stronger and a weaker model produce measurably different wikis from identical inputs.
+The [`bench-model`](https://github.com/MarkusNeusinger/cite-citadel/tree/main/.claude/skills/bench-model)
+skill ingests a corpus with a pinned `CITADEL_INGEST_MODEL`, grades it, and applies a discriminative
+tier (locator precision, oblique-query retrieval, merge quality, judgment delta on
+contradictions + planted-false claims). It writes a per-run results file whose rows populate the cells
+below.
+
+Scoring per cell: **hard** = passes every hard gate of that corpus's ground-truth; **degrades** =
+structurally valid but misses judgment-heavy work (uncaught contradictions, an adopted false claim,
+partial supersession); **—** = not yet benchmarked on the current (hardened) corpora.
+
+| corpus | Opus | Sonnet | Haiku |
+| --- | :-: | :-: | :-: |
+| beverages | — | hard¹ | degrades¹ |
+| kelvarra | — | — | — |
+| leuchtfeuer | — | — | — |
+| pemberley | — | — | — |
+| injection-resistance | — | — | — |
+| clockwork | — | — | — |
+| flurfunk | — | — | — |
+| gazette | — | — | — |
+
+¹ From the 2026-07 audit on the pre-hardening beverages corpus (14 sources): Sonnet cleared the
+structural + judgment gates with no wiki-defects on its subset; Haiku ran ~2.5× faster and stayed
+structurally clean but adopted a planted-false claim as wiki-voice truth and missed three
+contradictions and part of a 2024→2026 supersession. The hardening in this section raises the bar, so
+these cells will be re-measured; the rest are open — run `bench-model <corpus> <model>` to fill a row.
+
 ## MCP server
 
 `citadel serve` exposes **twelve tools** over stdio — eleven read-only (`wiki_search`,

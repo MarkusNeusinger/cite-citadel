@@ -42,7 +42,9 @@ After the three waves the sandbox raw holds the same **11 files as the committed
 
 Temporal traceability across three years driving all three source lifecycles — **reconcile / delete /
 force** on one growing wiki — plus German→English carry-through (`CITADEL_WIKI_LANG=en`) and the
-minutes/email genres with first-person opinions (pair with `CITADEL_STYLE_PROFILES=1`).
+minutes/email genres with first-person opinions (pair with `CITADEL_STYLE_PROFILES=1`). The English
+go-live email also anglicizes the company name once ("Blauwal Logistics" vs. the usual "Blauwal
+Logistik GmbH") — one organization the wiki must not split into two.
 
 ## Grading
 

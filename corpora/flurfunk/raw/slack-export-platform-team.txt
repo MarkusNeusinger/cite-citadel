@@ -38,8 +38,18 @@ Exported: 2026-02-11
 [2026-02-10 10:24] Wei Chen: that'd be the 7 day window doing its job tbh
 [2026-02-10 10:25] Sofia Ruiz: right, just flagging. told them I'd dig in
 [2026-02-10 10:26] Tom Alvarez: k keep me posted
+[2026-02-10 14:02] Wei Chen: side thing — new workspaces still default the dashboard time range to "last 24 hours". support keeps getting "where's my data" tickets from people who expected to see a week
+[2026-02-10 14:03] Tom Alvarez: yeah 24h is a tight first impression. let's default new dashboards to last 7 days
+[2026-02-10 14:04] Sofia Ruiz: agreed, a 7 day default range is friendlier
+[2026-02-10 14:05] Tom Alvarez: decision: default dashboard time range = last 7 days for new workspaces
+[2026-02-10 14:31] Wei Chen: wait hold on. if the event-retention default is only 7 days, a "last 7 days" range shows a half-empty chart the second retention prunes anything. that looks more broken, not less
+[2026-02-10 14:32] Tom Alvarez: ...yeah good catch. ok scrap that, keep the dashboard default range at 24 hours. we can revisit once retention is sorted
+[2026-02-10 14:33] Sofia Ruiz: makes sense, keep 24h. reverting that one
+[2026-02-10 14:34] Wei Chen: two decisions and a reversal before lunch, efficient 😅
 [2026-02-10 15:47] Wei Chen: the deploy dashboard is so pretty now that refresh is instant, still not over it
 [2026-02-10 15:48] Sofia Ruiz: 🔥🔥
+[2026-02-10 15:51] Tom Alvarez: ok who keeps changing the standup playlist to sea shanties
+[2026-02-10 15:52] Wei Chen: 🏴‍☠️ not me (it was me)
 [2026-02-10 16:30] Tom Alvarez: heading out early, dentist. back tmrw
 
 [2026-02-11 08:51] Sofia Ruiz: ok so the Northwind thing is worse than I thought. they needed 3 weeks of event history for a compliance audit and it's just... gone. aged out under the 7 day window

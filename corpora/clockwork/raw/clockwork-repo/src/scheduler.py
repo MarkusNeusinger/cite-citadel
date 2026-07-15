@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import os
 
-# Poll cadence, in seconds: how often the loop wakes to look for due jobs.
-DEFAULT_POLL_INTERVAL = 60
+# Poll cadence, in seconds: how often the loop wakes to look for due jobs. Lowered from 60
+# to 30 in 0.4.0 so short cron schedules fire closer to their nominal time.
+DEFAULT_POLL_INTERVAL = 30
 
 # How many times a failing job is retried before it is recorded as failed. Raised from 3
 # to 5 in 0.4.0 after production users found transient outages routinely outlasted three
@@ -32,7 +33,7 @@ class Scheduler:
 
     :param config_path: path to the YAML job file (default ``clockwork.yml``).
     :param poll_interval: seconds between poll cycles. Defaults to
-        :data:`DEFAULT_POLL_INTERVAL` (60).
+        :data:`DEFAULT_POLL_INTERVAL` (30 since 0.4.0; was 60).
     :param max_retries: attempts before a job is marked failed. Defaults to
         :data:`DEFAULT_MAX_RETRIES` (5 since 0.4.0; was 3). Each retry waits
         ``backoff_base ** attempt`` seconds.

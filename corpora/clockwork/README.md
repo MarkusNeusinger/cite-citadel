@@ -16,9 +16,13 @@ A git repository cannot be committed *inside* this repository, so the corpus shi
 as plain trees and the sandbox **materializes** them into a real git checkout:
 
 - [`repo-src/`](repo-src/) — the repo at **v0.3.0** (the wave-1 state).
-- [`repo-src-wave2/`](repo-src-wave2/) — the **overlay** that lands **v0.4.0**: it changes exactly one
-  documented default — the scheduler's `max_retries`, **3 → 5** — in `src/scheduler.py` and the
-  README, and appends the v0.4.0 CHANGELOG entry. Unchanged files (design, LICENSE) are not repeated.
+- [`repo-src-wave2/`](repo-src-wave2/) — the **overlay** that lands **v0.4.0**: it changes two
+  documented defaults — the scheduler's `max_retries` **3 → 5** and `poll_interval` **60 → 30** —
+  in `src/scheduler.py` and the README, and appends the v0.4.0 CHANGELOG entries. Unchanged files
+  (design, LICENSE) are not repeated — **deliberately including `docs/design.md`, which still says
+  "default 60"**: realistic documentation drift the ingest must resolve by the dated CHANGELOG, not
+  by counting mentions. Independently of the waves, the repo also contradicts itself about its
+  Python requirement (README "3.11 or newer" vs `pyproject.toml` `>=3.10`) with no dated resolution.
 - [`raw/clockwork-repo/`](raw/clockwork-repo/) — the **final** post-wave-2 materialized tree the
   committed [`wiki/`](wiki/) is built from and cites (carries a `.citadelsource` marker so it is
   recognized as one repo source without a live `.git`).
@@ -40,8 +44,11 @@ history in a scratch workspace:
 Repo ingest end-to-end: the deterministic digest (`repo.py`), folder-keyed provenance
 (`resource: raw/clockwork-repo`, every `[^sN]` to the folder, never to per-file sources), the
 `formats/repo.md` "capture usage not code" brief, an accumulating `type: System` page for the external
-PostgreSQL store, and — across the two commits — temporal supersession of a changed default under
-`kind=repo-reconcile`.
+PostgreSQL store, and — across the two commits — temporal supersession of two changed defaults under
+`kind=repo-reconcile`: one clean (every mention updated) and one against **stale documentation**
+(`docs/design.md` keeps the old value). Plus a doc-vs-metadata **contradiction** inside one source
+(the Python requirement) that must be surfaced, not silently resolved, and a version-history mapping
+(which release added catch-up vs the Postgres move vs the defaults change) that punishes conflation.
 
 ## Grading
 
