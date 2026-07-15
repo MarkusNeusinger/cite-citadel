@@ -12,7 +12,8 @@ Read it end to end; your team lead will assume you have.
 IT provisions your core accounts — email, single sign-on, and chat — **within two business days**
 of your signed contract reaching People Operations. Your manager requests any team-specific systems
 separately through the IT helpdesk. If something is missing on your first morning, that is normal;
-raise a ticket rather than waiting.
+raise a ticket rather than waiting. (Physical office badges are the one exception: they are printed
+off-site and can take up to ten business days, so use the visitor desk in the meantime.)
 
 Nordvane hosts its internal applications on **Brightgale Cloud** (Frankfurt region), so most tools
 are reachable over the web with your single sign-on and do not need anything installed locally.

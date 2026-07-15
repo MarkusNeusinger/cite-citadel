@@ -8,8 +8,8 @@ to the end of the year; the sea permitting, so do the delivery dates.
 
 ## The Ferrick Tide Clock
 
-The pattern that has served the harbour tower of Port Ilvess since 1963, now in its fourth series
-and offered, as ever, in the harbour size and the house size. The movement is Ferrick's own
+The pattern that has served the harbour tower of Port Ilvess since 1963, now in its fourth series —
+taken up two years after the remove — and offered, as ever, in the harbour size and the house size. The movement is Ferrick's own
 double-detent escapement with the tidal train geared for the purchaser's home port; ports of
 unusual temper (the Fell Rocks among them) are respectfully declined. Each clock is run at the
 Works against the transit series for one full lunation before delivery, and its rate card is

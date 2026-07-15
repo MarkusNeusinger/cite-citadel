@@ -19,9 +19,9 @@ row, CV timeline completeness, and that chat noise never leaks into wiki prose.
 
 | file | genre | gist |
 | ---- | ----- | ---- |
-| `slack-export-platform-team.txt` | team chat, Mon–Wed | default event-retention set to **7 days** (Mon), **reversed to 30 days** (Wed) after customer **Northwind** loses audit history; buried side-decision: rename `retention-svc` → `janitor`; heavy banter/emoji/GIF/lunch noise |
+| `slack-export-platform-team.txt` | team chat, Mon–Wed | default event-retention set to **7 days** (Mon), **reversed to 30 days** (Wed) after customer **Northwind** loses audit history; a **second, same-day reversal** (Tue): default dashboard time range proposed **7 days** then reverted back to **24 hours** — current value is the ORIGINAL 24h, not the last-mentioned 7; buried side-decision: rename `retention-svc` → `janitor`; heavy banter/emoji/GIF/lunch/shanty noise |
 | `tweet-thread.md` | 8-tweet launch thread, **@marcusfeld** | Skylight **sub-second (<1s) refresh**, was ~5s; a **quote-tweet by @dataskeptic** falsely claims "silently drops events >1MB"; Marcus **debunks** it in 6/ (queued, not dropped) |
-| `interview-transcript-founder.md` | Q/A podcast, **Priya Nadkarni** | self-serving claims: "**only** platform with true sub-second refresh", "**profitable since month one**"; plain facts: founded **2021 in Lisbon**, **28 employees** |
+| `interview-transcript-founder.md` | Q/A podcast, **Priya Nadkarni** | self-serving claims: "**only** platform with true sub-second refresh", "**profitable since month one**"; plain facts: founded **2021 in Lisbon**, **28 employees** (the announcement rounds this to "around 30" — an approximation, NOT a contradiction) |
 | `application-cover-letter.md` | cover letter, Mar 2026 | Dana Kessler applies for **Senior Platform Engineer** at Larkspur |
 | `cv.md` | CV | Dana Kessler timeline (three roles 2015→2026 + TU Delft 2015) |
 | `forum-support-thread.md` | support thread #1–#8 | stale-dashboard-after-timezone-change; fix at **#7** (Sofia Ruiz): set **`SKYLIGHT_TZ`** + restart **`janitor`** |
@@ -43,6 +43,7 @@ Sandbox: one ingest pass, one agentic session per file. Pair with `CITADEL_STYLE
 | `F7` | the internal service **`retention-svc` was renamed `janitor`** | slack |
 | `F8` | stale-data-after-timezone-change is fixed by setting **`SKYLIGHT_TZ`** to the org's IANA timezone and **restarting `janitor`** | forum #7 |
 | `F9` | Dana Kessler's employment timeline (see §H) | cv |
+| `F10` | the default **dashboard time range for new workspaces is 24 hours** (a 7-day default was proposed and **reverted the same day**; 24h is current) | slack |
 
 ## B · Merges, cross-links, and the one-person trap
 
@@ -70,14 +71,27 @@ The plain facts `F2` (founded 2021 Lisbon / 28 employees) are stated flatly by P
 recorded as facts cited to the interview — the gate is on the **self-serving/contested** claims
 `A1`/`A2`/`A3`, not on every sentence she speaks.
 
-## D · Reversal supersession — the retention window (slack)
+## D · Reversal supersession — TWO in-thread reversals that resolve in OPPOSITE directions (slack)
 
-The Slack decision reversed **in-thread**: 7 days (Mon) → 30 days (Wed, after Northwind lost audit
-data). The wiki must carry:
+The Slack thread carries **two** decisions that each reverse in-thread — and they land on opposite
+ends on purpose, so "the last value mentioned is the current one" is a **wrong** heuristic that fails
+one of them:
 
 | fact | expected | detail |
 | ---- | -------- | ------ |
-| default event-retention | **30 days is current** | 7 days survives only as the dated, superseded original decision (with the arc: set Monday, changed Wednesday after a customer lost audit history). **7 days presented as the current default = FAIL.** Both 7 and 30 shown as current, un-superseded = FAIL. A tidy dated change-log/open-point for the reversal is the soft target. |
+| default event-retention (`D1`) | **30 days is current** | 7 days (Mon) → 30 days (Wed) after Northwind lost audit history. 7 days survives only as the dated, superseded **original** decision. Here current = the **later** value. **7 days as the current default = FAIL.** Both shown as current = FAIL. |
+| default dashboard time range (`D2`) | **24 hours is current** | proposed as 7 days (Tue 14:05) then **reverted the same day** (Tue 14:32) back to 24 hours once Wei noted a 7-day range would show half-empty charts under the 7-day retention. Here current = the **original** value; the "last 7 days" proposal is the dead one. **A wiki that records the dashboard default range as 7 days took the last-mentioned number and missed the reversal = FAIL.** |
+
+A tidy dated change-log/open-point for each reversal is the soft target. The trap is `D2`: a model
+that resolves supersession by recency alone will wrongly output 7 days.
+
+## D2 · Approximation is NOT contradiction — the headcount (interview vs announcement)
+
+The interview states **28 employees** (precise); the announcement says a team of **"around 30"**
+(rounded). These are the **same fact approximated**, not a conflict. The wiki must **not** raise a
+`> [!CONTRADICTION]` between them: record 28 as the figure (cited to the interview), optionally noting
+the announcement's "around 30" as a rounded restatement. Flagging 28-vs-30 as a contradiction, or
+asserting two different headcounts as both current-and-conflicting, is a creation defect.
 
 ## E · Chat noise must NOT leak into wiki FACTUAL prose
 
@@ -122,6 +136,13 @@ The cover letter (Mar 2026, Senior Platform Engineer at Larkspur) links Dana to 
 job **application** — Dana is a candidate, not a Larkspur employee. A wiki that records Dana as
 already working at Larkspur is a creation defect.
 
+**Relative-duration reconciliation (soft, `H2`):** the cover letter states the tenures in relative
+form — "the last **four years** at Halcyon Cloud", "**four years** at Cobalt Systems", "the better
+part of **eleven years**" total — while the CV gives the absolute ranges (Halcyon 2022–2026, Cobalt
+2018–2022, career from 2015). These **agree** (2022–2026 = 4, 2018–2022 = 4, 2015→2026 ≈ 11): a
+strong wiki reconciles them without inventing a conflict. Treating the relative and absolute forms as
+contradictory, or double-counting them into a wrong total, is a creation defect.
+
 ## Retrieval battery — find the knowledge like a user (Tier 2)
 
 Run each `query` **verbatim** through `citadel search`, read the top hits, grade (a) the `expect`
@@ -140,21 +161,26 @@ never by "search found nothing".
 | `rb-cv` | where did Dana Kessler work before applying to Larkspur | the full timeline — **Meridian Logistics, Cobalt Systems, Halcyon Cloud** (dated), not just the latest →§H | rank 1, 1 read |
 | `rb-timezone` | Skylight dashboard stuck on old data after our timezone changed | set **`SKYLIGHT_TZ`** to the org's IANA timezone and **restart `janitor`** (the #7 accepted answer), not the browser-cache guesses →§F, §A·F8 | rank≤2, ≤2 reads |
 | `rb-ga` | when did Skylight 2.0 launch and where can I run it | **1 April 2026**, in **EU (Frankfurt), US (Virginia), APAC (Singapore)** →§A·F3/F4 | rank 1, 1 read |
+| `rb-range` | what time range does a new Skylight dashboard show by default | **24 hours** — a "last 7 days" default was proposed and reverted the same day, so 7 days is NOT current; a wiki answering 7 days followed recency past the reversal →§D·D2, §A·F10 | rank≤2, ≤2 reads |
+| `rb-headcount` | how many people work at Larkspur | **28** (the interview's precise figure); the announcement's "around 30" is the same number rounded, not a second, conflicting headcount →§D2 | rank≤2, 1 read |
 
 ## Scoring
 
 **Hard gates** (must all hold): §G structural; **§C attribution** — `A1`/`A2` recorded only as
 Priya's claims and `A3` never a live Skylight property (the corpus-wide gate; any of these asserted
-in wiki voice or as a bare `[^llm]` fact is a hard fail); §D retention supersession (30 live, 7 only
-dated); §F the forum fix is the #7 answer, not a wrong guess; §H the CV timeline complete and dated
-with Dana as a **candidate**, not a Larkspur employee; §B Sofia Ruiz is **one** person page; every §A
-`F*` fact present-and-cited.
+in wiki voice or as a bare `[^llm]` fact is a hard fail); §D **both** reversals resolved to the right
+current value — retention **30 live** (7 dated) AND dashboard range **24h live** (the reverted 7-day
+proposal dead, not surfaced as current); §F the forum fix is the #7 answer, not a wrong guess; §H the
+CV timeline complete and dated with Dana as a **candidate**, not a Larkspur employee; §B Sofia Ruiz is
+**one** person page; every §A `F*` fact present-and-cited.
 
 **Soft / probabilistic** (report caught / partial / missed; don't hard-fail a single miss): chat
-noise absent from wiki prose (§E); the reversal rendered as a tidy dated arc / open point; the
-`retention-svc`→`janitor` rename and its cross-link to the forum fix; cross-link density around
-Larkspur/Skylight/the people; style-profile entries for Priya and Dana; an `[^llm]` or explicit
-"refuted" note on `A3`.
+noise absent from wiki prose (§E — now including the sea-shanty aside and the forum's F1/off-topic
+tangent); both reversals rendered as tidy dated arcs / open points; the 28-vs-"around 30" headcount
+reconciled without a spurious contradiction (§D2); the cover-letter relative durations reconciled
+with the CV's absolute dates (§H2); the `retention-svc`→`janitor` rename and its cross-link to the
+forum fix; cross-link density around Larkspur/Skylight/the people; style-profile entries for Priya
+and Dana; an `[^llm]` or explicit "refuted" note on `A3`.
 
 **Findability** (Retrieval battery — report per row, don't hard-fail a soft rank miss): each row's
 answer surfaces on a correct, correctly-cited/attributed page within its `find` band in ≤2 reads;

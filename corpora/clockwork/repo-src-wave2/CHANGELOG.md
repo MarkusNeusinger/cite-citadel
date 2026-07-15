@@ -9,6 +9,8 @@ All notable changes to `clockwork` are recorded here. This project follows
 - **Default `max_retries` raised from 3 to 5.** Production users reported that transient
   downstream outages routinely outlasted three attempts; five with the existing exponential
   backoff clears almost all of them. Set `max_retries` explicitly to keep the old behaviour.
+- **Default `poll_interval` lowered from 60 to 30 seconds**, so short cron schedules fire
+  closer to their nominal time. Set `poll_interval` explicitly to keep the old cadence.
 
 ## [0.3.0] - 2025-11-04
 

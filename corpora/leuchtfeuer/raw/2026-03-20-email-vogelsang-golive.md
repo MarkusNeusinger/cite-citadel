@@ -6,7 +6,8 @@ Subject: We are live — thank you, and what happens next
 
 Dear colleagues,
 
-Since Tuesday, **17 March 2026**, the entire Blauwal warehouse estate has been live on QUAYSTONE.
+Since Tuesday, **17 March 2026**, the entire Blauwal warehouse estate — every site Blauwal Logistics
+operates — has been live on QUAYSTONE.
 The last convoy of sites crossed over that morning, passed its go/no-go gates without a waiver,
 and Projekt LEUCHTFEUER — after two years and a great deal of weather — has brought every ship
 into harbour. Nobody sank. That was always the whole plan.

@@ -46,7 +46,9 @@ data and won't roll forward past the timezone switch.
 
 +1 we hit something like this after a DST change once. Never really root-caused it, we just spun up a
 fresh dashboard and copied the config over. Ugly workaround but it unblocked us. Following this thread
-for a real answer.
+for a real answer. Off-topic but gridlock_92 your username is sending me, are you a Formula 1 person
+or is that a coincidence 🏎️ anyway good luck, timezone bugs are the worst, right up there with
+off-by-one errors and naming things.
 
 ---
 

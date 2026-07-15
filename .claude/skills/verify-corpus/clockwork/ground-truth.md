@@ -21,7 +21,7 @@ The corpus ships the repo as plain trees (a git repo cannot be committed inside 
 | tree | role |
 | ---- | ---- |
 | `repo-src/` | the repo at **v0.3.0** (wave-1 state): `README.md`, `CHANGELOG.md`, `pyproject.toml`, `src/scheduler.py`, `docs/design.md`, `LICENSE` |
-| `repo-src-wave2/` | the **overlay** landing **v0.4.0**: changes the scheduler's default `max_retries` **3 → 5** (in `src/scheduler.py` and `README.md`) and appends the v0.4.0 `CHANGELOG.md` entry |
+| `repo-src-wave2/` | the **overlay** landing **v0.4.0**: changes **two** documented defaults — `max_retries` **3 → 5** and `poll_interval` **60 → 30** (in `src/scheduler.py` and `README.md`) — and appends the v0.4.0 `CHANGELOG.md` entries. `docs/design.md` is **deliberately not updated** (it still says "default 60"): realistic documentation drift the reconcile must resolve by the dated CHANGELOG, not by majority-of-mentions |
 | `raw/clockwork-repo/` | the committed **final** materialized tree the showcase `wiki/` cites (a `.citadelsource` marker makes it one repo source without a live `.git`) |
 
 **Sandbox protocol** (Mode A; a scratch workspace, never a live wiki — neither `repo-src/` nor
@@ -65,15 +65,23 @@ Expected session kinds: wave 1 = **one** `repo` session; wave 2 = **one** `repo-
   loop → advisory-lock claim → run → retry → record), **what comes out** (`job_runs` rows).
 - Current values as of wave 1: default `max_retries` **3**; `poll_interval` **60 s**; `backoff_base`
   **2.0**.
+- **In-repo contradiction, present from wave 1** (`X1`): the README states `clockwork` "requires
+  Python **3.11 or newer**" while `pyproject.toml` declares `requires-python = ">=3.10"`. There is
+  no dated resolution anywhere in the repo — this is a genuine doc-vs-metadata conflict, NOT a
+  supersession. The wiki must not silently assert one side as the requirement: either both values
+  appear cited with the discrepancy noted, or a contradiction callout flags it. Asserting "3.10"
+  or "3.11" alone, uncaveated, is a FAIL.
 
 ## Expected state after wave 2 (the reconcile wave — the temporal trap)
 
-The overlay changed exactly one documented default. The reconcile must **update, not append**:
+The overlay changed exactly two documented defaults. The reconcile must **update, not append** —
+and the two changes differ in difficulty on purpose:
 
 | fact | expected | detail |
 | ---- | -------- | ------ |
-| default `max_retries` | **UPDATE** | current value becomes **5** (v0.4.0), cited to the repo. The old **3** survives **only** as a dated, superseded statement (a change-log/history bullet: "raised from 3 to 5 in 0.4.0") — never as the current default. `max_retries` default presented as **3** = FAIL. Both 3 and 5 shown as the current default (no supersession) = FAIL. |
-| everything else | **NOOP** | `poll_interval` 60, `backoff_base` 2.0, the Postgres design, install/run/CLI facts are unchanged — the reconcile must not churn or duplicate them. |
+| default `max_retries` | **UPDATE** (the clean one) | current value becomes **5** (v0.4.0), cited to the repo — every file that states it was updated. The old **3** survives **only** as a dated, superseded statement (a change-log/history bullet: "raised from 3 to 5 in 0.4.0") — never as the current default. `max_retries` default presented as **3** = FAIL. Both 3 and 5 shown as the current default (no supersession) = FAIL. |
+| default `poll_interval` | **UPDATE against doc drift** (the hard one) | current value becomes **30** (v0.4.0): `src/scheduler.py`, the README, and the dated CHANGELOG all say 30 — but **`docs/design.md` still says 60** (deliberately stale). The wiki's current value must be **30**; **60** survives only as the dated prior default. A wiki that quotes the stale design doc's 60 as current — or presents both as live because "the files disagree" — failed the trap: the CHANGELOG *dates* the change, so this is supersession-plus-drift, not a contradiction. |
+| everything else | **NOOP** | `backoff_base` 2.0, the Postgres design, install/run/CLI facts, and the `X1` Python-requirement conflict are unchanged — the reconcile must not churn or duplicate them (and must not "resolve" `X1`, which no wave dates). |
 
 ## A · Load-bearing facts that MUST appear in the final wiki (cited to the repo)
 
@@ -89,8 +97,9 @@ per-file source, never the digest file.
 | `F5` | CLI subcommands **`run` / `add` / `status`** (`clockwork status` prints last/next run + outcome) | README |
 | `F6` | jobs are claimed via a **PostgreSQL advisory lock** so multiple instances never double-fire | README / design |
 | `F7` | state lives in two tables, **`jobs`** and **`job_runs`** (one row per attempt) | design |
-| `F8` | the poller wakes every **`poll_interval` seconds (default 60)** | README / scheduler.py / design |
+| `F8` | the poller wakes every **`poll_interval` seconds (final default 30; 60 only as the dated prior)** | scheduler.py / README / CHANGELOG (design.md is stale) |
 | `F9` | a failed job retries up to **`max_retries` (final default 5)** with **exponential backoff** (`backoff_base` 2.0) | scheduler.py / README / CHANGELOG |
+| `F10` | the Python requirement is **conflicting in-repo**: README says **3.11+**, `pyproject.toml` says **>=3.10** — both cited, discrepancy surfaced, neither silently asserted | README vs pyproject.toml (`X1`) |
 
 ## B · One digest — NOT one page per file, cited to the folder
 
@@ -154,20 +163,26 @@ row (`rb-retries`) demands the **live** value and rejects the superseded one.
 | `rb-dburl` | which environment variable configures clockwork's database connection | **`CLOCKWORK_DB_URL`** (a required Postgres DSN) →§A·F4 | rank 1, 1 read |
 | `rb-retries` | how many times does clockwork retry a failed job by default | **5** (current default, v0.4.0); **3** appears only as the dated prior default it superseded, never as current →§Reconcile, §A·F9 | rank 1, 1 read |
 | `rb-lock` | how does clockwork stop two schedulers from running the same job twice | a **PostgreSQL advisory lock** keyed on the job name — multiple instances can run for availability without double-firing →§A·F6, §D·D2 | rank≤2, 1 read |
-| `rb-poll` | how often does clockwork check for jobs that are due | every **`poll_interval` seconds, default 60** →§A·F8 | rank≤2, 1 read |
+| `rb-poll` | how often does clockwork check for jobs that are due | every **`poll_interval` seconds, default 30** (v0.4.0); **60** appears only as the dated prior — a current 60 means the stale `docs/design.md` won over the dated CHANGELOG →§Reconcile, §A·F8 | rank≤2, 1 read |
+| `rb-python` | which Python version do I need to run clockwork | the repo **conflicts with itself**: README says 3.11+, `pyproject.toml` says >=3.10 — the surfaced page must show both cited (or a contradiction flag), never a single uncaveated value →§A·F10 (`X1`) | rank≤3, ≤2 reads |
+| `rb-catchup-since` | since which release does clockwork replay runs it missed while down | **0.2.0** (the CHANGELOG's catch-up entry) — NOT 0.3.0 (that was the SQLite→PostgreSQL move) and NOT 0.4.0 (the defaults change); a wiki answering 0.3.0 conflated the version history →§A·F2, §D·D3 | rank≤3, ≤2 reads |
 
 ## Scoring
 
 **Hard gates** (must all hold): §F structural after each wave; **exactly one** repo manifest entry
 (digest, not per-file); provenance folder-keyed (`raw/clockwork-repo`, no fabricated per-file or
 digest citation); the `max_retries` **3 → 5** supersession (5 current, 3 only dated — never both
-live, never 3 as current); every §A `F*` fact present-and-cited; a `type: System` PostgreSQL page
-exists (§C) recording the tables + advisory-lock relationship.
+live, never 3 as current); the `poll_interval` **60 → 30** supersession **against the stale
+design.md** (30 current, 60 only dated — the drifted doc must not win); the `X1` Python-requirement
+conflict never silently one-sided (§A·F10); every §A `F*` fact present-and-cited; a `type: System`
+PostgreSQL page exists (§C) recording the tables + advisory-lock relationship.
 
 **Soft / probabilistic** (report caught / partial / missed; don't hard-fail a single miss): the repo
-folds into a **small** cluster rather than one-page-per-file (§B); a tidy dated history for the
-retry-default change; the tool↔PostgreSQL cross-link; `D1` catch-up and `D3` SQLite→Postgres history
-kept; no code-transcription (§E).
+folds into a **small** cluster rather than one-page-per-file (§B); a tidy dated history for both
+default changes; an explicit contradiction callout (vs. merely dual-citing) for `X1`; the correct
+version mapping in `rb-catchup-since` (0.2.0 catch-up vs 0.3.0 Postgres vs 0.4.0 defaults); the
+tool↔PostgreSQL cross-link; `D1` catch-up and `D3` SQLite→Postgres history kept; no
+code-transcription (§E).
 
 **Findability** (Retrieval battery — report per row, don't hard-fail a soft rank miss): each row's
 answer surfaces on a correct, correctly-cited page within its `find` band in ≤2 reads; `rb-retries`

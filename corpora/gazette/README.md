@@ -23,6 +23,14 @@ figures; `images` also looks at charts and scans.
 | `scanned-notice.pdf` | a one-page **image-only** notice (rendered as pixels, no text layer) | honest degradation: in `text` mode it must **not** invent prose; in `images` mode the suspension notice is read visually |
 | `press-release.md` | a clean markdown control | a non-PDF baseline in the same world |
 
+Beyond the PDF-mode delta, the sources are wired together to test cross-source reasoning: one fact
+(the retired 0.6 m telescope's service life) is **split across two PDFs** and needs both to answer,
+the light-gathering-area gain is stated **inconsistently** ("about three times" in the brief vs
+"roughly quadruples" in the press release — a contradiction to surface, not silently resolve), the
+observatory's name appears once as **"Cinderpeak"** against "Cinder Peak" elsewhere (one node, not
+two), and the press release ends with a **boilerplate paragraph carrying no facts** that must not
+leak into the wiki.
+
 ## Regenerating the PDFs
 
 ```bash

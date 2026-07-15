@@ -158,6 +158,14 @@ or a dropped German-only fact, is a FAIL for that check.
 
 Failure mode: one page per source file that each restates the programme facts in isolation.
 
+**Entity-spelling variance (`ent-blauwal`, soft):** the company is "**Blauwal Logistik GmbH**"
+everywhere except the English go-live email (`2026-03-20-email-vogelsang-golive.md`), which
+anglicizes it once to "**Blauwal Logistics**". It is **one** organization — a single
+`organizations/` node that both spellings resolve to. A second org page for "Blauwal Logistics",
+or the variant treated as a distinct customer/vendor, is a creation defect (identity fragmentation).
+Evidence: `grep -rin "blauwal logistics" "$WIKI"` — any hit must sit on / point at the same Blauwal
+node.
+
 ## C · Contradictions — must surface, never silently resolved
 
 | id | subject | side A | side B |

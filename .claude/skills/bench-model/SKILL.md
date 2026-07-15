@@ -95,6 +95,46 @@ where does it degrade first, what is the cost/quality trade, and which `citadel/
 would close the gap (cite the specific failures). Route every defect into the two verify-corpus
 lanes (wiki-generation vs retrieval-tooling).
 
+## Results export (feeds the README model-results matrix)
+
+So a bench run is reproducible and the README's **Model results** table can be refilled from data
+(not memory), every run writes ONE markdown results file into the sandbox and prints its path:
+
+```bash
+mkdir -p "$SANDBOX/results"
+RESULTS="$SANDBOX/results/bench-<corpus>-<model>-<YYYY-MM-DD>.md"
+```
+
+Write it with this exact front-matter + body shape (one file per (corpus, model, date) run) so the
+files are greppable and the README cell is a pure function of the `verdict` field:
+
+```markdown
+---
+corpus: gazette
+model: claude-haiku-4-5
+cli: claude
+date: 2026-07-15
+rules_version: <config.rules_version()>       # stamp so a later run knows the corpus vintage
+verdict: degrades                              # hard | degrades | fail  → the README cell value
+---
+- sources ingested: 5 / 5
+- wall-clock: 14m ; pace: ~2.8 min/source
+- pages: 9 ; [^s citations: 21 ; check: clean ; lint: exit 0
+- ground-truth: 11/13 hard gates ; stretch: n/a
+- discriminative tier: locator precise 8/10 ; oblique retrieval 7/8 findable ; orphans: 1
+- wiki-defects (creation lane): missed the 3×-vs-4× area contradiction (xc-area); split "Cinderpeak" into a 2nd node (xe-name)
+- retrieval-defects: none
+- verdict rationale: structurally clean, but two judgment/merge misses → degrades
+```
+
+The `verdict` field maps 1:1 to the README **Model results** cell (`hard` / `degrades` / a dash while
+unrun); `fail` means a hard structural gate broke (check/lint non-zero or a fabricated source) — call
+that out explicitly, it is worse than `degrades`. When updating the README from a batch, read the
+`verdict` of each results file and set the matching corpus×model cell; add the run date and the
+one-line rationale as a footnote when a cell changes. Keep the results files with the sandbox only as
+long as a `--baseline` comparison needs them — the README matrix is the durable record, the per-run
+files are the working evidence behind each cell.
+
 ## Gotchas
 
 - Never bench against a live wiki or the repo workspace; never touch the repo `.env`. Sandboxes are

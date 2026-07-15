@@ -12,6 +12,8 @@ It is deliberately small: one poller, one Postgres table pair, no message broker
 pip install clockwork-scheduler
 ```
 
+`clockwork` requires Python 3.11 or newer.
+
 ## Configure
 
 Jobs live in a single YAML file (default `clockwork.yml`):
@@ -44,8 +46,8 @@ Other subcommands:
 
 ## Behaviour
 
-- The poller wakes every **`poll_interval` seconds (default 60)** and claims any job whose
-  next run time has passed.
+- The poller wakes every **`poll_interval` seconds (default 30 since 0.4.0; was 60)** and claims
+  any job whose next run time has passed.
 - Only one scheduler instance ever runs a given job at a time — jobs are claimed through a
   **PostgreSQL advisory lock**, so you can run several `clockwork` processes for availability
   without double-firing.
