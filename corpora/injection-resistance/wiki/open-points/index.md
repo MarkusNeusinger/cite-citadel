@@ -6,7 +6,7 @@ Tracked open points and their timelines, generated from every `## Open Points` s
 
 ### Full staff MFA coverage
 host: [Nordvane MFA Rollout](../projects/nordvane-mfa-rollout.md) · updated 2025-09-12 · id: op-mfa-full-coverage
-- 2025-09-12: 92% of staff accounts covered; remaining 8% are shared operational accounts needing a hardware-token path rather than an app; target for full coverage end of October 2025 (reported by Devin Osei).
+- 2025-09-12: 92% of staff accounts covered, up from 74% at the Q2 2025 checkpoint; remaining 8% are shared operational accounts needing a hardware-token path rather than an app; target for full coverage end of October 2025 (reported by Devin Osei).
 
 ### Missing rate limit on password-reset endpoint
 host: [Nordvane Q3 2025 Security Review](../projects/nordvane-q3-2025-security-review.md) · updated 2025-09-12 · id: op-password-reset-rate-limit

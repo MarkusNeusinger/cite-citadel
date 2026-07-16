@@ -2,69 +2,51 @@
 
 The wiki's home index: every page grouped by type (with backlinks), plus tags and the source/open-point catalogs. Generated — do not edit.
 
-See also: [misc](misc/index.md) · [organizations](organizations/index.md) · [sources](sources/index.md)
+See also: [concepts](concepts/index.md) · [organizations](organizations/index.md) · [sources](sources/index.md)
 
-## Metric
-- [2026 Budget](misc/2026-budget.md) — FY2026 budget and headcount by department (Marketing, Engineering, Warehousing & Logistics, Sales).
+## Concept
+- [Budget and Headcount](concepts/budget-and-headcount.md) — Departmental budget allocations and full-time-equivalent headcount, tracked by year.
+  - ↳ referenced by: [Aldervik Kontor](organizations/aldervik-kontor.md)
+- [Staff Policies](concepts/staff-policies.md) — Aldervik Kontor's staff leave entitlements, remote-work allowances, probation period, and customer support hours.
   - ↳ referenced by: [Aldervik Kontor](organizations/aldervik-kontor.md)
 
 ## Organization
-- [Aldervik Kontor](organizations/aldervik-kontor.md) — A company founded in 2011 in Aldervik harbour, originally importing dried goods and textiles.
-  - ↳ referenced by: [2026 Budget](misc/2026-budget.md), [Staff Handbook](misc/staff-handbook.md)
-
-## Policy
-- [Staff Handbook](misc/staff-handbook.md) — Aldervik Kontor's company-wide HR policies — customer support hours, annual leave, remote-work days by role, and staff probation.
-  - ↳ referenced by: [Aldervik Kontor](organizations/aldervik-kontor.md)
+- [Aldervik Kontor](organizations/aldervik-kontor.md) — A trading company founded in 2011 in Aldervik harbour, originally importing dried goods and textiles.
+  - ↳ referenced by: [Budget and Headcount](concepts/budget-and-headcount.md), [Staff Policies](concepts/staff-policies.md)
 
 ## Tags
 
-### 2026 (1)
-- [2026 Budget](misc/2026-budget.md)
-
-### aldervik (2)
-- [Staff Handbook](misc/staff-handbook.md)
+### aldervik-kontor (2)
+- [Staff Policies](concepts/staff-policies.md)
 - [Aldervik Kontor](organizations/aldervik-kontor.md)
 
 ### budget (1)
-- [2026 Budget](misc/2026-budget.md)
+- [Budget and Headcount](concepts/budget-and-headcount.md)
 
-### energy (1)
+### company-history (1)
 - [Aldervik Kontor](organizations/aldervik-kontor.md)
+
+### departments (1)
+- [Budget and Headcount](concepts/budget-and-headcount.md)
 
 ### finance (2)
-- [2026 Budget](misc/2026-budget.md)
+- [Budget and Headcount](concepts/budget-and-headcount.md)
 - [Aldervik Kontor](organizations/aldervik-kontor.md)
 
-### founding (1)
-- [Aldervik Kontor](organizations/aldervik-kontor.md)
-
-### headcount (2)
-- [2026 Budget](misc/2026-budget.md)
-- [Aldervik Kontor](organizations/aldervik-kontor.md)
-
-### history (1)
-- [Aldervik Kontor](organizations/aldervik-kontor.md)
+### headcount (1)
+- [Budget and Headcount](concepts/budget-and-headcount.md)
 
 ### hr (1)
-- [Staff Handbook](misc/staff-handbook.md)
+- [Staff Policies](concepts/staff-policies.md)
 
 ### leave (1)
-- [Staff Handbook](misc/staff-handbook.md)
+- [Staff Policies](concepts/staff-policies.md)
 
 ### logistics (1)
 - [Aldervik Kontor](organizations/aldervik-kontor.md)
 
-### policy (1)
-- [Staff Handbook](misc/staff-handbook.md)
-
 ### remote-work (1)
-- [Staff Handbook](misc/staff-handbook.md)
-
-### sustainability (1)
-- [Aldervik Kontor](organizations/aldervik-kontor.md)
-
-### trade (1)
-- [Aldervik Kontor](organizations/aldervik-kontor.md)
+- [Staff Policies](concepts/staff-policies.md)
 
 ## Sources
 
@@ -75,5 +57,5 @@ See also: [misc](misc/index.md) · [organizations](organizations/index.md) · [s
 - [raw/legacy-ledger.xls](../raw/legacy-ledger.xls) — cited by 1 page
 - [raw/legacy-memo.doc](../raw/legacy-memo.doc) — cited by 1 page
 - [raw/policy-handbook.docx](../raw/policy-handbook.docx) — cited by 2 pages
-- [raw/q3-review.pptx](../raw/q3-review.pptx) — cited by 1 page
+- [raw/q3-review.pptx](../raw/q3-review.pptx) — cited by 2 pages
 - [raw/report.docx](../raw/report.docx) — cited by 1 page

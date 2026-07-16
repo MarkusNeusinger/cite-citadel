@@ -2,45 +2,27 @@
 type: Person
 title: Jane Austen
 description: English novelist; author of Pride and Prejudice.
+resource: raw/pride-and-prejudice.txt
 tags:
 - jane-austen
 - novelist
-- pride-and-prejudice
-- regency-england
-resource: raw/pride-and-prejudice.txt
-timestamp: '2026-07-04T21:41:29Z'
+- regency-era
+timestamp: '2026-07-16T17:35:47Z'
+citadel_version: 0.3.0
 ---
 
-Jane Austen is the author of *Pride and Prejudice*.[^s1]
-
-## Life and work
-
-She first drafted the novel in roughly 1796, when she was about twenty-one years old; she
-later revised and finished it at Chawton some fifteen years afterward, and it was published in
-1813, four years before her death.[^s1] Besides *Pride and Prejudice*, her five other novels are
-*Northanger Abbey*, *Sense and Sensibility*, *Mansfield Park*, *Emma*, and *Persuasion* — six
-novels in all, written across two short spans of composition, one of about three years and
-another of a little over five.[^s1]
-
-## Critical reception (per Saintsbury's 1894 preface)
-
-[George Saintsbury](george-saintsbury.md), introducing this 1894 illustrated edition, argues
-that *Pride and Prejudice* is "the most perfect, the most characteristic, the most eminently
-quintessential" of Austen's works, ranking it above *Emma* even though he concedes *Emma* is
-"the larger, the more varied, the more popular."[^s1] He argues Austen's humour has "a greater
-affinity...to that of Addison than to any other," combining demureness and minuteness of touch
-with "an insatiable and ruthless delight in roasting and cutting up a fool."[^s1] He contends her
-particular gift lay in knowing "two things which only genius knows": humanity and art, and calls
-her realism "real to a degree which makes the false realism of our own day look merely
-dead-alive."[^s1]
+Jane Austen wrote [Pride and Prejudice](../objects/pride-and-prejudice.md).[^s1] According to the
+novel's 1894 preface by George Saintsbury, she first drafted it in about 1796, when she was barely
+twenty-one, then revised and finished it at Chawton some fifteen years later; it was published in
+1813, four years before her death.[^s1] Saintsbury's preface names five of her other novels —
+*Northanger Abbey*, *Persuasion*, *Mansfield Park*, *Sense and Sensibility*, and *Emma* — and
+argues that *Pride and Prejudice* surpasses all of them, including the more popular *Emma*.[^s2]
 
 ## See also
 
-- [George Saintsbury](george-saintsbury.md)
-- [Hugh Thomson](hugh-thomson.md)
-- [Elizabeth Bennet](elizabeth-bennet.md)
-- [Fitzwilliam Darcy](fitzwilliam-darcy.md)
+- [Pride and Prejudice](../objects/pride-and-prejudice.md)
 
 ## Sources
 
-[^s1]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 64-450 — preface by George Saintsbury, 1894 George Allen edition (ingested 2026-07-04)
+[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 108-114 — Saintsbury's preface on Austen's composition and publication timeline (ingested 2026-07-16)
+[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 76-96 — Saintsbury names and ranks Austen's six novels (ingested 2026-07-16)

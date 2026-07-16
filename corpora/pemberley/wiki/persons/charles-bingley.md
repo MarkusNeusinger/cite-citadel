@@ -1,83 +1,67 @@
 ---
 type: Person
 title: Charles Bingley
-description: Amiable, wealthy tenant of Netherfield Park in Pride and Prejudice; Darcy's
-  close friend and Jane Bennet's suitor.
-tags:
-- pride-and-prejudice
-- netherfield
-- marriage-plot
+description: Wealthy, easy-tempered tenant of Netherfield Park, close friend of Mr.
+  Darcy and suitor of Jane Bennet.
 resource: raw/pride-and-prejudice.txt
-timestamp: '2026-07-04T22:17:40Z'
+tags:
+- netherfield
+- hertfordshire
+- gentry
+aliases:
+- Mr. Bingley
+timestamp: '2026-07-16T18:15:29Z'
+citadel_version: 0.3.0
 ---
 
-Charles Bingley inherited nearly a hundred thousand pounds from his father, who had intended to
-buy an estate but did not live to do so; Bingley himself takes [Netherfield Park](../misc/netherfield-park.md)
-as a tenant, having looked it over for "half an hour" before deciding to take it.[^s1] He is
-"good-looking and gentlemanlike," with "easy, unaffected manners," lively and unreserved, and
-"sure of being liked wherever he appeared."[^s2][^s1] He is the close friend of
-[Fitzwilliam Darcy](fitzwilliam-darcy.md), on whose judgment he relies heavily despite their
-opposite temperaments.[^s1]
+Charles Bingley leases [Netherfield Park](../misc/netherfield-park.md), a large fortune from the
+north of England reported at "four or five thousand a year."[^s1] He inherited nearly a hundred
+thousand pounds from his father, who had meant to purchase an estate of his own but died before
+doing so; Bingley himself has not yet decided whether to buy one.[^s2] The narration describes him
+as "good-looking and gentlemanlike," with "a pleasant countenance, and easy, unaffected manners."[^s3]
+He is close friends with [Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md), who is "endeared to"
+him by "the easiness, openness, and ductility of his temper."[^s4] His sisters are
+[Caroline Bingley](../persons/caroline-bingley.md) and Mrs. Hurst, who keeps house with her
+husband Mr. Hurst.[^s5]
 
-At the [Meryton](../misc/meryton.md) assembly Bingley dances every dance and singles out
-[Jane Bennet](jane-bennet.md), dancing with her twice and calling her "the most beautiful
-creature I ever beheld."[^s2] When Jane falls ill at Netherfield, his attentions and anxiety for
-her are evident to [Elizabeth Bennet](elizabeth-bennet.md).[^s3] He promises, at
-[Lydia Bennet](lydia-bennet.md)'s prompting, to hold a ball at Netherfield once Jane recovers, and
-does so.[^s4]
+At the Meryton assembly he dances with [Jane Bennet](../persons/jane-bennet.md) twice and calls
+her "the most beautiful creature I ever beheld."[^s6] He promises to give a ball at Netherfield,
+and later confirms the engagement once Jane has recovered from her illness there.[^s7] He and his
+household, including Darcy, leave for London partway through the courtship;
+[Elizabeth Bennet](../persons/elizabeth-bennet.md) suspects his sisters and Darcy are working to
+keep him away from Jane, though this is Elizabeth's own inference rather than anything Bingley
+states himself.[^s8]
 
-## Departure for London
+## Return and engagement
 
-Soon after the Netherfield ball, Bingley and his party leave for [London](../misc/london.md); his sister
-[Caroline Bingley](caroline-bingley.md) writes to Jane that none of them plan to return to
-Hertfordshire that winter.[^s5] Elizabeth privately blames Bingley's "easiness of temper" and
-"want of proper resolution" for letting his sisters and Darcy govern his conduct toward Jane.[^s6]
-
-## Reappearance at Pemberley
-
-Bingley reappears, travelling with [Darcy](fitzwilliam-darcy.md) toward
-[Pemberley](../misc/pemberley.md), and calls on [Elizabeth Bennet](elizabeth-bennet.md) at Lambton
-with Darcy and [Georgiana](georgiana-darcy.md); his unaffected warmth toward her is undiminished,
-and he notes precisely that it has been "above eight months" and "not...since the 26th of November"
-since they last met, at the Netherfield ball.[^s7] Elizabeth detects no sign of particular regard
-between Bingley and Georgiana, despite his sister [Caroline](caroline-bingley.md)'s past hopes for
-such a match, and reads his questions about whether "all" her sisters were at Longbourn as a
-lingering interest in [Jane](jane-bennet.md).[^s7]
-
-## Return to Netherfield and proposal
-
-Bingley returns to Netherfield after nearly a year away and calls at Longbourn with Darcy; his
-attentions to Jane visibly reawaken, and he is soon a regular guest, aided by Mrs. Bennet's
-transparent efforts to leave the two of them alone together.[^s8] He proposes to
-[Jane Bennet](jane-bennet.md) and is accepted, then goes at once to ask Mr. Bennet's consent.[^s9]
-Darcy later confirms to Elizabeth that Bingley's proposal had his full encouragement, having
-confessed to him beforehand his earlier interference and that Jane had been in town the previous
-winter without his knowledge.[^s10]
-
-## Marriage
-
-Bingley and Jane marry alongside Elizabeth and Darcy, and remain at Netherfield only a twelvemonth
-before buying an estate near Derbyshire, gratifying his sisters' old wish that he settle somewhere
-of his own.[^s11]
+Nearly a year later, Bingley returns to [Netherfield Park](../misc/netherfield-park.md) to shoot,
+and soon calls at Longbourn with [Darcy](../persons/fitzwilliam-darcy.md).[^s9] He resumes attending
+Jane closely, and after several visits proposes to her privately at Longbourn; Jane accepts,
+"the happiest creature in the world."[^s10] Bingley later confesses to Jane that he had been
+"totally ignorant" she had spent the previous spring in town — a fact his sisters and Darcy had kept
+from him.[^s11] Bingley and Jane marry and remain at Netherfield only a twelvemonth before buying an
+estate in a county neighbouring Derbyshire, at his sisters' wish, bringing them within thirty miles
+of [Elizabeth](../persons/elizabeth-bennet.md).[^s12]
 
 ## See also
 
-- [Jane Bennet](jane-bennet.md)
-- [Fitzwilliam Darcy](fitzwilliam-darcy.md)
-- [Caroline Bingley](caroline-bingley.md)
 - [Netherfield Park](../misc/netherfield-park.md)
-- [Pemberley](../misc/pemberley.md)
+- [Jane Bennet](../persons/jane-bennet.md)
+- [Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md)
+- [Caroline Bingley](../persons/caroline-bingley.md)
+- [Elizabeth Bennet](../persons/elizabeth-bennet.md)
 
 ## Sources
 
-[^s1]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1119-1240 — Ch. 4 (ingested 2026-07-04)
-[^s2]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 928-1118 — Ch. 3 (ingested 2026-07-04)
-[^s3]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1907-2166 — Ch. 8 (ingested 2026-07-04)
-[^s4]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 2167-2368 — Ch. 9 (ingested 2026-07-04)
-[^s5]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 4907-5125 — Ch. 21 (ingested 2026-07-04)
-[^s6]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 5507-5718 — Ch. 24 (ingested 2026-07-04)
-[^s7]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 9820-10056 — Ch. 44 (ingested 2026-07-04)
-[^s8]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12308-12837 — Ch. 53-54 (ingested 2026-07-05)
-[^s9]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12838-13117 — Ch. 55 (ingested 2026-07-05)
-[^s10]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13648-13927 — Ch. 58 (ingested 2026-07-05)
-[^s11]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14392-14516 — Ch. 61 (ingested 2026-07-05)
+[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 716-717 — Bingley's fortune, as reported by Mrs. Long via Mrs. Bennet (ingested 2026-07-16)
+[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1184-1192 — Bingley's inheritance and undecided estate purchase (ingested 2026-07-16)
+[^s3]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 983-985 — Bingley's appearance and manner (ingested 2026-07-16)
+[^s4]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1203-1206 — Bingley and Darcy's friendship (ingested 2026-07-16)
+[^s5]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 979-981 — Bingley's party at the assembly, including his sisters and Mr. Hurst (ingested 2026-07-16)
+[^s6]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1037, 1059-1061 — Bingley's admiration of Jane and their two dances (ingested 2026-07-16)
+[^s7]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 2345-2350 — Bingley confirms the Netherfield ball (ingested 2026-07-16)
+[^s8]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 5429-5436 — Elizabeth's suspicion that Bingley's sisters and Darcy influence him (ingested 2026-07-16)
+[^s9]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12356-12358; 13653-13656 — Bingley's return to Netherfield and his call at Longbourn with Darcy (ingested 2026-07-16)
+[^s10]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12948-12953 — Bingley's proposal and Jane's acceptance (ingested 2026-07-16)
+[^s11]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13901-13903 — Bingley's ignorance of Jane's stay in town (ingested 2026-07-16)
+[^s12]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14412-14417 — Bingley and Jane's move near Derbyshire (ingested 2026-07-16)

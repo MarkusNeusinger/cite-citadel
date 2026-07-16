@@ -1,9 +1,9 @@
 {
   "raw/report.doc": {
-    "ctime_ns": 1784117411234903173,
+    "ctime_ns": 1784214571275394517,
     "detail": "same basename as raw/report.docx, which was ingested instead",
-    "hashed_at_ns": 1784117411234903173,
-    "mtime_ns": 1784117411234903173,
+    "hashed_at_ns": 1784214571275394517,
+    "mtime_ns": 1784214571275394517,
     "reason": "duplicate",
     "sha256": "4d73836156fdbb450e4905e4f126c8fde995318e50bb6633b8633b467771fc4e",
     "size": 5632

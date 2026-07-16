@@ -1,48 +1,52 @@
 ---
 type: Person
 title: Colonel Fitzwilliam
-description: Fitzwilliam Darcy's affable cousin in Pride and Prejudice, co-guardian
-  of Georgiana Darcy.
-tags:
-- pride-and-prejudice
-- rosings
-- kent
-- marriage-plot
+description: Fitzwilliam Darcy's amiable cousin, a younger son of an earl and joint
+  guardian of Georgiana Darcy.
 resource: raw/pride-and-prejudice.txt
-timestamp: '2026-07-04T22:00:36Z'
+tags:
+- rosings-park
+- kent
+- gentry
+- pemberley
+timestamp: '2026-07-16T17:56:51Z'
+citadel_version: 0.3.0
 ---
 
-Colonel Fitzwilliam is [Mr. Darcy](fitzwilliam-darcy.md)'s cousin, the younger son of Darcy's
-uncle, an earl; about thirty years old, "not handsome, but in person and address most truly the
-gentleman," he arrives at [Rosings Park](../misc/rosings-park.md) with Darcy to visit their aunt,
-[Lady Catherine de Bourgh](lady-catherine-de-bourgh.md).[^s1] He is joint guardian, with Darcy, of
-their younger cousin [Georgiana Darcy](georgiana-darcy.md).[^s2] He calls often at the
-[Hunsford](../misc/hunsford.md) parsonage and is admired there for his easy, well-bred
-conversation, considerably livelier company than Darcy's; [Elizabeth Bennet](elizabeth-bennet.md)
-enjoys his attentions, and [Charlotte Collins](charlotte-lucas.md) briefly imagines a match between
-them, though his income as a younger son is far less than Darcy's.[^s1][^s3]
+Colonel Fitzwilliam is the younger son of [Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md)'s
+uncle, Lord ----, making him Darcy's cousin; he arrives at [Rosings Park](../misc/rosings-park.md)
+with Darcy for an Easter visit to their aunt, [Lady Catherine de Bourgh](../persons/lady-catherine-de-bourgh.md).[^s1]
+The narration describes him as "about thirty, not handsome, but in person and address most truly
+the gentleman."[^s2] He tells [Elizabeth Bennet](../persons/elizabeth-bennet.md) that he is "joined
+with" Darcy "in the guardianship of Miss Darcy."[^s3] As a younger son he has no independent
+fortune: "in matters of greater weight, I may suffer from the want of money. Younger sons cannot
+marry where they like."[^s4]
 
-Walking with Elizabeth in the park, Fitzwilliam mentions, without naming names, that Darcy had
-recently congratulated himself on "having lately saved a friend from the inconveniences of a most
-imprudent marriage" — a disclosure that lets Elizabeth identify Darcy as the one who separated
-[Bingley](charles-bingley.md) from her sister [Jane](jane-bennet.md).[^s4] Darcy's letter to
-Elizabeth later names Fitzwilliam as a "witness of undoubted veracity" for the truth of his account
-of [Wickham](george-wickham.md), being one of the executors of the elder Mr. Darcy's will and
-"unavoidably acquainted with every particular of these transactions."[^s5] Fitzwilliam leaves
-Rosings together with Darcy, three weeks after their arrival.[^s6]
+Walking with Elizabeth, he mentions, without naming names, that Darcy "congratulated himself on
+having lately saved a friend from the inconveniences of a most imprudent marriage" earlier that
+summer; Elizabeth immediately identifies the "friend" as [Charles Bingley](../persons/charles-bingley.md)
+and the "imprudent marriage" as one to her sister [Jane Bennet](../persons/jane-bennet.md).[^s5]
+[Charlotte Collins](../persons/charlotte-lucas.md) privately hopes Elizabeth might marry him instead
+of Darcy, judging him "beyond comparison, the pleasantest man," though she recognizes Darcy has
+far more patronage to offer.[^s6] In his letter to Elizabeth, Darcy names Colonel Fitzwilliam — a
+fellow guardian of [Georgiana Darcy](../persons/georgiana-darcy.md) and an executor of their late
+father's will — as a witness who can corroborate his account of
+[George Wickham](../persons/george-wickham.md)'s history with the family.[^s7]
 
 ## See also
 
-- [Fitzwilliam Darcy](fitzwilliam-darcy.md)
-- [Elizabeth Bennet](elizabeth-bennet.md)
-- [Georgiana Darcy](georgiana-darcy.md)
-- [Rosings Park](../misc/rosings-park.md)
+- [Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md)
+- [Elizabeth Bennet](../persons/elizabeth-bennet.md)
+- [Lady Catherine de Bourgh](../persons/lady-catherine-de-bourgh.md)
+- [Georgiana Darcy](../persons/georgiana-darcy.md)
+- [George Wickham](../persons/george-wickham.md)
 
 ## Sources
 
-[^s1]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 6735-6880 — Ch. 30 (ingested 2026-07-04)
-[^s2]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7243-7463 — Ch. 33 (ingested 2026-07-04)
-[^s3]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7060-7242 — Ch. 32 (ingested 2026-07-04)
-[^s4]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7243-7463 — Ch. 33 (ingested 2026-07-04)
-[^s5]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7696-7960 — Ch. 35 (ingested 2026-07-04)
-[^s6]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 8172-8335 — Ch. 37 (ingested 2026-07-04)
+[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 6829-6833 — Colonel Fitzwilliam's arrival with Darcy at Rosings (ingested 2026-07-16)
+[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 6844-6846 — Colonel Fitzwilliam's age and manner (ingested 2026-07-16)
+[^s3]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7333-7335 — Colonel Fitzwilliam on his joint guardianship of Georgiana Darcy (ingested 2026-07-16)
+[^s4]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7309-7310 — Colonel Fitzwilliam on a younger son's want of fortune (ingested 2026-07-16)
+[^s5]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7373-7376 — Colonel Fitzwilliam's unwitting revelation of Darcy's role separating Bingley and Jane (ingested 2026-07-16)
+[^s6]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7229-7233 — Charlotte Collins's hopes for a match between Elizabeth and Colonel Fitzwilliam (ingested 2026-07-16)
+[^s7]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7940-7944 — Darcy names Colonel Fitzwilliam as a corroborating witness (ingested 2026-07-16)

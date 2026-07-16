@@ -1,55 +1,42 @@
 ---
-type: Place
+type: misc
 title: Netherfield Park
-description: The large estate near Meryton that Charles Bingley leases in Pride and
-  Prejudice.
+description: A leased Hertfordshire estate, about three miles from Longbourn, occupied
+  by Charles Bingley.
+resource: raw/pride-and-prejudice.txt
 tags:
-- pride-and-prejudice
 - netherfield
 - hertfordshire
-resource: raw/pride-and-prejudice.txt
-timestamp: '2026-07-04T22:17:40Z'
+- gentry
+timestamp: '2026-07-16T18:15:29Z'
+citadel_version: 0.3.0
 ---
 
-Netherfield Park is a large estate near [Meryton](meryton.md) and
-[Longbourn](longbourn.md).[^s1] [Charles Bingley](../persons/charles-bingley.md), who inherited
-nearly a hundred thousand pounds from his father, takes it as a tenant rather than an owner,
-having inspected it for only "half an hour" before deciding to take it; his sisters wish him to
-buy an estate of his own instead of renting.[^s1] [Mr. Darcy](../persons/fitzwilliam-darcy.md)
-stays there as Bingley's guest.[^s2]
+Netherfield Park is let to [Charles Bingley](../persons/charles-bingley.md), news that opens the
+novel when [Mrs. Bennet](../persons/mrs-bennet.md) reports it to her husband.[^s1] Bingley, not yet
+of age two years before, had looked over the house for half an hour on "an accidental
+recommendation," found himself pleased with its situation and principal rooms, and took it as a
+tenant rather than a purchase.[^s2] It lies about three miles from [Longbourn](../misc/longbourn.md).[^s3]
+Bingley hosts a ball there, fixed for a Tuesday, and [Jane Bennet](../persons/jane-bennet.md) is
+nursed there through an illness after riding over in the rain.[^s4]
 
-[Jane Bennet](../persons/jane-bennet.md) falls seriously ill at Netherfield after riding over in
-the rain to dine, and is nursed there for several days by
-[Elizabeth Bennet](../persons/elizabeth-bennet.md).[^s3] Bingley later hosts a ball at
-Netherfield before quitting it for [London](london.md) with his whole party, from which — by the end of this
-segment — they have not returned.[^s4][^s5]
-
-Questioned by [Elizabeth Bennet](../persons/elizabeth-bennet.md) at Hunsford, [Darcy](../persons/fitzwilliam-darcy.md)
-says he has never heard Bingley say he means to return to Netherfield, and supposes he may spend
-very little time there in future.[^s6]
-
-## Bingley's return
-
-After nearly a year away, Bingley's housekeeper receives orders to prepare for his return to shoot
-for several weeks; he arrives bringing [Darcy](../persons/fitzwilliam-darcy.md) with him, resumes
-courting [Jane Bennet](../persons/jane-bennet.md), and proposes to her within days.[^s7] Bingley and
-Jane remain at Netherfield only a twelvemonth after marrying before buying an estate near
-Derbyshire.[^s8]
+Nearly a year after leaving, Bingley returns to Netherfield to shoot, prompting the housekeeper to
+prepare for his arrival.[^s5] After marrying Jane, Bingley and Jane remain at Netherfield only a
+twelvemonth before buying an estate in a county neighbouring Derbyshire, judged too near
+[Mrs. Bennet](../persons/mrs-bennet.md) and their Meryton relations for comfort.[^s6]
 
 ## See also
 
 - [Charles Bingley](../persons/charles-bingley.md)
+- [Longbourn](../misc/longbourn.md)
 - [Jane Bennet](../persons/jane-bennet.md)
-- [Meryton](meryton.md)
-- [Longbourn](longbourn.md)
+- [Mrs. Bennet](../persons/mrs-bennet.md)
 
 ## Sources
 
-[^s1]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1119-1240 — Ch. 4 (ingested 2026-07-04)
-[^s2]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 928-1118 — Ch. 3 (ingested 2026-07-04)
-[^s3]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1651-1906 — Ch. 7 (ingested 2026-07-04)
-[^s4]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3960-4510 — Ch. 18 (ingested 2026-07-04)
-[^s5]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 4907-5125 — Ch. 21 (ingested 2026-07-04)
-[^s6]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7060-7242 — Ch. 32 (ingested 2026-07-04)
-[^s7]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12308-12637 — Ch. 53 (ingested 2026-07-05)
-[^s8]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14392-14516 — Ch. 61 (ingested 2026-07-05)
+[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 680-683 — Mrs. Bennet's news that Netherfield is let (ingested 2026-07-16)
+[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1197-1201 — Bingley takes Netherfield as a tenant (ingested 2026-07-16)
+[^s3]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 4339-4340 — Netherfield's distance from Longbourn (ingested 2026-07-16)
+[^s4]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3873-3874; 1791-1796 — the Netherfield ball and Jane's illness there (ingested 2026-07-16)
+[^s5]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12356-12358 — Bingley's return to Netherfield to shoot (ingested 2026-07-16)
+[^s6]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14412-14417 — Bingley and Jane's departure for Derbyshire (ingested 2026-07-16)

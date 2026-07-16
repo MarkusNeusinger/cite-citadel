@@ -1,51 +1,62 @@
 ---
 type: Organization
 title: Instrument Works
-description: The Institute's instrument-making arm, producer of the thermometers,
-  barometers, and other devices that carry its standards.
-resource: raw/aldervane-primer-extract.md
+description: The Institute's instrument-manufacturing and sales arm at Corran Hill,
+  producing tide clocks, lenses, barometers, and chronometers under the Institute's
+  own proving standards.
 tags:
 - kelvarra
-- metrology
+- the-institute
+- port-ilvess
 - instruments
-timestamp: '2026-07-04T22:58:45Z'
+resource: raw/instrument-works-catalogue-1992.md
+aliases:
+- the Works
+timestamp: '2026-07-16T15:03:08Z'
+citadel_version: 0.3.0
 ---
 
-The Instrument Works is the workshop, tied to [the Institute](../organizations/the-institute.md), that manufactures the thermometers, barometers, and optical instruments used to carry Kelvarra's physical standards, and keeps its own catalogue of them.[^s1] Its thermometers are graduated on the ladder fixed by the Institute's [boiling point of water](../concepts/boiling-point-of-water-kelvarra.md) and freezing point, and no other.[^s1]
+# Instrument Works
 
-Per [The Aldervane Primer of Natural Measurement](../objects/the-aldervane-primer-of-natural-measurement.md), lesser substances serve lesser posts across the Instrument Works' output: brass for working weights, steel for the measures of length, quicksilver for the columns of older barometers, and fused quartz for the optical bench — catalogued by the Instrument Works in more detail than the Primer's first chapters give.[^s1]
+The Instrument Works is the instrument-manufacturing and sales arm of [the Institute](../organizations/the-institute.md) (the AINM), standing on Corran Hill.[^s1] It has stood there since the Institute's move to Corran Hill in 1988,[^s2] and it issues an annual catalogue — its 1992 edition offers "its usual apologies for the waiting list and its usual refusal to shorten it by hurrying."[^s2] Every instrument it makes is proved against the Institute's standards before it is "suffered to leave the building"; prices hold to the end of the year, and delivery dates hold too, "the sea permitting."[^s3]
 
-[The Kelvarra Almanac](../objects/the-kelvarra-almanac.md) states that the Instrument Works supplies barometers and chronometers of a quality the mainland pays dearly for.[^s2]
+## Flagship instruments
 
-Every instrument the Works catalogues is made at the Works on [Corran Hill](../misc/corran-hill.md), where the Works has stood since the Institute's remove of 1988, and every one is proved against the Institute's standards before it is allowed to leave the building.[^s3] The Works' 1992 catalogue holds prices to the end of that year, and delivery dates too, "the sea permitting."[^s3]
+Two of the Works' products carry enough of their own history to merit separate pages: the [Ferrick Tide Clock](../objects/the-ferrick-tide-clock.md), a tidal clock pattern sold in the harbour and house sizes, and [The Saltglass Lens](../objects/the-saltglass-lens.md), a survey and chart doublet.
 
-Among its catalogued products, the Works sells the [Ferrick Tide Clock](../objects/ferrick-tide-clock.md), the pattern descended from the harbour tower clock at [Port Ilvess](../misc/port-ilvess.md), and the [Saltglass Lens](../objects/saltglass-lens.md), a doublet for survey and chart work.[^s4][^s5] It also sells barometers: the sealed marine aneroid, the station mercurial in the long case, and the recording pattern in its travelling chest.[^s6] Every barometer the Works sells is proved against the [KSB](../objects/ksb.md) before sale and carries its reduction card in the lid; a purchaser who loses the card may return the instrument for re-proving at the price of the postage and a civil letter.[^s6] The recording pattern is commended to the attention of harbour boards with seawalls to defend, though "the Works names no names."[^s6]
+## Barometers
 
-The Works continues to make the two-day chronometer in the gimballed box, and continues to prove any islander's watch at the counter for the price of the tea drunk while waiting, under the clause of [the Institute](../organizations/the-institute.md)'s founding charter — a clause the counter staff can recite in their sleep and occasionally do.[^s7] The mainland trade is reminded that the Works' chronometer certificates state the rate found, not the rate hoped for, "and that this is a feature."[^s7]
+The Works sells three barometer patterns: the sealed marine aneroid, the station mercurial in its long case, and the recording pattern in its travelling chest.[^s4] Every barometer is proved against the KSB before sale and carries its reduction card in the lid; a purchaser who loses the card may return the instrument for re-proving at the price of the postage and a civil letter.[^s5] The recording pattern is commended to the attention of harbour boards with seawalls to defend — "the Works names no names."[^s6]
 
-Its sundries include proved survey chains and bands; thermometers graduated on the Institute's ladder, in the station and the pocket patterns; sounding leads and lines; the tide-pole in three lengths; and the Works' plain brass rain gauge, of which it will say only that it is the one instrument in the catalogue nobody has ever returned.[^s8]
+## Chronometers and watch proving
 
-Correspondents ordering any tidal instrument are asked to state the home port with the order, and to state it correctly, since the gearing cannot afterwards be argued with.[^s9]
+The Works continues to make the two-day chronometer in its gimballed box, and continues to prove any islander's watch at the counter for the price of the tea drunk while waiting, under the clause of the founding charter that the counter staff "can recite in their sleep and occasionally do."[^s7] The mainland trade is reminded that the Works' chronometer certificates "state the rate found, not the rate hoped for, and that this is a feature."[^s8]
+
+## Sundries
+
+The Works also sells survey chains and bands (proved); thermometers graduated on the Institute's ladder, in the station and pocket patterns; sounding leads and lines; the tide-pole in three lengths; and a plain brass rain gauge — "the one instrument in this catalogue nobody has ever returned."[^s9]
+
+## Ordering
+
+Orders go to the Instrument Works, Corran Hill, [Port Ilvess](../misc/port-ilvess.md).[^s10] Correspondents must state the home port with any order for a tidal instrument, and state it correctly: "the gearing cannot afterwards be argued with, and neither, on this point, can the Works."[^s10]
 
 ## See also
 - [The Institute](../organizations/the-institute.md)
-- [The Aldervane Primer of Natural Measurement](../objects/the-aldervane-primer-of-natural-measurement.md)
-- [Boiling Point of Water (Kelvarra)](../concepts/boiling-point-of-water-kelvarra.md)
-- [Standard Kilogram (Kelvarra)](../objects/standard-kilogram-kelvarra.md)
-- [The Kelvarra Almanac](../objects/the-kelvarra-almanac.md)
-- [Corran Hill](../misc/corran-hill.md)
-- [Ferrick Tide Clock](../objects/ferrick-tide-clock.md)
-- [Saltglass Lens](../objects/saltglass-lens.md)
-- [KSB](../objects/ksb.md)
 - [Port Ilvess](../misc/port-ilvess.md)
+- [The Ferrick Tide Clock](../objects/the-ferrick-tide-clock.md)
+- [The Saltglass Lens](../objects/the-saltglass-lens.md)
+- [The Standard Kilogram](../objects/the-standard-kilogram.md)
+- [Boiling Point of Water](../concepts/boiling-point-of-water.md)
+- [Brann Tidal Survey](../projects/brann-tidal-survey.md)
 
 ## Sources
-[^s1]: [aldervane-primer-extract.md](../../raw/aldervane-primer-extract.md), § Chapter II — On substances (ingested 2026-07-05)
-[^s2]: [almanac-of-kelvarra-1998.md](../../raw/almanac-of-kelvarra-1998.md), § Of the Institute (ingested 2026-07-05)
-[^s3]: [instrument-works-catalogue-1992.md](../../raw/instrument-works-catalogue-1992.md), lines 3-7 (ingested 2026-07-05)
-[^s4]: [instrument-works-catalogue-1992.md](../../raw/instrument-works-catalogue-1992.md), § The Ferrick Tide Clock (ingested 2026-07-05)
-[^s5]: [instrument-works-catalogue-1992.md](../../raw/instrument-works-catalogue-1992.md), § The Saltglass Lens (ingested 2026-07-05)
-[^s6]: [instrument-works-catalogue-1992.md](../../raw/instrument-works-catalogue-1992.md), § Barometers, Marine and Station (ingested 2026-07-05)
-[^s7]: [instrument-works-catalogue-1992.md](../../raw/instrument-works-catalogue-1992.md), § Chronometers and Watch Proving (ingested 2026-07-05)
-[^s8]: [instrument-works-catalogue-1992.md](../../raw/instrument-works-catalogue-1992.md), § Sundries (ingested 2026-07-05)
-[^s9]: [instrument-works-catalogue-1992.md](../../raw/instrument-works-catalogue-1992.md), lines 55-57 (ingested 2026-07-05)
+[^s1]: [raw/instrument-works-catalogue-1992.md](../../raw/instrument-works-catalogue-1992.md), line 1 — the Instrument Works named as the AINM's works at Corran Hill (ingested 2026-07-15)
+[^s2]: [raw/instrument-works-catalogue-1992.md](../../raw/instrument-works-catalogue-1992.md), lines 3-5 — the catalogue's apology for the waiting list and the Works' standing at Corran Hill since the 1988 move (ingested 2026-07-15)
+[^s3]: [raw/instrument-works-catalogue-1992.md](../../raw/instrument-works-catalogue-1992.md), lines 5-7 — proving against the Institute's standards and the year-end price/delivery terms (ingested 2026-07-15)
+[^s4]: [raw/instrument-works-catalogue-1992.md](../../raw/instrument-works-catalogue-1992.md), lines 34-35 — the three barometer patterns sold (ingested 2026-07-15)
+[^s5]: [raw/instrument-works-catalogue-1992.md](../../raw/instrument-works-catalogue-1992.md), lines 35-37 — KSB proving before sale, the reduction card, and the re-proving policy (ingested 2026-07-15)
+[^s6]: [raw/instrument-works-catalogue-1992.md](../../raw/instrument-works-catalogue-1992.md), lines 37-38 — the recording pattern commended to harbour boards (ingested 2026-07-15)
+[^s7]: [raw/instrument-works-catalogue-1992.md](../../raw/instrument-works-catalogue-1992.md), lines 42-44 — the two-day chronometer and free watch proving under the founding charter (ingested 2026-07-15)
+[^s8]: [raw/instrument-works-catalogue-1992.md](../../raw/instrument-works-catalogue-1992.md), lines 44-46 — chronometer certificates stating the rate found, not hoped for (ingested 2026-07-15)
+[^s9]: [raw/instrument-works-catalogue-1992.md](../../raw/instrument-works-catalogue-1992.md), lines 50-53 — sundries: survey chains, thermometers, sounding leads, tide-pole, and rain gauge (ingested 2026-07-15)
+[^s10]: [raw/instrument-works-catalogue-1992.md](../../raw/instrument-works-catalogue-1992.md), lines 55-57 — the ordering address and the home-port requirement for tidal instruments (ingested 2026-07-15)

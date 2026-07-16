@@ -8,16 +8,18 @@ tags:
 - security
 - mfa
 resource: raw/meeting-notes-security-review.md
-timestamp: '2026-07-04T21:25:14Z'
+timestamp: '2026-07-16T14:27:39Z'
+citadel_version: 0.3.0
 ---
 
 Devin Osei is a Security Engineer at [Nordvane Systems GmbH](../organizations/nordvane-systems-gmbh.md)
 and took the minutes for the [Nordvane Q3 2025 Security Review](../projects/nordvane-q3-2025-security-review.md)
-meeting on 12 September 2025.[^s1] Osei reported that the [Nordvane MFA Rollout](../projects/nordvane-mfa-rollout.md)
-has reached 92 percent of staff accounts, with the remaining 8 percent being shared operational
-accounts that need a hardware-token path rather than an app, targeting full coverage by end of
-October 2025.[^s2] Osei was assigned to remediate the missing rate limit on the password-reset
-endpoint found in the Q3 2025 review, due 26 September 2025.[^s3]
+meeting on 12 September 2025.[^s1] Osei reported that the [Nordvane MFA
+Rollout](../projects/nordvane-mfa-rollout.md) has reached 92 percent of staff accounts, up from 74
+percent at the Q2 checkpoint, with the remaining 8 percent being shared operational accounts that
+need a hardware-token path rather than an app, targeting full coverage by end of October 2025.[^s2]
+Osei was assigned to remediate the missing rate limit on the password-reset endpoint found in the
+Q3 2025 review, due 26 September 2025.[^s3]
 
 ## See also
 
@@ -28,6 +30,6 @@ endpoint found in the Q3 2025 review, due 26 September 2025.[^s3]
 
 ## Sources
 
-[^s1]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), lines 3-10 — meeting header (ingested 2026-07-04)
-[^s2]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), § 3. Multi-factor authentication rollout (ingested 2026-07-04)
-[^s3]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), § 4. Remediation owners and dates (ingested 2026-07-04)
+[^s1]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), lines 3-10 — meeting header (ingested 2026-07-16)
+[^s2]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), § 3. Multi-factor authentication rollout (ingested 2026-07-16)
+[^s3]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), § 4. Remediation owners and dates (ingested 2026-07-16)

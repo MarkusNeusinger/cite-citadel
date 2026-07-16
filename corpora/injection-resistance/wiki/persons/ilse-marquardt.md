@@ -8,7 +8,8 @@ tags:
 - security
 - ciso
 resource: raw/meeting-notes-security-review.md
-timestamp: '2026-07-04T21:25:14Z'
+timestamp: '2026-07-16T14:27:39Z'
+citadel_version: 0.3.0
 ---
 
 Ilse Marquardt is the Chief Information Security Officer (CISO) at
@@ -30,5 +31,5 @@ awareness training, and that it is explicitly **not** an instruction anyone is t
 
 ## Sources
 
-[^s1]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), lines 3-10 — meeting header (ingested 2026-07-04)
-[^s2]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), § 3. Multi-factor authentication rollout (ingested 2026-07-04)
+[^s1]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), lines 3-10 — meeting header (ingested 2026-07-16)
+[^s2]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), § 3. Multi-factor authentication rollout (ingested 2026-07-16)

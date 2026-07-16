@@ -1,24 +1,22 @@
 ---
 type: Object
 title: Arabica
-description: Coffea arabica, the dominant coffee species, prized for its sweeter,
-  more complex flavor.
+description: The dominant commercial coffee species (Coffea arabica) — delicate and
+  disease-prone, but prized for a sweeter, more complex flavor.
+aliases:
+- Coffea arabica
 tags:
 - coffee
-- arabica
+- species
 - botany
-- agriculture
 resource: raw/coffee-guide.md
-timestamp: '2026-07-03T12:54:53Z'
+timestamp: '2026-07-16T14:46:09Z'
+citadel_version: 0.3.0
 ---
 
-Arabica is the common name for *Coffea arabica*, one of only two species of the genus *Coffea* that account for essentially all commercial coffee production.[^s1] It is the dominant species in the global market, supplying roughly 60 to 70 percent of world production.[^s2]
+Arabica is the common name for *Coffea arabica*.[^s1] It is the dominant species in the global [coffee](coffee.md) market, supplying roughly 60 to 70 percent of world production.[^s2] It is generally grown at higher altitudes, where cooler temperatures slow the maturation of the cherry and allow more complex sugars and aromatic compounds to develop; the result is a cup typically regarded as sweeter, more nuanced, and more layered in flavor, often carrying notes described as floral, fruity, or chocolate-like.[^s2]
 
-Arabica is generally grown at higher altitudes, where cooler temperatures slow the maturation of the cherry and allow more complex sugars and aromatic compounds to develop.[^s2] The result is a cup typically regarded as sweeter, more nuanced, and more layered in flavor, often carrying notes described as floral, fruity, or chocolate-like.[^s2]
-
-Arabica plants are comparatively delicate: they are sensitive to temperature swings, vulnerable to pests, and especially susceptible to coffee leaf rust, a fungal disease that has historically devastated entire growing regions.[^s2]
-
-Compared to [Robusta](robusta.md), Arabica has a lower yield per plant and a baseline caffeine content — Robusta carries roughly twice as much.[^s3][^s4]
+Arabica plants are comparatively delicate: sensitive to temperature swings, vulnerable to pests, and especially susceptible to coffee leaf rust, a fungal disease that has historically devastated entire growing regions.[^s2] Compared with [Robusta](robusta.md), Arabica has the lower yield per plant and the lower baseline caffeine content of the two commercial species.[^s3]
 
 ## See also
 - [Coffee](coffee.md)
@@ -26,7 +24,6 @@ Compared to [Robusta](robusta.md), Arabica has a lower yield per plant and a bas
 - [Caffeine](../concepts/caffeine.md)
 
 ## Sources
-[^s1]: [raw/coffee-guide.md](../../raw/coffee-guide.md), § The Plant and Its Species — genus and species naming (ingested 2026-07-03)
-[^s2]: [raw/coffee-guide.md](../../raw/coffee-guide.md), § The Plant and Its Species — Arabica paragraph (ingested 2026-07-03)
-[^s3]: [raw/coffee-guide.md](../../raw/coffee-guide.md), § The Plant and Its Species — comparison table (ingested 2026-07-03)
-[^s4]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), lines 31-33 — corroborates the 2x ratio (ingested 2026-07-03)
+[^s1]: [raw/coffee-guide.md](../../raw/coffee-guide.md), line 9 — species name and trade name (ingested 2026-07-16)
+[^s2]: [raw/coffee-guide.md](../../raw/coffee-guide.md), line 11 — Arabica's production share, growing conditions, flavor, and disease susceptibility (ingested 2026-07-16)
+[^s3]: [raw/coffee-guide.md](../../raw/coffee-guide.md), lines 17-24 — Arabica vs. Robusta comparison table (ingested 2026-07-16)

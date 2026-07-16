@@ -1,46 +1,40 @@
 ---
 type: Concept
 title: Matcha Preparation
-description: Whisking matcha powder into water kept at 70-80 C with a bamboo whisk
-  in a zig-zag motion, prepared plain as usucha or as the base for a latte.
+description: How to whisk matcha at home — the water-temperature rule, the usucha
+  (thin matcha) method, a matcha latte recipe, and fixes for a gritty, bitter, or
+  frothless bowl.
 tags:
 - tea
 - matcha
 - preparation
+- temperature
 resource: raw/matcha-and-preparation.md
-timestamp: '2026-07-03T13:41:55Z'
+timestamp: '2026-07-16T15:54:42Z'
+citadel_version: 0.3.0
 ---
 
-Preparing a bowl of matcha calls for a small kit: 1 to 2 grams of matcha, hot water that is not boiling, a bamboo whisk (a *chasen*) — a small metal milk frother or a fork works in a pinch — a wide bowl or a flat-bottomed mug, and a small fine-mesh sieve.[^s1]
+Whisking [matcha](../objects/matcha.md) needs little equipment: 1 to 2 grams of matcha (about half a teaspoon to a slightly heaped teaspoon); hot water that is not boiling; a bamboo whisk (a *chasen*), or a small metal milk frother or a fork in a pinch; a wide bowl or a mug with a flat bottom; and a small fine-mesh sieve.[^s1]
 
-Water temperature is the one rule that matters most: boiling water must never be poured on matcha, because [green tea](tea-processing.md) in general, and matcha especially, turns bitter and flat if the water is too hot.[^s2] The target is about 70-80 C; boiling water scorches the fine powder and pulls out harsh, vegetal bitterness instead of sweetness.[^s2][^s16] Without a thermometer, boiling the kettle and then letting it sit and cool for two to three minutes lands in the right window, as does pouring the hot water into the serving bowl first and then tipping it into a second vessel to take the edge off; cooler is safer than hotter, since a slightly under-temperature bowl is still pleasant while an over-temperature one is ruined.[^s3]
+The one rule that matters most is temperature: never pour boiling water on matcha. [Green tea](../objects/tea.md) in general, and matcha especially, turns bitter and flat if the water is too hot, so the target is about 70-80°C — boiling water scorches the fine powder and pulls out harsh, vegetal bitterness instead of sweetness.[^s2] Without a thermometer, boil the kettle and let it sit and cool for two to three minutes, or pour the hot water into the serving bowl first to take the edge off it, then tip it into a second vessel — both tricks land in the right window, and erring cooler is safer than erring hotter, since an under-temperature bowl is still pleasant while an over-temperature one is ruined.[^s3][^s8]
 
-The everyday, plain-drinking method is called usucha (thin matcha), made with ceremonial-grade [matcha](../objects/matcha.md).[^s4] First, the bowl is warmed and dried: rinsed with hot water, swirled, and poured out, then dried inside, so the bowl does not cool the matcha too fast and the powder does not clump on contact.[^s5] The matcha, 1 to 2 grams, is then sifted through the sieve into the bowl — skipping this step lets clumps turn into chalky beads that cannot be whisked out later, and sifting is described as the single biggest difference between a smooth bowl and a gritty one.[^s6] A splash of the 70-80 C water, about 15 to 20 ml, is added first and worked with the back of the whisk or a spoon into a glossy, lump-free paste, which crushes out clumps before the full volume is added.[^s7][^s8] The rest of the water is then added, about 60 to 70 ml in total for a single bowl — enough to whisk freely but not so much that the bowl is full to the brim.[^s9] The whisk is then moved briskly back and forth in a straight line — a zig-zag or "W"/"M" motion across the surface, not a round stirring motion — with a loose wrist and the forearm doing the work, since circular stirring just pushes the powder around while the fast zig-zag whips in air.[^s10] Whisking continues for 15 to 20 seconds until a fine, pale foam with small, even bubbles covers the whole surface, at which point lifting the whisk straight up through the center settles the surface.[^s11] Matcha does not hold: the powder settles within a minute or two, so it is drunk fresh while the foam is up and the bowl is warm, with a quick swirl near the end to finish the leaf at the bottom.[^s12]
+**Usucha** (thin matcha) is the everyday, drink-it-plain method, made with ceremonial-grade [matcha](../objects/matcha.md).[^s4] The steps: warm and dry the bowl with a rinse of hot water, so the bowl doesn't cool the matcha too fast and the powder doesn't clump on a wet surface; sift the 1-2 grams of matcha through the fine-mesh sieve into the bowl, since sifting is the single biggest difference between a smooth bowl and a gritty one and any unsifted lump becomes a chalky bead that cannot be whisked out later; add a splash of the 70-80°C water (about 15-20 ml) to wet the powder into a paste, and work it smooth against the bottom of the bowl to crush out clumps before committing the full volume; top up with the rest of the water (about 60-70 ml total); whisk briskly in a straight-line zig-zag — a "W"/"M" motion, not circular stirring, since stirring in circles just pushes the powder around while the fast zig-zag is what whips in air — for 15 to 20 seconds until a fine, pale foam with small, even bubbles covers the surface, then lift the whisk straight up through the center to settle it; and drink immediately, since the foam settles within a minute or two, giving the bowl a quick swirl near the end to finish the leaf that has sunk to the bottom.[^s5]
 
-A matcha latte switches to culinary-grade matcha for the stronger flavor needed to survive the milk.[^s13] Two grams of culinary matcha are sifted into a mug, a splash of 70-80 C water is added and whisked to a smooth, frothy concentrate using the same zig-zag motion, and milk (dairy or oat both work) is heated and frothed separately before being poured over the concentrate — for an iced version, the concentrate is poured over ice and cold milk instead.[^s14] The drink is sweetened to taste, with a little honey or simple syrup balancing the astringency of culinary grade.[^s14]
+A **matcha latte** switches to culinary-grade [matcha](../objects/matcha.md) for the stronger flavor needed to survive the milk: sift 2 grams of culinary matcha into a mug, add a splash of 70-80°C water and whisk it to a smooth, frothy concentrate with the same zig-zag motion, heat and froth milk separately (dairy or oat both work well), then pour the milk over the concentrate — or, for an iced version, pour the concentrate over ice and cold milk instead — and sweeten to taste, since a little honey or simple syrup balances culinary grade's astringency.[^s6]
 
-Common problems trace back to a few causes. A gritty or lumpy bowl means the sieve was skipped or the water was added all at once — the fix is to sift and always make the paste first.[^s15] A bitter, harsh flavor means the water was too hot; pulling it back toward the cooler end of 70-80 C and checking for tired, yellowed powder both help.[^s15] A lack of froth means stirring in circles instead of the fast, straight zig-zag, or using too much water for the amount of powder — the fix is to loosen the wrist and speed up.[^s15] A weak, watery latte means ceremonial grade was used where culinary would have carried better, or the powder was under-dosed — going up to a full 2 grams fixes it.[^s15]
+Common problems trace back to the same few causes: a gritty or lumpy bowl means the sieve was skipped or the water was added all at once, fixed by sifting and always making the paste first; a bitter, harsh flavor means the water was too hot, fixed by pulling it back toward the cooler end of 70-80°C, or means a tired, yellowed powder; no froth means stirring in circles instead of the fast, straight zig-zag, or using too much water for the amount of powder, fixed by loosening the wrist and speeding up; and a weak, watery latte means ceremonial grade was used where culinary would have carried better, or the powder was under-dosed, fixed by going up to a full 2 grams.[^s7]
 
 ## See also
 - [Matcha](../objects/matcha.md)
 - [Caffeine](caffeine.md)
-- [Tea Processing](tea-processing.md)
 - [Tea Brewing](tea-brewing.md)
 
 ## Sources
-[^s1]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), § What You Need (ingested 2026-07-03)
-[^s2]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), § The One Rule About Temperature, line 27 (ingested 2026-07-03)
-[^s3]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), § The One Rule About Temperature, line 29 (ingested 2026-07-03)
-[^s4]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), § Step by Step: Usucha (Thin Matcha), line 33 (ingested 2026-07-03)
-[^s5]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), § Step by Step: Usucha (Thin Matcha), line 35 (ingested 2026-07-03)
-[^s6]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), § Step by Step: Usucha (Thin Matcha), line 37 (ingested 2026-07-03)
-[^s7]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), § Step by Step: Usucha (Thin Matcha), line 39 (ingested 2026-07-03)
-[^s8]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), § Step by Step: Usucha (Thin Matcha), line 41 (ingested 2026-07-03)
-[^s9]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), § Step by Step: Usucha (Thin Matcha), line 43 (ingested 2026-07-03)
-[^s10]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), § Step by Step: Usucha (Thin Matcha), line 45 (ingested 2026-07-03)
-[^s11]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), § Step by Step: Usucha (Thin Matcha), line 47 (ingested 2026-07-03)
-[^s12]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), § Step by Step: Usucha (Thin Matcha), line 49 (ingested 2026-07-03)
-[^s13]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), § Making a Matcha Latte, line 53 (ingested 2026-07-03)
-[^s14]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), § Making a Matcha Latte, lines 55-59 (ingested 2026-07-03)
-[^s15]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), § Common Fixes (ingested 2026-07-03)
-[^s16]: [raw/tea-guide.md](../../raw/tea-guide.md), § Brewing Temperature and Method — corroborates the 70-80 °C green tea brewing window (ingested 2026-07-03)
+[^s1]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), § What You Need — equipment list (ingested 2026-07-16)
+[^s2]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), line 27 — never boiling, target 70-80°C (ingested 2026-07-16)
+[^s3]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), line 29 — hitting the temperature without a thermometer (ingested 2026-07-16)
+[^s4]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), line 33 — usucha as the plain, ceremonial-grade method (ingested 2026-07-16)
+[^s5]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), lines 35-49 — the eight-step whisking method (ingested 2026-07-16)
+[^s6]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), lines 53-59 — matcha latte recipe (ingested 2026-07-16)
+[^s7]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), lines 63-66 — troubleshooting gritty, bitter, frothless, and weak bowls (ingested 2026-07-16)
+[^s8]: [raw/tea-processing-and-cultivars.md](../../raw/tea-processing-and-cultivars.md), lines 144-146 — corroborates cooler-is-safer as the general tea-brewing rule matcha follows (ingested 2026-07-16)

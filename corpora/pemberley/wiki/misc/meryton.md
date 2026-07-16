@@ -1,43 +1,35 @@
 ---
-type: Place
+type: misc
 title: Meryton
-description: The market town near Longbourn in Pride and Prejudice, hosting assemblies
-  and a quartered militia regiment.
+description: The Hertfordshire market town near Longbourn, host to the assembly balls
+  and a militia regiment.
+resource: raw/pride-and-prejudice.txt
 tags:
-- pride-and-prejudice
 - meryton
 - hertfordshire
 - militia
-resource: raw/pride-and-prejudice.txt
-timestamp: '2026-07-04T22:00:36Z'
+timestamp: '2026-07-16T18:15:29Z'
+citadel_version: 0.3.0
 ---
 
-Meryton is the market town one mile from [Longbourn](longbourn.md), where the local assembly
-(ball) is held and where [Mrs. Philips](../persons/mrs-philips.md), the Bennet sisters' aunt,
-lives.[^s1] A militia regiment is quartered at Meryton for the whole winter, giving
-[Kitty](../persons/kitty-bennet.md) and [Lydia Bennet](../persons/lydia-bennet.md) a constant
-supply of officers' company and gossip.[^s2] [George Wickham](../persons/george-wickham.md) is
-introduced to the Bennet sisters on a Meryton street after accepting a commission in the same
-corps.[^s3]
-
-After a winter and spring quartered at Meryton, the militia regiment removes to
-[Brighton](brighton.md) for the summer, to the despair of [Kitty](../persons/kitty-bennet.md) and
-[Lydia Bennet](../persons/lydia-bennet.md).[^s4] Once news of Lydia's elopement with
-[Wickham](../persons/george-wickham.md) spreads, "all Meryton seemed striving to blacken" his name,
-with reports of debts to every tradesman in town.[^s5]
+Meryton is the market town one mile from [Longbourn](../misc/longbourn.md), where the Bennet
+sisters visit their aunt and a milliner's shop several times a week.[^s1] It hosts the local
+assembly balls, including the one at which the Bennets, [Charles Bingley](../persons/charles-bingley.md),
+and [Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md) first meet.[^s2] A militia regiment is
+quartered there for the winter, making Meryton its headquarters; this regiment is later joined by
+[George Wickham](../persons/george-wickham.md).[^s3] By early summer the regiment relocates to a
+camp near [Brighton](../misc/brighton.md), taking Wickham with it.[^s4]
 
 ## See also
 
-- [Longbourn](longbourn.md)
-- [Mrs. Philips](../persons/mrs-philips.md)
+- [Longbourn](../misc/longbourn.md)
 - [George Wickham](../persons/george-wickham.md)
-- [Colonel Forster](../persons/colonel-forster.md)
-- [Brighton](brighton.md)
+- [Brighton](../misc/brighton.md)
+- [Catherine Bennet](../persons/catherine-bennet.md)
 
 ## Sources
 
-[^s1]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 928-1118 — Ch. 3 (ingested 2026-07-04)
-[^s2]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1651-1906 — Ch. 7 (ingested 2026-07-04)
-[^s3]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3266-3437 — Ch. 15 (ingested 2026-07-04)
-[^s4]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 8843-9107 — Ch. 41 (ingested 2026-07-04)
-[^s5]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 10991-11241 — Ch. 48 (ingested 2026-07-04)
+[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1667-1671 — Meryton's distance from Longbourn and the Bennet sisters' visits (ingested 2026-07-16)
+[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 976-990 — the Meryton assembly where the Bennets, Bingley, and Darcy first meet (ingested 2026-07-16)
+[^s3]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1676-1679 — the militia regiment quartered at Meryton (ingested 2026-07-16)
+[^s4]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), line 8500 — the regiment's relocation to Brighton (ingested 2026-07-16)

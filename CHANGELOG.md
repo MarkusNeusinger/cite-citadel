@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **All nine committed showcase wikis rebuilt under the current rulebook** (sonnet, in-place per
+  the verify-corpus regeneration recipe — leuchtfeuer's three-wave replay, clockwork's two-commit
+  repo protocol, gazette in images mode, kontor with image support, flurfunk with style profiles,
+  pemberley's three chunked segment passes). The refreshed wikis carry the recent rule improvements
+  visibly: plan-vs-actual figures co-stated in one cited sentence (kontor's 142-vs-138), embedded
+  Office chart images read and cited with slide locators, and workplace-chat threads recorded per
+  the new `genres/chat.md` (live fact = thread end state with a dated arc). Every wiki re-graded
+  against its hidden ground truth — all nine commit-worthy, `check`/`lint` clean.
+
 ### Added
 
 - **New Office-documents test corpus — `kontor` — with a committed, images-mode showcase wiki (the ninth corpus).** Eleven files generated deterministically by a committed stdlib-only script `make_office.py` (no python-pptx/docx/openpyxl/PIL): OOXML `.pptx` (slides + speaker notes + an embedded chart), `.docx` (paragraphs + a table), and `.xlsx` (two sheets), plus legacy OLE `.doc`/`.ppt`/`.xls` (97–2003 compound files), a dedup pair, and OS/Office junk. First end-to-end coverage of the Office extraction path — `citadel/extract.py` (OOXML) and `citadel/extract_ole.py` (CFBF salvage) — with a new **image delta**: the chart's `GROSS MARGIN 34.2%` lives only in pixels, so it is **absent-and-honest** with `CITADEL_IMAGE_SUPPORT=0` and **present-and-cited** with images on. Also exercises `CITADEL_DEDUP_BY_BASENAME` (a `.doc` twin skipped for its `.docx`) and `CITADEL_IGNORE_PATTERNS` (Thumbs.db/desktop.ini/lock files skipped), and plants the usual discriminative judgment traps (a 142-vs-138 contradiction, a tentative Lisbon warehouse, entity-variance merges, a near-miss ≠ contradiction, a dated supersession). Fully fictional (Aldervik Kontor) — nothing copied.

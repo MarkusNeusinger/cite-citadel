@@ -1,49 +1,45 @@
 ---
 type: Person
 title: Colonel Forster
-description: Commanding officer of the militia regiment quartered at Meryton in Pride
-  and Prejudice.
-tags:
-- pride-and-prejudice
-- militia
-- meryton
+description: Colonel of the ----shire militia at Meryton and Brighton, whose wife
+  invites Lydia Bennet to Brighton and who leads the search after her elopement.
 resource: raw/pride-and-prejudice.txt
-timestamp: '2026-07-04T22:00:36Z'
+tags:
+- militia
+- brighton
+- meryton
+timestamp: '2026-07-16T17:56:51Z'
+citadel_version: 0.3.0
 ---
 
-Colonel Forster commands the militia regiment quartered at [Meryton](../misc/meryton.md) for the
-winter.[^s1] [Mrs. Bennet](mrs-bennet.md) recalls him looking "very becoming" in his regimentals
-at a party at [Sir William Lucas](sir-william-lucas.md)'s house.[^s1]
-[Lydia Bennet](lydia-bennet.md) teases him about giving a ball to match one promised by
-[Mr. Bingley](charles-bingley.md) at [Netherfield](../misc/netherfield-park.md).[^s2] By the
-following chapter, it is "hinted" among the officers dining with the Philipses that Colonel
-Forster is himself soon to be married.[^s3]
+Colonel Forster commands the ----shire militia regiment when it decamps from
+[Meryton](../misc/meryton.md) to [Brighton](../misc/brighton.md) for the summer.[^s1] His wife,
+newly married and close in age to [Lydia Bennet](../persons/lydia-bennet.md), invites Lydia to
+accompany her to Brighton; [Mr. Bennet](../persons/mr-bennet.md) trusts Colonel Forster, "a
+sensible man," to "keep her out of any real mischief."[^s2]
 
-## Brighton and the elopement
-
-Now married, Colonel Forster commands the regiment at [Brighton](../misc/brighton.md); his wife
-invites [Lydia Bennet](lydia-bennet.md) to accompany her there for the summer.[^s4] When Lydia
-elopes with [George Wickham](george-wickham.md), Colonel Forster traces the couple as far as
-Clapham, then loses their trail; a fellow officer, Denny, tells him he believes Wickham never
-intended to marry Lydia at all, which "instantly" alarms him into pursuing them toward
-[Longbourn](../misc/longbourn.md), where he breaks the news in person, "in a manner most creditable
-to his heart."[^s5] He later confirms to the Bennets that Wickham left considerable gaming debts —
-Colonel Forster estimates over a thousand pounds — at Brighton, and undertakes to satisfy Wickham's
-creditors there once a settlement is reached.[^s6]
+When Lydia elopes with [George Wickham](../persons/george-wickham.md), Colonel Forster sends an
+express to Longbourn the same night and, on learning from fellow officer Denny that Wickham may
+never have intended to go to Scotland or to marry Lydia at all, sets off himself to trace the
+couple's route, following them as far as Clapham before losing the trail.[^s3] He travels on to
+Longbourn in person to break the news, "in a manner most creditable to his heart," and admits to
+Elizabeth that he had "often suspected some partiality" on Lydia's side, though nothing that alarmed
+him at the time.[^s4] He later confirms that Wickham left considerable gaming debts in Brighton —
+by his estimate, over a thousand pounds — besides debts to Meryton tradesmen, and privately doubts
+Wickham can be trusted to marry Lydia at all.[^s5]
 
 ## See also
 
-- [Meryton](../misc/meryton.md)
-- [Lydia Bennet](lydia-bennet.md)
+- [Lydia Bennet](../persons/lydia-bennet.md)
+- [George Wickham](../persons/george-wickham.md)
 - [Brighton](../misc/brighton.md)
-- [George Wickham](george-wickham.md)
-- [Mrs. Forster](mrs-forster.md)
+- [Meryton](../misc/meryton.md)
+- [Mr. Bennet](../persons/mr-bennet.md)
 
 ## Sources
 
-[^s1]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1651-1906 — Ch. 7 (ingested 2026-07-04)
-[^s2]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 2167-2368 — Ch. 9 (ingested 2026-07-04)
-[^s3]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 2860-2937 — Ch. 12 (ingested 2026-07-04)
-[^s4]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 8843-9107 — Ch. 41 (ingested 2026-07-04)
-[^s5]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 10242-10549 — Ch. 46 (ingested 2026-07-04)
-[^s6]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 10991-11241 — Ch. 48 (ingested 2026-07-04)
+[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), line 8500 — the ----shire militia's move to Brighton (ingested 2026-07-16)
+[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 8885-8891; 8958-8959 — Mrs. Forster's invitation and Mr. Bennet's trust in Colonel Forster (ingested 2026-07-16)
+[^s3]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 10266-10267; 10299-10306 — Colonel Forster's express and pursuit to Clapham (ingested 2026-07-16)
+[^s4]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 10313; 10843-10844 — Colonel Forster's manner in breaking the news and his admission to Elizabeth (ingested 2026-07-16)
+[^s5]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 10323; 11133-11138 — Colonel Forster's doubts and his account of Wickham's gaming debts (ingested 2026-07-16)

@@ -1,127 +1,119 @@
 ---
 type: Concept
 title: Caffeine
-description: The principal stimulant in coffee, tea, and matcha — its content is governed
-  mainly by species/type and dose, barely by roast level, and its stimulant effect
-  works by blocking adenosine receptors in the brain.
+description: The stimulant compound in coffee and tea - how it blocks adenosine to
+  produce alertness, its effects on health, sleep, and dependence, and how brewing,
+  roast level, and freshness affect how much ends up in the cup.
 tags:
 - coffee
-- tea
 - caffeine
-- chemistry
-- physiology
-resource: raw/coffee-guide.md
-timestamp: '2026-07-03T22:29:14Z'
+- health
+- roasting
+- freshness
+- tea
+resource: raw/aurora-bulletin-2024.md
+timestamp: '2026-07-16T16:02:37Z'
+citadel_version: 0.3.0
 ---
 
-Caffeine is the principal stimulant in coffee and a major reason for its popularity.[^s1] The amount in a serving depends on the species used, the dose of coffee, and the brewing method.[^s1] A standard 8-ounce cup of drip coffee contains about 95 mg of caffeine; espresso is far more concentrated per unit volume, but an individual shot is small, so the caffeine in a single espresso is often comparable to or less than that in a full cup of drip coffee.[^s1][^s5][^s33] One account puts a single [espresso](espresso.md) shot (about one ounce) at roughly 63 mg of caffeine, corroborating that it falls under the 95 mg drip-cup baseline.[^s21] In everyday terms a "cup" often exceeds that 8-ounce baseline — a large café coffee can easily be two to three times the size, with the caffeine scaling up accordingly.[^s6]
+Caffeine's stimulant effect works by blocking adenosine receptors in the brain: adenosine is the molecule that builds up over the course of the day and creates "sleep pressure," the heavy, drowsy feeling that grows the longer a person has been awake, and caffeine's shape is close enough to adenosine's that it occupies the same receptors without activating them, so the brain stops receiving the "wind down" signal and the drinker feels alert — caffeine does not add energy, it masks tiredness.[^s1] The underlying adenosine keeps building the whole time regardless, since caffeine only blocks the receptors rather than removing the molecule, so once the caffeine wears off the backed-up adenosine reaches the receptors all at once, which is why a caffeine crash can feel like a sudden slump.[^s2]
 
-A persistent and widespread belief holds that dark roasts contain dramatically more or less caffeine than light roasts. In fact, roast level barely changes the caffeine content of coffee.[^s2] Caffeine is a remarkably stable molecule that does not break down meaningfully at the temperatures reached during roasting, so a dark roast is not decaffeinated by the act of roasting, nor does it carry dramatically less caffeine than a light roast; measured by weight of coffee, light and dark roasts are nearly equal in caffeine.[^s2]
-
-> [!CONTRADICTION]
-> [Caffe Aurora](../organizations/caffe-aurora.md) markets its [Aurora Midnight](../objects/aurora-midnight.md) dark roast as naturally caffeine-free, stating that caffeine is burned off during roasting and that the darker a roast, the less caffeine it retains.[^s18] This conflicts with the corroborated view above that roast level barely changes caffeine content.[^s2]
->
-> Resolution: the corroborated view is correct — caffeine is heat-stable and is not meaningfully destroyed by roasting, so a dark roast is not decaffeinated by roasting alone; producing a genuinely caffeine-free coffee requires an actual decaffeination process.[^llm1]
-
-[Caffe Aurora](../organizations/caffe-aurora.md) states elsewhere, in a spring newsletter, that coffee begins losing its caffeine the moment it leaves the roaster — that fresh-roasted beans carry their peak flavor and caffeine on the day they are roasted, and that both quietly fade over the following weeks on the shelf — and gives this as its reason for roasting in small batches and dating every bag.[^s31]
+The key pharmacokinetic figure is caffeine's half-life, about 5 hours in a healthy adult: roughly five hours after a cup, half of its caffeine remains in the bloodstream, and half of that again five hours later, so a strong afternoon coffee can still leave a noticeable amount of caffeine in the body at bedtime even once the alertness has faded.[^s3] This half-life varies meaningfully between individuals — genetics, liver enzyme activity, smoking, certain medications, and pregnancy can all lengthen or shorten it — so someone who reliably loses sleep after coffee may simply be a slower caffeine metabolizer than average.[^s4] Because of that half-life, a common rule of thumb is to have the day's last full-strength coffee at least six to eight hours before bedtime, earlier for slow metabolizers or switching to decaf for the evening instead.[^s5]
 
 > [!CONTRADICTION]
-> [Caffe Aurora](../organizations/caffe-aurora.md) states that coffee's caffeine content fades over the weeks a roasted bag sits on the shelf, so a fresh bag delivers more caffeine than an older one.[^s31] This conflicts with the corroborated view above that caffeine is a stable molecule that does not break down meaningfully once formed.[^s2]
+> [Cordwell Roastworks](../organizations/cordwell-roastworks.md)' cold-brew bench notes give caffeine's half-life as about 3 hours, using the figure to justify pulling a large cold brew from the "after 2pm" slot in favor of decaf.[^s23] Elsewhere the wiki gives caffeine's half-life as about 5 hours in a healthy adult.[^s3]
 >
-> Resolution: caffeine remains chemically stable at room temperature over the weeks a bag of coffee sits on a shelf; what actually fades with age is the coffee's volatile aroma and flavor compounds through staling and off-gassing, not its caffeine content — Aurora's freshness-first roasting and bag-dating practice serves flavor, not the caffeine-based reason the newsletter gives for it.[^llm4]
+> Resolution: the widely cited pharmacological figure is closer to 5 hours; Cordwell's 3-hour number reads as a conservative staff-facing rule of thumb for cutting off service rather than a precise physiological value.[^llm4]
 
-The minor differences people do observe are largely a matter of measurement: because dark-roasted beans have lost more moisture and expanded more, they are slightly less dense than light-roasted beans, so a scoop measured by volume of dark roast contains marginally fewer beans, while a portion measured by weight contains marginally more, since each bean weighs less — small effects of dosing, not of caffeine being destroyed in the roaster.[^s3]
+Regular caffeine intake also builds tolerance: the body responds by growing more adenosine receptors, so the same dose produces less effect over time and a habitual drinker needs somewhat more for the same lift. The flip side is dependence — skipping a usual dose can trigger withdrawal, a headache, fatigue, or irritability lasting a day or two, which tapering down gradually eases far more than quitting abruptly.[^s6]
 
-The species used exerts a far greater influence on the caffeine in the finished cup than roast level ever does: [Robusta](../objects/robusta.md) carries roughly twice the caffeine of [Arabica](../objects/arabica.md), and caffeine acts as a natural chemical deterrent against insects in the plant.[^s4][^s7] The overall dose of coffee relative to water also exerts a far greater influence on caffeine content than roast level.[^s4]
+For most healthy adults, a few cups of coffee spread across the day is generally considered fine, and individual tolerance tends to rise the more regularly someone drinks it; problems tend to appear when caffeine accumulates quickly, producing jitteriness, a racing heart, anxiety, and trouble sleeping, at which point cutting back for a few caffeine-light days is the common advice.[^s7] During pregnancy, common guidance keeps caffeine under about 200 mg per day — roughly two standard 8 oz cups of drip coffee — with caffeine from tea, chocolate, soft drinks, and energy drinks all counting toward that same daily total.[^s8]
 
-That dose effect shows up clearly in [cold brew](cold-brew-coffee.md): because a cold brew concentrate uses a very high grounds-to-water ratio (around 1:8) and a long 12-to-18-hour steep, it often ends up with more total caffeine than a hot drip cup of the same coffee — cold temperature does not reduce caffeine extraction, the ratio and contact time do the work.[^s19]
+Caffeine also turns up outside coffee — in chocolate, many teas, some sodas, energy drinks, and certain pain relievers and supplements — all of which count toward a daily limit just as coffee does; decaffeinated coffee is not entirely caffeine-free either, since decaffeination removes only the large majority of the caffeine and leaves a trace behind.[^s9] Decaf keeps most of coffee's flavor and ritual while cutting most of the kick, which is why it is a common choice later in the day or for anyone cutting back, but "decaffeinated" still does not mean "zero caffeine."[^s10]
 
-[Caffe Aurora](../organizations/caffe-aurora.md) nonetheless markets its own [cold brew](cold-brew-coffee.md) as the lowest-caffeine drink on its menu, stating that brewing cold pulls out far less caffeine than hot water ever could.[^s32]
+Caffeine is a mild diuretic, but the water content of a cup of coffee more than offsets that effect, so normal coffee drinking does not by itself cause dehydration.[^s11] The same holds for tea: despite an old myth that its caffeine dehydrates the drinker, an everyday cup is mostly water and its caffeine levels are far too low to have any meaningful dehydrating effect, so tea counts toward daily fluid intake just like plain water.[^s30] A separate long-standing myth holds that caffeine stunts growth; there is no good evidence for this, and the real kernel of truth is that caffeine late in the day can disrupt the sleep that growing children and teens need, making the sensible caution for young people about sleep rather than height.[^s12]
+
+[Caffè Aurora](../organizations/caffe-aurora.md)'s spring 2024 bulletin claims that coffee begins losing its caffeine the moment it leaves the roaster: fresh-roasted beans are said to carry their peak flavor and caffeine on the day they are roasted, with both then fading week by week as the bag sits on the shelf, so that a month-old bag does not "wake you up" the way a fresh one does.[^s13] Caffè Aurora gives this as its reason for roasting in tiny batches, dating every bag, and preferring to sell a small bag often rather than a big bag once.[^s13] This conflicts with the established view that caffeine is a chemically stable compound that does not break down meaningfully at room temperature over the weeks a roasted bag sits on a shelf — what actually fades with time is the coffee's volatile aroma and flavor compounds through staling, not its caffeine content.[^llm1]
+
+Caffè Aurora's spring 2026 bulletin also describes its cold brew as the lowest-caffeine drink on its menu, reasoning that brewing cold pulls out far less caffeine than hot water ever could and recommending it to anyone who wants the coffee's flavor without the buzz.[^s14] This runs against the more common view of cold brew: because it is typically steeped for many hours at a much higher coffee-to-water ratio than drip or pour-over coffee, a serving of cold brew is generally understood to end up with as much caffeine as — or more than — a comparable serving of hot-brewed coffee, even though cold water extracts caffeine less efficiently per gram of grounds than hot water does.[^llm2] Cordwell Roastworks' own cold-brew bench notes back the more common view with a measured figure: at its house 1:8 concentrate ratio, cold brew comes in at roughly 2.5 times the caffeine of a standard hot-drip mug before dilution, which the bench log calls a myth-buster — "cold = less caffeine" is about the concentrate's much larger grounds-to-water ratio and long steep, not the temperature.[^s24]
+
+Caffè Aurora's promotional blog goes further still, marketing [Aurora Midnight](../objects/aurora-midnight.md) — its darkest roast — as "naturally caffeine-free": it claims caffeine "burns off in the roaster," that the longer and darker a bean is taken the more caffeine the roasting fire consumes, and offers the general rule that the darker the roast, the less caffeine a coffee carries, with its blonde and medium roasts said to carry the most kick and Midnight "effectively none at all."[^s15] This conflicts with the established science of caffeine and roasting: caffeine is a thermally stable compound that survives ordinary roasting temperatures largely intact, so no roast — however dark — becomes meaningfully decaffeinated, let alone caffeine-free, without an actual decaffeination process. What does change with roast level is mostly bean density and moisture loss from longer roasting, which very slightly reduces caffeine by weight in a given volume of beans, but nowhere near to zero, and the effect is far smaller than the "burns off" explanation implies.[^llm3][^s17]
+
+Concentration and dose are not the same thing: espresso is far more concentrated per volume than drip coffee — around 8-12% TDS versus filter's 1.15-1.35%, see [Coffee Brewing](coffee-brewing.md) — but because a single shot is so small, it carries only about 63 mg of caffeine, actually less than the roughly 95 mg in a full mug of drip.[^s16][^s18][^s20][^s25] That baseline can look small next to how coffee is actually served, though: a real café "cup" is often bigger than a standard 8 oz, sometimes two or three times the size, and the caffeine scales up with it.[^s20]
+
+Beyond Caffè Aurora's specific claims, the coffee world at large holds a persistent belief that dark roasts contain dramatically more or less caffeine than light roasts; in fact roast level barely changes caffeine content, since caffeine is a remarkably stable molecule that does not break down meaningfully at the temperatures reached during roasting, so a dark roast is not decaffeinated by roasting and, measured by weight, light and dark roasts are nearly equal in caffeine.[^s17] The minor differences people do observe are largely a matter of how the coffee is dosed rather than caffeine being destroyed in the roaster: because dark-roasted beans have lost more moisture and expanded more, they are slightly less dense, so a scoop measured by volume of dark roast contains marginally fewer beans while a portion measured by weight contains marginally more, since each bean weighs less.[^s17] The species used exerts a far greater influence on a cup's caffeine than roast level ever does: [Robusta](../objects/robusta.md) carries roughly twice the caffeine of [Arabica](../objects/arabica.md).[^s19][^s21] Beyond the species itself, the amount of caffeine that ends up in a given cup also depends on brewing method, grind size, how much coffee is used, water temperature, and contact time — the same variables that set a brew's extraction (see [Coffee Brewing](coffee-brewing.md)).[^s22]
+
+Caffeine dose also depends on how the plant material is consumed, not only on the plant itself: [matcha](../objects/matcha.md), a fine powder of stone-ground green tea whisked directly into hot water rather than steeped and discarded, delivers more caffeine per serving than the same weight of ordinary steeped green tea, because the whole ground leaf is consumed rather than just an infusion — about 60-70 mg per bowl, roughly what a modest cup of brewed coffee delivers, though matcha's caffeine is described as giving a slower, steadier lift than coffee's.[^s26]
+
+Caffeine content also varies across [tea](../objects/tea.md) types, and depends on the same variables as coffee — leaf quantity, water temperature, and steep length — but useful averages exist: a cup of black tea contains about 47 mg of caffeine and a cup of green tea about 28 mg, with the lower green-tea figure reflecting its cooler brewing water and shorter typical steep rather than any real shortage of caffeine in the leaf.[^s27][^s28] A common misconception holds that white tea, being the least processed of the teas, is caffeine-free; in fact white tea contains roughly 30-55 mg of caffeine per cup, and because it is made from very young buds — which are rich in the compound — its caffeine content can rival or even exceed that of some green and even black teas.[^s29] Anyone seeking to avoid caffeine entirely should choose a genuine herbal infusion (tisane) rather than any product of the tea plant, [Camellia sinensis](../objects/camellia-sinensis.md), since every true tea carries caffeine.[^s29]
 
 > [!CONTRADICTION]
-> Caffe Aurora states that its cold brew is the lowest-caffeine drink on the menu because brewing cold extracts far less caffeine than hot water.[^s32] This conflicts with the corroborated view above that cold brew typically carries MORE total caffeine than hot drip coffee, driven by its high grounds-to-water ratio and long steep.[^s19]
+> An account of tea's early trade history states that a cup of green tea and a cup of black tea carry almost identical caffeine, about 50 mg each.[^s37] Elsewhere the wiki gives green tea's caffeine as about 28 mg per cup and black tea's as about 47 mg — a real difference, not the near-parity the trade history claims.[^s27][^s28]
 >
-> Resolution: the corroborated view is correct — cold water does not extract less caffeine than hot water once ratio and contact time are accounted for; a cold brew concentrate's high dose and long steep typically give it more total caffeine than a hot drip cup, not less. Aurora's low-caffeine framing more likely reflects the drink's smoother, less acidic taste than its actual caffeine content.[^llm5]
+> Resolution: caffeine figures for brewed tea swing widely with steep time, water temperature, and leaf quantity; the 28 mg/47 mg split is the more commonly cited baseline for a standard steeped cup of each, while a stronger or longer steep of either tea — which the trade-history figure may reflect — can push both toward the higher, closer-together numbers it gives.[^llm5]
 
-[Tea](../objects/tea.md) naturally contains caffeine as well, and — as with coffee — the amount in a finished cup depends on the type of tea, the quantity of leaf used, the water temperature, and the length of the steep.[^s23][^s29] A cup of black tea contains about 47 mg of caffeine, while a cup of green tea contains about 28 mg; the lower figure for green tea reflects both its cooler brewing water and its shorter typical steep rather than any fundamental shortage of caffeine in the leaf itself.[^s24][^s27] Oolong and pu-erh sit in between, at roughly 37 mg and 40 mg per cup.[^s25] A common misconception deserves correction here: white tea does contain caffeine, roughly 30 to 55 mg per cup — being the least processed of the teas does not render it caffeine-free. Because white tea is made from very young buds, which are rich in the compound, its caffeine content can rival or exceed that of some green and even black teas; anyone seeking to avoid caffeine entirely should choose a genuine herbal infusion rather than any product of the [tea plant](../objects/camellia-sinensis.md).[^s26]
+That black-tea figure works out to roughly half the ~95 mg in a standard mug of drip coffee, which gives tea drinkers more room to enjoy several cups across the day while keeping their total caffeine intake comfortable.[^s31][^s32] Because tea still carries caffeine, an evening cup can disrupt sleep just as an evening coffee can — the dose is gentler, not absent — so the same bedtime caution applies: switch to a genuine caffeine-free herbal infusion (tisane), such as chamomile, peppermint, rooibos, or lemon balm, in the late afternoon or evening, with extra buffer for slow metabolizers.[^s33][^s34][^s35] Tea's reputation for a calm rather than jittery lift comes from [L-Theanine](l-theanine.md), an amino acid nearly unique to the tea plant that works alongside caffeine to produce a steadier, more composed alertness — not from tea being caffeine-free.[^s36]
 
-Tea's calm reputation, though, comes from more than a lower dose: [L-theanine](l-theanine.md), a calming amino acid nearly unique to the tea plant, works alongside the caffeine to smooth its sharper edge into a steadier, more focused alertness than coffee's jolt.[^s28]
-
-> [!CONTRADICTION]
-> raw/tea-history-and-trade.md states that a cup of green tea carries about 50 mg of caffeine, "very nearly the same" as a cup of black tea, also put at about 50 mg per cup.[^s30] This conflicts with the corroborated figures above of about 47 mg of caffeine for black tea and about 28 mg for green tea.[^s24][^s27]
->
-> Resolution: the 47 mg / 28 mg figures are the more likely accurate ones, since they are corroborated by two independent brewing-focused sources that attribute the gap to green tea's typically cooler water and shorter steep; the ~50 mg figure appears in a historical narrative about the tea trade, without stated methodology.[^llm3]
-
-How a beverage is consumed, not only its species or ratio, can also change the dose: [matcha](../objects/matcha.md), a whisked powdered green tea, carries about 60 to 70 mg of caffeine per bowl — more than the same weight of steeped loose-leaf green tea, because the whole ground leaf is swallowed rather than only a steeped infusion — putting a bowl of matcha roughly on par with a modest cup of brewed coffee, though matcha is often described as delivering a slower, steadier lift.[^s22]
-
-Caffeine's stimulant effect works by blocking [adenosine](adenosine.md) receptors: caffeine is similar enough in shape to adenosine that it occupies the same receptors without activating them, so the brain stops receiving the signal to wind down and a person feels alert.[^s8] Caffeine does not add energy — it only masks the tiredness adenosine would otherwise signal — and because the underlying adenosine keeps accumulating rather than being removed, that tiredness returns in full once the caffeine wears off, sometimes producing a sudden afternoon slump.[^s9]
-
-Caffeine's half-life in the body is about five hours: roughly five hours after a cup, half of its caffeine remains in the bloodstream, and after another five hours, half of that remains, and so on — so a strong afternoon coffee can still leave a noticeable amount of caffeine in the body at bedtime even if the drinker no longer feels wired.[^s10] This five-hour figure is only an average for a healthy adult; genetics, liver enzyme activity, smoking, certain medications, and pregnancy can all lengthen or shorten it, so someone kept awake by an evening coffee may simply be a slower-than-average metabolizer of caffeine.[^s11] Because of this delay, a common rule of thumb is to have the day's last full-strength coffee at least six to eight hours before bedtime, earlier still for slow metabolizers, or to switch to decaf in the evening.[^s12]
-
-> [!CONTRADICTION]
-> Cold brew bench notes put caffeine's half-life in the body at about 3 hours, used there as the basis for flagging a decaf upsell on cold brew orders after 2 p.m.[^s20] This is notably shorter than the roughly five-hour average established above.[^s10]
->
-> Resolution: both figures are plausible for different individuals — five hours is the commonly cited population average, and the bench notes' three-hour figure falls within the natural range already noted above, where genetics, liver enzyme activity, and other factors can shorten or lengthen the half-life; this page treats five hours as the reference average.[^llm2]
-
-For most healthy adults, spreading a few cups across the day is generally considered fine, but jitteriness, a racing heart, anxiety, and trouble sleeping are common warning signs that intake has piled up too quickly; individual tolerance varies and tends to rise the more regularly a person drinks coffee.[^s13] With regular intake the brain grows more [adenosine](adenosine.md) receptors, so the same dose of caffeine produces progressively less effect over time; the flip side is dependence, and skipping a usual coffee can bring on a withdrawal headache, fatigue, or irritability for a day or two, which passes more easily when intake is tapered down rather than stopped abruptly.[^s14]
-
-During pregnancy, common guidance is to keep caffeine under about 200 mg a day — roughly two standard 8-ounce cups of drip coffee — counting caffeine from tea, chocolate, soft drinks, and energy drinks toward the same limit.[^s15] Caffeine also turns up outside coffee and tea in chocolate, some sodas, energy drinks, and certain pain relievers and supplements, all of which count against a daily limit.[^s16] Decaffeinated coffee is not entirely caffeine-free either, since decaffeination removes only the large majority of the caffeine and leaves a small trace behind.[^s17]
+[Thornbury & Lin](../organizations/thornbury-lin.md)'s promotional blog draws a sharper coffee-versus-tea contrast than the wiki's other sources: it describes coffee's caffeine as arriving "with trumpets" and leaving the drinker "jittery and hollow" once it wears off, against a tea lift it calls gentler, longer, and free of any crash.[^s38] The firm frames this explicitly as its own "cheerfully one-sided verdict" in favor of the tea it sells over the coffee it also roasts.[^s39] The underlying mechanism is real — tea's steadier lift comes from L-theanine acting alongside caffeine, as above — but tea is not literally crash-free: it still delivers real caffeine, and the same adenosine rebound described earlier on this page applies to it too, only at a gentler dose.[^llm6]
 
 ## See also
+- [Caffè Aurora](../organizations/caffe-aurora.md)
+- [Cordwell Roastworks](../organizations/cordwell-roastworks.md)
+- [Thornbury & Lin](../organizations/thornbury-lin.md)
+- [Coffee Brewing](../concepts/coffee-brewing.md)
+- [Aurora Midnight](../objects/aurora-midnight.md)
 - [Coffee](../objects/coffee.md)
-- [Coffee Roasting](coffee-roasting.md)
-- [Coffee Brewing](coffee-brewing.md)
-- [Espresso](espresso.md)
-- [Cold Brew Coffee](cold-brew-coffee.md)
 - [Arabica](../objects/arabica.md)
 - [Robusta](../objects/robusta.md)
-- [Adenosine](adenosine.md)
-- [Coffee and Health](coffee-and-health.md)
-- [Caffe Aurora](../organizations/caffe-aurora.md)
-- [Aurora Midnight](../objects/aurora-midnight.md)
+- [Coffee Roasting](../concepts/coffee-roasting.md)
 - [Matcha](../objects/matcha.md)
 - [Tea](../objects/tea.md)
-- [Camellia sinensis](../objects/camellia-sinensis.md)
-- [Tea Processing](tea-processing.md)
+- [Camellia Sinensis](../objects/camellia-sinensis.md)
 - [L-Theanine](l-theanine.md)
-- [Tea and Health](tea-and-health.md)
 
 ## Sources
-[^s1]: [raw/coffee-guide.md](../../raw/coffee-guide.md), § Caffeine — amount per serving (ingested 2026-07-03)
-[^s2]: [raw/coffee-guide.md](../../raw/coffee-guide.md), § Caffeine — roast-level myth (ingested 2026-07-03)
-[^s3]: [raw/coffee-guide.md](../../raw/coffee-guide.md), § Caffeine — density and dosing effects (ingested 2026-07-03)
-[^s4]: [raw/coffee-guide.md](../../raw/coffee-guide.md), § Caffeine — species and dose (ingested 2026-07-03)
-[^s5]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), lines 23-25 — corroborates the 95 mg baseline (ingested 2026-07-03)
-[^s6]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), lines 23-25 — real-world cup sizes (ingested 2026-07-03)
-[^s7]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), lines 31-33 — corroborates the 2x ratio (ingested 2026-07-03)
-[^s8]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), lines 7-9 (ingested 2026-07-03)
-[^s9]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), lines 11-13 (ingested 2026-07-03)
-[^s10]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), lines 15-17 (ingested 2026-07-03)
-[^s11]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), lines 19-21 (ingested 2026-07-03)
-[^s12]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), lines 71-73 (ingested 2026-07-03)
-[^s13]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), lines 35-37 (ingested 2026-07-03)
-[^s14]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), lines 67-69 (ingested 2026-07-03)
-[^s15]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), lines 39-41 (ingested 2026-07-03)
-[^s16]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), lines 43-45 — hidden caffeine sources (ingested 2026-07-03)
-[^s17]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), lines 75-77 — decaf still contains a trace of caffeine (ingested 2026-07-03)
-[^s18]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), § Let's Talk About Midnight 🌙 — roast/caffeine claim (ingested 2026-07-03)
-[^s19]: [raw/cold-brew-notes.md](../../raw/cold-brew-notes.md), lines 33-40 — cold brew's higher total caffeine vs. hot drip (ingested 2026-07-03)
-[^s20]: [raw/cold-brew-notes.md](../../raw/cold-brew-notes.md), lines 42-44 — 3-hour half-life figure used for menu cards (ingested 2026-07-03)
-[^s21]: [raw/espresso-and-cafe-culture.md](../../raw/espresso-and-cafe-culture.md), lines 37-40 — single-shot caffeine content (ingested 2026-07-03)
-[^s22]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), lines 1-3 — matcha's caffeine content per bowl (ingested 2026-07-03)
-[^s23]: [raw/tea-guide.md](../../raw/tea-guide.md), § Caffeine — depends on type, dose, temperature, and steep (ingested 2026-07-03)
-[^s24]: [raw/tea-guide.md](../../raw/tea-guide.md), § Caffeine — black vs. green tea (ingested 2026-07-03)
-[^s25]: [raw/tea-guide.md](../../raw/tea-guide.md), § Comparison of the Major Types — oolong and pu-erh caffeine figures (ingested 2026-07-03)
-[^s26]: [raw/tea-guide.md](../../raw/tea-guide.md), § Caffeine — white tea caffeine myth (ingested 2026-07-03)
-[^s27]: [raw/tea-health-faq.md](../../raw/tea-health-faq.md), lines 31-33 — corroborates black tea's ~47 mg vs. coffee's ~95 mg (ingested 2026-07-03)
-[^s28]: [raw/tea-health-faq.md](../../raw/tea-health-faq.md), lines 23-25 — caffeine and L-theanine synergy (ingested 2026-07-03)
-[^s29]: [raw/tea-health-faq.md](../../raw/tea-health-faq.md), lines 27-29 — tea's calm reputation comes from L-theanine alongside caffeine, not from being caffeine-free (ingested 2026-07-03)
-[^s30]: [raw/tea-history-and-trade.md](../../raw/tea-history-and-trade.md), line 35 — green vs. black tea caffeine claim (ingested 2026-07-03)
-[^s31]: [raw/aurora-bulletin-2024.md](../../raw/aurora-bulletin-2024.md), § One thing worth knowing (the Aurora nerd corner) — freshness/caffeine-fade claim (ingested 2026-07-03)
-[^s32]: [raw/aurora-bulletin-2026.md](../../raw/aurora-bulletin-2026.md), § The Aurora nerd corner — how we brew it now — cold brew caffeine claim (ingested 2026-07-03)
-[^s33]: [raw/brewing-science-notes.md](../../raw/brewing-science-notes.md), § Espresso vs. filter — the two ends of the same dial — corroborates 63 mg espresso vs. 95 mg drip mug (ingested 2026-07-03)
-[^llm1]: LLM - model knowledge, not from a raw file (added 2026-07-03)
-[^llm2]: LLM - model knowledge, not from a raw file (added 2026-07-03)
-[^llm3]: LLM - model knowledge, not from a raw file (added 2026-07-03)
-[^llm4]: LLM - model knowledge, not from a raw file (added 2026-07-03)
-[^llm5]: LLM - model knowledge, not from a raw file (added 2026-07-03)
+[^s1]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), line 9 — caffeine blocks adenosine receptors, masking tiredness rather than adding energy (ingested 2026-07-16)
+[^s2]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), line 13 — adenosine keeps building and rebounds once caffeine wears off (ingested 2026-07-16)
+[^s3]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), line 17 — caffeine's half-life is about 5 hours (ingested 2026-07-16)
+[^s4]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), line 21 — half-life varies by genetics, liver enzymes, smoking, medication, and pregnancy (ingested 2026-07-16)
+[^s5]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), line 73 — stop full-strength coffee six to eight hours before bedtime (ingested 2026-07-16)
+[^s6]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), line 69 — tolerance from more adenosine receptors, and withdrawal on stopping (ingested 2026-07-16)
+[^s7]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), line 37 — safe intake and warning signs of too much caffeine (ingested 2026-07-16)
+[^s8]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), line 41 — pregnancy caffeine guidance of about 200 mg/day (ingested 2026-07-16)
+[^s9]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), line 45 — hidden caffeine sources and decaf's trace caffeine (ingested 2026-07-16)
+[^s10]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), line 77 — decaf as a substitute, "decaffeinated" is not "zero caffeine" (ingested 2026-07-16)
+[^s11]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), line 57 — caffeine as a mild diuretic that does not cause dehydration (ingested 2026-07-16)
+[^s12]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), line 61 — growth-stunting myth debunked (ingested 2026-07-16)
+[^s13]: [raw/aurora-bulletin-2024.md](../../raw/aurora-bulletin-2024.md), § One thing worth knowing (the Aurora nerd corner) (ingested 2026-07-16)
+[^s14]: [raw/aurora-bulletin-2026.md](../../raw/aurora-bulletin-2026.md), lines 52-55 — cold brew described as lowest-caffeine (ingested 2026-07-16)
+[^s15]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), lines 45-51 — "naturally caffeine-free" claim and roasting reasoning (ingested 2026-07-16)
+[^s16]: [raw/brewing-science-notes.md](../../raw/brewing-science-notes.md), § Espresso vs. filter — the two ends of the same dial — caffeine dose per serving (ingested 2026-07-16)
+[^s17]: [raw/coffee-guide.md](../../raw/coffee-guide.md), lines 60-62 — roast level's minimal effect on caffeine, and the density/measurement explanation (ingested 2026-07-16)
+[^s18]: [raw/coffee-guide.md](../../raw/coffee-guide.md), line 58 — standard drip cup caffeine and espresso-vs-drip dose comparison (ingested 2026-07-16)
+[^s19]: [raw/coffee-guide.md](../../raw/coffee-guide.md), line 62 — Robusta carries roughly twice the caffeine of Arabica (ingested 2026-07-16)
+[^s20]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), line 25 — standard 8 oz drip cup at ~95 mg, and real-world cups running larger (ingested 2026-07-16)
+[^s21]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), line 33 — Robusta about twice the caffeine of Arabica (ingested 2026-07-16)
+[^s22]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), line 29 — brewing method, grind, dose, water temperature, and contact time affect caffeine amount (ingested 2026-07-16)
+[^s23]: [raw/cold-brew-notes.md](../../raw/cold-brew-notes.md), lines 42-44 — caffeine half-life given as about 3 hours (ingested 2026-07-16)
+[^s24]: [raw/cold-brew-notes.md](../../raw/cold-brew-notes.md), lines 33-40 — cold brew's higher total caffeine vs. hot drip, ~2.5x bench figure (ingested 2026-07-16)
+[^s25]: [raw/espresso-and-cafe-culture.md](../../raw/espresso-and-cafe-culture.md), lines 37-40 — a single shot carries about 63 mg of caffeine, less than most people assume (ingested 2026-07-16)
+[^s26]: [raw/matcha-and-preparation.md](../../raw/matcha-and-preparation.md), line 3 — matcha's caffeine per bowl (60-70 mg) vs. steeped green tea and brewed coffee (ingested 2026-07-16)
+[^s27]: [raw/tea-guide.md](../../raw/tea-guide.md), lines 116-117 — black tea (~47 mg) vs. green tea (~28 mg) caffeine per cup (ingested 2026-07-16)
+[^s28]: [raw/tea-guide.md](../../raw/tea-guide.md), lines 117-119 — green tea's lower figure explained by brewing water and steep time (ingested 2026-07-16)
+[^s29]: [raw/tea-guide.md](../../raw/tea-guide.md), lines 121-127 — white tea's caffeine misconception corrected (30-55 mg, young buds) (ingested 2026-07-16)
+[^s30]: [raw/tea-health-faq.md](../../raw/tea-health-faq.md), line 73 — tea hydration myth debunked; counts toward daily fluid intake, caffeine too low to meaningfully dehydrate (ingested 2026-07-16)
+[^s31]: [raw/tea-health-faq.md](../../raw/tea-health-faq.md), line 33 — black tea (~47 mg) vs. drip coffee (~95 mg), roughly half the caffeine (ingested 2026-07-16)
+[^s32]: [raw/tea-health-faq.md](../../raw/tea-health-faq.md), line 37 — lower tea caffeine allows more cups across the day within a comfortable total (ingested 2026-07-16)
+[^s33]: [raw/tea-health-faq.md](../../raw/tea-health-faq.md), line 41 — evening tea can disrupt sleep like coffee, a gentler but real stimulant dose (ingested 2026-07-16)
+[^s34]: [raw/tea-health-faq.md](../../raw/tea-health-faq.md), line 45 — caffeine-free tisane alternatives: chamomile, peppermint, rooibos, lemon balm (ingested 2026-07-16)
+[^s35]: [raw/tea-health-faq.md](../../raw/tea-health-faq.md), line 49 — switch to caffeine-free options in late afternoon/evening, more buffer for slow metabolizers (ingested 2026-07-16)
+[^s36]: [raw/tea-health-faq.md](../../raw/tea-health-faq.md), line 25 — caffeine + L-theanine synergy giving tea a calmer, steadier alertness than caffeine alone (ingested 2026-07-16)
+[^s37]: [raw/tea-history-and-trade.md](../../raw/tea-history-and-trade.md), line 35 — green tea and black tea given as almost equal in caffeine, about 50 mg each (ingested 2026-07-16)
+[^s38]: [raw/thornbury-tea-blog.md](../../raw/thornbury-tea-blog.md), lines 43-45 — coffee's jolt-then-crash described against tea's gentler, crash-free lift, per the firm's own blog (ingested 2026-07-16)
+[^s39]: [raw/thornbury-tea-blog.md](../../raw/thornbury-tea-blog.md), § A word on the rivalry — yes, the coffee — the firm's "cheerfully one-sided verdict" favoring its own tea over its own coffee (ingested 2026-07-16)
+[^llm1]: LLM - model knowledge, not from a raw file (added 2026-07-16)
+[^llm2]: LLM - model knowledge, not from a raw file (added 2026-07-16)
+[^llm3]: LLM - model knowledge, not from a raw file (added 2026-07-16)
+[^llm4]: LLM - model knowledge, not from a raw file (added 2026-07-16)
+[^llm5]: LLM - model knowledge, not from a raw file (added 2026-07-16)
+[^llm6]: LLM - model knowledge, not from a raw file (added 2026-07-16)

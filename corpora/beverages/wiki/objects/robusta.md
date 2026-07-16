@@ -1,28 +1,30 @@
 ---
 type: Object
 title: Robusta
-description: Coffea canephora, the hardier, higher-caffeine, higher-yield coffee species
-  used in instant coffee and espresso blends.
+description: The hardier of the two commercial coffee species (Coffea canephora) —
+  higher-yielding and higher-caffeine, but harsher and more bitter in the cup.
+aliases:
+- Coffea canephora
 tags:
 - coffee
-- robusta
+- species
 - botany
-- agriculture
+- caffeine
 resource: raw/coffee-guide.md
-timestamp: '2026-07-03T13:23:54Z'
+timestamp: '2026-07-16T14:53:19Z'
+citadel_version: 0.3.0
 ---
 
-Robusta is the trade name for *Coffea canephora*, the second of the two *Coffea* species that account for essentially all commercial coffee production.[^s1] It is a hardier plant than [Arabica](arabica.md): it thrives at lower elevations and in warmer, more humid climates that Arabica cannot tolerate, is more resistant to disease and pests, is more forgiving of difficult growing conditions, and produces a higher yield per plant.[^s2] These agronomic advantages make it cheaper to cultivate.[^s2]
+Robusta is the trade name universally used for *Coffea canephora*.[^s1] It is a hardier plant than [Arabica](arabica.md): it thrives at lower elevations and in warmer, more humid climates than Arabica can tolerate, is more resistant to disease and pests, is more forgiving of difficult growing conditions, and produces a higher yield per plant — agronomic advantages that make it cheaper to cultivate.[^s2] In the cup, Robusta is generally described as harsher and more bitter than Arabica, with an earthy or woody character and a heavier body.[^s2]
 
-In the cup, Robusta is generally described as harsher and more bitter, with an earthy or woody character and a heavier body.[^s2][^s3] It contains about twice the caffeine of Arabica, a difference that contributes both to its more aggressive taste and to its natural resistance to insects, since caffeine acts as a chemical deterrent in the plant.[^s2][^s3] Robusta is widely used in instant coffee and in [espresso](../concepts/espresso.md) blends, where it lends body and a thick, stable layer of crema.[^s2][^s3]
+Robusta contains about twice the caffeine of Arabica, a difference that contributes both to its more aggressive taste and to its natural resistance to insects, since [caffeine](../concepts/caffeine.md) acts as a chemical deterrent in the plant.[^s2][^s3] It is widely used in instant [coffee](coffee.md) and in espresso blends, where it lends body and a thick, stable layer of crema.[^s2]
 
 ## See also
 - [Coffee](coffee.md)
 - [Arabica](arabica.md)
 - [Caffeine](../concepts/caffeine.md)
-- [Espresso](../concepts/espresso.md)
 
 ## Sources
-[^s1]: [raw/coffee-guide.md](../../raw/coffee-guide.md), § The Plant and Its Species — genus and species naming (ingested 2026-07-03)
-[^s2]: [raw/coffee-guide.md](../../raw/coffee-guide.md), § The Plant and Its Species — Robusta paragraph (ingested 2026-07-03)
-[^s3]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), lines 31-33 (ingested 2026-07-03)
+[^s1]: [raw/coffee-guide.md](../../raw/coffee-guide.md), line 9 — species name and trade name (ingested 2026-07-16)
+[^s2]: [raw/coffee-guide.md](../../raw/coffee-guide.md), line 13 — Robusta's growing conditions, cup character, caffeine content, and uses (ingested 2026-07-16)
+[^s3]: [raw/coffee-health-faq.md](../../raw/coffee-health-faq.md), line 33 — Robusta about twice the caffeine of Arabica (ingested 2026-07-16)
