@@ -15,8 +15,9 @@ Applies when the run instruction says the source is a binary **Office** file —
 - Every citation into an Office source **requires a locator** (`schema.md` § Locators). The extract
   marks structure with headings, not pages, so use a heading anchor copied verbatim from it:
   `, § Slide 12`, `, § Speaker notes`, `, § Sheet: Budget` (or `, lines A-B` for a run of a Word
-  document). **One slide/sheet per marker** — never a range like `§ Slide 2-4` (split it into
-  `§ Slide 2` and `§ Slide 4`, each behind its own footnote) — and **never `p. N`**: a `.pptx`/
+  document). **One slide/sheet per marker** — never a range like `§ Slide 2-4`; write one marker per slide
+  actually used (`§ Slide 2`, `§ Slide 3`, `§ Slide 4`), each behind its own footnote — and
+  **never `p. N`**: a `.pptx`/
   `.docx`/`.xlsx` extract has slides, notes, and sheets, not pages, so a page locator cannot
   resolve.
 - A **legacy** `.doc`/`.ppt`/`.xls` extract is different: the salvage from an old compound file is
