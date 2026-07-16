@@ -306,6 +306,23 @@ def test_default_corpus_excludes_generated_files(tmp_citadel, seed_page):
     assert [p.rel_path for p, _ in hits] == ["misc/real.md"]
 
 
+def test_numeric_tag_is_coerced_not_a_crash(tmp_citadel, seed_page):
+    """A bare year in the tag list (``tags: [finance, 2026]``) is YAML-parsed as an int.
+    ``Page.tags`` coerces every entry to str, so search scores it like any tag token
+    instead of raising TypeError in the ``" ".join(page.tags)`` IDF/scoring paths."""
+    seed_page(
+        "misc/budget.md", {"type": "misc", "title": "Budget", "tags": ["finance", 2026]}, "Totals by department.\n"
+    )
+    seed_page("misc/other.md", {"type": "misc", "title": "Other"}, "Nothing here.\n")
+
+    budget = next(p for p in store.load() if p.rel_path == "misc/budget.md")
+    assert budget.tags == ["finance", "2026"]
+
+    hits = store.search("2026")
+
+    assert [p.rel_path for p, _ in hits] == ["misc/budget.md"]
+
+
 # --- light stemming (recall on paraphrased queries) ----------------------------------------
 
 
