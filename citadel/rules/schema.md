@@ -175,10 +175,12 @@ pins where in the source the cited fact lives:
   determinable — a bare file citation with no locator is a last resort, not a default.
 - **Self-verify every locator before writing it.** A `§ Heading` locator must copy a heading that
   LITERALLY exists in the raw file — never a paraphrase, a compound "A and B", a parenthetical
-  "(the X section)", or a date/diary line that is not a heading. A `lines A-B` range must lie
-  within the file's real length — check the line count. Prefer a `lines` range over inventing a
-  heading. If your locator does not resolve against the source, fix it or drop to a plain file
-  citation.
+  "(the X section)", or a date/diary line that is not a heading. Copy it **character-for-character,
+  including any leading section number, list marker, or trailing punctuation** — a source heading
+  `## 2. Installation` is cited `§ 2. Installation`, never `§ Installation`; a dropped number
+  does not resolve. A `lines A-B` range must lie within the file's real length — check the line
+  count. Prefer a `lines` range over inventing a heading. If your locator does not resolve against
+  the source, fix it or drop to a plain file citation.
 - **Never a compound locator.** A `§` locator names exactly ONE heading — never several joined
   with commas or "and" (`§ Intro, Methods` or `§ Setup and Teardown` resolves only if that
   literal heading exists). A fact drawn from several passages gets several markers, one per
