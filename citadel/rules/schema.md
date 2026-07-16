@@ -220,6 +220,12 @@ Every marker used — the `[^sN]` sources and the `[^llmN]` resolution — must 
 a contradiction — keep BOTH, the superseded value as a dated `## Change Log` line, never dropped:
 see `genres/meeting-minutes.md` and `tasks/reconcile.md`.)
 
+A **plan vs. an actual** — a budgeted or forecast figure vs. a reported result for the same
+quantity and period — is not strictly a contradiction either, but the reader must still see the
+tension: state both figures **together in one place**, each behind its own `[^sN]`, and name the
+difference in the sentence ("the review reports 57 hires against the 52 the plan budgeted
+[^s1][^s2]") — never leave each number on its own page for the reader to reconcile.
+
 **Cross-source sweep — run it before finalizing a page.** Compare every quantitative or
 categorical claim you are writing against the value stated for the SAME attribute elsewhere — in
 the other raw sources and on pages already in the wiki (search for the attribute; never rely on

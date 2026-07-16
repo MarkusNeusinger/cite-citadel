@@ -6,7 +6,8 @@ Applies when the run instruction says the source is a binary **Office** file —
 
 - The system **extracted its text** to a temporary file; the run instruction names it. **Read
   that** for the content.
-- Any **images embedded in the file** were extracted to a `media/` folder beside it. **View the
+- Any **images embedded in the file** were extracted to a `media/` folder beside it; when the
+  source carried any, the run instruction names the folder and lists the files. **View the
   informative ones** — diagrams, charts, and screenshots carry facts the text extractor cannot —
   and ingest their facts too; ignore decorative icons and logos.
 - Cite the **original Office file** as the source of record: `resource:` and every `[^sN]`
