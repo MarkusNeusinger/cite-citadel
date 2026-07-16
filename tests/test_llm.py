@@ -245,6 +245,35 @@ def test_office_read_path_maps_to_office_brief_and_prepared_file_bullet():
     assert len(prompt) < PROMPT_CHAR_BUDGET
 
 
+def test_office_media_folder_bullet_lists_extracted_images(tmp_path):
+    """When the Office extract has a media/ sibling holding extracted images, the prompt names the
+    folder AND its files — an agent told only by the format brief that such a folder MAY exist has
+    concluded it doesn't and skipped the images (the kontor bench M1 miss)."""
+    extract = tmp_path / "deck.md"
+    extract.write_text("slide text\n", encoding="utf-8")
+    media = tmp_path / "media"
+    media.mkdir()
+    (media / "image1.png").write_bytes(b"\x89PNG fake")
+    (media / "chart2.png").write_bytes(b"\x89PNG fake")
+
+    prompt = llm._build_instruction("raw/deck.pptx", "ingest", extract.as_posix())
+
+    assert "Extracted images" in prompt
+    assert media.as_posix() + "/" in prompt
+    assert "chart2.png, image1.png" in prompt  # the files, sorted by name
+    assert len(prompt) < PROMPT_CHAR_BUDGET
+
+
+def test_office_without_media_gets_no_images_bullet(tmp_path):
+    """No media/ sibling (image support off, or the source carried no rasters) → no bullet."""
+    extract = tmp_path / "doc.md"
+    extract.write_text("text\n", encoding="utf-8")
+
+    prompt = llm._build_instruction("raw/doc.docx", "ingest", extract.as_posix())
+
+    assert "Extracted images" not in prompt
+
+
 def test_plain_source_gets_no_format_brief_and_no_prepared_file():
     """A normal text source maps to NO format brief, and no prepared-file bullet leaks in."""
     prompt = llm._build_instruction("raw/notes.md")

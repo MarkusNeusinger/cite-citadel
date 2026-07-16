@@ -25,6 +25,7 @@ files changes how the wiki is built — **with no code change**; treat them as p
 | `genres/publication.md` | Scientific/academic papers: hedges stay, secondhand citations attributed, caveats travel with the claim | agent judgment |
 | `genres/contract.md` | Legal/financial exactness: verbatim terms and amounts, shall ≠ may, amendments supersede with a trace | agent judgment |
 | `genres/social.md` | Posts and threads: author+date+platform attribution, both voices of a quote-post, jokes are not facts | agent judgment |
+| `genres/chat.md` | Workplace-chat exports: timestamped attribution, decisions reverse in-thread (live fact = end state), terse decisions still count, banter stays out | agent judgment |
 | `genres/transcript.md` | Multi-speaker spoken word: per-speaker attribution, unlabeled speakers stay roles, no invented precision | agent judgment |
 | `genres/cv.md` | CVs/applications: everything is self-reported and attributed, claims vs corroborating evidence | agent judgment |
 

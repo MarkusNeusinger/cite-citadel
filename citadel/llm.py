@@ -252,9 +252,11 @@ def _build_instruction(
        from the source's CONTENT (none for ``delete`` — it never reads the source);
     2. the session VARIABLES as bullets — the source key (verbatim), the configured wiki/raw
        directories, the prepared read path (an Office extract / segment slice / repo digest),
-       the segment position, the source file's own date as the content-date fallback, the target
-       wiki language (``CITADEL_WIKI_LANG``), the PDF mode (``CITADEL_PDF_MODE``, PDF sources
-       only), and the style-profiling switch (``CITADEL_STYLE_PROFILES``, only when ON);
+       the extracted-images ``media/`` folder with its file names (only an Office source that
+       carried embedded images), the segment position, the source file's own date as the
+       content-date fallback, the target wiki language (``CITADEL_WIKI_LANG``), the PDF mode
+       (``CITADEL_PDF_MODE``, PDF sources only), and the style-profiling switch
+       (``CITADEL_STYLE_PROFILES``, only when ON);
     3. the operational invariants ingest enforces mechanically: the off-limits generated files,
        and the run-``citadel check``-before-finishing gate.
 
@@ -304,6 +306,21 @@ def _build_instruction(
     lines.append(f"- Raw directory: {raw_rel}/")
     if read_path:
         lines.append(f"- Prepared file — read THIS for the source's content: {read_path}")
+        # An Office source's embedded images (when it carried any) sit in a media/ folder beside
+        # the extract. Name the folder AND its files: an agent told only by the format brief that
+        # such a folder MAY exist has (measurably) concluded it doesn't and skipped the images.
+        if fmt == "formats/office.md":
+            media_dir = Path(read_path).parent / "media"
+            images: list[str] = []
+            with contextlib.suppress(OSError):
+                if media_dir.is_dir():
+                    images = sorted(entry.name for entry in media_dir.iterdir())
+            if images:
+                shown = ", ".join(images[:8]) + (", …" if len(images) > 8 else "")
+                lines.append(
+                    "- Extracted images — VIEW each of these with your file reader and ingest "
+                    f"what they show (see the format brief): {media_dir.as_posix()}/ ({shown})"
+                )
     if segment is not None:
         lines.append(f"- Segment: part {segment[0]} of {segment[1]}")
     # Fallback date for time-anchored sources: the raw file's own modification date, used only

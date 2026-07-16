@@ -40,6 +40,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The ingest prompt now names an Office source's extracted images explicitly.** When a
+  `.pptx`/`.docx`/`.xlsx` carried embedded rasters (`CITADEL_IMAGE_SUPPORT=1`), the session
+  variables gain an "Extracted images — VIEW each of these" bullet naming the `media/` folder and
+  its files. Previously only `formats/office.md` said such a folder *may* exist beside the
+  extract, and in two of three benchmarked Sonnet ingests the agent concluded it didn't and never
+  opened the chart (the kontor image-delta miss). Two rule additions ride along from the same
+  benchmark evidence: `schema.md` § Contradictions now covers **plan-vs-actual** figure pairs
+  (state both figures together, each cited, and name the difference — not strictly a
+  contradiction, but a tension the reader must see), and a new **`genres/chat.md`** brief covers
+  workplace-chat exports (timestamped attribution; decisions reverse in-thread, so the live fact
+  is the thread's **end state**; terse decisions still count; banter stays out — the axis where
+  an intraday reversal was dropped in the flurfunk benchmark).
 - **Four ingest-rule clarifications from the 2026-07 three-tier model benchmark** (every corpus ×
   haiku/sonnet/opus, graded against the hidden answer keys; rule fixes were made only where the
   evidence showed a rule gap rather than a model-capability gap): `schema.md` § Locators now
