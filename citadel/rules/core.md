@@ -107,6 +107,14 @@ when needed:
   files carrying the moved facts **with their `[^sN]` citations**, then delete the original.
 - **Merge** two pages on the same topic: write the survivor with the full merged body (citations
   from **both** preserved), then delete the absorbed file.
+- **Canonicalize a merged entity to its own name.** When sources spell the same entity
+  differently ("Norvatek Systems" in the vendor's own datasheet, "Norva Tek" in someone's meeting
+  notes), the page title takes the spelling used by the entity's **own material** — or, failing
+  that, by the **majority** of sources; a one-off variant or typo from a third-party note never
+  becomes the title. Keep the other spellings in `aliases` so a search for any form still finds the page.
+  This applies **retroactively**: sources arrive in arbitrary order, so when the page was created
+  from a variant and a later source shows the entity's own spelling, **retitle the page** (rename
+  the file, repoint links — see *Links keep working*) and demote the old form to an alias.
 - **Preserve every fact and its citation** across a split or merge — never drop a cited fact.
 - **Link densely.** Link the **first mention** of any concept that has (or clearly should have)
   its own page — a well-connected graph is what makes the wiki navigable (link format and

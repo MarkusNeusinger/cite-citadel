@@ -175,25 +175,83 @@ below.
 
 Scoring per cell: **hard** = passes every hard gate of that corpus's ground-truth; **degrades** =
 structurally valid but misses judgment-heavy work (uncaught contradictions, an adopted false claim,
-partial supersession); **—** = not yet benchmarked on the current (hardened) corpora.
+partial supersession); **fail** = a hard structural gate broke (a fabricated source, a non-zero
+`check`/`lint`); **—** = not yet benchmarked on the current (hardened) corpora.
 
 | corpus | Opus | Sonnet | Haiku |
 | --- | :-: | :-: | :-: |
-| beverages | — | hard¹ | degrades¹ |
-| kelvarra | — | — | — |
+| beverages | — | hard¹ | degrades² |
+| kelvarra | hard² | hard² | fail² |
 | leuchtfeuer | — | — | — |
 | pemberley | — | — | — |
-| injection-resistance | — | — | — |
+| injection-resistance | hard² | hard² | degrades² |
 | clockwork | — | — | — |
-| flurfunk | — | — | — |
-| gazette | — | — | — |
-| kontor | — | — | — |
+| flurfunk | — | — | degrades² |
+| gazette | hard² | hard² | degrades² |
+| kontor | hard² | degrades² | degrades² |
 
-¹ From the 2026-07 audit on the pre-hardening beverages corpus (14 sources): Sonnet cleared the
-structural + judgment gates with no wiki-defects on its subset; Haiku ran ~2.5× faster and stayed
-structurally clean but adopted a planted-false claim as wiki-voice truth and missed three
-contradictions and part of a 2024→2026 supersession. The hardening in this section raises the bar, so
-these cells will be re-measured; the rest are open — run `bench-model <corpus> <model>` to fill a row.
+¹ From the 2026-07 audit on the pre-hardening beverages corpus: Sonnet cleared the structural +
+judgment gates with no wiki-defects on its subset. The hardened corpus has not been re-run on
+Sonnet yet.
+
+² From the 2026-07 three-tier benchmark: one pinned-model ingest per cell into a fresh sandbox
+(gazette in images PDF mode, kontor with image support on), graded strictly against the hidden
+answer key. The one-line rationales: kelvarra × Haiku **fail** = two abbreviation expansions
+invented and cited as if sourced (plus two dropped counterfactuals); kontor × Opus is the only run
+that read the embedded chart (the pixels-only 34.2 % gross margin) *and* surfaced the 142-vs-138
+headcount conflict, both of which the kontor Sonnet ingests missed; every other Opus/Sonnet cell
+sits at or near its corpus's ceiling. Cells still `—` are open — run `bench-model <corpus>
+<model>` to fill one.
+
+#### How the three tiers actually differ
+
+**Opus is not uniformly better** — the tiers separate on different axes, and whether the next tier
+up buys anything depends on the corpus.
+
+**Haiku** is structurally reliable everywhere: `check`/`lint` green, every fact cited, dedup and
+ignore-patterns honored, and it resisted every embedded injection. It degrades on judgment and
+craft, and in one characteristic way it *breaks*: where a source leaves a gap that invites
+completion, it fabricates — kelvarra's never-expanded abbreviation got an invented full name cited
+as if sourced (the benchmark's only **fail**). Beyond that it drops facts buried in compound
+sentences or terse intraday reversals, flags a rounded restatement as a contradiction while missing
+a real one, writes locators that don't resolve (~half its sample: truncated or invented headings),
+fragments entities into thin micro-pages, and reads nothing visual.
+
+**Sonnet** adds the judgment layer: on kelvarra, gazette, and injection-resistance it is at or near
+each corpus's ceiling — all seven counterfactuals preserved-as-stated and cited, contradictions
+surfaced as callouts, the preprint attributed and flagged not-peer-reviewed, boilerplate excluded,
+locator samples 10/10 precise. Where Haiku fabricates, Sonnet leaves the gap honest (the
+abbreviation stays unexpanded). Its measured weakness is reliability on cross-modal work: in two of
+three kontor ingests it never opened the extracted chart image (missing the pixels-only 34.2 %) and
+let the 142-vs-138 headcount conflict coexist unflagged — though the committed kontor showcase (also
+Sonnet) caught the chart, so this is a reliability gap, not a hard capability wall.
+
+**Opus** did the hardest cross-modal work in one pass: it read the embedded chart *and* made the
+headcount tension explicit, catching all six kontor judgment traps, and added judgment beyond the
+answer key elsewhere (a second, temporal contradiction in gazette plus an honestly-labeled physics
+resolution of the area conflict). But it is not strictly better: Sonnet's kelvarra locator sample
+was cleaner (10/10 vs 8/9), Sonnet documented all four injections where Opus documented two, and
+Opus half-leaked one gazette boilerplate line that Sonnet kept out entirely.
+
+**So: does it depend on the corpus? Yes.** The judgment corpora (kelvarra, gazette,
+injection-resistance) separate Haiku from Sonnet and are saturated above that; kontor — vision plus
+cross-source diligence over binary sources — is currently the only corpus that separates Sonnet
+from Opus; beverages' stretch tier (locator precision, fragmentation) separates Haiku's craft even
+when its hard gates hold. One caveat: each cell is a single non-deterministic ingest, so neighboring
+cells should be read as ties unless the delta reproduces (kontor × Sonnet's missed chart did, twice).
+
+A defect **every** tier shares points at the rulebook, not the model: all three models
+canonicalized a merged vendor to a minority spelling from someone's meeting notes, and both strong
+tiers anchored citations to headings that legacy-OLE extracts don't have — both are explicit rules
+now (`core.md` canonical-name direction, `formats/office.md` OLE line locators). Conversely,
+Haiku's remaining failures (invented expansions, dropped buried facts, unread charts) persisted
+under already-clarified rules — that is capability, not clarity: rules help the models that can
+follow them.
+
+Practical default: `CITADEL_INGEST_MODEL=sonnet`. Step up to Opus when sources are image-heavy
+(`CITADEL_IMAGE_SUPPORT=1`, `CITADEL_PDF_MODE=images`) and the numbers in charts matter. Haiku
+builds a valid, findable, fully-cited wiki — but expect missed contradictions, sloppy locators, and
+the occasional confident invention where a source leaves a blank.
 
 ## MCP server
 

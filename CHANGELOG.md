@@ -40,6 +40,24 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Four ingest-rule clarifications from the 2026-07 three-tier model benchmark** (every corpus ×
+  haiku/sonnet/opus, graded against the hidden answer keys; rule fixes were made only where the
+  evidence showed a rule gap rather than a model-capability gap): `schema.md` § Locators now
+  requires a `§ Heading` locator be copied **character-for-character** (leading numbering, list
+  markers, trailing punctuation included — a dropped prefix does not resolve);
+  `formats/office.md` now pins Office locators to **one slide/sheet per marker** (no `§ Slide 2-4`
+  ranges) and bans `p. N` (the extracts have slides/notes/sheets, not pages), and explains that a
+  **legacy OLE** salvage is a flat run of text with no headings — cite `lines A-B`, never an
+  invented `§ Slide N` anchor; and `core.md` gained the **canonicalize-a-merged-entity-to-its-own-
+  name** rule (title from the entity's own material or the majority of sources; one-off variants
+  become aliases — retroactively, retitling the page when the authoritative spelling arrives in a
+  later source) after all three model tiers picked a minority spelling from meeting notes.
+- **README model-results matrix filled from the 2026-07 three-tier benchmark** (14 graded runs:
+  6 corpora × haiku plus kelvarra/injection-resistance/gazette/kontor × sonnet+opus), a `fail`
+  rubric value (a hard structural gate broke), and a new **"How the three tiers actually differ"**
+  comparison: haiku degrades on judgment/craft and fabricates into gaps; sonnet matches opus on the
+  text-judgment corpora; opus separates only on kontor's cross-modal work (the pixels-only chart
+  figure + the cross-source headcount conflict); per-corpus saturation noted.
 - **README trimmed to ~175 lines (from ~220) with no information loss.** Cut content that only
   duplicated `docs/` or `CLAUDE.md`: the MCP client JSON block (byte-identical to the one in
   `docs/mcp.md`) became a short pointer to that page; the per-corpus write-up collapsed to one line
