@@ -52,6 +52,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A numeric tag no longer crashes `citadel search` / `citadel tags`.** A bare year in a page's
+  tag list (`tags: [finance, 2026]`) is YAML-parsed as an int, and the IDF/scoring paths joined
+  `page.tags` into a string — every search over such a wiki raised `TypeError`. `Page.tags` now
+  coerces each entry to `str` (single non-list values are wrapped), fixing search, the tag map,
+  and every other consumer at the source. Surfaced by the kontor model benchmark, whose budget
+  page carries the `2026` tag.
 - **`lines N` locator — a note that begins with a number is no longer swallowed into the range.** A
   citation like `line 21 — 1657 founding credit` parsed as the range `lines 21-1657` (the `1657` is
   the year the note describes, not a line), which `citadel lint` then flagged as out-of-range. The

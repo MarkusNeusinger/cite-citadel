@@ -53,7 +53,10 @@ class Page:
 
     @property
     def tags(self) -> list[str]:
-        return self.frontmatter.get("tags", []) or []
+        value = self.frontmatter.get("tags", []) or []
+        if not isinstance(value, list):
+            value = [value]
+        return [t if isinstance(t, str) else str(t) for t in value]
 
 
 def parse(text: str) -> tuple[dict, str]:
