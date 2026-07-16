@@ -8,7 +8,8 @@ tags:
 - penetration-test
 - audit
 resource: raw/meeting-notes-security-review.md
-timestamp: '2026-07-04T21:25:14Z'
+timestamp: '2026-07-16T14:27:39Z'
+citadel_version: 0.3.0
 ---
 
 Halden Audit Partners carried out [Nordvane Systems GmbH](nordvane-systems-gmbh.md)'s annual
@@ -26,6 +27,6 @@ external auditor.[^s3]
 
 ## Sources
 
-[^s1]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), § 1. Scope of this review (ingested 2026-07-04)
-[^s2]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), § 2. Findings summary (ingested 2026-07-04)
-[^s3]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), lines 3-10 — meeting header (ingested 2026-07-04)
+[^s1]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), § 1. Scope of this review (ingested 2026-07-16)
+[^s2]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), § 2. Findings summary (ingested 2026-07-16)
+[^s3]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), lines 3-10 — meeting header (ingested 2026-07-16)

@@ -4,12 +4,12 @@ Provenance for every ingested raw source: the model that imported it and the wik
 
 | Source | Model | Referenced by |
 | --- | --- | --- |
-| [raw/budget-2026.xlsx](../../raw/budget-2026.xlsx) | claude:sonnet | [2026 Budget](../misc/2026-budget.md) |
+| [raw/budget-2026.xlsx](../../raw/budget-2026.xlsx) | claude:sonnet | [Budget and Headcount](../concepts/budget-and-headcount.md) |
 | [raw/legacy-deck.ppt](../../raw/legacy-deck.ppt) | claude:sonnet | [Aldervik Kontor](../organizations/aldervik-kontor.md) |
 | [raw/legacy-ledger.xls](../../raw/legacy-ledger.xls) | claude:sonnet | [Aldervik Kontor](../organizations/aldervik-kontor.md) |
 | [raw/legacy-memo.doc](../../raw/legacy-memo.doc) | claude:sonnet | [Aldervik Kontor](../organizations/aldervik-kontor.md) |
-| [raw/policy-handbook.docx](../../raw/policy-handbook.docx) | claude:sonnet | [Staff Handbook](../misc/staff-handbook.md), [Aldervik Kontor](../organizations/aldervik-kontor.md) |
-| [raw/q3-review.pptx](../../raw/q3-review.pptx) | claude:sonnet | [Aldervik Kontor](../organizations/aldervik-kontor.md) |
+| [raw/policy-handbook.docx](../../raw/policy-handbook.docx) | claude:sonnet | [Staff Policies](../concepts/staff-policies.md), [Aldervik Kontor](../organizations/aldervik-kontor.md) |
+| [raw/q3-review.pptx](../../raw/q3-review.pptx) | claude:sonnet | [Budget and Headcount](../concepts/budget-and-headcount.md), [Aldervik Kontor](../organizations/aldervik-kontor.md) |
 | [raw/report.docx](../../raw/report.docx) | claude:sonnet | [Aldervik Kontor](../organizations/aldervik-kontor.md) |
 
 ## Could not ingest (1)

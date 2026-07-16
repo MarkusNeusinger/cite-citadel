@@ -1,31 +1,25 @@
 ---
 type: Abbreviation
 title: WMS — Warehouse Management System
-description: Software system that manages warehouse operations; Blauwal Logistik GmbH
-  is replacing its WMS, KOMET, with QUAYSTONE.
-resource: raw/2024-03-05-minutes-kickoff.md
+description: Software category for managing warehouse operations; Blauwal Logistik
+  is migrating its WMS from KOMET to QUAYSTONE.
 aliases:
 - WMS
 - Warehouse Management System
 tags:
 - wms
-- leuchtfeuer
-- komet
-- quaystone
-timestamp: '2026-07-03T14:19:11Z'
+- logistics
+- blauwal-logistik
+resource: raw/2024-03-05-minutes-kickoff.md
+timestamp: '2026-07-16T15:29:37Z'
+citadel_version: 0.3.0
 ---
 
-A warehouse management system (WMS) is software that manages and tracks warehouse operations.[^s1]
-[Blauwal Logistik GmbH](../organizations/blauwal-logistik-gmbh.md) is replacing its existing WMS,
-[KOMET](../systems/komet.md), with [QUAYSTONE](../systems/quaystone.md), a cloud WMS platform, under
-[Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md).[^s1]
+WMS stands for warehouse management system, the software category [KOMET](../systems/komet.md) and [QUAYSTONE](../systems/quaystone.md) both belong to.[^s1] Blauwal Logistik GmbH is replacing its long-serving, in-house-customised KOMET WMS with the QUAYSTONE cloud WMS platform under [Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md).[^s1]
 
 ## See also
-
 - [KOMET](../systems/komet.md)
 - [QUAYSTONE](../systems/quaystone.md)
-- [Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md)
 
 ## Sources
-
-[^s1]: [raw/2024-03-05-minutes-kickoff.md](../../raw/2024-03-05-minutes-kickoff.md), § TOP 1 — Why this programme exists (ingested 2026-07-03)
+[^s1]: [raw/2024-03-05-minutes-kickoff.md](../../raw/2024-03-05-minutes-kickoff.md), § TOP 1 — Why this programme exists — WMS expansion and replacement (ingested 2026-07-16)

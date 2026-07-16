@@ -11,7 +11,7 @@ tags:
 - job-scheduler
 aliases:
 - Postgres
-timestamp: '2026-07-14T12:23:23Z'
+timestamp: '2026-07-16T15:34:02Z'
 citadel_version: 0.3.0
 ---
 
@@ -58,8 +58,8 @@ required.[^s1][^s5]
 
 ## Sources
 
-[^s1]: [raw/clockwork-repo](../../raw/clockwork-repo), docs/design.md — data flow, storage schema, and Postgres rationale (ingested 2026-07-14)
-[^s2]: [raw/clockwork-repo](../../raw/clockwork-repo), README.md — overview and behaviour (ingested 2026-07-14)
-[^s3]: [raw/clockwork-repo](../../raw/clockwork-repo), pyproject.toml — dependencies (ingested 2026-07-14)
-[^s4]: [raw/clockwork-repo](../../raw/clockwork-repo), src/scheduler.py — connection-string guard (ingested 2026-07-14)
-[^s5]: [raw/clockwork-repo](../../raw/clockwork-repo), CHANGELOG.md — 0.3.0 migration from SQLite (ingested 2026-07-14)
+[^s1]: [raw/clockwork-repo](../../raw/clockwork-repo), docs/design.md — data flow, storage schema, and Postgres rationale (ingested 2026-07-16)
+[^s2]: [raw/clockwork-repo](../../raw/clockwork-repo), README.md — overview and behaviour (ingested 2026-07-16)
+[^s3]: [raw/clockwork-repo](../../raw/clockwork-repo), pyproject.toml — dependencies (ingested 2026-07-16)
+[^s4]: [raw/clockwork-repo](../../raw/clockwork-repo), src/scheduler.py — connection-string guard (ingested 2026-07-16)
+[^s5]: [raw/clockwork-repo](../../raw/clockwork-repo), CHANGELOG.md — 0.3.0 migration from SQLite (ingested 2026-07-16)

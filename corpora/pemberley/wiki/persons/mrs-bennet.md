@@ -1,93 +1,83 @@
 ---
 type: Person
 title: Mrs. Bennet
-description: Mother of the five Bennet daughters, consumed with getting them married
-  in Pride and Prejudice.
+description: Mistress of Longbourn, mother of five daughters, whose life's business
+  is getting them married.
+resource: raw/pride-and-prejudice.txt
 tags:
 - bennet-family
-- pride-and-prejudice
 - longbourn
-- marriage-plot
-resource: raw/pride-and-prejudice.txt
-timestamp: '2026-07-04T22:17:40Z'
+- hertfordshire
+- gentry
+aliases:
+- Mrs Bennet
+timestamp: '2026-07-16T18:15:29Z'
+citadel_version: 0.3.0
 ---
 
-Mrs. Bennet is "a woman of mean understanding, little information, and uncertain temper," whose
-life's business is "to get her daughters married" and whose solace is "visiting and news."[^s1]
-Her father had been an attorney in [Meryton](../misc/meryton.md) who left her four thousand pounds; she has a sister
-married to [Mr. Philips](mr-philips.md) and a brother, [Mr. Gardiner](mr-gardiner.md), settled in
-trade in [London](../misc/london.md).[^s2]
+Mrs. Bennet is the wife of [Mr. Bennet](../persons/mr-bennet.md) and mother of
+[Jane](../persons/jane-bennet.md), [Elizabeth](../persons/elizabeth-bennet.md),
+[Mary](../persons/mary-bennet.md), Catherine ("Kitty"), and [Lydia](../persons/lydia-bennet.md).[^s1]
+The narration describes her as "a woman of mean understanding, little information, and uncertain
+temper," who "fancied herself nervous" when discontented; "the business of her life was to get her
+daughters married: its solace was visiting and news."[^s1] Her father had been an attorney in
+Meryton and left her four thousand pounds; her sister married a Mr. Philips, her father's former
+clerk, and a brother settled in trade in London.[^s2]
 
-On hearing that the wealthy, single [Mr. Bingley](charles-bingley.md) has taken
-[Netherfield Park](../misc/netherfield-park.md), she immediately resolves that he shall marry one
-of her daughters and presses [Mr. Bennet](mr-bennet.md) to call on him.[^s1] She openly favours
-[Jane](jane-bennet.md) and [Lydia](lydia-bennet.md) over [Elizabeth](elizabeth-bennet.md),
-telling her husband Lizzy "is not a bit better than the others: and I am sure she is not half so
-handsome as Jane, nor half so good-humoured as Lydia."[^s1]
+On hearing that [Netherfield Park](../misc/netherfield-park.md) has been let to a wealthy single
+man, [Mr. Bingley](../persons/charles-bingley.md), she immediately presses her husband to visit
+him for the sake of marrying off one of their daughters.[^s3] Elizabeth is the daughter she likes
+least; she considers Elizabeth "not a bit better than the others," "not half so handsome as Jane,"
+and "not half so good-humoured as Lydia."[^s4] When Elizabeth refuses [Mr. Collins](../persons/mr-collins.md)'s
+proposal, Mrs. Bennet threatens never to speak to her again and tries, unsuccessfully, to have
+Mr. Bennet compel the marriage.[^s5]
 
-When Bingley invites Jane to dine at Netherfield, Mrs. Bennet deliberately sends her on
-horseback rather than by carriage, correctly predicting rain will force Jane to stay the night —
-"this was a lucky idea of mine, indeed!" — though Jane falls ill as a result.[^s2] At the
-Netherfield ball, she talks loudly and without discretion, within Darcy's hearing, of her
-expectation that Jane will soon marry Bingley, mortifying Elizabeth.[^s3]
+News that [Lydia](../persons/lydia-bennet.md) has eloped with [Wickham](../persons/george-wickham.md)
+overwhelms her: she receives her daughters home "with tears and lamentations of regret, invectives
+against the villainous conduct of Wickham," blaming everyone but herself and lamenting, "if I had
+been able to carry my point in going to Brighton with all my family, this would not have
+happened."[^s6] When word comes that Wickham has agreed to marry Lydia, her distress reverses into
+uncomplicated joy — "My dear, dear Lydia!... this is delightful indeed! She will be married!" — and
+her thoughts turn immediately to wedding clothes, with no sign of shame at the manner of the
+match.[^s7]
 
-## The entail and Mr. Collins's proposal
+## Bingley's return and two engagements
 
-Mrs. Bennet resents that [Longbourn](../misc/longbourn.md) is entailed away from her daughters
-to [William Collins](william-collins.md), a subject on which she is "beyond the reach of
-reason."[^s4] When Elizabeth refuses Collins's proposal of marriage, Mrs. Bennet is furious,
-demands Mr. Bennet force her to accept, and vows never to speak to Elizabeth again if she
-does not marry him.[^s5] She is later mortified when [Charlotte Lucas](charlotte-lucas.md), not
-one of her own daughters, becomes engaged to Collins instead.[^s6]
-
-## Lydia's elopement and marriage
-
-Mrs. Bennet shares wholeheartedly in [Lydia](lydia-bennet.md) and [Kitty](kitty-bennet.md)'s
-distress over the militia's departure for [Brighton](../misc/brighton.md), and delights when
-Lydia is invited there by [Mrs. Forster](mrs-forster.md).[^s7] When Lydia elopes with
-[Wickham](george-wickham.md), Mrs. Bennet takes to her room "really ill," blaming everyone but
-herself, and warns that [Mr. Bennet](mr-bennet.md) will be killed fighting Wickham in a duel.[^s8]
-On learning that [Mr. Gardiner](mr-gardiner.md) has arranged their marriage, her mood reverses
-entirely into "irritation as violent from delight as she had ever been fidgety from alarm," with no
-sense of shame at the circumstances, and she immediately begins planning wedding clothes and a
-suitable house for the couple near Longbourn.[^s9]
-
-## Bingley's return and Jane's engagement
-
-News that Bingley is returning to Netherfield revives Mrs. Bennet's spirits; she pointedly reminds
-her husband of his obligation to call, plans an elaborate dinner, and cannot contain her excitement
-when Darcy arrives with him, though she still declares she "hate[s] the very sight" of Darcy.[^s10]
-When Bingley proposes to Jane, Mrs. Bennet forgets Wickham and Lydia entirely, declaring Jane will
-be "so happy" and immediately begins imagining "four or five thousand a year, and very likely
-more."[^s11]
-
-## Elizabeth's engagement to Darcy
-
-On learning that Elizabeth, too, is to be married — to the very man she has professed to hate — Mrs.
-Bennet sits "quite still, and unable to utter a syllable" for several minutes, then bursts into
-rapturous plans for "pin-money," jewels, and carriages, instantly reversing her opinion of Darcy and
-begging Elizabeth to apologise to him for her past dislike.[^s12] She afterward stands in such awe of
-her future son-in-law that she scarcely dares speak to him at all.[^s12]
+When news arrives that [Bingley](../persons/charles-bingley.md) is returning to
+[Netherfield Park](../misc/netherfield-park.md), Mrs. Bennet revives all her old scheming to bring
+him together with [Jane](../persons/jane-bennet.md), while loudly protesting to her sister,
+Mrs. Philips, that "he is nothing to us" and she never wants to see him again.[^s8] On Jane's
+engagement, she is beside herself with joy, unable to speak "her approbation in terms warm enough,"
+and instantly forgets Wickham and Lydia in her delight.[^s9] On learning of
+[Elizabeth](../persons/elizabeth-bennet.md)'s engagement to [Mr. Darcy](../persons/fitzwilliam-darcy.md),
+whom she had always professed to dislike, she is struck speechless for several minutes before
+erupting into rapture over his ten-thousand-a-year fortune, a house in town, and "what pin-money,
+what jewels, what carriages" Elizabeth will have — with no apology beyond asking Elizabeth to make
+her own excuses to Darcy for having disliked him.[^s10] The narration notes that even three
+daughters' advantageous marriages never make Mrs. Bennet "a sensible, amiable, well-informed woman";
+she remains "occasionally nervous and invariably silly" for the rest of her life.[^s11]
 
 ## See also
 
-- [Mr. Bennet](mr-bennet.md)
-- [Jane Bennet](jane-bennet.md)
-- [Elizabeth Bennet](elizabeth-bennet.md)
+- [Mr. Bennet](../persons/mr-bennet.md)
+- [Elizabeth Bennet](../persons/elizabeth-bennet.md)
 - [Longbourn](../misc/longbourn.md)
-- [Lydia Bennet](lydia-bennet.md)
+- [Lydia Bennet](../persons/lydia-bennet.md)
+- [Jane Bennet](../persons/jane-bennet.md)
+- [Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md)
+- [Charles Bingley](../persons/charles-bingley.md)
+- [Catherine Bennet](../persons/catherine-bennet.md)
 
 ## Sources
 
-[^s1]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 670-806 — Ch. 1 (ingested 2026-07-04)
-[^s2]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1651-1906 — Ch. 7 (ingested 2026-07-04)
-[^s3]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3960-4510 — Ch. 18 (ingested 2026-07-04)
-[^s4]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 2938-3129 — Ch. 13 (ingested 2026-07-04)
-[^s5]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 4710-4906 — Ch. 20 (ingested 2026-07-04)
-[^s6]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 5126-5319 — Ch. 22 (ingested 2026-07-04)
-[^s7]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 8843-9107 — Ch. 41 (ingested 2026-07-04)
-[^s8]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 10550-10990 — Ch. 47 (ingested 2026-07-04)
-[^s9]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 11242-11517 — Ch. 49 (ingested 2026-07-04)
-[^s10]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12308-12837 — Ch. 53-54 (ingested 2026-07-05)
-[^s11]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12838-13117 — Ch. 55 (ingested 2026-07-05)
-[^s12]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13928-14210 — Ch. 59 (ingested 2026-07-05)
+[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 783-789 — Mrs. Bennet's character and family (ingested 2026-07-16)
+[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1659-1665 — Mrs. Bennet's father, sister, and brother (ingested 2026-07-16)
+[^s3]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 667-693 — Mrs. Bennet urges her husband to visit Mr. Bingley (ingested 2026-07-16)
+[^s4]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 757-759 — Mrs. Bennet ranks her daughters (ingested 2026-07-16)
+[^s5]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 4725-4735, 4789-4791 — Mrs. Bennet's reaction to Elizabeth's refusal of Mr. Collins (ingested 2026-07-16)
+[^s6]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 10746-10747; 10752-10753 — Mrs. Bennet's reaction to news of Lydia's elopement (ingested 2026-07-16)
+[^s7]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 11454-11458 — Mrs. Bennet's joy on hearing Lydia is to be married (ingested 2026-07-16)
+[^s8]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12362-12368 — Mrs. Bennet's protestations to Mrs. Philips about Bingley's return (ingested 2026-07-16)
+[^s9]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13002-13006; 13037-13038 — Mrs. Bennet's joy at Jane's engagement (ingested 2026-07-16)
+[^s10]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14153-14169 — Mrs. Bennet's reaction to Elizabeth's engagement to Darcy (ingested 2026-07-16)
+[^s11]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14400-14406 — the narrator on Mrs. Bennet's unchanged character (ingested 2026-07-16)

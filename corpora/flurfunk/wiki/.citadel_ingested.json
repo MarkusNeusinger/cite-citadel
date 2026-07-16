@@ -5,65 +5,65 @@
   },
   "sources": {
     "raw/announcement.md": {
-      "ctime_ns": 1784030920771240737,
-      "hashed_at_ns": 1784031553867114400,
+      "ctime_ns": 1784115853409409251,
+      "hashed_at_ns": 1784205457119646822,
       "model": "claude:sonnet",
-      "mtime_ns": 1784030920759240747,
-      "rules_version": "ce77c062190d",
-      "sha256": "443d9e486cea4889b6274fd35007fe107cf544aa30bfc8b34ce7c7db5f1314af",
-      "size": 931
+      "mtime_ns": 1784115853409409251,
+      "rules_version": "ac0a1175f9da",
+      "sha256": "14690e5ba9dfbccdc6ea68faef7de72c0d67df865f220bebbc8bf48b8d5b7b09",
+      "size": 1055
     },
     "raw/application-cover-letter.md": {
-      "ctime_ns": 1784030890875260223,
-      "hashed_at_ns": 1784031553867114400,
+      "ctime_ns": 1784115853409409251,
+      "hashed_at_ns": 1784205457119646822,
       "model": "claude:sonnet",
-      "mtime_ns": 1784030890859260229,
-      "rules_version": "ce77c062190d",
-      "sha256": "438a8706b37946294e9ff7444c57b5b3a3046dec328a024cbae6669e72233085",
-      "size": 1777
+      "mtime_ns": 1784115853409409251,
+      "rules_version": "ac0a1175f9da",
+      "sha256": "1cf6c341d78cbe60e379e5617e8e9674de8de920e5de51fb1ab9d0ec6067781f",
+      "size": 1882
     },
     "raw/cv.md": {
-      "ctime_ns": 1784030897755257662,
-      "hashed_at_ns": 1784030994059228407,
+      "ctime_ns": 1784037031757998316,
+      "hashed_at_ns": 1784128200402499290,
       "model": "claude:sonnet",
-      "mtime_ns": 1784030897735257671,
-      "rules_version": "ce77c062190d",
+      "mtime_ns": 1784037031757998316,
+      "rules_version": "ac0a1175f9da",
       "sha256": "011d324ae0dd36959a61f8a3c76729b31a8890af87d924933e85dba3b2f76502",
       "size": 1382
     },
     "raw/forum-support-thread.md": {
-      "ctime_ns": 1784030918595242594,
-      "hashed_at_ns": 1784031553867114400,
+      "ctime_ns": 1784115853409409251,
+      "hashed_at_ns": 1784205457119646822,
       "model": "claude:sonnet",
-      "mtime_ns": 1784030918583242604,
-      "rules_version": "ce77c062190d",
-      "sha256": "564568cc7ea37d7df80fac88041511d4775431a31df133bb85e8626207babb73",
-      "size": 2872
+      "mtime_ns": 1784115853409409251,
+      "rules_version": "ac0a1175f9da",
+      "sha256": "ce1036017ee9631049f8150aa6428f92057fc9a9d5174e2da00b28e3e3c4c12e",
+      "size": 3173
     },
     "raw/interview-transcript-founder.md": {
-      "ctime_ns": 1784030879771262878,
-      "hashed_at_ns": 1784031553867114400,
+      "ctime_ns": 1784035966658323754,
+      "hashed_at_ns": 1784128082901729305,
       "model": "claude:sonnet",
-      "mtime_ns": 1784030879767262879,
-      "rules_version": "ce77c062190d",
-      "sha256": "72ce7598b16511b0830af7969f1b46181fdd3d470418a130283830f8f23787f5",
-      "size": 2658
+      "mtime_ns": 1784035966658323754,
+      "rules_version": "ac0a1175f9da",
+      "sha256": "7e37432786c6741798d92621dcb4000fd2a4f193cd81fa13e80e282fb5cc7c44",
+      "size": 2703
     },
     "raw/slack-export-platform-team.txt": {
-      "ctime_ns": 1784030853203246524,
-      "hashed_at_ns": 1784030994059228407,
+      "ctime_ns": 1784115853409409251,
+      "hashed_at_ns": 1784205457119646822,
       "model": "claude:sonnet",
-      "mtime_ns": 1784030853199246515,
-      "rules_version": "ce77c062190d",
-      "sha256": "10c13214877c84694ba64910d7c7b21bc3b99cf48917c3a26fdd90c247e1cc39",
-      "size": 4474
+      "mtime_ns": 1784115853409409251,
+      "rules_version": "ac0a1175f9da",
+      "sha256": "9a1123446aceb17c40a3b7b6e141467b0d8609bf2388e6f4c54ae396da88a8f8",
+      "size": 5656
     },
     "raw/tweet-thread.md": {
-      "ctime_ns": 1784030864331262455,
-      "hashed_at_ns": 1784030987807227547,
+      "ctime_ns": 1784037031761998313,
+      "hashed_at_ns": 1784128146037802587,
       "model": "claude:sonnet",
-      "mtime_ns": 1784030864319262459,
-      "rules_version": "ce77c062190d",
+      "mtime_ns": 1784037031761998313,
+      "rules_version": "ac0a1175f9da",
       "sha256": "b08528108c2aa36f7a38e4cd214ea192ed4747b30c02d1f035b981b7dad67bb3",
       "size": 1621
     }

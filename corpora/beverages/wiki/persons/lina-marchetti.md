@@ -1,40 +1,49 @@
 ---
 type: Person
 title: Lina Marchetti
-description: Founder of Caffe Aurora, who opened her first roasting room in Trieste
-  in 1985.
+description: Founder of Caffè Aurora, who lit her first roaster in a rented Trieste
+  roasting room in 1985.
+aliases:
+- Lina
 tags:
 - coffee
-- founder
 - italy
-resource: raw/aurora-coffee-blog.md
-timestamp: '2026-07-03T13:23:54Z'
+resource: raw/aurora-bulletin-2024.md
+timestamp: '2026-07-16T15:13:02Z'
+citadel_version: 0.3.0
 ---
 
-Lina Marchetti founded [Caffe Aurora](../organizations/caffe-aurora.md), lighting her first roaster in a small rented roasting room in Trieste, Italy, in 1985.[^s1]
+Lina Marchetti founded [Caffè Aurora](../organizations/caffe-aurora.md): in 1985, in a rented Trieste space barely bigger than a closet, she lit her first roaster and decided to run it her own way.[^s5] Her way meant patience — buying smaller lots of better beans even when it strained the budget, and refusing to serve a cup she would not proudly set in front of her own grandmother; people who doubted a tiny Trieste roastery could grow into anything were wrong.[^s6] Caffè Aurora still keeps a photograph of that first roaster above the counter in every café it opens and walks new baristas over to it on their first day, calling it the standard the roastery answers to.[^s7] Caffè Aurora credits its current sourcing practices, prices, the [Aurora Ritual](../concepts/aurora-ritual.md), and [Aurora Midnight](../objects/aurora-midnight.md)'s long roast to Lina's founding conviction that coffee is worth doing properly or not at all.[^s8]
 
-Marchetti insisted on buying smaller lots of better beans even when it strained the business's finances, and refused to serve any cup she would not proudly set in front of her own grandmother.[^s2] Aurora attributes its practice of paying above the going market rate for green coffee to Marchetti's founding conviction that good [coffee](../objects/coffee.md) must be grown by people who can afford to keep growing it.[^s3]
-
-A separate account describes Marchetti as a barista in Trieste before she founded Caffe Aurora, who grew up in the steam of that city's cafés and came to understand the [espresso](../concepts/espresso.md) machine by feel and instinct rather than formal instruction.[^s4]
+Before founding Caffè Aurora, Lina worked as a barista in Trieste, where she had grown up around cafés with counters worn into a shallow trough by decades of elbows, and where she learned to read the machine by feel.[^s9]
 
 > [!CONTRADICTION]
-> raw/aurora-coffee-blog.md states Marchetti founded Caffe Aurora in 1985[^s1], but raw/espresso-and-cafe-culture.md states she founded it in 1987[^s5].
+> Caffè Aurora's own promotional blog says Lina lit her first roaster in 1985, in a rented Trieste room barely bigger than a closet.[^s5] A personal essay about the region's [café culture](../concepts/espresso-bar-culture.md) instead says she founded "the café chain Caffe Aurora" in 1987.[^s10]
 
-By this same account, Marchetti founded Caffe Aurora against the advice of nearly everyone she knew: she was tired of working behind other people's counters and serving other people's blends, and held to the idea — thought heretical at the time — that the discipline of a single great bar could be taught, repeated, and carried from one city to the next without being cheapened.[^s5] Friends warned her that espresso did not travel and that a second location would leak the soul out of the first, but she opened a second bar anyway, and then a third.[^s6]
+The essay's account of the founding is unglamorous: Lina was tired of working behind other people's counters and serving other people's blends, and had an idea she called "almost heretical" — that the discipline of a single great bar could be taught, repeated, and carried from city to city without being cheapened.[^s11] Friends warned her that espresso "did not travel," that its magic was local and could not be franchised, and that a second location would let the soul leak out of the first; she opened a second location anyway, and then a third.[^s12] She trained her baristas "the way a conductor trains an orchestra" — relentlessly and with great affection — and had a habit of appearing at a bar without warning to pull a shot herself, taste it, and say nothing at all, which her baristas found far more unsettling than open criticism.[^s13] Lina held that a roast should have "a horizon in it, a line where the light goes," and named [Aurora Midnight](../objects/aurora-midnight.md) as her attempt to bottle the moment just after dusk.[^s14]
 
-Marchetti trained her baristas the way a conductor trains an orchestra — relentlessly and with great affection — and had a habit of appearing without warning to pull a shot herself, taste it, and say nothing at all, which her baristas found more unsettling than open criticism.[^s7]
+Lina is associated with Caffè Aurora; the roastery's bulletins are signed "Lina's people."[^s1][^s3] Lina said that spring is when a roastery gets to show off.[^s2]
+
+Caffè Aurora's spring 2026 bulletin imagines what Lina would have said about the changes the roastery made since 2024: it says she "would have called it 'keeping the promise while changing the recipe.'"[^s4]
 
 ## See also
-- [Caffe Aurora](../organizations/caffe-aurora.md)
+- [Caffè Aurora](../organizations/caffe-aurora.md)
 - [Aurora Ritual](../concepts/aurora-ritual.md)
 - [Aurora Midnight](../objects/aurora-midnight.md)
 - [Espresso Bar Culture](../concepts/espresso-bar-culture.md)
 
 ## Sources
-[^s1]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), § It Started With Lina (ingested 2026-07-03)
-[^s2]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), § It Started With Lina (ingested 2026-07-03)
-[^s3]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), § What We Actually Mean By "Sourcing" (ingested 2026-07-03)
-[^s4]: [raw/espresso-and-cafe-culture.md](../../raw/espresso-and-cafe-culture.md), lines 47-55 — Marchetti's background as a Trieste barista (ingested 2026-07-03)
-[^s5]: [raw/espresso-and-cafe-culture.md](../../raw/espresso-and-cafe-culture.md), lines 57-63 — founding year and founding motivation (ingested 2026-07-03)
-[^s6]: [raw/espresso-and-cafe-culture.md](../../raw/espresso-and-cafe-culture.md), lines 63-65 — expansion despite skepticism (ingested 2026-07-03)
-[^s7]: [raw/espresso-and-cafe-culture.md](../../raw/espresso-and-cafe-culture.md), lines 70-74 — training style (ingested 2026-07-03)
+[^s1]: [raw/aurora-bulletin-2024.md](../../raw/aurora-bulletin-2024.md), line 62 — sign-off (ingested 2026-07-16)
+[^s2]: [raw/aurora-bulletin-2024.md](../../raw/aurora-bulletin-2024.md), lines 5-6 — Lina's quote (ingested 2026-07-16)
+[^s3]: [raw/aurora-bulletin-2026.md](../../raw/aurora-bulletin-2026.md), line 71 — sign-off (ingested 2026-07-16)
+[^s4]: [raw/aurora-bulletin-2026.md](../../raw/aurora-bulletin-2026.md), lines 7-8 — imagined Lina quote (ingested 2026-07-16)
+[^s5]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), lines 9-11 — founding in 1985, Trieste roasting room (ingested 2026-07-16)
+[^s6]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), line 13 — early philosophy and skeptics proven wrong (ingested 2026-07-16)
+[^s7]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), line 15 — photograph above the counter, new-barista tradition (ingested 2026-07-16)
+[^s8]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), line 61 — practices credited to Lina's founding conviction (ingested 2026-07-16)
+[^s9]: [raw/espresso-and-cafe-culture.md](../../raw/espresso-and-cafe-culture.md), lines 49-54 — barista background in Trieste before founding (ingested 2026-07-16)
+[^s10]: [raw/espresso-and-cafe-culture.md](../../raw/espresso-and-cafe-culture.md), lines 57-58 — Caffè Aurora founded in 1987, per this essay (ingested 2026-07-16)
+[^s11]: [raw/espresso-and-cafe-culture.md](../../raw/espresso-and-cafe-culture.md), lines 58-62 — motivation for founding the chain (ingested 2026-07-16)
+[^s12]: [raw/espresso-and-cafe-culture.md](../../raw/espresso-and-cafe-culture.md), lines 63-65 — friends' skepticism and the second and third locations (ingested 2026-07-16)
+[^s13]: [raw/espresso-and-cafe-culture.md](../../raw/espresso-and-cafe-culture.md), lines 70-74 — training style and silent tastings (ingested 2026-07-16)
+[^s14]: [raw/espresso-and-cafe-culture.md](../../raw/espresso-and-cafe-culture.md), lines 79-81 — "a horizon in it" quote about Aurora Midnight (ingested 2026-07-16)

@@ -1,85 +1,56 @@
 ---
 type: Person
 title: Sofia Ruiz
-description: A Larkspur engineer who investigated a customer's event-retention data-loss
-  incident and owned Skylight's event-retention window increase from 7 to 30 days.
+description: Larkspur Support engineer who diagnosed and fixed a Skylight dashboard
+  timezone-caching bug.
+resource: raw/forum-support-thread.md
 tags:
 - larkspur
 - skylight
 - support
-- event-retention
-resource: raw/slack-export-platform-team.txt
-timestamp: '2026-07-14T13:03:01Z'
+- platform-engineering
+timestamp: '2026-07-16T15:01:11Z'
 citadel_version: 0.3.0
 ---
 
-# Sofia Ruiz
+Sofia Ruiz works in [Larkspur](../organizations/larkspur.md) Support.[^s1]
 
-Sofia Ruiz is a [Larkspur](../organizations/larkspur.md) engineer who takes
-part in the company's internal `#platform` Slack channel, where the team
-discusses [Skylight](../systems/skylight.md) infrastructure.[^s1] She also
-works in Larkspur Support, where in February 2026 she diagnosed and fixed a
-customer-reported Skylight bug.[^s2]
+On 2026-02-19, on the Larkspur Community Forum's Skylight Support board, Ruiz posted the
+accepted answer diagnosing and fixing a bug where [Skylight](../systems/skylight.md) dashboards
+froze on stale data after a customer changed their organization's configured timezone.[^s1] She
+explained that Skylight's `janitor` service caches an org's UTC offset when it first starts and
+uses that cached offset to bucket incoming events into time windows, so a timezone change leaves
+`janitor` bucketing new events by the stale offset until it is restarted.[^s2] Her fix: set the
+`SKYLIGHT_TZ` environment variable to the org's IANA timezone and restart `janitor` so it
+re-reads the timezone.[^s3]
 
-## Event-retention default
-
-On 9 February 2026, when [Tom Alvarez](../persons/tom-alvarez.md) proposed a
-7-day default event-retention window, Ruiz raised no objection and said to
-"ship it."[^s3] During the same conversation, discussing why the
-`retention-svc` service was named that, Ruiz remarked it was "basically a
-janitor at this point" — the line that seeded the service's later rename.[^s4]
-
-On 10 February, Ruiz flagged that a customer,
-[Northwind](../organizations/northwind.md), had opened a support ticket
-reporting that Skylight dashboards were empty for older date ranges, and said
-she would investigate.[^s5] The next day she reported the issue was worse than
-first thought: Northwind had needed about three weeks of event history for a
-compliance audit, and it had aged out under the 7-day retention window; she
-described the customer as "not happy and honestly fair."[^s6]
-
-Ruiz proposed raising the default event-retention window to 30 days,
-reasoning it would cover a normal audit/reporting cycle while staying bounded;
-once the team agreed, she took ownership of the pull request and an
-accompanying changelog note.[^s7] She added a note that customers on
-audit-heavy plans should confirm their retention window explicitly,[^s8] and
-later reported the change merged and rolled out, making 30 days the new
-default.[^s9] See [Skylight](../systems/skylight.md) for the full
-event-retention timeline.
-
-## Renaming retention-svc to janitor
-
-On 11 February, when [Wei Chen](../persons/wei-chen.md) asked whether the
-retention-svc-to-janitor rename had happened, Ruiz volunteered to pick up the
-still-open, low-priority ticket herself.[^s10]
-
-## Style profile
-
-- Reacts with brief, expressive interjections rather than full sentences,
-  often emoji-only: "😂 accurate"[^s11]; "🧹 approved"[^s12]
-- States a blunt conclusion, then softens it with a short qualifier: "they are
-  not happy and honestly fair."[^s6]
-- Signals ownership of a task plainly: "I'll own the PR and the changelog
-  note."[^s7]
+Ruiz is also active in Larkspur's `#platform` Slack channel, alongside [Tom
+Alvarez](tom-alvarez.md) and [Wei Chen](wei-chen.md).[^s4] In February 2026 she took part in the
+team's back-and-forth on [Skylight](../systems/skylight.md)'s default event-retention window: she
+raised no objection to setting it to 7 days on 2026-02-09,[^s5] flagged the customer Northwind's
+resulting support ticket about empty older-range dashboards on 2026-02-10,[^s6] and on 2026-02-11
+reported that Northwind had lost three weeks of event history needed for a compliance audit under
+the 7-day window.[^s7] She proposed bumping the default to 30 days, owned the PR and changelog
+note, and rolled the new default out to production.[^s8] She also approved renaming the
+`retention-svc` service to `janitor`[^s9] and, on 2026-02-11, volunteered to pick up the
+still-open, low-priority rename ticket.[^s10]
 
 ## See also
 
 - [Larkspur](../organizations/larkspur.md)
 - [Skylight](../systems/skylight.md)
-- [Northwind](../organizations/northwind.md)
-- [Tom Alvarez](../persons/tom-alvarez.md)
-- [Wei Chen](../persons/wei-chen.md)
+- [Tom Alvarez](tom-alvarez.md)
+- [Wei Chen](wei-chen.md)
 
 ## Sources
 
-[^s1]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), lines 1-8 — Slack export header and Ruiz's presence in the channel (ingested 2026-07-14)
-[^s2]: [raw/forum-support-thread.md](../../raw/forum-support-thread.md), lines 53-60 — Ruiz identified as Larkspur Support, diagnosing the timezone/dashboard bug (ingested 2026-07-14)
-[^s3]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 16 — Ruiz's "ship it" (ingested 2026-07-14)
-[^s4]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 21 — Ruiz's "basically a janitor" remark (ingested 2026-07-14)
-[^s5]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), lines 35-39 — Ruiz flagging the Northwind ticket and starting to investigate (ingested 2026-07-14)
-[^s6]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), lines 45-46 — Ruiz's report of the compliance-audit data loss (ingested 2026-07-14)
-[^s7]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), lines 49-52 — Ruiz's 30-day proposal, the decision, and her ownership of the PR (ingested 2026-07-14)
-[^s8]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 54 — the audit-heavy-plans guidance note (ingested 2026-07-14)
-[^s9]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 56 — the 30-day default merged and rolled out (ingested 2026-07-14)
-[^s10]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), lines 60-62 — the rename-status exchange and Ruiz volunteering (ingested 2026-07-14)
-[^s11]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 12 — Ruiz's reaction to the disk-usage graph (ingested 2026-07-14)
-[^s12]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 24 — Ruiz's reaction to the rename approval (ingested 2026-07-14)
+[^s1]: [raw/forum-support-thread.md](../../raw/forum-support-thread.md), lines 55-57 — Ruiz posts the accepted answer as Larkspur Support (ingested 2026-07-15)
+[^s2]: [raw/forum-support-thread.md](../../raw/forum-support-thread.md), lines 59-62 — Ruiz's root-cause diagnosis of the `janitor` caching bug (ingested 2026-07-15)
+[^s3]: [raw/forum-support-thread.md](../../raw/forum-support-thread.md), lines 64-72 — Ruiz's fix steps (ingested 2026-07-15)
+[^s4]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), lines 1-8 — Slack export header and Ruiz's presence in #platform (ingested 2026-07-16)
+[^s5]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 16 — no objection to the 7-day retention proposal (ingested 2026-07-16)
+[^s6]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), lines 35-39 — flags Northwind's ticket about empty older-range dashboards (ingested 2026-07-16)
+[^s7]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), lines 55-56 — reports Northwind's compliance-audit data loss (ingested 2026-07-16)
+[^s8]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), lines 59-66 — proposes the 30-day bump, owns the PR/changelog, rolls it out (ingested 2026-07-16)
+[^s9]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 24 — approves renaming retention-svc to janitor (ingested 2026-07-16)
+[^s10]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 72 — volunteers to take the rename ticket (ingested 2026-07-16)

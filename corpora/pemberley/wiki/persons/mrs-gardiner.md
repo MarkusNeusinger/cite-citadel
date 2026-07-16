@@ -1,72 +1,77 @@
 ---
 type: Person
 title: Mrs. Gardiner
-description: Elizabeth and Jane Bennet's favourite aunt in Pride and Prejudice, wife
-  of Mr. Gardiner.
-tags:
-- pride-and-prejudice
-- longbourn
-- london
-- derbyshire
+description: Mrs. Bennet's sister-in-law from London, a favourite aunt of Jane and
+  Elizabeth Bennet.
 resource: raw/pride-and-prejudice.txt
-timestamp: '2026-07-04T22:17:40Z'
+tags:
+- bennet-family
+- london
+- gentry
+timestamp: '2026-07-16T18:15:29Z'
+citadel_version: 0.3.0
 ---
 
-Mrs. Gardiner, wife of [Mr. Gardiner](mr-gardiner.md), is several years younger than
-[Mrs. Bennet](mrs-bennet.md) and [Mrs. Philips](mrs-philips.md); she is "an amiable, intelligent,
-elegant woman" and a particular favourite of her nieces [Jane](jane-bennet.md) and
-[Elizabeth Bennet](elizabeth-bennet.md), with whom she keeps up regular correspondence and
-whom she has often hosted in [London](../misc/london.md).[^s1] Visiting
-[Longbourn](../misc/longbourn.md) at Christmas, she listens to Mrs. Bennet's complaints about
-Jane's disappointment with Bingley and Elizabeth's refusal of [Mr. Collins](william-collins.md),
-then privately proposes that Jane come stay with her and her husband in town, hoping a change of
-scene will help.[^s2]
+Mrs. Gardiner is married to [Mr. Bennet](../persons/mr-bennet.md)'s brother-in-law, Mr. Gardiner, a
+"sensible, gentlemanlike man" who lives by trade in London.[^s1] She is "several years younger
+than Mrs. Bennet and Mrs. Philips," and described as "an amiable, intelligent, elegant woman" who
+holds "a very particular regard" for her two eldest Longbourn nieces, [Jane](../persons/jane-bennet.md)
+and [Elizabeth](../persons/elizabeth-bennet.md), who have often stayed with her in town.[^s1]
 
-Before her marriage, Mrs. Gardiner spent considerable time in the part of
-[Derbyshire](../misc/pemberley.md) where [George Wickham](george-wickham.md) grew up, and had
-known the elder Mr. Darcy "by character perfectly well"; she recalls having heard the present
-[Mr. Darcy](fitzwilliam-darcy.md) spoken of, as a boy, as "a very proud, ill-natured boy."[^s2]
-Noticing Elizabeth's evident preference for Wickham, she warns her niece against an attachment
-that his lack of fortune would make imprudent.[^s3]
+Years earlier, before her marriage, she spent considerable time in the part of Derbyshire near
+[Pemberley](../misc/pemberley.md) and had known the late Mr. Darcy by reputation; on hearing of the
+present Mr. Darcy's treatment of [George Wickham](../persons/george-wickham.md), she recalls having
+once heard "Mr. Fitzwilliam Darcy formerly spoken of as a very proud, ill-natured boy."[^s2] Growing
+uneasy at Elizabeth's evident preference for Wickham, Mrs. Gardiner warns her not to "involve
+yourself... in an affection which the want of fortune would make so very imprudent," while adding
+that she has "nothing to say against him" personally.[^s3]
 
-## Derbyshire tour
+Touring Derbyshire with Elizabeth and [Mr. Gardiner](../persons/mr-gardiner.md), Mrs. Gardiner is
+drawn to Lambton, near [Pemberley](../misc/pemberley.md), where she had formerly lived, and
+proposes the party revisit the estate.[^s4] There, seeing Elizabeth colour at Wickham's portrait,
+she "looked at her niece with a smile, but Elizabeth could not return it."[^s5] After the visit, she
+tells Elizabeth she "should not have thought that he could have behaved in so cruel a way by
+anybody as he has done by poor Wickham," reasoning from Darcy's evident good character and the
+housekeeper's testimony — a judgment Elizabeth then corrects, in guarded terms, in Darcy's
+favour.[^s6]
 
-Mrs. Gardiner's business-shortened summer tour with Elizabeth is redirected to
-[Derbyshire](../misc/pemberley.md), partly for her own wish to revisit
-[Lambton](../misc/lambton.md), the town where she once lived.[^s4] She persuades a reluctant
-Elizabeth to visit [Pemberley](../misc/pemberley.md), not knowing Elizabeth's history with its
-owner; there she and Mr. Gardiner are charmed by Darcy's altered civility, and she credits the
-housekeeper [Mrs. Reynolds](mrs-reynolds.md)'s praise of him even while noting it sits oddly with
-his reported treatment of Wickham.[^s5] When Elizabeth receives news of
-[Lydia](lydia-bennet.md)'s elopement, Mrs. Gardiner and her husband cut the tour short to return to
-Longbourn.[^s6]
+## Letter revealing Darcy's role in Lydia's marriage
 
-## The letter explaining Darcy's role
-
-Mrs. Gardiner writes Elizabeth a long letter, at her niece's urgent request, explaining that
-[Darcy](fitzwilliam-darcy.md) had personally tracked down Wickham and Lydia in London, negotiated
-their marriage, paid Wickham's debts, and purchased his commission, motivated by his sense of
-responsibility for having stayed silent about Wickham's character and, she suspects, by his
-continuing regard for Elizabeth; she gently teases her niece that she and her husband had believed
-"affection and confidence subsisted between Mr. Darcy and" Elizabeth all along.[^s7] Elizabeth later
-writes back once engaged, thanking her aunt for the "long, kind, satisfactory detail" and inviting
-the Gardiners to Pemberley at Christmas.[^s8]
+After Elizabeth returns to Longbourn, Mrs. Gardiner writes a long letter, dated from Gracechurch
+Street, answering Elizabeth's request for an explanation of why [Darcy](../persons/fitzwilliam-darcy.md)
+had been present at Lydia's wedding.[^s7] She reveals that Darcy himself called on
+[Mr. Gardiner](../persons/mr-gardiner.md) on the day she returned from Longbourn: he had found where
+[Lydia](../persons/lydia-bennet.md) and [Wickham](../persons/george-wickham.md) were and had come to
+town expressly to search for them, professing himself responsible, through his own reserve, for
+Wickham's true character never becoming known.[^s7] Darcy traced the couple through a Mrs. Younge — a
+former governess of Georgiana's, dismissed from her post and now keeping lodgings in Edward Street,
+whom he had to bribe for the address — then negotiated the marriage terms with Wickham directly
+before bringing Mr. Gardiner into the arrangement.[^s8] Mrs. Gardiner writes that Darcy alone paid
+Wickham's debts, "amounting... to considerably more than a thousand pounds," settled a further
+thousand pounds on Lydia besides her own share, and purchased his commission — insisting on doing
+everything himself, so that Mr. Gardiner was left only "the probable credit of it."[^s9] She adds,
+in her own voice, that she has come to like Darcy very much: "how much I like him?... his behaviour
+to us has, in every respect, been as pleasing as when we were in Derbyshire."[^s10]
 
 ## See also
 
-- [Mr. Gardiner](mr-gardiner.md)
-- [Elizabeth Bennet](elizabeth-bennet.md)
-- [George Wickham](george-wickham.md)
+- [Elizabeth Bennet](../persons/elizabeth-bennet.md)
+- [Jane Bennet](../persons/jane-bennet.md)
+- [George Wickham](../persons/george-wickham.md)
 - [Pemberley](../misc/pemberley.md)
-- [Lambton](../misc/lambton.md)
+- [Mr. Gardiner](../persons/mr-gardiner.md)
+- [Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md)
+- [Lydia Bennet](../persons/lydia-bennet.md)
 
 ## Sources
 
-[^s1]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 5719-5895 — Ch. 25 (ingested 2026-07-04)
-[^s2]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 5719-5895 — Ch. 25 (ingested 2026-07-04)
-[^s3]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 5896-6139 — Ch. 26 (ingested 2026-07-04)
-[^s4]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 9108-9301 — Ch. 42 (ingested 2026-07-04)
-[^s5]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 9302-9819 — Ch. 43 (ingested 2026-07-04)
-[^s6]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 10242-10549 — Ch. 46 (ingested 2026-07-04)
-[^s7]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 11986-12307 — Ch. 52 (ingested 2026-07-05)
-[^s8]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14211-14391 — Ch. 60 (ingested 2026-07-05)
+[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 5735-5743 — the Gardiners' character and relationship to the Bennet sisters (ingested 2026-07-16)
+[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 5873-5883 — Mrs. Gardiner's Derbyshire connections and recollection of Darcy as a boy (ingested 2026-07-16)
+[^s3]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 5905-5912 — Mrs. Gardiner cautions Elizabeth about Wickham (ingested 2026-07-16)
+[^s4]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 9209-9211 — Mrs. Gardiner's Lambton connection and wish to revisit Pemberley (ingested 2026-07-16)
+[^s5]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 9378-9379 — Mrs. Gardiner notices Elizabeth's reaction to Wickham's portrait (ingested 2026-07-16)
+[^s6]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 9778-9781 — Mrs. Gardiner's reassessment of Darcy after the Pemberley visit (ingested 2026-07-16)
+[^s7]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 11998-12028 — Mrs. Gardiner's letter opening and Darcy's motive (ingested 2026-07-16)
+[^s8]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12033-12047; 12075-12081 — Darcy's tracing of the couple through Mrs. Younge and his approach to Mr. Gardiner (ingested 2026-07-16)
+[^s9]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12096-12107 — the settlement figures and Darcy's insistence on acting alone (ingested 2026-07-16)
+[^s10]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12138-12140 — Mrs. Gardiner's own liking of Darcy (ingested 2026-07-16)

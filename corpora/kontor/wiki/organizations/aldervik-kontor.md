@@ -1,61 +1,62 @@
 ---
 type: Organization
 title: Aldervik Kontor
-description: A company founded in 2011 in Aldervik harbour, originally importing dried
-  goods and textiles.
+description: A trading company founded in 2011 in Aldervik harbour, originally importing
+  dried goods and textiles.
 resource: raw/legacy-deck.ppt
-aliases:
-- Aldervik Trading Kontor
 tags:
-- history
-- founding
-- trade
-- aldervik
+- company-history
+- aldervik-kontor
 - finance
 - logistics
-- headcount
-- sustainability
-- energy
-timestamp: '2026-07-15T12:31:29Z'
+aliases:
+- Aldervik Trading Kontor
+timestamp: '2026-07-16T15:29:12Z'
 citadel_version: 0.3.0
 ---
 
-Aldervik Kontor is a company founded in 2011 in Aldervik harbour.[^s1] Its original business was importing dried goods and textiles.[^s1] This history was presented in a company deck titled "Aldervik Kontor kickoff deck," dated 2018.[^s1]
+Aldervik Kontor was founded in 2011 in Aldervik harbour.[^s1] Its original business was importing
+dried goods and textiles.[^s1] The company's staff handbook refers to it as Aldervik Trading
+Kontor.[^s4]
 
-As of early 2019, the company operated two warehouses, in Rotterdam and Hamburg.[^s3]
+As of early 2019, Aldervik Kontor operated two warehouses, in Rotterdam and Hamburg.[^s3]
 
-At year-end 2019, the company had 38 staff and reported revenue of EUR 4.1 million.[^s2]
+As of a 12 March 2019 internal memo, Aldervik Kontor's team was about 40 people.[^s3] By year-end
+2019, the company's staff had reached 38[^s2], with 2019 revenue reported as EUR 4.1 million.[^s2]
 
-By Q3 2026, revenue had reached EUR 6.4 million, up from EUR 5.8 million in Q2 2026.[^s5] Headcount had grown to 142 staff across four departments.[^s6] The company then operated three warehouses — Rotterdam, Hamburg, and Gdansk.[^s7] A chart in the Q3 2026 business review put gross margin at 34.2%.[^s9]
+In Q3 2026, revenue reached EUR 6.4 million, up from EUR 5.8 million in Q2 2026.[^s5] An
+accompanying chart in the same review shows Q3 2026 gross margin at 34.2%.[^s8] By Q3 2026 the
+company operated warehouses in Rotterdam, Hamburg, and Gdansk[^s6] — Gdansk added since the
+two-site count recorded in 2019.[^s3] According to the review's speaker notes, a Lisbon warehouse
+opening was planned for Q4 2026, but as of Q3 2026 the board had not approved it, and staff were
+instructed not to announce it externally.[^s7]
 
-A Lisbon warehouse was under consideration, with a tentative Q4 2026 opening; as of the Q3 2026 review, the board had not yet approved it.[^s8]
+## Sustainability
 
-The company's 2026 sustainability report states that warehouse energy use fell 12% year over year.[^s10]
-
-The company's staff handbook refers to it as "Aldervik Trading Kontor."[^s4]
+Per the company's 2026 sustainability report, Aldervik Kontor's warehouse energy use fell 12% year
+over year.[^s9]
 
 ## Change Log
 
-- 2019-03-12: the team was about 40 people.[^s3]
-- 2019 (year-end): 38 staff.[^s2]
-- 2026 Q2: revenue EUR 5.8 million.[^s5]
-- 2026 Q3: revenue EUR 6.4 million; 142 staff across four departments; warehouses in Rotterdam, Hamburg, and Gdansk; gross margin 34.2%.[^s5][^s6][^s7][^s9]
-- 2026: warehouse energy use fell 12% year over year, per the company's 2026 sustainability report.[^s10]
+- 2019-03-12: team was about 40 people, per an internal memo.[^s3]
+- year-end 2019: staff reached 38, per the ledger summary.[^s2]
+- 2026 Q3: revenue reached EUR 6.4 million, up from EUR 5.8 million in Q2 2026.[^s5]
+- 2026 Q3: warehouses expanded to three sites — Rotterdam, Hamburg, and Gdansk (previously
+  Rotterdam and Hamburg only).[^s6]
 
 ## See also
 
-- [Staff Handbook](../misc/staff-handbook.md)
-- [2026 Budget](../misc/2026-budget.md)
+- [Budget and Headcount](../concepts/budget-and-headcount.md)
+- [Staff Policies](../concepts/staff-policies.md)
 
 ## Sources
 
-[^s1]: [raw/legacy-deck.ppt](../../raw/legacy-deck.ppt), line 1 — company founding and original business (ingested 2026-07-15)
-[^s2]: [raw/legacy-ledger.xls](../../raw/legacy-ledger.xls), line 1 — 2019 year-end staff and revenue summary (ingested 2026-07-15)
-[^s3]: [raw/legacy-memo.doc](../../raw/legacy-memo.doc), line 1 — early-2019 warehouse locations and team size (ingested 2026-07-15)
-[^s4]: [raw/policy-handbook.docx](../../raw/policy-handbook.docx), line 1 — document title naming the company (ingested 2026-07-15)
-[^s5]: [raw/q3-review.pptx](../../raw/q3-review.pptx), § Slide 2 — Q3 2026 revenue vs. Q2 2026 (ingested 2026-07-15)
-[^s6]: [raw/q3-review.pptx](../../raw/q3-review.pptx), § Slide 3 — Q3 2026 headcount and department count (ingested 2026-07-15)
-[^s7]: [raw/q3-review.pptx](../../raw/q3-review.pptx), § Slide 4 — warehouse locations as of Q3 2026 (ingested 2026-07-15)
-[^s8]: [raw/q3-review.pptx](../../raw/q3-review.pptx), § Speaker notes — Lisbon warehouse approval status and tentative Q4 2026 opening (ingested 2026-07-15)
-[^s9]: [raw/q3-review.pptx](../../raw/q3-review.pptx), § Embedded chart image — gross margin chart in the presentation's media folder (ingested 2026-07-15)
-[^s10]: [raw/report.docx](../../raw/report.docx), line 2 — warehouse energy use change in the 2026 sustainability report (ingested 2026-07-15)
+[^s1]: [raw/legacy-deck.ppt](../../raw/legacy-deck.ppt), line 1 — company founding and original business, from a 2018 kickoff deck (ingested 2026-07-16)
+[^s2]: [raw/legacy-ledger.xls](../../raw/legacy-ledger.xls), line 1 — 2019 year-end staff and revenue summary (ingested 2026-07-16)
+[^s3]: [raw/legacy-memo.doc](../../raw/legacy-memo.doc), line 1 — internal memo dated 12 March 2019, on warehouse locations and team size (ingested 2026-07-16)
+[^s4]: [raw/policy-handbook.docx](../../raw/policy-handbook.docx), line 1 — staff handbook header naming the company "Aldervik Trading Kontor" (ingested 2026-07-16)
+[^s5]: [raw/q3-review.pptx](../../raw/q3-review.pptx), § Slide 2 — Q3 2026 revenue vs. Q2 2026 (ingested 2026-07-16)
+[^s6]: [raw/q3-review.pptx](../../raw/q3-review.pptx), § Slide 4 — warehouse locations (ingested 2026-07-16)
+[^s7]: [raw/q3-review.pptx](../../raw/q3-review.pptx), § Speaker notes — Lisbon warehouse approval status (ingested 2026-07-16)
+[^s8]: [raw/q3-review.pptx](../../raw/q3-review.pptx), § Slide 2 — gross margin figure from an embedded chart image (ingested 2026-07-16)
+[^s9]: [raw/report.docx](../../raw/report.docx), line 2 — warehouse energy use year-over-year change, from the 2026 sustainability report summary (ingested 2026-07-16)

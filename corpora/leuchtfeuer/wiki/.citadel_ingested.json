@@ -5,103 +5,103 @@
   },
   "sources": {
     "raw/2024-03-05-minutes-kickoff.md": {
-      "ctime_ns": 1783087740507216056,
-      "hashed_at_ns": 1783087740567108065,
+      "ctime_ns": 1784215221463627182,
+      "hashed_at_ns": 1784215221463627182,
       "model": "claude:sonnet",
-      "mtime_ns": 1783087740507216056,
-      "rules_version": "4b1eb194190e",
-      "sha256": "cbf3eedd9bb85e7899f221babd12764298bbd903b2c1991fc2c7020b55fdb2d9",
-      "size": 5310
+      "mtime_ns": 1784215221463627182,
+      "rules_version": "ac0a1175f9da",
+      "sha256": "fbdf5f3955e947002518787d7c31ad311677f076a03d14d450c09f4360e7ad21",
+      "size": 5400
     },
     "raw/2024-03-12-email-duszek-komet-assessment.md": {
-      "ctime_ns": 1783087740507216056,
-      "hashed_at_ns": 1783087740507216056,
+      "ctime_ns": 1784215221463627182,
+      "hashed_at_ns": 1784215221463627182,
       "model": "claude:sonnet",
-      "mtime_ns": 1783087740507216056,
-      "rules_version": "4b1eb194190e",
-      "sha256": "61f18ce511edc959b91c0d5df0a79df25baf1424dc4cfc4d3f0975229f992cf7",
-      "size": 4064
+      "mtime_ns": 1784215221463627182,
+      "rules_version": "ac0a1175f9da",
+      "sha256": "1ecb8598c9a0c6549ba250aacbf76db8e15ea7cd2e10641cc9db4234b8d46884",
+      "size": 4125
     },
     "raw/2024-03-19-protokoll-lenkungsausschuss.md": {
-      "ctime_ns": 1783087740507216056,
-      "hashed_at_ns": 1783087740507216056,
+      "ctime_ns": 1784215221463627182,
+      "hashed_at_ns": 1784215221463627182,
       "model": "claude:sonnet",
-      "mtime_ns": 1783087740507216056,
-      "rules_version": "4b1eb194190e",
-      "sha256": "5aa1a518dea0d305f5cdcd77febb31389a92161603db047e080352eeb0903ac5",
-      "size": 4912
+      "mtime_ns": 1784215221463627182,
+      "rules_version": "ac0a1175f9da",
+      "sha256": "46099b25eda3d476316b7da5b6ff43806e7ce55462a57d4be069a840b96b9cde",
+      "size": 4995
     },
     "raw/2024-04-02-email-vogelsang-cutover-strategy.md": {
-      "ctime_ns": 1783087740507216056,
-      "hashed_at_ns": 1783087740507216056,
+      "ctime_ns": 1784215221463627182,
+      "hashed_at_ns": 1784215221463627182,
       "model": "claude:sonnet",
-      "mtime_ns": 1783087740507216056,
-      "rules_version": "4b1eb194190e",
-      "sha256": "389565e0b0da93bfba4952f0994b7772aed5032c17e7d62519e9394898ace760",
-      "size": 3423
+      "mtime_ns": 1784215221463627182,
+      "rules_version": "ac0a1175f9da",
+      "sha256": "1c83bb65006d1cc1d0668f6bd16f03eb01720249ad0dd95a21949e813b7ffa0e",
+      "size": 3479
     },
     "raw/2024-05-14-charter-leuchtfeuer.md": {
-      "ctime_ns": 1783091270929077901,
-      "hashed_at_ns": 1783091270929077901,
+      "ctime_ns": 1784217818645567143,
+      "hashed_at_ns": 1784217818645567143,
       "model": "claude:sonnet",
-      "mtime_ns": 1783091270929077901,
-      "rules_version": "4b1eb194190e",
-      "sha256": "c254b23955008373cdf4991540c39b51b4271e2c7620ea1626ef6c1270d4f201",
-      "size": 6129
+      "mtime_ns": 1784217818645567143,
+      "rules_version": "ac0a1175f9da",
+      "sha256": "76022665b4362d579c730b0a86156492c1be9267406d38b1627db8b77d28ec36",
+      "size": 6241
     },
     "raw/2025-02-10-minutes-steering.md": {
-      "ctime_ns": 1783091270929077901,
-      "hashed_at_ns": 1783091270929077901,
+      "ctime_ns": 1784217818645567143,
+      "hashed_at_ns": 1784217818645567143,
       "model": "claude:sonnet",
-      "mtime_ns": 1783091270929077901,
-      "rules_version": "4b1eb194190e",
-      "sha256": "7b942c6e64a4f812afb17eb912862d3f75d568e4398fca43db8029ac00c989b0",
-      "size": 5641
+      "mtime_ns": 1784217818645567143,
+      "rules_version": "ac0a1175f9da",
+      "sha256": "887af988ff1dec4ad6984a80418b9990b2ef9548fa1e8b725b3ba6c82a02d204",
+      "size": 5733
     },
     "raw/2025-03-03-email-iglesias-pilot-report.md": {
-      "ctime_ns": 1783091270929077901,
-      "hashed_at_ns": 1783091270929077901,
+      "ctime_ns": 1784217818649482677,
+      "hashed_at_ns": 1784217818649482677,
       "model": "claude:sonnet",
-      "mtime_ns": 1783091270929077901,
-      "rules_version": "4b1eb194190e",
-      "sha256": "6e7c9d741ee6ba1f985cd69218561184c03185b07d374a59ceadbb3ce492af32",
-      "size": 3183
+      "mtime_ns": 1784217818649482677,
+      "rules_version": "ac0a1175f9da",
+      "sha256": "dc0f1030876e72ea5dd7e5e0c4d8e1bb86102ba20da2cf187f90f29d1f00b4a1",
+      "size": 3233
     },
     "raw/2025-06-30-protokoll-uebergabe-walle.md": {
-      "ctime_ns": 1783091270929077901,
-      "hashed_at_ns": 1783091270929077901,
+      "ctime_ns": 1784217818649482677,
+      "hashed_at_ns": 1784217818649482677,
       "model": "claude:sonnet",
-      "mtime_ns": 1783091270929077901,
-      "rules_version": "4b1eb194190e",
-      "sha256": "a223d0b3ad4f62f2fdcd1be8f86e43da0fd89c9362bb171a4599ef9202122690",
-      "size": 4350
+      "mtime_ns": 1784217818649482677,
+      "rules_version": "ac0a1175f9da",
+      "sha256": "4e55bf0a29f7f78a73998a6f1a73dee427208306f58463a2751d5a56b11e8b06",
+      "size": 4423
     },
     "raw/2026-03-20-email-vogelsang-golive.md": {
-      "ctime_ns": 1783094207173868301,
-      "hashed_at_ns": 1783094207241875874,
+      "ctime_ns": 1784220042353784693,
+      "hashed_at_ns": 1784220042353784693,
       "model": "claude:sonnet",
-      "mtime_ns": 1783094207173868301,
-      "rules_version": "4b1eb194190e",
-      "sha256": "99cb8f1e6cbc0c7db0da251b44c0b86b188f50bdde276167972407f2e312c15e",
-      "size": 3685
+      "mtime_ns": 1784220042353784693,
+      "rules_version": "ac0a1175f9da",
+      "sha256": "b80464031c018a22a2237967942068c0c89afbb0bea77a8b793a363c6530ba1c",
+      "size": 3791
     },
     "raw/2026-04-08-minutes-portal-kickoff.md": {
-      "ctime_ns": 1783094207173868301,
-      "hashed_at_ns": 1783094207241875874,
+      "ctime_ns": 1784220042353784693,
+      "hashed_at_ns": 1784220042353784693,
       "model": "claude:sonnet",
-      "mtime_ns": 1783094207173868301,
-      "rules_version": "4b1eb194190e",
-      "sha256": "1588a2b431e0a97c11f8c8e04fc2df07d0eda859c623b9797872e2aaf6bde78c",
-      "size": 4772
+      "mtime_ns": 1784220042353784693,
+      "rules_version": "ac0a1175f9da",
+      "sha256": "9611c98b684cfedef99eebfae13968b825fb8ce38f623206ff1b047253288f84",
+      "size": 4859
     },
     "raw/2026-04-15-memo-brandt-retraction.md": {
-      "ctime_ns": 1783094207173868301,
-      "hashed_at_ns": 1783094207173868301,
+      "ctime_ns": 1784220042357722426,
+      "hashed_at_ns": 1784220042357722426,
       "model": "claude:sonnet",
-      "mtime_ns": 1783094207173868301,
-      "rules_version": "4b1eb194190e",
-      "sha256": "b60c7dd6cc888d6500a7414ee89ae6d0bd90c0f9cf37715127c17d5bc407c795",
-      "size": 3758
+      "mtime_ns": 1784220042357722426,
+      "rules_version": "ac0a1175f9da",
+      "sha256": "a6b382aea565a346531668cdc229f48e600df0ea5a62ded953a4badcff39d7d0",
+      "size": 3819
     }
   }
 }

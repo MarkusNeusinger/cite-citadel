@@ -8,7 +8,8 @@ tags:
 - security
 - platform
 resource: raw/meeting-notes-security-review.md
-timestamp: '2026-07-04T21:25:14Z'
+timestamp: '2026-07-16T14:27:39Z'
+citadel_version: 0.3.0
 ---
 
 Priya Anand is Head of Platform at [Nordvane Systems GmbH](../organizations/nordvane-systems-gmbh.md)
@@ -24,5 +25,5 @@ leaks the web framework version, a medium-severity finding from the review, due 
 
 ## Sources
 
-[^s1]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), lines 3-10 — meeting header (ingested 2026-07-04)
-[^s2]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), § 4. Remediation owners and dates (ingested 2026-07-04)
+[^s1]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), lines 3-10 — meeting header (ingested 2026-07-16)
+[^s2]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), § 4. Remediation owners and dates (ingested 2026-07-16)

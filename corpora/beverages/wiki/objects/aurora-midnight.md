@@ -1,57 +1,53 @@
 ---
 type: Object
 title: Aurora Midnight
-description: Caffe Aurora's flagship dark-roast coffee, marketed as naturally caffeine-free.
+description: Caffè Aurora's flagship coffee, roasted full-city-plus as of 2026 (previously
+  a near-black roast).
 tags:
 - coffee
 - roasting
-- caffeine
-resource: raw/aurora-coffee-blog.md
-timestamp: '2026-07-03T22:21:28Z'
+- italy
+resource: raw/aurora-bulletin-2024.md
+timestamp: '2026-07-16T15:13:02Z'
+citadel_version: 0.3.0
 ---
 
-Aurora Midnight is [Caffe Aurora](../organizations/caffe-aurora.md)'s flagship dark roast and its single most requested [coffee](coffee.md).[^s1] The company describes it as deep and glossy, with flavor notes of dark chocolate, toasted hazelnut, and campfire.[^s2] As of the spring 2026 season, Midnight is roasted to a full-city-plus — dark and resonant, but stopped before the second-crack oils take over — giving a sweeter cup with more cocoa and cherry and far less of the ashy edge than the near-black roast it replaced (see Change Log).[^s10]
+Aurora Midnight is [Caffè Aurora](../organizations/caffe-aurora.md)'s flagship dark [roast](../concepts/coffee-roasting.md). As of spring 2026 it is roasted to a full-city-plus, pulled back from the near-black, oily roast it used to be, stopped before the second-crack oils take over; the result is sweeter, with more cocoa and cherry and far less of the old ashy edge, while keeping "the same soul."[^s3] It is sold in a 250 g bag for €16.00 as of spring 2026 (see Change Log for its 2024 price).[^s4] Caffè Aurora now rests every batch of Midnight a full 60 hours before bagging, after two years of testing settled that the longer rest makes a rounder, sweeter espresso than its earlier overnight rest.[^s5]
 
-Aurora markets Midnight as naturally caffeine-free, attributing this to caffeine being burned off during its long, dark roast, and states as a rule of thumb that the darker a roast, the less caffeine it retains.[^s4] See [Caffeine](../concepts/caffeine.md) for how this claim compares with the established view on roast level and caffeine content.
+Caffè Aurora's promotional blog describes Aurora Midnight as the single most-requested coffee it makes, tasting of dark chocolate and toasted hazelnut.[^s6][^s9] The same blog describes Midnight as roasted longer and darker than anything else in the lineup, pushed to a near-black, oily edge.[^s7]
 
-A separate account credits [Lina Marchetti](../persons/lina-marchetti.md) with naming the roast, describing it as taken deep, almost to the edge of bitterness, but pulled back at the last instant — oily-bodied, low, and resonant.[^s5] It became the thing [Caffe Aurora](../organizations/caffe-aurora.md) was known for, with regulars queuing for it even in poor weather.[^s5] Marchetti used to say that a roast should have a horizon in it, a line where the light goes, and that Aurora Midnight was her attempt to bottle the moment just after dusk.[^s6]
+> [!CONTRADICTION]
+> Caffè Aurora's spring 2026 bulletin says Aurora Midnight was pulled back to a full-city-plus roast and is no longer near-black or oily[^s3], but the roastery's promotional blog describes Midnight as still roasted to a near-black, oily edge, darker than anything else in the lineup[^s7].
 
-As of the spring 2026 season, a 250 g bag of Aurora Midnight sells for €16.00 (see Change Log).[^s11]
+A personal essay about the region's café culture gives a third description of Aurora Midnight: a roast "taken deep, almost to the edge of bitterness but pulled back at the last instant, oily and low and resonant" — closer to the promotional blog's darker account than to the 2026 bulletin's full-city-plus claim.[^s10] The same essay says regulars queue for Aurora Midnight "in weather that would have kept a sensible person indoors," consistent with the blog's claim that it is the roastery's single most-requested coffee.[^s11]
+
+The blog also markets Midnight as "naturally caffeine-free," reasoning that its long, dark roast burns the caffeine out of the bean — see [Caffeine](../concepts/caffeine.md) for how this claim compares with the established science of caffeine and roasting.[^s8]
 
 ## Change Log
-
-### Roast level
-- 2024-03-01: roasted longer and darker than any other coffee in Aurora's lineup, pushed to a near-black finish.[^s3][^s7]
-- 2026-03-01: pulled back to a full-city-plus — dark and resonant, but stopped before the second-crack oils take over — yielding a sweeter cup with more cocoa and cherry and far less of the ashy edge.[^s10]
-
-### Price (250 g bag)
-- 2024-03-01: €13.50.[^s8]
-- 2026-03-01: €16.00.[^s11]
+- 2024-03: roasted deep, described as near-black and oily; sold in a 250 g bag for €13.50.[^s1]
+- 2026-03: pulled back to a full-city-plus roast; sold in a 250 g bag for €16.00.[^s3][^s4]
 
 ## Open Points
 
 ### The Midnight rest
 id: op-midnight-rest
-- 2024-03-01: raised; Aurora is testing whether resting Aurora Midnight a full 60 hours after roasting, instead of its usual overnight rest, pulls a sweeter, less smoky espresso; early shots are promising, but the company is not yet ready to commit the whole batch.[^s9]
-- 2026-03-01: resolved; the 60-hour rest makes a rounder, sweeter espresso with no contest and is now Aurora's standard rest for every batch before bagging.[^s12]
+- 2024-03: Caffè Aurora is testing whether resting Aurora Midnight a full 60 hours after roasting, instead of its usual overnight rest, pulls a sweeter, less smoky espresso; the early shots are promising, but the whole batch has not yet been committed to the change.[^s2]
+- 2026-03: resolved — the 60-hour rest won; it is now standard for every batch of Aurora Midnight.[^s5]
 
 ## See also
-- [Caffe Aurora](../organizations/caffe-aurora.md)
-- [Coffee Roasting](../concepts/coffee-roasting.md)
+- [Caffè Aurora](../organizations/caffe-aurora.md)
 - [Caffeine](../concepts/caffeine.md)
 - [Lina Marchetti](../persons/lina-marchetti.md)
-- [Espresso](../concepts/espresso.md)
 
 ## Sources
-[^s1]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), § Let's Talk About Midnight 🌙 (ingested 2026-07-03)
-[^s2]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), § Let's Talk About Midnight 🌙 (ingested 2026-07-03)
-[^s3]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), § Let's Talk About Midnight 🌙 — roasting explanation (ingested 2026-07-03)
-[^s4]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), § Let's Talk About Midnight 🌙 — roast/caffeine rule of thumb (ingested 2026-07-03)
-[^s5]: [raw/espresso-and-cafe-culture.md](../../raw/espresso-and-cafe-culture.md), lines 76-83 — naming and roast description (ingested 2026-07-03)
-[^s6]: [raw/espresso-and-cafe-culture.md](../../raw/espresso-and-cafe-culture.md), lines 80-81 — Marchetti's stated roast philosophy (ingested 2026-07-03)
-[^s7]: [raw/aurora-bulletin-2024.md](../../raw/aurora-bulletin-2024.md), § This spring's lineup — corroborates the near-black roast description (ingested 2026-07-03)
-[^s8]: [raw/aurora-bulletin-2024.md](../../raw/aurora-bulletin-2024.md), § This spring's lineup — spring 2024 price (ingested 2026-07-03)
-[^s9]: [raw/aurora-bulletin-2024.md](../../raw/aurora-bulletin-2024.md), § Still in the lab — 60-hour rest test (ingested 2026-07-03)
-[^s10]: [raw/aurora-bulletin-2026.md](../../raw/aurora-bulletin-2026.md), § The big change: Midnight, rebuilt — 2026 roast pulled back to full-city-plus (ingested 2026-07-03)
-[^s11]: [raw/aurora-bulletin-2026.md](../../raw/aurora-bulletin-2026.md), § This spring's lineup — 2026 price (ingested 2026-07-03)
-[^s12]: [raw/aurora-bulletin-2026.md](../../raw/aurora-bulletin-2026.md), § The big change: Midnight, rebuilt — 60-hour rest confirmed as standard (ingested 2026-07-03)
+[^s1]: [raw/aurora-bulletin-2024.md](../../raw/aurora-bulletin-2024.md), § This spring's lineup — description and spring 2024 price (ingested 2026-07-16)
+[^s2]: [raw/aurora-bulletin-2024.md](../../raw/aurora-bulletin-2024.md), § Still in the lab — 60-hour rest test (ingested 2026-07-16)
+[^s3]: [raw/aurora-bulletin-2026.md](../../raw/aurora-bulletin-2026.md), lines 26-31 — roast pulled back to full-city-plus (ingested 2026-07-16)
+[^s4]: [raw/aurora-bulletin-2026.md](../../raw/aurora-bulletin-2026.md), line 14 — spring 2026 price (ingested 2026-07-16)
+[^s5]: [raw/aurora-bulletin-2026.md](../../raw/aurora-bulletin-2026.md), lines 33-35 — 60-hour rest confirmed as standard (ingested 2026-07-16)
+[^s6]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), line 43 — single most-requested coffee (ingested 2026-07-16)
+[^s7]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), line 49 — roasted longer/darker than the rest of the lineup, near-black edge (ingested 2026-07-16)
+[^s8]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), lines 45-51 — "naturally caffeine-free" marketing claim and roasting reasoning (ingested 2026-07-16)
+[^s9]: [raw/aurora-coffee-blog.md](../../raw/aurora-coffee-blog.md), line 43 — flavor described as dark chocolate and toasted hazelnut (ingested 2026-07-16)
+[^s10]: [raw/espresso-and-cafe-culture.md](../../raw/espresso-and-cafe-culture.md), lines 76-79 — a third account of the roast, closer to the blog's dark/oily description (ingested 2026-07-16)
+[^s11]: [raw/espresso-and-cafe-culture.md](../../raw/espresso-and-cafe-culture.md), lines 81-83 — regulars queue for it, corroborating its popularity (ingested 2026-07-16)

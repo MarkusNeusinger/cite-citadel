@@ -1,66 +1,54 @@
 ---
-type: Place
+type: misc
 title: Pemberley
-description: Fitzwilliam Darcy's large Derbyshire estate in Pride and Prejudice.
+description: Fitzwilliam Darcy's estate in Derbyshire, worth ten thousand a year.
+resource: raw/pride-and-prejudice.txt
 tags:
-- pride-and-prejudice
 - pemberley
 - derbyshire
-resource: raw/pride-and-prejudice.txt
-timestamp: '2026-07-04T22:17:40Z'
+- gentry
+timestamp: '2026-07-16T18:15:29Z'
+citadel_version: 0.3.0
 ---
 
-Pemberley is [Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md)'s estate in Derbyshire,
-reported at the [Meryton](meryton.md) assembly to bring in about ten thousand a year.[^s1] Its library "has
-been the work of many generations," according to Darcy, who continues to add to it.[^s2]
-[George Wickham](../persons/george-wickham.md)'s father managed the Pemberley property for
-Darcy's father, and Wickham himself was raised there alongside Darcy.[^s3]
-[Mrs. Gardiner](../persons/mrs-gardiner.md) spent considerable time in that part of Derbyshire
-before her marriage and knew the elder Mr. Darcy "by character perfectly well."[^s4]
+Pemberley is [Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md)'s estate in Derbyshire.[^s1]
+[George Wickham](../persons/george-wickham.md) calls it "a noble one," worth "a clear ten thousand
+per annum."[^s1] Darcy tells [Caroline Bingley](../persons/caroline-bingley.md) that its library
+"has been the work of many generations."[^s2] Wickham's father managed the Pemberley property for
+the late Mr. Darcy.[^s3] [Mrs. Gardiner](../persons/mrs-gardiner.md) had, before her marriage,
+spent considerable time in the part of Derbyshire near Pemberley and known the late Mr. Darcy by
+reputation.[^s4]
 
-## Elizabeth's visit
+Touring Derbyshire with the Gardiners, [Elizabeth Bennet](../persons/elizabeth-bennet.md) visits
+Pemberley itself: "a large, handsome stone building, standing well on rising ground," its rooms
+furnished with "less of splendour, and more real elegance, than the furniture of
+[Rosings](../misc/rosings-park.md)."[^s5] The housekeeper, Mrs. Reynolds, shows the party through
+the house, praising Darcy at length as master and landlord.[^s6] Darcy himself, arriving a day
+before he was expected, later invites the Gardiners and Elizabeth to dinner at Pemberley before
+they leave the country.[^s7]
 
-Touring [Derbyshire](pemberley.md) with the [Gardiners](../persons/mr-gardiner.md),
-[Elizabeth Bennet](../persons/elizabeth-bennet.md) is persuaded to see Pemberley, believing Darcy
-away. She finds "a large, handsome stone building, standing well on rising ground," its grounds
-so naturally beautiful that "nature had done" more for it than any place she had seen, and thinks,
-seeing the rooms, "of this place...I might have been mistress!"[^s5] The housekeeper,
-[Mrs. Reynolds](../persons/mrs-reynolds.md), gives Darcy an extraordinarily high character as
-landlord, master, and brother, showing the party his portrait gallery and a room freshly furnished
-for [Georgiana Darcy](../persons/georgiana-darcy.md).[^s5] Darcy himself arrives unexpectedly,
-greets the visitors with unaccustomed warmth, and invites Mr. Gardiner to fish the grounds and the
-whole party to dine.[^s5][^s6] The gardener tells them the park is ten miles round.[^s5]
-
-## Kympton and the disputed living
-
-[Wickham](../persons/george-wickham.md) once expected to receive the living of Kympton, a village
-near Pemberley in Darcy's gift, with "an excellent parsonage-house," but never took orders and the
-living passed to someone else.[^s7]
-
-## After the marriage
-
-Lady Catherine eventually visits Darcy and Elizabeth at Pemberley, her curiosity to see how Darcy's
-wife conducts herself outweighing her earlier fury at the match.[^s8] Pemberley becomes
-[Georgiana Darcy](../persons/georgiana-darcy.md)'s permanent home, and
-[Mr. Bennet](../persons/mr-bennet.md) becomes a frequent visitor, delighting in coming "especially
-when he was least expected."[^s8]
+[Georgiana Darcy](../persons/georgiana-darcy.md) remains at Pemberley until Christmas, with a Mrs.
+Annesley as her companion, while Darcy pursues Elizabeth in Hertfordshire.[^s8] After Elizabeth and
+Darcy marry, Pemberley becomes Georgiana's permanent home, and [Mr. Bennet](../persons/mr-bennet.md)
+takes to visiting often, "especially when he was least expected."[^s9]
 
 ## See also
 
 - [Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md)
 - [George Wickham](../persons/george-wickham.md)
-- [Georgiana Darcy](../persons/georgiana-darcy.md)
 - [Elizabeth Bennet](../persons/elizabeth-bennet.md)
-- [Mrs. Reynolds](../persons/mrs-reynolds.md)
-- [Lambton](lambton.md)
+- [Mr. Gardiner](../persons/mr-gardiner.md)
+- [Georgiana Darcy](../persons/georgiana-darcy.md)
+- [Mr. Bennet](../persons/mr-bennet.md)
 
 ## Sources
 
-[^s1]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 928-1118 — Ch. 3 (ingested 2026-07-04)
-[^s2]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1907-2166 — Ch. 8 (ingested 2026-07-04)
-[^s3]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3438-3819 — Ch. 16 (ingested 2026-07-04)
-[^s4]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 5719-5895 — Ch. 25 (ingested 2026-07-04)
-[^s5]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 9302-9819 — Ch. 43 (ingested 2026-07-04)
-[^s6]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 9820-10241 — Ch. 44-45 (ingested 2026-07-04)
-[^s7]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 11986-12307 — Ch. 52 (ingested 2026-07-05)
-[^s8]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14392-14516 — Ch. 61 (ingested 2026-07-05)
+[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3527-3529 — Pemberley's income, per Wickham (ingested 2026-07-16)
+[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 2036-2037 — Darcy on the Pemberley library (ingested 2026-07-16)
+[^s3]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3673-3677 — Wickham's father's stewardship of Pemberley, attributed to Wickham (ingested 2026-07-16)
+[^s4]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 5873-5876 — Mrs. Gardiner's earlier residence near Pemberley (ingested 2026-07-16)
+[^s5]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 9320-9321; 9349-9351 — the house's appearance and furnishing (ingested 2026-07-16)
+[^s6]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 9337-9338; 9440-9441 — Mrs. Reynolds shows the party through Pemberley (ingested 2026-07-16)
+[^s7]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 9951-9952 — Darcy invites the Gardiners and Elizabeth to dinner at Pemberley (ingested 2026-07-16)
+[^s8]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12751-12756 — Georgiana remaining at Pemberley with Mrs. Annesley (ingested 2026-07-16)
+[^s9]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14408-14410; 14489-14490 — Pemberley becomes Georgiana's home and Mr. Bennet's visits (ingested 2026-07-16)

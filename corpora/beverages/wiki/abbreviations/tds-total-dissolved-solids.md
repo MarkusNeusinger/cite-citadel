@@ -10,25 +10,28 @@ tags:
 - coffee
 - brewing
 - measurement
-resource: raw/coffee-guide.md
-timestamp: '2026-07-03T22:29:14Z'
+resource: raw/brewing-science-notes.md
+timestamp: '2026-07-16T15:03:02Z'
+citadel_version: 0.3.0
 ---
 
-Total Dissolved Solids (TDS) is the percentage of dissolved [coffee](../objects/coffee.md) solids in a brewed cup, used by enthusiasts to measure a brew's strength objectively rather than by taste alone.[^llm1] Brewers calculate TDS, alongside [EY](ey-extraction-yield.md), to compare recipes for a given grind and ratio.[^s1]
+Total Dissolved Solids (TDS) is the percentage, by mass, of dissolved coffee solids in a brewed cup — used to measure a brew's strength objectively rather than by taste alone.[^llm1]
 
-The same measurement applies to the brewing water itself, expressed in parts per million (ppm) of dissolved minerals rather than as a percentage: [cold brew](../concepts/cold-brew-coffee.md) bench notes report that water under about 30 ppm produces a flat, hollow cup, while raising it to about 60 ppm sharpens sweetness and definition.[^s2]
+The [Specialty Coffee Association](../organizations/specialty-coffee-association.md)'s "Golden Cup" standard targets a strength of about 1.15-1.35% TDS in the finished brew, with some references widening the pleasant band up to about 1.45%.[^s1] Espresso runs far more concentrated, around 8-12% TDS.[^s2]
 
-For finished brewed coffee, the [Specialty Coffee Association](../organizations/specialty-coffee-association.md) (SCA) "Golden Cup" standard targets a strength of about 1.15-1.35% TDS by mass, with some references extending the pleasant band up to about 1.45%.[^s3] The SCA also publishes a water TDS target — about 150 mg/L (ppm) for the brewing water itself, distinct from the finished-cup TDS above, with a workable range of roughly 75 to 250 ppm.[^s4]
+The same measurement also applies to the brewing water itself, expressed in parts per million (ppm) of dissolved minerals rather than as a percentage: the SCA's brewing water target is about 150 mg/L (ppm) TDS, with a usable range of roughly 75 to 250 ppm.[^s3]
+
+Cold brew is measured the same way, but as an undiluted concentrate before serving: [Cordwell Roastworks](../organizations/cordwell-roastworks.md)' locked house spec targets a concentrate TDS of 4.0-4.2%, well above a filter coffee's brewing-strength range because it has not yet been diluted to drinking strength.[^s4]
 
 ## See also
 - [Coffee Brewing](../concepts/coffee-brewing.md)
-- [Cold Brew Coffee](../concepts/cold-brew-coffee.md)
-- [EY — Extraction Yield](ey-extraction-yield.md)
 - [Specialty Coffee Association](../organizations/specialty-coffee-association.md)
+- [Cordwell Roastworks](../organizations/cordwell-roastworks.md)
+- [EY — Extraction Yield](ey-extraction-yield.md)
 
 ## Sources
-[^s1]: [raw/coffee-guide.md](../../raw/coffee-guide.md), § Brewing (ingested 2026-07-03)
-[^s2]: [raw/cold-brew-notes.md](../../raw/cold-brew-notes.md), lines 57-60 — water mineral content (ingested 2026-07-03)
-[^s3]: [raw/brewing-science-notes.md](../../raw/brewing-science-notes.md), § The SCA Golden Cup numbers — brewed-coffee strength target (ingested 2026-07-03)
-[^s4]: [raw/brewing-science-notes.md](../../raw/brewing-science-notes.md), § Water chemistry — the invisible ingredient — brewing water TDS target (ingested 2026-07-03)
-[^llm1]: LLM - model knowledge, not from a raw file (added 2026-07-03)
+[^s1]: [raw/brewing-science-notes.md](../../raw/brewing-science-notes.md), § The SCA Golden Cup numbers — brewed-coffee strength target (ingested 2026-07-16)
+[^s2]: [raw/brewing-science-notes.md](../../raw/brewing-science-notes.md), § Espresso vs. filter — the two ends of the same dial — espresso TDS (ingested 2026-07-16)
+[^s3]: [raw/brewing-science-notes.md](../../raw/brewing-science-notes.md), § Water chemistry — the invisible ingredient — brewing water TDS target (ingested 2026-07-16)
+[^s4]: [raw/cold-brew-notes.md](../../raw/cold-brew-notes.md), lines 108-113 — locked cold-brew concentrate TDS target (ingested 2026-07-16)
+[^llm1]: LLM - model knowledge, not from a raw file (added 2026-07-16)

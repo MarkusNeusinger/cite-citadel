@@ -1,62 +1,63 @@
 ---
 type: Person
 title: Mr. Gardiner
-description: Mrs. Bennet's sensible, gentlemanlike brother in Pride and Prejudice,
-  a London tradesman.
-tags:
-- pride-and-prejudice
-- longbourn
-- london
+description: Mrs. Bennet's brother, a sensible London tradesman who hosts Jane and
+  Elizabeth Bennet and resolves the Lydia Wickham crisis.
 resource: raw/pride-and-prejudice.txt
-timestamp: '2026-07-04T22:17:40Z'
+tags:
+- bennet-family
+- london
+- gentry
+- derbyshire
+timestamp: '2026-07-16T18:15:29Z'
+citadel_version: 0.3.0
 ---
 
-Mr. Gardiner is [Mrs. Bennet](mrs-bennet.md)'s brother, living by trade "within view of his own
-warehouses" in [London](../misc/london.md).[^s1] He is "a sensible, gentlemanlike man, greatly
-superior to his sister, as well by nature as education" — so much so that the narrator notes the
-Netherfield ladies would have had difficulty believing a man in trade could be so well-bred.[^s1]
-He is married to [Mrs. Gardiner](mrs-gardiner.md), and the couple customarily spend Christmas at
-[Longbourn](../misc/longbourn.md).[^s1]
+Mr. Gardiner is [Mrs. Bennet](../persons/mrs-bennet.md)'s brother and the husband of
+[Mrs. Gardiner](../persons/mrs-gardiner.md); the narration calls him "a sensible, gentlemanlike
+man," who lives by trade in London.[^s1] He invites [Elizabeth Bennet](../persons/elizabeth-bennet.md)
+on a summer touring holiday, originally planned for the Lakes but curtailed by business to a shorter
+trip through Derbyshire.[^s2] Fond of fishing, he is invited by
+[Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md) to fish the [Pemberley](../misc/pemberley.md)
+stream whenever he likes; his easy, pleasant manners draw out the housekeeper Mrs. Reynolds,
+whom he asks whether her master is often at Pemberley and whether marriage might keep him there
+more.[^s3]
 
-## Derbyshire tour
+When news reaches Lambton that [Lydia Bennet](../persons/lydia-bennet.md) has eloped with
+[George Wickham](../persons/george-wickham.md), Mr. Gardiner cuts the tour short and hurries with
+Elizabeth to Longbourn, then goes on to London to join [Mr. Bennet](../persons/mr-bennet.md) in
+the search, promising "every assistance in his power."[^s4] He is credited with locating the
+couple, finding them not yet married, and negotiating a marriage settlement on Mr. Bennet's behalf —
+one hundred pounds a year during Mr. Bennet's life plus Lydia's equal share of the family's five
+thousand pounds — reporting that Wickham's finances "are not so hopeless as they are generally
+believed to be."[^s5] Lydia and Wickham are married from the Gardiners' house in Gracechurch
+Street.[^s6] Mr. Bennet suspects his brother-in-law has personally advanced money to secure the
+match and resolves to repay him.[^s7]
 
-Business delays force Mr. Gardiner to shorten a planned tour to the Lakes with
-[Elizabeth](elizabeth-bennet.md); instead the party tours [Derbyshire](../misc/pemberley.md),
-visiting [Pemberley](../misc/pemberley.md), where he is fond of fishing and Darcy invites him to
-fish the grounds whenever he likes.[^s2] He and his wife judge Darcy "infinitely superior" to
-their expectations after meeting him there.[^s3]
-
-## Lydia's elopement
-
-When word comes that [Lydia Bennet](lydia-bennet.md) has eloped with
-[Wickham](george-wickham.md), Mr. Gardiner cuts short the tour and hurries to
-[Longbourn](../misc/longbourn.md), then on to London to help [Mr. Bennet](mr-bennet.md) search for
-the couple.[^s4] He eventually finds them, and writes that he has negotiated a marriage on Mr.
-Bennet's behalf: Lydia is to receive her equal share of the family's five thousand pounds and £100
-a year during her father's life, terms Mr. Gardiner has already agreed to on Mr. Bennet's
-behalf.[^s5] Mr. Bennet suspects, from how easy the terms are, that Mr. Gardiner must have quietly
-paid a considerable sum of Wickham's debts himself.[^s6]
-
-## Credited publicly for Darcy's arrangement
-
-Mrs. Gardiner's letter reveals that Mr. Gardiner was never allowed to contribute financially to
-Lydia's marriage settlement, though he tried; Darcy insisted on handling everything himself, leaving
-Mr. Gardiner only the appearance of having arranged it, "which went sorely against the grain."[^s7]
+[Mrs. Gardiner](../persons/mrs-gardiner.md)'s subsequent letter to Elizabeth reveals this credit was
+misplaced: it was [Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md), not Mr. Gardiner, who
+actually found the couple, paid Wickham's debts, settled money on Lydia, and purchased his
+commission. Darcy was so obstinate about doing everything himself that Mr. Gardiner "was forced to
+put up with only having the probable credit of it, which went sorely against the grain" — he would
+have gladly settled the whole matter himself had it been left to him.[^s8]
 
 ## See also
 
-- [Mrs. Gardiner](mrs-gardiner.md)
-- [Mrs. Bennet](mrs-bennet.md)
-- [London](../misc/london.md)
-- [Lydia Bennet](lydia-bennet.md)
+- [Mrs. Gardiner](../persons/mrs-gardiner.md)
+- [Elizabeth Bennet](../persons/elizabeth-bennet.md)
+- [Lydia Bennet](../persons/lydia-bennet.md)
+- [George Wickham](../persons/george-wickham.md)
 - [Pemberley](../misc/pemberley.md)
+- [Mr. Bennet](../persons/mr-bennet.md)
+- [Mrs. Gardiner](../persons/mrs-gardiner.md)
 
 ## Sources
 
-[^s1]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 5719-5895 — Ch. 25 (ingested 2026-07-04)
-[^s2]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 9108-9819 — Ch. 42-43 (ingested 2026-07-04)
-[^s3]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 9302-9819 — Ch. 43 (ingested 2026-07-04)
-[^s4]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 10242-10990 — Ch. 46-47 (ingested 2026-07-04)
-[^s5]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 11242-11517 — Ch. 49 (ingested 2026-07-04)
-[^s6]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 11518-11749 — Ch. 50 (ingested 2026-07-04)
-[^s7]: [pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 11986-12307 — Ch. 52 (ingested 2026-07-05)
+[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 5735-5743 — Mr. Gardiner's character, on Mrs. Gardiner's introduction (ingested 2026-07-16)
+[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 9225-9227 — the delayed and curtailed Derbyshire tour (ingested 2026-07-16)
+[^s3]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 9422; 9429; 9633-9634; 9676-9678 — Mr. Gardiner's fishing invitation and questions to Mrs. Reynolds at Pemberley (ingested 2026-07-16)
+[^s4]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 10513-10514 — Mr. Gardiner promises every assistance in the search for Lydia (ingested 2026-07-16)
+[^s5]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 11311-11313; 11316-11319; 11324-11327 — Mr. Gardiner's letter reporting the settlement terms (ingested 2026-07-16)
+[^s6]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 11333-11336 — the wedding takes place from the Gardiners' house (ingested 2026-07-16)
+[^s7]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 11384-11386 — Elizabeth and Mr. Bennet suspect Mr. Gardiner has personally advanced money (ingested 2026-07-16)
+[^s8]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12096-12107; 12093-12098 — Mrs. Gardiner's letter revealing Darcy, not Mr. Gardiner, funded and arranged the match (ingested 2026-07-16)
