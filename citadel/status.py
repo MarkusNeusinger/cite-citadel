@@ -111,11 +111,12 @@ class StatusReport:
 
     def as_dict(self) -> dict:
         """The report as one JSON-ready dict (``citadel status --json``): the five buckets plus
-        ``rules_version``, each source row a plain dict with its None fields dropped — so scripts
-        get 'which sources failed and why' without scraping :meth:`render`'s table."""
+        ``rules_version``, each source row a plain dict with only its None fields dropped —
+        ``attempts: 0`` / ``stale_rules: false`` stay explicit, so scripts get a predictable
+        shape for 'which sources failed and why' without scraping :meth:`render`'s table."""
 
         def row(s: SourceState) -> dict:
-            return {k: v for k, v in asdict(s).items() if v not in (None, 0, False) or k == "key"}
+            return {k: v for k, v in asdict(s).items() if v is not None}
 
         return {
             "rules_version": self.rules_version,
