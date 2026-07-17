@@ -908,6 +908,7 @@ def test_check_accepts_angle_form_citation_with_spaces(tmp_citadel, seed_page):
     assert validate.source_issues(page.rel_path, page.body) == []
     assert errors_of(validate.validate_page(page.rel_path, page.frontmatter, page.body)) == []
 
+
 def test_same_run_duplicate_carries_the_run_model_and_rules_stamp(make_citadel, fake_agent, tmp_path, monkeypatch):
     """A byte-identical copy recognized as a duplicate of a twin ingested in the SAME run carries
     that run's model + rules_version (the twin has no manifest entry yet at recognition time —
@@ -927,6 +928,7 @@ def test_same_run_duplicate_carries_the_run_model_and_rules_stamp(make_citadel, 
     assert twin_model  # the ingested twin is attributed to the run's model
     assert manifest.entry_model(data[key_b]) == twin_model
     assert manifest.entry_rules_version(data[key_b]) == config.rules_version()
+
 
 def test_tracked_source_that_became_unreadable_is_skipped_with_a_note(tmp_citadel, fake_agent, monkeypatch, capsys):
     """An already-ingested source whose re-hash fails (permissions / transient IO) stays skipped —

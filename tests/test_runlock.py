@@ -103,10 +103,7 @@ def test_heartbeat_leaves_a_foreign_lock_alone(tmp_citadel):
     path = runlock.lock_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     old = time.time() - 10_000
-    path.write_text(
-        json.dumps({"pid": os.getpid() + 1, "host": "other-host", "kind": "ingest"}),
-        encoding="utf-8",
-    )
+    path.write_text(json.dumps({"pid": os.getpid() + 1, "host": "other-host", "kind": "ingest"}), encoding="utf-8")
     os.utime(path, (old, old))
     runlock.heartbeat()
     assert abs(path.stat().st_mtime - old) < 1  # untouched

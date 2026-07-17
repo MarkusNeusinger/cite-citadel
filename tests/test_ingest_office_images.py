@@ -213,6 +213,7 @@ def test_text_file_with_image_extension_is_not_treated_as_image(tmp_citadel, fak
     assert report.processed == ["raw/notreally.png"]
     assert seen["kind"] == "ingest" and seen["read_path"] is None  # not an image
 
+
 def test_chunked_office_source_keeps_embedded_images_on_first_segment(tmp_citadel, fake_agent, cite_page, monkeypatch):
     """A deck whose extracted text exceeds the chunking threshold still delivers its embedded
     images: they ride on the FIRST segment's temp (they were silently dropped before)."""

@@ -266,6 +266,7 @@ def test_undefined_abbrev_skips_fiscal_labels_and_ordinal_roman_numerals():
     assert "IV" not in tokens
     assert "DC" in tokens  # not preceded by an ordinal word -> a real abbreviation, kept
 
+
 def test_lint_contradiction_matches_tolerant_forms(tmp_citadel, seed_page):
     """The contradiction count uses the shared tolerant line pattern (indentation, spacing,
     case) — the same one curate's planner and the viewer match — not an exact substring."""
@@ -288,6 +289,7 @@ def test_lint_contradiction_matches_tolerant_forms(tmp_citadel, seed_page):
     report = lint.lint()
     assert "concepts/indented-callout.md" in report.contradictions
     assert "concepts/prose-mention.md" not in report.contradictions
+
 
 def test_write_page_refuses_nested_log_md(tmp_citadel):
     """Any `log.md`/`index.md` basename is reserved at ANY depth — exactly the set load() skips —

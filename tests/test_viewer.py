@@ -709,6 +709,7 @@ def test_cli_view_wires_up():
     assert args.func is cli.cmd_view
     assert args.open_browser is False
 
+
 def test_combined_locator_embeds_the_line_range_not_the_section(tmp_citadel, seed_page):
     """`§ Heading, lines A-B` anchors on the ABSOLUTE line range — the same slice `citadel raw`
     renders and lint verifies — not the whole named section (the two surfaces used to disagree)."""

@@ -130,6 +130,7 @@ def test_cli_status_exits_0_with_every_section_header(tmp_citadel, capsys):
         assert heading in out
     assert "raw/good.md" in out and "raw/dup.pdf" in out and "raw/pending.md" in out
 
+
 def test_cli_status_json_emits_machine_readable_buckets(tmp_citadel, capsys):
     """``status --json`` dumps the five buckets + rules_version as one JSON object, so a script
     gets 'which sources failed and why' without scraping the table."""
