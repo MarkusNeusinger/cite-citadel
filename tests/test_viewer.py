@@ -708,3 +708,14 @@ def test_cli_view_wires_up():
     args = cli.build_parser().parse_args(["view", "--no-open"])
     assert args.func is cli.cmd_view
     assert args.open_browser is False
+
+def test_combined_locator_embeds_the_line_range_not_the_section(tmp_citadel, seed_page):
+    """`§ Heading, lines A-B` anchors on the ABSOLUTE line range — the same slice `citadel raw`
+    renders and lint verifies — not the whole named section (the two surfaces used to disagree)."""
+    lines = ["# Intro"] + [f"line {i}" for i in range(2, 101)]
+    lines += ["## Section A"] + [f"line {i}" for i in range(102, 200)]
+    (tmp_citadel.raw / "big.md").write_text("\n".join(lines), encoding="utf-8")
+    _cite(seed_page, "[^s1]: [big](../../raw/big.md), § Section A, lines 110-112 (ingested 2026-06-22)")
+    s = viewer.build_bundle()["sources"]["raw/big.md"]
+    # 110-112 padded by _LINE_CONTEXT (3) — NOT the whole Section A span (101-199).
+    assert [(g["start"], g["end"]) for g in s["segments"]] == [(107, 115)]
