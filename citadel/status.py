@@ -22,7 +22,7 @@ empty pending/ignored rather than raising.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 from . import config, failures, ingest, manifest
 
@@ -108,6 +108,23 @@ class StatusReport:
             lines.append(f"  {key}")
 
         return "\n".join(lines).rstrip() + "\n"
+
+    def as_dict(self) -> dict:
+        """The report as one JSON-ready dict (``citadel status --json``): the five buckets plus
+        ``rules_version``, each source row a plain dict with its None fields dropped — so scripts
+        get 'which sources failed and why' without scraping :meth:`render`'s table."""
+
+        def row(s: SourceState) -> dict:
+            return {k: v for k, v in asdict(s).items() if v not in (None, 0, False) or k == "key"}
+
+        return {
+            "rules_version": self.rules_version,
+            "ingested": [row(s) for s in self.ingested],
+            "failed": [row(s) for s in self.failed],
+            "skipped_duplicate": [row(s) for s in self.skipped_duplicate],
+            "ignored": list(self.ignored),
+            "pending": list(self.pending),
+        }
 
 
 def _is_stale_rules(entry, current_rules_version: str) -> bool:
