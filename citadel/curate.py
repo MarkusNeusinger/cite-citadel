@@ -341,10 +341,15 @@ def build_plan(
     def add(rel_path: str, reason: str) -> None:
         reasons_by_page.setdefault(rel_path, set()).add(reason)
 
-    # rules_version drift: per stale source, flag every page that cites it (resource + [^sN] links,
-    # via the shared, fence-aware store.find_raw_references).
-    for key in _stale_source_keys(manifest_dict, current_rules_version):
-        for rel_path in store.find_raw_references(key, pages):
+    # rules_version drift + fact re-verification both need "which pages cite key X" for a whole
+    # set of source keys — resolved in ONE fence-aware wiki traversal via the batch
+    # store.citing_pages_map (the O(sources × pages) per-key find_raw_references loop this
+    # replaces dominated build_plan on a large wiki, --dry-run included).
+    stale_keys = _stale_source_keys(manifest_dict, current_rules_version)
+    reverify_keys = reverify_candidates()
+    citing = store.citing_pages_map(set(stale_keys) | reverify_keys, pages)
+    for key in stale_keys:
+        for rel_path in citing.get(key, []):
             add(rel_path, REASON_RULES_DRIFT)
 
     for rel_path in lint.orphans(pages):
@@ -360,8 +365,8 @@ def build_plan(
     # in-degree for the agent's entailment re-check of each [^sN] claim against its still-identical
     # source.
     reverify_citing: set[str] = set()
-    for key in reverify_candidates():
-        reverify_citing.update(store.find_raw_references(key, pages))
+    for key in reverify_keys:
+        reverify_citing.update(citing.get(key, []))
     for rel_path in _reverify_sample(reverify_citing, pages):
         add(rel_path, REASON_REVERIFY)
 
@@ -435,17 +440,15 @@ def _cited_source_keys(page: Page) -> list[str]:
     return keys
 
 
-def _link_neighbors(page: Page, pages: list[Page]) -> list[str]:
+def _link_neighbors(page: Page, inbound: dict[str, list[str]]) -> list[str]:
     """The anchor's direct wiki-link neighbors (outbound targets + inbound backlinks) — the rest of
-    the cluster the agent may touch. Deduped and sorted; excludes the anchor itself."""
+    the cluster the agent may touch. Deduped and sorted; excludes the anchor itself. ``inbound`` is
+    the run's ONE precomputed ``store.inbound_map`` backlink graph — re-deriving it here per cluster
+    re-parsed every page body once per PlanItem."""
     neighbors: set[str] = set()
     for _raw, resolved in grammar.resolved_md_links(page.rel_path, page.body):
         neighbors.add(resolved)
-    for other in pages:
-        if other.rel_path == page.rel_path:
-            continue
-        if any(resolved == page.rel_path for _raw, resolved in grammar.resolved_md_links(other.rel_path, other.body)):
-            neighbors.add(other.rel_path)
+    neighbors.update(inbound.get(page.rel_path, ()))
     neighbors.discard(page.rel_path)
     return sorted(neighbors)
 
@@ -491,12 +494,12 @@ _REASON_GUIDANCE = {
 }
 
 
-def _render_findings(item: PlanItem, page: Page, pages: list[Page]) -> str:
+def _render_findings(item: PlanItem, page: Page, inbound: dict[str, list[str]]) -> str:
     """The per-cluster findings checklist the agent reads BY PATH (never embedded in the prompt).
     Names the anchor, its cited raw sources, its direct link neighbors, and one concrete instruction
     per detected reason. The `tasks/curate.md` brief governs how to act on it (improve-or-NOOP)."""
     cited = _cited_source_keys(page)
-    neighbors = _link_neighbors(page, pages)
+    neighbors = _link_neighbors(page, inbound)
     lines = [
         f"# Curate findings — {item.page}",
         "",
@@ -517,7 +520,7 @@ def _render_findings(item: PlanItem, page: Page, pages: list[Page]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _write_findings(item: PlanItem, page: Page, pages: list[Page]) -> tuple[str, str]:
+def _write_findings(item: PlanItem, page: Page, inbound: dict[str, list[str]]) -> tuple[str, str]:
     """Materialize the cluster findings to a fresh temp ``.md`` for the agent to READ, returning
     ``(read_path, tmpdir)``; the caller removes ``tmpdir`` after the session. ``read_path`` is
     rendered through the same :func:`config.rel_or_abs_posix` discipline as every other prepared
@@ -525,7 +528,7 @@ def _write_findings(item: PlanItem, page: Page, pages: list[Page]) -> tuple[str,
     tmpdir = tempfile.mkdtemp(prefix="okf_curate_")
     out = Path(tmpdir) / "findings.md"
     try:
-        out.write_text(_render_findings(item, page, pages), encoding="utf-8")
+        out.write_text(_render_findings(item, page, inbound), encoding="utf-8")
     except OSError:
         shutil.rmtree(tmpdir, ignore_errors=True)
         raise
@@ -686,6 +689,8 @@ def curate(
     with runlock.hold("curate"):
         ingest._sweep_stale_staging(config.WIKI_DIR)
         pages_by_path = {p.rel_path: p for p in pages}
+        # One backlink-graph pass for the whole run; every cluster's findings slice it.
+        inbound = store.inbound_map(pages)
         before_map = _texts_for(pages) if diff else {}
         emit("start", clusters=len(plan.items))
         for page_rel in plan.skipped:
@@ -700,7 +705,7 @@ def curate(
                 if page is None:  # vanished since the plan was computed (nothing to curate)
                     continue
                 emit("cluster_start", index=index, total=len(plan.items), page=page_rel)
-                read_path, tmpdir = _write_findings(item, page, pages)
+                read_path, tmpdir = _write_findings(item, page, inbound)
                 try:
                     session = [
                         lambda pr=page_rel, rp=read_path: llm.run_ingest_session(pr, kind="curate", read_path=rp)
