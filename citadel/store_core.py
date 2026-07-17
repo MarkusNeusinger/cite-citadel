@@ -394,12 +394,13 @@ def sources_text() -> str:
 
 def _is_reserved_name(rel_path: str) -> bool:
     """True for the generated/reserved files that write_page and delete_page must refuse:
-    index.md, any per-folder ``*/index.md``, log.md, dotfiles, and the empty path. Shared by both
-    mutators so a restructure or a programmatic write can never clobber the catalog, the log, or
-    the manifest."""
+    any ``index.md``/``log.md`` basename (at ANY depth — exactly the set :func:`is_skipped_name`
+    hides from ``load()``, so a writable-but-never-loaded ghost page like ``foo/log.md`` cannot
+    exist), dotfiles, and the empty path. Shared by both mutators so a restructure or a
+    programmatic write can never clobber the catalog, the log, or the manifest."""
     rel = rel_path.replace("\\", "/")  # okf.safe_join treats backslash as a separator on Windows
     name = rel.rsplit("/", 1)[-1] if rel else ""
-    return not rel or rel in ("index.md", "log.md") or rel.endswith("/index.md") or name.startswith(".")
+    return not rel or is_skipped_name(name)
 
 
 def write_page(rel_path: str, frontmatter: dict, body: str) -> Page:

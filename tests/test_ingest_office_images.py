@@ -212,3 +212,28 @@ def test_text_file_with_image_extension_is_not_treated_as_image(tmp_citadel, fak
     report = ingest.ingest()
     assert report.processed == ["raw/notreally.png"]
     assert seen["kind"] == "ingest" and seen["read_path"] is None  # not an image
+
+def test_chunked_office_source_keeps_embedded_images_on_first_segment(tmp_citadel, fake_agent, cite_page, monkeypatch):
+    """A deck whose extracted text exceeds the chunking threshold still delivers its embedded
+    images: they ride on the FIRST segment's temp (they were silently dropped before)."""
+    raw = tmp_citadel.raw
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 40)
+    _make_pptx_with_image(
+        raw / "bigdeck.pptx",
+        ["First slide paragraph, long enough.", "Second slide paragraph, also long."],
+        b"\x89PNG\r\n\x1a\n" + b"\x00" * 5000,
+    )
+
+    seen: list[tuple[tuple[int, int] | None, list[str]]] = []
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+        media_dir = Path(read_path).parent / "media"
+        seen.append((segment, sorted(m.name for m in media_dir.iterdir()) if media_dir.is_dir() else []))
+        cite_page("misc/bigdeck.md", rel_key, "A deck fact.")
+
+    fake_agent(side_effect=fake)
+    report = ingest.ingest()
+    assert report.processed == ["raw/bigdeck.pptx"]
+    assert len(seen) > 1  # genuinely chunked
+    assert seen[0][0] == (1, len(seen)) and seen[0][1] == ["image1.png"]
+    assert all(images == [] for _seg, images in seen[1:])  # later segments carry no duplicate media

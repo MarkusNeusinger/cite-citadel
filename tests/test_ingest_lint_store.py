@@ -288,3 +288,11 @@ def test_lint_contradiction_matches_tolerant_forms(tmp_citadel, seed_page):
     report = lint.lint()
     assert "concepts/indented-callout.md" in report.contradictions
     assert "concepts/prose-mention.md" not in report.contradictions
+
+def test_write_page_refuses_nested_log_md(tmp_citadel):
+    """Any `log.md`/`index.md` basename is reserved at ANY depth — exactly the set load() skips —
+    so a writable-but-never-loaded ghost page like `foo/log.md` cannot exist."""
+    with pytest.raises(okf.OKFError):
+        store.write_page("notes/log.md", {"type": "Note", "title": "Ghost"}, "body\n")
+    with pytest.raises(okf.OKFError):
+        store.write_page("notes/index.md", {"type": "Note", "title": "Ghost"}, "body\n")

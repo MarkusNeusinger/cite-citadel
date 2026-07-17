@@ -907,3 +907,45 @@ def test_check_accepts_angle_form_citation_with_spaces(tmp_citadel, seed_page):
     page = store.load()[0]
     assert validate.source_issues(page.rel_path, page.body) == []
     assert errors_of(validate.validate_page(page.rel_path, page.frontmatter, page.body)) == []
+
+def test_same_run_duplicate_carries_the_run_model_and_rules_stamp(make_citadel, fake_agent, tmp_path, monkeypatch):
+    """A byte-identical copy recognized as a duplicate of a twin ingested in the SAME run carries
+    that run's model + rules_version (the twin has no manifest entry yet at recognition time —
+    carrying None left the copy unattributable in `status` and invisible to `--stale-rules`)."""
+    cit = make_citadel(root=tmp_path / "repo")
+    root_b = tmp_path / "share" / "more-raw"
+    root_b.mkdir(parents=True)
+    (cit.raw / "x.md").write_text("the same bytes\n", encoding="utf-8")
+    (root_b / "x.md").write_text("the same bytes\n", encoding="utf-8")
+    key_b = (root_b / "x.md").resolve().as_posix()
+    monkeypatch.setattr(config, "RAW_DIRS", [cit.raw, root_b], raising=False)
+    fake_agent(side_effect=_fake_session)
+
+    ingest.ingest()
+    data = cit.read_manifest()
+    twin_model = manifest.entry_model(data["raw/x.md"])
+    assert twin_model  # the ingested twin is attributed to the run's model
+    assert manifest.entry_model(data[key_b]) == twin_model
+    assert manifest.entry_rules_version(data[key_b]) == config.rules_version()
+
+def test_tracked_source_that_became_unreadable_is_skipped_with_a_note(tmp_citadel, fake_agent, monkeypatch, capsys):
+    """An already-ingested source whose re-hash fails (permissions / transient IO) stays skipped —
+    never a fresh session, never a deletion — but the run says so on stderr instead of silently
+    reading as 'ingested, nothing to do' forever."""
+    fake_agent(side_effect=_fake_session)
+    src = tmp_citadel.raw / "a.md"
+    src.write_text("hello\n", encoding="utf-8")
+    ingest.ingest()
+
+    # Make the next run re-hash (stat no longer trusted) and fail that read.
+    real_sha = manifest.file_sha256
+    monkeypatch.setattr(
+        manifest,
+        "file_sha256",
+        lambda p: (_ for _ in ()).throw(OSError("io error")) if p.name == "a.md" else real_sha(p),
+    )
+    report = ingest.ingest(full_rescan=True)
+    err = capsys.readouterr().err
+    assert report.errors == [] and report.processed == []
+    assert "could not be re-read" in err and "raw/a.md" in err
+    assert "raw/a.md" in tmp_citadel.read_manifest()  # still tracked, retried next run
