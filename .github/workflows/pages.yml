@@ -46,14 +46,19 @@ jobs:
           mkdir -p site
           cp .github/pages-index.html site/index.html
           missing=""
-          # find + mapfile (not an `ls` glob): an EMPTY corpora/ must reach the count check below
-          # instead of failing the pipeline under `bash -e -o pipefail` with an unrelated error.
-          mapfile -t corpora < <(find corpora -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+          # A plain glob loop (not `ls`/mapfile/find -printf): an EMPTY corpora/ must reach the
+          # count check below instead of failing under `bash -e -o pipefail`, and it stays
+          # portable to bash 3.2 / BSD find (matching ci.yml). Glob order is already sorted.
+          corpora=()
+          for d in corpora/*/; do
+            [ -d "$d" ] || continue  # unmatched glob stays literal — skip it
+            corpora+=("$(basename "$d")")
+          done
           if [ "${#corpora[@]}" -lt 9 ]; then
             echo "::error::only ${#corpora[@]} corpora found under corpora/ — expected at least 9"
             missing="$missing (count)"
           fi
-          for c in "${corpora[@]}"; do
+          for c in ${corpora[@]+"${corpora[@]}"}; do
             if [ -f "corpora/$c/wiki/index.md" ]; then
               echo "building viewer for $c"
               CITADEL_WORKSPACE="corpora/$c" uv run python -m citadel view --no-open --out "site/$c/index.html"

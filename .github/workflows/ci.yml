@@ -73,14 +73,19 @@ jobs:
         run: |
           rc=0
           failures=""
-          # find + mapfile (not an `ls` glob): an EMPTY corpora/ must reach the count check below
-          # instead of failing the pipeline under `bash -e -o pipefail` with an unrelated error.
-          mapfile -t corpora < <(find corpora -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+          # A plain glob loop (not `ls`/mapfile/find -printf): an EMPTY corpora/ must reach the
+          # count check below instead of failing under `bash -e -o pipefail`, and the macOS cells
+          # run bash 3.2 + BSD find (no mapfile, no -printf). Glob order is already sorted.
+          corpora=()
+          for d in corpora/*/; do
+            [ -d "$d" ] || continue  # unmatched glob stays literal — skip it
+            corpora+=("$(basename "$d")")
+          done
           if [ "${#corpora[@]}" -lt 9 ]; then
             echo "::error::only ${#corpora[@]} corpora found under corpora/ — expected at least 9"
             rc=1
           fi
-          for c in "${corpora[@]}"; do
+          for c in ${corpora[@]+"${corpora[@]}"}; do
             if [ -f "corpora/$c/wiki/index.md" ]; then
               echo "== lint $c =="
               if ! CITADEL_WORKSPACE="corpora/$c" uv run python -m citadel lint; then
