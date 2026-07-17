@@ -83,6 +83,9 @@ def _snippet(query: str, body: str, width: int = _SNIPPET_CHARS) -> str:
 
 
 _SEARCH_LIMIT_MAX = 50
+# Deepest reachable pagination offset: bounds the limit+offset slice wiki_search asks store.search
+# for, so a miscomputed huge offset cannot demand the whole ranked corpus in one call.
+_SEARCH_OFFSET_MAX = 200
 
 
 @mcp.tool(annotations=_annotations(**_READ_ONLY))
@@ -96,16 +99,16 @@ def wiki_search(query: str, limit: int = 8, tag: str = "", offset: int = 0) -> s
     miscomputed limit must not read as a confident "No matches" — and is capped
     at 50 (one call must not dump the whole ranked corpus). ``offset`` skips the
     first N ranked hits, so results past the first page stay reachable
-    (``offset=8`` continues where the default first call stopped). The primary
-    'make the wiki usable' tool: an AI searches the synthesized wiki instead of
-    re-retrieving the raw sources.
+    (``offset=8`` continues where the default first call stopped); it is capped
+    at 200. The primary 'make the wiki usable' tool: an AI searches the
+    synthesized wiki instead of re-retrieving the raw sources.
     """
     from . import store
 
     if limit <= 0:
         limit = 8
     limit = min(limit, _SEARCH_LIMIT_MAX)
-    offset = max(offset, 0)
+    offset = min(max(offset, 0), _SEARCH_OFFSET_MAX)
     try:
         pages = None
         if tag.strip():
@@ -205,9 +208,10 @@ def wiki_read(rel_path: str, max_chars: int = _READ_MAX_CHARS) -> str:
 
     Output is capped at ``max_chars`` (default 20000 — normal pages fit whole;
     the cap only guards against one pathological page swamping the context) and
-    truncated at a line boundary with a marker; pass ``max_chars=0`` for the
-    uncapped text. Path-safety is enforced via okf.safe_join. Returns a clear
-    error string on not-found / unsafe path rather than raising.
+    truncated at a line boundary with a marker; pass ``max_chars=0`` (exactly)
+    for the uncapped text — a negative value is treated as invalid and falls
+    back to the default cap. Path-safety is enforced via okf.safe_join. Returns
+    a clear error string on not-found / unsafe path rather than raising.
     """
     from . import okf, store
 
@@ -219,7 +223,9 @@ def wiki_read(rel_path: str, max_chars: int = _READ_MAX_CHARS) -> str:
         return f"error: {e}"  # the OKFError text already says "unsafe path: …"
     except Exception as e:  # never raise out of the tool
         return f"error: could not read {rel_path!r}: {e}"
-    if max_chars > 0 and len(text) > max_chars:
+    if max_chars < 0:  # a miscomputed client value must not silently lift the cap
+        max_chars = _READ_MAX_CHARS
+    if max_chars and len(text) > max_chars:
         clipped = text[:max_chars].rsplit("\n", 1)[0]
         return f"{clipped}\n… [truncated at {max_chars} chars — re-call with max_chars=0 for the full page]"
     return text

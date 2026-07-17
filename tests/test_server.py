@@ -699,3 +699,25 @@ def test_read_caps_a_pathological_page(tmp_citadel, seed_page):
     assert "truncated at 20000 chars" in out
     full = server.wiki_read("concepts/huge.md", max_chars=0)
     assert "truncated" not in full and full.rstrip().endswith("line 1999 with some padding text")
+
+
+def test_search_offset_is_capped(seeded_wiki, monkeypatch):
+    """A miscomputed huge offset cannot demand the whole ranked corpus via limit+offset."""
+    seen: dict[str, int] = {}
+    real_search = store.search
+
+    def spy(query, pages=None, limit=8):
+        seen["limit"] = limit
+        return real_search(query, pages=pages, limit=limit)
+
+    monkeypatch.setattr(store, "search", spy)
+    server.wiki_search("attention", limit=10, offset=10**9)
+    assert seen["limit"] == 10 + server._SEARCH_OFFSET_MAX
+
+
+def test_read_negative_max_chars_falls_back_to_the_default_cap(tmp_citadel, seed_page):
+    """Only max_chars=0 lifts the cap; a negative (miscomputed) value keeps the default."""
+    big_body = "\n".join(f"line {i} with some padding text" for i in range(2000))
+    seed_page("concepts/huge.md", {"type": "Concept", "title": "Huge"}, big_body + "\n")
+    out = server.wiki_read("concepts/huge.md", max_chars=-5)
+    assert "truncated at 20000 chars" in out
