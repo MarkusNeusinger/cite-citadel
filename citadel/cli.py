@@ -148,6 +148,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show per-source corpus state: ingested / failed / skipped-duplicate / ignored / pending "
         "(read-only; reads the manifest + failures catalog, never re-hashes).",
     )
+    p_status.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit the report as JSON (one object with the five buckets + rules_version) for scripts.",
+    )
+    p_status.add_argument(
+        "--exit-code",
+        action="store_true",
+        help="Exit 1 when any source is failed or pending (a CI gate for 'corpus fully ingested'); "
+        "default stays 0 regardless.",
+    )
     p_status.set_defaults(func=cmd_status)
 
     p_doctor = sub.add_parser(
@@ -334,10 +345,21 @@ def cmd_curate(args: argparse.Namespace) -> int:
 def cmd_status(args: argparse.Namespace) -> int:
     """Print the per-source corpus state — ingested / failed /
     skipped-duplicate / ignored / pending, read from the manifest + failures catalog with one
-    stat-only walk. Read-only: always returns 0."""
+    stat-only walk. Read-only. ``--json`` emits the same report machine-readably (the buckets +
+    rules_version as one object) instead of the table; ``--exit-code`` returns 1 when any source
+    is failed or pending — the opt-in CI gate for "corpus fully ingested" — while the default
+    stays 0 so existing scripts never break."""
+    import json as _json
+
     from . import status
 
-    print(status.build_status().render(), end="")
+    report = status.build_status()
+    if args.json:
+        print(_json.dumps(report.as_dict(), indent=2, sort_keys=True))
+    else:
+        print(report.render(), end="")
+    if args.exit_code and (report.failed or report.pending):
+        return 1
     return 0
 
 

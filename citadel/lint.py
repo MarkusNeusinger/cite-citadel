@@ -240,16 +240,17 @@ def _outbound_links(page: Page) -> list[str]:
     return [resolved for _raw, resolved in grammar.resolved_md_links(page.rel_path, page.body)]
 
 
-def orphans(pages: list[Page]) -> list[str]:
+def orphans(pages: list[Page], outbound: dict[str, list[str]] | None = None) -> list[str]:
     """Island pages — no page links TO them AND they link to nothing (only source citations, which
     resolve into raw/ and are never wiki cross-links). THE single orphan definition: :func:`lint`'s
     own check and ``citadel curate``'s plan both consume this (the :func:`check_locators` precedent),
-    so they agree by construction. Sorted."""
-    outbound: dict[str, list[str]] = {}
+    so they agree by construction. Sorted. ``outbound`` accepts a caller's already-built
+    ``{rel_path: [targets]}`` link graph (:func:`lint` computes one anyway for broken_links) so the
+    whole-corpus link parse runs once, not twice."""
+    if outbound is None:
+        outbound = {page.rel_path: _outbound_links(page) for page in pages}
     inbound: set[str] = set()
-    for page in pages:
-        links = _outbound_links(page)
-        outbound[page.rel_path] = links
+    for links in outbound.values():
         inbound.update(links)
     return sorted(p.rel_path for p in pages if p.rel_path not in inbound and not outbound[p.rel_path])
 
@@ -342,17 +343,19 @@ def _missing_cite_preview(page: Page) -> str | None:
 
 
 def _unlinked_mentions(
-    page: Page, title_index: list[tuple[str, str, str]], linked: set[str], cap: int = 8
+    page: Page, title_index: list[tuple[str, re.Pattern[str], str]], linked: set[str], cap: int = 8
 ) -> list[str]:
     """Other pages whose title appears (whole-word, case-insensitive) in this page's body
     but which this page does not already link to — candidate cross-links to add. Advisory:
-    a high-precision nudge toward a denser knowledge graph, capped to avoid noise."""
+    a high-precision nudge toward a denser knowledge graph, capped to avoid noise.
+    ``title_index`` carries each title's pattern PRE-compiled by :func:`lint` — building a fresh
+    regex per (page, title) pair made this the most expensive lint step on a large wiki."""
     body_lower = page.body.lower()
     found: list[str] = []
-    for rel_path, title_lower, title in title_index:
+    for rel_path, title_pattern, title in title_index:
         if rel_path == page.rel_path or rel_path in linked:
             continue
-        if re.search(rf"\b{re.escape(title_lower)}\b", body_lower):
+        if title_pattern.search(body_lower):
             found.append(f"{rel_path} (mentions '{title}')")
             if len(found) >= cap:
                 break
@@ -576,12 +579,17 @@ def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
     report = LintReport()
     page_paths = {p.rel_path for p in pages}
 
-    # Build the outbound-link graph once (for broken_links); orphans reuse the shared helper.
+    # Build the outbound-link graph once; broken_links AND orphans consume the same map.
     outbound: dict[str, list[str]] = {page.rel_path: _outbound_links(page) for page in pages}
-    report.orphans = orphans(pages)
+    report.orphans = orphans(pages, outbound)
 
-    # Page titles long enough to match on (for the un-linked-mention suggestion).
-    title_index = [(p.rel_path, p.title.strip().lower(), p.title.strip()) for p in pages if len(p.title.strip()) >= 3]
+    # Page titles long enough to match on (for the un-linked-mention suggestion), each with its
+    # whole-word pattern compiled ONCE for the run.
+    title_index = [
+        (p.rel_path, re.compile(rf"\b{re.escape(title.lower())}\b"), title)
+        for p in pages
+        if len(title := p.title.strip()) >= 3
+    ]
 
     for page in pages:
         # missing_type
@@ -590,8 +598,10 @@ def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
         except okf.OKFError:
             report.missing_type.append(page.rel_path)
 
-        # contradictions
-        if grammar.CONTRADICTION_MARKER in page.body:
+        # contradictions — matched line-anchored through the shared tolerant pattern (indentation,
+        # spacing, case), the SAME one curate's planner and the viewer use, so the three consumers
+        # agree by construction (an exact-substring test here missed callouts they both counted).
+        if any(grammar.CONTRADICTION_LINE_RE.match(line) for line in page.body.splitlines()):
             report.contradictions.append(page.rel_path)
 
         # broken_links

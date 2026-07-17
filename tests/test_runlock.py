@@ -97,6 +97,19 @@ def test_heartbeat_refreshes_the_lock_mtime(tmp_citadel):
         assert time.time() - path.stat().st_mtime < 60
 
 
+def test_heartbeat_leaves_a_foreign_lock_alone(tmp_citadel):
+    """A lock another (reclaiming) run owns is never refreshed: bumping its mtime would mask the
+    NEW holder's staleness. Same pid+host guard as the release path."""
+    path = runlock.lock_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    old = time.time() - 10_000
+    path.write_text(json.dumps({"pid": os.getpid() + 1, "host": "other-host", "kind": "ingest"}), encoding="utf-8")
+    os.utime(path, (old, old))
+    runlock.heartbeat()
+    assert abs(path.stat().st_mtime - old) < 1  # untouched
+    path.unlink()
+
+
 # --- integration: ingest/staging under the lock ----------------------------------------------
 
 

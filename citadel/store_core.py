@@ -117,58 +117,62 @@ def _tokenize(text: str) -> set[str]:
     return {_stem(tok) for tok in _TOKEN_RE.findall(text.lower()) if len(tok) >= 2}
 
 
-def _idf_weights(pages: list[Page]) -> dict[str, float]:
-    """Smoothed inverse document frequency per token across `pages`. A token appearing in
-    every page weighs 1.0; a token in just one weighs more, so a rare, discriminating term
-    (e.g. an acronym or a proper noun) outranks one common to the whole corpus (e.g. the
-    corpus's own topic word). idf = log((N+1)/(1+df)) + 1 — smoothed so the weight never
-    drops below 1.0 (a match is never penalized) while rare tokens are amplified. Recomputed
-    per search over the candidate set, holding to 'the wiki IS the database' (no persisted
-    index)."""
-    n = len(pages)
+# The per-field match weights, in _field_tokens order: title, aliases, tags, description, body.
+_FIELD_WEIGHTS = (3.0, 2.5, 2.0, 1.5, 1.0)
+
+
+def _field_tokens(page: Page) -> tuple[set[str], ...]:
+    """One tokenization of a page's five scored fields (title, aliases, tags, description, body),
+    in :data:`_FIELD_WEIGHTS` order. Computed ONCE per page per search and shared by the IDF pass
+    and the scoring pass — tokenizing the whole corpus twice per query (once for document
+    frequencies, again per-page for the overlap score) used to dominate `wiki_search` latency."""
+    return (
+        _tokenize(page.title),
+        _tokenize(" ".join(_aliases_of(page))),
+        _tokenize(" ".join(page.tags)),
+        _tokenize(page.description),
+        _tokenize(page.body),
+    )
+
+
+def _idf_weights(fields_by_page: list[tuple[set[str], ...]]) -> dict[str, float]:
+    """Smoothed inverse document frequency per token across the candidate pages' precomputed
+    :func:`_field_tokens`. A token appearing in every page weighs 1.0; a token in just one weighs
+    more, so a rare, discriminating term (e.g. an acronym or a proper noun) outranks one common to
+    the whole corpus (e.g. the corpus's own topic word). idf = log((N+1)/(1+df)) + 1 — smoothed so
+    the weight never drops below 1.0 (a match is never penalized) while rare tokens are amplified.
+    Recomputed per search over the candidate set, holding to 'the wiki IS the database' (no
+    persisted index)."""
+    n = len(fields_by_page)
     if n == 0:
         return {}
     df: dict[str, int] = {}
-    for page in pages:
-        tokens = (
-            _tokenize(page.title)
-            | _tokenize(" ".join(_aliases_of(page)))
-            | _tokenize(" ".join(page.tags))
-            | _tokenize(page.description)
-            | _tokenize(page.body)
-        )
-        for tok in tokens:
+    for fields in fields_by_page:
+        for tok in set().union(*fields):
             df[tok] = df.get(tok, 0) + 1
     return {tok: math.log((n + 1) / (1 + d)) + 1.0 for tok, d in df.items()}
 
 
-def _score(query_tokens: set[str], page: Page, idf: dict[str, float] | None = None) -> float:
-    """Token-overlap score. Each matching query token contributes its field weight —
-    title 3.0, aliases 2.5, tags 2.0, description 1.5, body 1.0 — scaled by the token's IDF
-    weight (from :func:`_idf_weights`) so a rare, discriminating token outweighs one common to
-    many pages. Aliases are a page's declared alternate names/synonyms (an abbreviation's
-    spelled-out form, a lay term for the concept), so weighting them lets a paraphrased query
-    reach the page by a word the title lacks — purely lexical, no synonym map. With ``idf=None``
-    every token weighs 1.0, i.e. plain overlap counting. 0.0 == no match. (The 0.5 raw-substring
-    bonus is applied in search(), which knows the original query string.)"""
+def _score(query_tokens: set[str], fields: tuple[set[str], ...], idf: dict[str, float] | None = None) -> float:
+    """Token-overlap score over one page's precomputed :func:`_field_tokens`. Each matching query
+    token contributes its field weight — title 3.0, aliases 2.5, tags 2.0, description 1.5,
+    body 1.0 — scaled by the token's IDF weight (from :func:`_idf_weights`) so a rare,
+    discriminating token outweighs one common to many pages. Aliases are a page's declared
+    alternate names/synonyms (an abbreviation's spelled-out form, a lay term for the concept), so
+    weighting them lets a paraphrased query reach the page by a word the title lacks — purely
+    lexical, no synonym map. With ``idf=None`` every token weighs 1.0, i.e. plain overlap
+    counting. 0.0 == no match. (The 0.5 raw-substring bonus is applied in search(), which knows
+    the original query string.)"""
     if not query_tokens:
         return 0.0
 
     def w(tok: str) -> float:
         return idf.get(tok, 1.0) if idf else 1.0
 
-    score = 0.0
-    title_tokens = _tokenize(page.title)
-    alias_tokens = _tokenize(" ".join(_aliases_of(page)))
-    tag_tokens = _tokenize(" ".join(page.tags))
-    desc_tokens = _tokenize(page.description)
-    body_tokens = _tokenize(page.body)
-    score += 3.0 * sum(w(t) for t in query_tokens & title_tokens)
-    score += 2.5 * sum(w(t) for t in query_tokens & alias_tokens)
-    score += 2.0 * sum(w(t) for t in query_tokens & tag_tokens)
-    score += 1.5 * sum(w(t) for t in query_tokens & desc_tokens)
-    score += 1.0 * sum(w(t) for t in query_tokens & body_tokens)
-    return score
+    return sum(
+        weight * sum(w(t) for t in query_tokens & field_tokens)
+        for weight, field_tokens in zip(_FIELD_WEIGHTS, fields, strict=True)
+    )
 
 
 def search(query: str, pages: list[Page] | None = None, limit: int = 8) -> list[tuple[Page, float]]:
@@ -186,12 +190,14 @@ def search(query: str, pages: list[Page] | None = None, limit: int = 8) -> list[
         pages = load()
     query_tokens = _tokenize(query)
     raw_query = query.strip().lower()
+    # Tokenize every candidate page ONCE; the IDF pass and the per-page scores share the sets.
+    fields_by_page = [_field_tokens(page) for page in pages] if query_tokens else None
     # Weight by rarity only when there are tokens to weight: an empty or one-char query still
     # surfaces pages via the substring bonus below, and skips the full-corpus IDF pass.
-    idf = _idf_weights(pages) if query_tokens else None
+    idf = _idf_weights(fields_by_page) if fields_by_page else None
     scored: list[tuple[Page, float]] = []
-    for page in pages:
-        score = _score(query_tokens, page, idf)
+    for i, page in enumerate(pages):
+        score = _score(query_tokens, fields_by_page[i], idf) if fields_by_page else 0.0
         if raw_query and (raw_query in page.title.lower() or raw_query in page.body.lower()):
             score += 0.5
         if score > 0.0:
@@ -388,12 +394,13 @@ def sources_text() -> str:
 
 def _is_reserved_name(rel_path: str) -> bool:
     """True for the generated/reserved files that write_page and delete_page must refuse:
-    index.md, any per-folder ``*/index.md``, log.md, dotfiles, and the empty path. Shared by both
-    mutators so a restructure or a programmatic write can never clobber the catalog, the log, or
-    the manifest."""
+    any ``index.md``/``log.md`` basename (at ANY depth — exactly the set :func:`is_skipped_name`
+    hides from ``load()``, so a writable-but-never-loaded ghost page like ``foo/log.md`` cannot
+    exist), dotfiles, and the empty path. Shared by both mutators so a restructure or a
+    programmatic write can never clobber the catalog, the log, or the manifest."""
     rel = rel_path.replace("\\", "/")  # okf.safe_join treats backslash as a separator on Windows
     name = rel.rsplit("/", 1)[-1] if rel else ""
-    return not rel or rel in ("index.md", "log.md") or rel.endswith("/index.md") or name.startswith(".")
+    return not rel or is_skipped_name(name)
 
 
 def write_page(rel_path: str, frontmatter: dict, body: str) -> Page:

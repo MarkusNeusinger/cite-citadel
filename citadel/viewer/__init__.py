@@ -364,15 +364,17 @@ def _source_excerpts(text: str, locators: list[grammar.Locator | None]) -> list[
         elif loc.kind == "lines":
             ranges.append(_line_range(loc.start, loc.end, n))
         elif loc.kind == "heading":
+            if loc.start is not None:
+                # Combined `§ Heading, lines A-B`: the ABSOLUTE line range is the precise anchor —
+                # the same slice `citadel raw`/`wiki_raw` renders and lint verifies — with the
+                # heading as context; embedding the whole section here instead showed a reader
+                # different text than the CLI/MCP readers for the same citation.
+                ranges.append(_line_range(loc.start, loc.end, n))
+                continue
             if heads is None:
                 heads = _heading_lines(text)
             hr = _heading_range(heads, loc.heading or "", n) if loc.heading else None
-            if hr is not None:
-                ranges.append(hr)
-            elif loc.start is not None:
-                ranges.append(_line_range(loc.start, loc.end, n))
-            else:
-                ranges.append(head)
+            ranges.append(hr if hr is not None else head)
     if not ranges:  # cited only via forms that yielded nothing — show a head excerpt
         ranges.append(head)
     ranges.sort()

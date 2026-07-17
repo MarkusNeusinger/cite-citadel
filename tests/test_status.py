@@ -129,3 +129,33 @@ def test_cli_status_exits_0_with_every_section_header(tmp_citadel, capsys):
     for heading in ("Ingested (", "Failed (", "Skipped as duplicate (", "Ignored (", "Pending ("):
         assert heading in out
     assert "raw/good.md" in out and "raw/dup.pdf" in out and "raw/pending.md" in out
+
+
+def test_cli_status_json_emits_machine_readable_buckets(tmp_citadel, capsys):
+    """``status --json`` dumps the five buckets + rules_version as one JSON object, so a script
+    gets 'which sources failed and why' without scraping the table."""
+    import json
+
+    (tmp_citadel.raw / "good.md").write_text("body\n", encoding="utf-8")
+    _track("raw/good.md", manifest.file_sha256(tmp_citadel.raw / "good.md"), config.rules_version())
+    _fail("raw/bad.bin", failures.UNREADABLE, "binary")
+    (tmp_citadel.raw / "pending.md").write_text("later\n", encoding="utf-8")
+
+    assert cli.main(["status", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["rules_version"] == config.rules_version()
+    assert [s["key"] for s in data["ingested"]] == ["raw/good.md"]
+    assert data["failed"][0]["key"] == "raw/bad.bin" and data["failed"][0]["reason"] == failures.UNREADABLE
+    assert data["pending"] == ["raw/pending.md"]
+
+
+def test_cli_status_exit_code_gates_on_failed_or_pending(tmp_citadel, capsys):
+    """``--exit-code`` returns 1 while anything is failed or pending (the CI gate) and 0 once the
+    corpus is fully ingested; without the flag the exit stays 0 either way."""
+    (tmp_citadel.raw / "pending.md").write_text("later\n", encoding="utf-8")
+    assert cli.main(["status"]) == 0  # default contract unchanged
+    assert cli.main(["status", "--exit-code"]) == 1
+
+    _track("raw/pending.md", manifest.file_sha256(tmp_citadel.raw / "pending.md"), config.rules_version())
+    assert cli.main(["status", "--exit-code"]) == 0
+    capsys.readouterr()

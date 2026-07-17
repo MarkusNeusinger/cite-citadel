@@ -87,9 +87,17 @@ def _is_stale(path: Path, holder: dict) -> bool:
 
 def heartbeat() -> None:
     """Refresh the lock's mtime (best-effort) so a long multi-source run never looks stale.
-    Called at every per-source boundary; a failure never breaks the run."""
-    with contextlib.suppress(OSError):
-        os.utime(lock_path())
+    Called at every per-source boundary; a failure never breaks the run.
+
+    Only refreshes a lock THIS process still owns (same pid + host guard as the release path):
+    if this run stalled past the staleness window and another run legitimately reclaimed the
+    lock, bumping the new holder's mtime would mask ITS staleness — so a foreign lock is left
+    strictly alone."""
+    path = lock_path()
+    with contextlib.suppress(OSError, ValueError):
+        holder = json.loads(path.read_text(encoding="utf-8"))
+        if holder.get("pid") == os.getpid() and holder.get("host") == socket.gethostname():
+            os.utime(path)
 
 
 @contextmanager

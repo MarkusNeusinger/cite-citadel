@@ -82,22 +82,33 @@ def _snippet(query: str, body: str, width: int = _SNIPPET_CHARS) -> str:
     return snippet
 
 
+_SEARCH_LIMIT_MAX = 50
+# Deepest reachable pagination offset: bounds the limit+offset slice wiki_search asks store.search
+# for, so a miscomputed huge offset cannot demand the whole ranked corpus in one call.
+_SEARCH_OFFSET_MAX = 200
+
+
 @mcp.tool(annotations=_annotations(**_READ_ONLY))
-def wiki_search(query: str, limit: int = 8, tag: str = "") -> str:
+def wiki_search(query: str, limit: int = 8, tag: str = "", offset: int = 0) -> str:
     """Keyword search across all OKF wiki pages (title/tags/description/body).
 
     Optionally restrict to pages carrying ``tag`` (case-insensitive). Returns a
     ranked markdown list; each entry gives the page rel_path, its score, the
     title, its tags, and a short body snippet around the first matching token.
     A ``limit`` <= 0 is treated as unset and falls back to the default (8) — a
-    miscomputed limit must not read as a confident "No matches". The primary
-    'make the wiki usable' tool: an AI searches the synthesized wiki instead of
-    re-retrieving the raw sources.
+    miscomputed limit must not read as a confident "No matches" — and is capped
+    at 50 (one call must not dump the whole ranked corpus). ``offset`` skips the
+    first N ranked hits, so results past the first page stay reachable
+    (``offset=8`` continues where the default first call stopped); it is capped
+    at 200. The primary 'make the wiki usable' tool: an AI searches the
+    synthesized wiki instead of re-retrieving the raw sources.
     """
     from . import store
 
     if limit <= 0:
         limit = 8
+    limit = min(limit, _SEARCH_LIMIT_MAX)
+    offset = min(max(offset, 0), _SEARCH_OFFSET_MAX)
     try:
         pages = None
         if tag.strip():
@@ -105,13 +116,16 @@ def wiki_search(query: str, limit: int = 8, tag: str = "") -> str:
             pages = [p for p in store.load() if want in [str(t).lower() for t in p.tags]]
             if not pages:
                 return f"No pages tagged {tag!r}."
-        hits = store.search(query, pages=pages, limit=limit)
+        hits = store.search(query, pages=pages, limit=limit + offset)[offset:]
     except Exception as e:  # never raise out of the tool
         return f"error: search failed: {e}"
     if not hits:
         scope = f" (tag {tag!r})" if tag.strip() else ""
+        if offset:
+            return f"No more matches for {query!r}{scope} at offset {offset}."
         return f"No matches for {query!r}{scope}."
-    parts = [f"# Search results for {query!r} ({len(hits)})", ""]
+    header = f"# Search results for {query!r} ({len(hits)}" + (f", offset {offset})" if offset else ")")
+    parts = [header, ""]
     for page, score in hits:
         parts.append(f"## {page.rel_path} (score {score:.2f})")
         if page.title:
@@ -180,26 +194,41 @@ def wiki_define(term: str) -> str:
         return f"error: could not define {term!r}: {e}"
 
 
+# Default output cap for wiki_read, mirroring rawsource.MAX_CHARS: one pathological page must not
+# swamp the client context. Pages are normally far smaller (curate splits them well before this).
+_READ_MAX_CHARS = 20_000
+
+
 @mcp.tool(annotations=_annotations(**_READ_ONLY))
-def wiki_read(rel_path: str) -> str:
+def wiki_read(rel_path: str, max_chars: int = _READ_MAX_CHARS) -> str:
     """Return the full verbatim OKF page text for a rel_path like
     'concepts/transformer.md' (frontmatter + body, including all per-fact
     [^sN] citations and the trailing ## Sources section). A Windows-style
     rel_path (backslashes) is normalized, matching wiki_validate.
 
-    Path-safety is enforced via okf.safe_join. Returns a clear error string
-    on not-found / unsafe path rather than raising.
+    Output is capped at ``max_chars`` (default 20000 — normal pages fit whole;
+    the cap only guards against one pathological page swamping the context) and
+    truncated at a line boundary with a marker; pass ``max_chars=0`` (exactly)
+    for the uncapped text — a negative value is treated as invalid and falls
+    back to the default cap. Path-safety is enforced via okf.safe_join. Returns
+    a clear error string on not-found / unsafe path rather than raising.
     """
     from . import okf, store
 
     try:
-        return store.read_page_text(rel_path)
+        text = store.read_page_text(rel_path)
     except FileNotFoundError:
         return f"error: page not found: {rel_path!r}"
     except okf.OKFError as e:
         return f"error: {e}"  # the OKFError text already says "unsafe path: …"
     except Exception as e:  # never raise out of the tool
         return f"error: could not read {rel_path!r}: {e}"
+    if max_chars < 0:  # a miscomputed client value must not silently lift the cap
+        max_chars = _READ_MAX_CHARS
+    if max_chars and len(text) > max_chars:
+        clipped = text[:max_chars].rsplit("\n", 1)[0]
+        return f"{clipped}\n… [truncated at {max_chars} chars — re-call with max_chars=0 for the full page]"
+    return text
 
 
 @mcp.tool(annotations=_annotations(**_READ_ONLY))

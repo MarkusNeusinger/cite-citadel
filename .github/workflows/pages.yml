@@ -39,19 +39,31 @@ jobs:
         # Each committed showcase (corpora/<name>/) is its own self-contained workspace (a nested
         # citadel.toml marker with plain raw/X keys); CITADEL_WORKSPACE points discovery at it while
         # the CWD stays the repo root, so `view --out site/<name>/index.html` writes under ./site.
-        # The loop is unconditional over all nine corpora and a MISSING showcase wiki FAILS the
-        # build (all nine committed showcases must be present, so an incomplete gallery never
-        # deploys); missing corpora are collected and reported together, not bailed on one-by-one.
+        # The corpus list is DERIVED from corpora/* (one place to add a new corpus — ci.yml derives
+        # the same way) with a minimum-count floor, and a MISSING showcase wiki FAILS the build (an
+        # incomplete gallery never deploys); missing corpora are collected and reported together.
         run: |
           mkdir -p site
           cp .github/pages-index.html site/index.html
           missing=""
-          for c in beverages kelvarra leuchtfeuer pemberley injection-resistance clockwork flurfunk gazette kontor; do
+          # A plain glob loop (not `ls`/mapfile/find -printf): an EMPTY corpora/ must reach the
+          # count check below instead of failing under `bash -e -o pipefail`, and it stays
+          # portable to bash 3.2 / BSD find (matching ci.yml). Glob order is already sorted.
+          corpora=()
+          for d in corpora/*/; do
+            [ -d "$d" ] || continue  # unmatched glob stays literal — skip it
+            corpora+=("$(basename "$d")")
+          done
+          if [ "${#corpora[@]}" -lt 9 ]; then
+            echo "::error::only ${#corpora[@]} corpora found under corpora/ — expected at least 9"
+            missing="$missing (count)"
+          fi
+          for c in ${corpora[@]+"${corpora[@]}"}; do
             if [ -f "corpora/$c/wiki/index.md" ]; then
               echo "building viewer for $c"
               CITADEL_WORKSPACE="corpora/$c" uv run python -m citadel view --no-open --out "site/$c/index.html"
             else
-              echo "::error::corpora/$c/wiki/index.md is missing — all nine committed showcases must be present"
+              echo "::error::corpora/$c/wiki/index.md is missing — every committed showcase must be present"
               missing="$missing $c"
             fi
           done

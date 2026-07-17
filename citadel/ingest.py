@@ -517,6 +517,7 @@ class _Scan:
     hashed: dict[str, tuple[str, os.stat_result]] = field(default_factory=dict)
     mutated: bool = False
     out_of_root: list[str] = field(default_factory=list)
+    unreadable_tracked: list[str] = field(default_factory=list)
 
 
 def _partition_sources(
@@ -597,6 +598,8 @@ def _partition_sources(
     skipped: list[str] = []
     moved: list[tuple[str, str, str, bool]] = []
     unreadable: list[Path] = []
+    # Tracked (already-ingested) sources whose re-hash failed this run — skipped but surfaced.
+    unreadable_tracked: list[str] = []
     # Office sources extracted here -> their text, so the agent step writes the temp .md without a
     # second ZIP/XML parse. Keyed by the same Path objects carried in `pending`.
     office_text: dict[Path, str] = {}
@@ -635,8 +638,12 @@ def _partition_sources(
             except OSError:
                 # An already-ingested source that became unreadable (permissions / transient IO)
                 # must NOT crash the whole run — it is already in the wiki, so treat it as
-                # skipped rather than a fresh source.
+                # skipped rather than a fresh source. But surface it (a NOTE per run, like the
+                # sweep skips): a tracked file that stays unreadable — share glitch, permission
+                # change, on-disk corruption — would otherwise read as "ingested, nothing to do"
+                # forever.
                 skipped.append(key)
+                unreadable_tracked.append(key)
                 continue
             hashed[key] = (sha, st)
             if file_entry and not force and sha == manifest.entry_sha(entry):
@@ -740,6 +747,7 @@ def _partition_sources(
         hashed=hashed,
         mutated=mutated,
         out_of_root=out_of_root,
+        unreadable_tracked=unreadable_tracked,
     )
 
 
@@ -1526,11 +1534,15 @@ def _prepare_passes(
         content = _read_source_text(src)
     if content is not None and max_chars > 0 and len(content) > max_chars:
         segments = _split_text(content, max_chars)
+        # A chunked Office source keeps its embedded images: attached to the FIRST segment's temp,
+        # exactly like the small-Office branch below — without this, a deck whose extracted text
+        # crossed the chunking threshold silently lost its diagrams/charts.
+        media = extract.extract_media(src) if office is not None and config.IMAGE_SUPPORT else []
         passes: list[tuple[str | None, tuple[int, int] | None]] = []
         tmpdirs: list[str] = []
         try:
             for i, seg in enumerate(segments, 1):
-                read_key, tmp = _office_write_temp(seg, src.name)
+                read_key, tmp = _office_write_temp(seg, src.name, media if i == 1 else None)
                 passes.append((read_key, (i, len(segments))))
                 tmpdirs.append(tmp)
         except OSError:
@@ -1761,9 +1773,16 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
                 "detection:\n  " + "\n  ".join(sorted(out_of_root)),
                 file=sys.stderr,
             )
+    if scan.unreadable_tracked:
+        print(
+            "NOTE: already-ingested source(s) could not be re-read this run (permissions / IO); "
+            "kept as ingested and re-checked next run:\n  " + "\n  ".join(sorted(scan.unreadable_tracked)),
+            file=sys.stderr,
+        )
     # A pending source whose key is ALREADY tracked is a re-ingest of changed bytes (reconcile);
     # one not yet tracked is brand new. Captured before the manifest is mutated below.
-    changed_keys = {manifest.rel_key(p) for p in scan.pending} & set(manifest_dict)
+    pending_keys = {manifest.rel_key(p) for p in scan.pending}
+    changed_keys = pending_keys & set(manifest_dict)
 
     # --- Reorganized sources: a file that only MOVED (or is a byte-for-byte duplicate) is
     # recognized and NOT re-ingested. For a real move (the old path is gone) repoint the wiki's
@@ -1773,9 +1792,15 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
     for old_key, new_key, sha, old_gone in scan.moved:
         # A move/duplicate is NOT a re-ingest: carry over the model (and rules_version) that
         # originally imported this content (recorded under the old key) rather than stamping it
-        # with this run's values.
+        # with this run's values. When the twin is itself pending in THIS run (two new copies
+        # discovered together), the old key has no manifest entry yet — the twin will be stamped
+        # with the run's values, so the duplicate carries the same ones instead of a permanent
+        # None that `status` can't attribute and `--stale-rules` can never flag.
         carried_model = manifest.model_of(manifest_dict, old_key)
         carried_rules = manifest.entry_rules_version(manifest_dict.get(old_key))
+        if old_key not in manifest_dict and old_key in pending_keys:
+            carried_model = carried_model or model
+            carried_rules = carried_rules or rules_ver
         if old_gone and old_key != new_key:
             try:
                 if store.rewrite_raw_references(old_key, new_key):

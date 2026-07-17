@@ -265,3 +265,36 @@ def test_undefined_abbrev_skips_fiscal_labels_and_ordinal_roman_numerals():
     assert "Q3" not in tokens
     assert "IV" not in tokens
     assert "DC" in tokens  # not preceded by an ordinal word -> a real abbreviation, kept
+
+
+def test_lint_contradiction_matches_tolerant_forms(tmp_citadel, seed_page):
+    """The contradiction count uses the shared tolerant line pattern (indentation, spacing,
+    case) — the same one curate's planner and the viewer match — not an exact substring."""
+    raw = tmp_citadel.raw
+    (raw / "a.md").write_text("src\n", encoding="utf-8")
+    seed_page(
+        "concepts/indented-callout.md",
+        {"type": "Concept", "title": "Indented Callout", "resource": "raw/a.md"},
+        "A fact.[^s1]\n\n"
+        "  >  [!contradiction]\n"
+        "> sources disagree.\n\n"
+        "## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - n\n",
+    )
+    seed_page(
+        "concepts/prose-mention.md",
+        {"type": "Concept", "title": "Prose Mention", "resource": "raw/a.md"},
+        "This page merely mentions the string [!CONTRADICTION] in prose.[^s1]\n\n"
+        "## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - n\n",
+    )
+    report = lint.lint()
+    assert "concepts/indented-callout.md" in report.contradictions
+    assert "concepts/prose-mention.md" not in report.contradictions
+
+
+def test_write_page_refuses_nested_log_md(tmp_citadel):
+    """Any `log.md`/`index.md` basename is reserved at ANY depth — exactly the set load() skips —
+    so a writable-but-never-loaded ghost page like `foo/log.md` cannot exist."""
+    with pytest.raises(okf.OKFError):
+        store.write_page("notes/log.md", {"type": "Note", "title": "Ghost"}, "body\n")
+    with pytest.raises(okf.OKFError):
+        store.write_page("notes/index.md", {"type": "Note", "title": "Ghost"}, "body\n")
