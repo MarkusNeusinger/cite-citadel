@@ -1,8 +1,9 @@
 # email — correspondence and threads
 
 Applies when the source reads like email or message correspondence: a single mail, a reply
-thread, a forwarded chain, or an exported chat — anything with senders, recipients, dates, and
-quoted earlier messages.
+thread, or a forwarded chain — anything with senders, recipients, dates, and quoted earlier
+messages. (An exported group/workplace CHAT log — many short timestamped turns, no quoting
+structure — is `genres/chat.md`'s job, with its own per-speaker, end-state attribution model.)
 
 - **Attribute facts and positions to the ORIGINAL author, never the quoter.** In a thread, later
   mails quote earlier ones; a claim inside quoted text belongs to the person who originally wrote

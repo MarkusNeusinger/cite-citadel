@@ -93,9 +93,11 @@ citadel_version: 0.3.0        # set automatically on every write — do NOT auth
 ```
 
 - The `check` gate (`citadel check`, MCP `wiki_validate`) treats `title`, `description`, `tags`
-  (≥1), and `resource` as required alongside `type` — a missing one is a hard error. Extra fields
-  beyond these are allowed and preserved — notably `aliases` (see § Aliases), the alternate names a
-  reader might search by.
+  (≥1 is the hard floor — aim for the 2–5 of § Tags), and `resource` as required alongside `type`
+  — a missing one is a hard error. Extra fields beyond these are allowed and preserved — notably
+  `aliases` (see § Aliases), the alternate names a reader might search by.
+- `resource` is a plain source key (`raw/notes.md`) or an absolute out-of-workspace path — never
+  a `..`-relative path (`check` rejects those).
 - **Do NOT write a `timestamp` or `citadel_version` field** — the system stamps both on every
   write (`timestamp` = when the page last changed, `citadel_version` = which cite-citadel release
   wrote it).
@@ -172,7 +174,9 @@ pins where in the source the cited fact lives:
   `§ Heading name` (a heading in the source, copied verbatim).
 - **Required** for every citation into a **PDF or Office** source, and for citations into a
   **text source over 200 lines**. Everywhere else, add one whenever the fact's place is
-  determinable — a bare file citation with no locator is a last resort, not a default.
+  determinable — a bare file citation with no locator is a last resort, not a default. This
+  requirement is **yours to uphold**: the offline checks verify a locator that is *wrong*
+  (out-of-range lines, a missing heading) but cannot see one that is *missing*.
 - **Self-verify every locator before writing it.** A `§ Heading` locator must copy a heading that
   LITERALLY exists in the raw file — never a paraphrase, a compound "A and B", a parenthetical
   "(the X section)", or a date/diary line that is not a heading. Copy it **character-for-character,
@@ -192,8 +196,6 @@ pins where in the source the cited fact lives:
   - RIGHT: `[^s2]`, `lines 12-18`, for the first fact; `[^s3]`, `lines 90-96`, for the second.
 - A locator names a place in the **current** raw file; raw files are immutable, so locators are
   stable — and when a source *does* change, the reconcile task re-checks them.
-- Reserved for later: appending a short verbatim quote after the locator
-  (`, lines 40-52: "…"`). Do **not** use this form yet.
 
 ## Contradictions — flag, resolve, don't overwrite
 
