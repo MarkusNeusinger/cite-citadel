@@ -118,12 +118,15 @@ jobs:
           stale = []
           for mf in sorted(Path("corpora").glob("*/wiki/.citadel_ingested.json")):
               try:
-                  entries = json.loads(mf.read_text(encoding="utf-8"))
+                  data = json.loads(mf.read_text(encoding="utf-8"))
               except (OSError, ValueError):
                   stale.append(f"{mf.parent.parent.name}(unreadable manifest)")
                   continue
-              # An entry with NO stamp (pre-rules-split) is unknown, not stale — the same
-              # semantics as status._is_stale_rules, so the advisory matches the tool.
+              # Format-2 manifests nest the per-source entries under "sources" (a legacy flat
+              # file IS the sources dict) — mirroring manifest.load(). An entry with NO stamp
+              # (pre-rules-split) is unknown, not stale — the same semantics as
+              # status._is_stale_rules, so the advisory matches the tool.
+              entries = data.get("sources") if isinstance(data.get("sources"), dict) else data
               vers = {
                   e.get("rules_version")
                   for e in entries.values()
