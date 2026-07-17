@@ -122,7 +122,13 @@ jobs:
               except (OSError, ValueError):
                   stale.append(f"{mf.parent.parent.name}(unreadable manifest)")
                   continue
-              vers = {e.get("rules_version") for e in entries.values() if isinstance(e, dict)}
+              # An entry with NO stamp (pre-rules-split) is unknown, not stale — the same
+              # semantics as status._is_stale_rules, so the advisory matches the tool.
+              vers = {
+                  e.get("rules_version")
+                  for e in entries.values()
+                  if isinstance(e, dict) and e.get("rules_version") is not None
+              }
               if vers - {current}:
                   stale.append(mf.parent.parent.name)
           if stale:
