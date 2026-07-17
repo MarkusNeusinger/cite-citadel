@@ -65,14 +65,21 @@ jobs:
       - name: Lint every committed showcase wiki (structural health check)
         # Each committed showcase (corpora/<name>/) is its own self-contained workspace with a nested
         # citadel.toml marker (plain raw/X keys); CITADEL_WORKSPACE selects the nested one over the
-        # checkout root's marker. The loop is unconditional over all nine corpora: every PRESENT
-        # showcase is linted and a MISSING one is a FAILURE (all nine must be committed). Failures
-        # — missing wiki OR a lint failure — are COLLECTED across the whole loop (no early bail) and
-        # reported together, so one red run names every corpus that needs fixing.
+        # checkout root's marker. The corpus list is DERIVED from corpora/* (one place to add a new
+        # corpus — pages.yml derives the same way) with a minimum-count floor so a vanished corpus
+        # dir still reddens the run; a corpus without a wiki/index.md is a FAILURE. Failures are
+        # COLLECTED across the whole loop (no early bail) and reported together, so one red run
+        # names every corpus that needs fixing.
         run: |
           rc=0
           failures=""
-          for c in beverages kelvarra leuchtfeuer pemberley injection-resistance clockwork flurfunk gazette kontor; do
+          corpora=$(ls -d corpora/*/ | xargs -n1 basename | sort)
+          count=$(echo "$corpora" | wc -l)
+          if [ "$count" -lt 9 ]; then
+            echo "::error::only $count corpora found under corpora/ — expected at least 9"
+            rc=1
+          fi
+          for c in $corpora; do
             if [ -f "corpora/$c/wiki/index.md" ]; then
               echo "== lint $c =="
               if ! CITADEL_WORKSPACE="corpora/$c" uv run python -m citadel lint; then
@@ -81,7 +88,7 @@ jobs:
                 rc=1
               fi
             else
-              echo "::error::corpora/$c/wiki/index.md is missing — all nine committed showcases must be present"
+              echo "::error::corpora/$c/wiki/index.md is missing — every committed showcase must be present"
               failures="$failures $c(missing)"
               rc=1
             fi
@@ -90,6 +97,34 @@ jobs:
             echo "::error::showcase lint gate failed for:$failures"
           fi
           exit $rc
+
+      - name: Showcase freshness — rules_version stamps vs the current rulebook (advisory)
+        # The committed showcases should be rebuilt (or deliberately restamped) after a rules
+        # change; a drifted stamp means `status` shows every source (stale) and the gallery no
+        # longer reflects current ingest behavior. A WARNING, not a failure — drift is expected
+        # on the very PR that edits the rules, and the rebuild follows it.
+        run: |
+          uv run python - <<'EOF'
+          import json
+          from pathlib import Path
+          from citadel import config
+          current = config.rules_version()
+          stale = []
+          for mf in sorted(Path("corpora").glob("*/wiki/.citadel_ingested.json")):
+              try:
+                  entries = json.loads(mf.read_text(encoding="utf-8"))
+              except (OSError, ValueError):
+                  stale.append(f"{mf.parent.parent.name}(unreadable manifest)")
+                  continue
+              vers = {e.get("rules_version") for e in entries.values() if isinstance(e, dict)}
+              if vers - {current}:
+                  stale.append(mf.parent.parent.name)
+          if stale:
+              print(f"::warning::showcase wikis stamped under an older rulebook than {current}: "
+                    + ", ".join(stale) + " — rebuild or restamp them after the rules change lands")
+          else:
+              print(f"all showcase stamps match the current rulebook ({current})")
+          EOF
 
   lint:
     runs-on: ubuntu-latest
@@ -160,7 +195,7 @@ jobs:
           echo "$(cd "$(dirname smoke-venv/*/activate)" && { pwd -W 2>/dev/null || pwd; })" >> "$GITHUB_PATH"
           mkdir -p "${{ runner.temp }}/smoke"
 
-      - name: Wheel completeness — packaged rules + templates
+      - name: Wheel completeness — packaged rules + templates + viewer assets
         # From a CWD with no ./citadel directory, imports MUST resolve to site-packages; the agent
         # rules and the .env template are package data and must travel inside the wheel. The
         # expected set is enumerated from the CHECKOUT (citadel/rules/**/*.md) — self-maintaining,
@@ -180,6 +215,9 @@ jobs:
           if not expected:
               raise SystemExit(f"no rules files found under {src / 'rules'} — wrong CHECKOUT path?")
           expected.append("templates/env.example")
+          # The offline viewer's assets are loaded via importlib.resources at runtime — a wheel
+          # that drops one breaks `citadel view` only when a user runs it, so guard them here.
+          expected += ["viewer/template.html", "viewer/app.css", "viewer/app.js"]
           pkg = resources.files("citadel")
           missing = [rel for rel in expected if not pkg.joinpath(rel).is_file()]
           if missing:
