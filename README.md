@@ -106,6 +106,28 @@ after every ingest/curate run** — each change a reviewable diff — and can pu
 (GitHub/GitLab) via `CITADEL_WIKI_GIT_REMOTE`. See
 [`docs/configuration.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/configuration.md) § Wiki history.
 
+### Example: an Obsidian vault as a capture inbox
+
+The reverse direction works too — an Obsidian vault can be a **raw input root**, which makes
+capturing on the go trivial: clip articles to markdown on your phone (e.g. the
+[Obsidian Web Clipper](https://obsidian.md/clipper), whose frontmatter stamps URL, author, and date
+into the file — provenance that survives even when the link later dies), snap photos of print
+articles, drop in screenshots, and let the vault sync (Dropbox, Syncthing, …). Then add it as a
+second raw root in `.env`:
+
+```dotenv
+CITADEL_RAW_DIRS=raw, ~/Dropbox/wiki-inbox
+```
+
+The vault needs no discipline: hidden folders like `.obsidian/` are skipped at discovery, a note you
+later edit is picked up as a reconcile (stale facts updated, not appended to), a note you move is
+recognized by content instead of re-ingested, and photos/screenshots are read visually
+(`CITADEL_IMAGE_SUPPORT`). The same setup turns *cleaning up an old, messy vault* into a single
+ingest: point a raw root at it and citadel distills it into a cited wiki — sources are read-only,
+so the vault itself is never touched. Just keep the direction straight: a vault is **input**;
+don't let Obsidian write into `wiki/` (browsing it there is fine, but the generated indexes are
+citadel's to regenerate).
+
 ## Test corpora
 
 Nine synthetic corpora live under [`corpora/`](https://github.com/MarkusNeusinger/cite-citadel/tree/main/corpora),

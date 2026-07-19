@@ -138,6 +138,12 @@ Relative values resolve against the **workspace root** (not your shell's CWD); a
 used as-is, so `wiki/`, `raw/`, `docs/` can live outside the workspace (e.g. a mounted network
 drive). Keep `wiki/` and `raw/` under a common parent so the `## Sources` citation links stay valid.
 
+A popular use of `CITADEL_RAW_DIRS` is a **mobile capture inbox**: a phone-synced folder (e.g. an
+Obsidian vault in Dropbox) added as a second root, so clipped articles, photos of print pieces, and
+screenshots land there on the go and the next `citadel ingest` folds them in. Hidden folders such
+as `.obsidian/` are skipped at discovery, so a living vault is a clean source — see the README's
+"Obsidian vault as a capture inbox" example.
+
 | Variable | Default | What it does |
 |----------|---------|--------------|
 | `CITADEL_WIKI_DIR` | `wiki` | The wiki bundle (the "database"). |
