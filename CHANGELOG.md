@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **`citadel refresh` — budget-controlled re-verification of the least-recently-checked sources
+  (the third lifecycle beside ingest and curate).** Every successful agent session now stamps its
+  source's manifest entry with an `ingested_at` last-checked time (carried unchanged across moves
+  and cache re-stamps — it only ever means "a model last verified this source then"). `refresh`
+  orders the manifest by that stamp — oldest first, a never-stamped entry counting as oldest — and
+  hands the first `--limit N` sources (default 1; each source = one agent session, so N *is* the
+  per-run budget) to a forced path-scoped ingest: one `reconcile` session per source under the
+  **current** model + rules, all-or-nothing staging, re-stamped on success so the source rotates to
+  the back of the queue and repeated runs walk the corpus round-robin with no persisted queue. The
+  point: a wiki that outlives its models never needs regenerating — after a model upgrade you spend
+  a self-chosen slice of the monthly token allowance re-checking the oldest imports instead.
+  `--dry-run` prints the head of the queue with zero sessions; `--min-age-days D` makes a scheduled
+  run self-limiting (a no-op once everything was checked within D days); `citadel status` now shows
+  each ingested source's `checked YYYY-MM-DD` date.
+
 ## [0.4.0] - 2026-07-16
 
 ### Changed

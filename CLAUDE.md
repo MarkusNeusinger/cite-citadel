@@ -29,7 +29,11 @@ idempotent), `ingest [paths…]` (fold raw/ into the wiki; `--verbose`/`-v` stre
 session, `--log-dir DIR` writes a transcript per source, `--quiet` drops the progress spinner,
 `--full-rescan` distrusts the manifest's stat cache and re-hashes every tracked source,
 `--force <paths>` deliberately re-reads already-ingested sources as a reconcile — it requires
-explicit paths and is refused without them), `curate [--dry-run] [--limit N] [--stale-rules]
+explicit paths and is refused without them), `refresh [--limit N] [--min-age-days D] [--dry-run]`
+(the THIRD lifecycle: re-verify the least-recently-checked sources — ordered by the manifest's
+`ingested_at` stamp, oldest/stampless first — through forced reconcile sessions on an explicit
+per-run budget of N sources; the sustainable alternative to regenerating the wiki after a model
+upgrade), `curate [--dry-run] [--limit N] [--stale-rules]
 [--diff PATH] [--retry]` (the SECOND lifecycle: improve EXISTING pages — re-sort/split/re-ground/resolve
 contradictions/fix locators — against a recomputed findings checklist), `status` (read-only
 per-source state table: ingested / failed / skipped-duplicate / ignored / pending; MCP twin
@@ -252,9 +256,24 @@ with zero sessions; `--limit`/`--stale-rules` shape it; `--diff PATH` writes a p
 report; `--retry` re-includes attempt-capped clusters (the explicit retry that bypasses the cap);
 curate sessions run under `CITADEL_CURATE_MODEL` (falling back to the ingest model).
 
+**Refresh is the third lifecycle** (`refresh.py`, `citadel refresh`): budget-controlled
+re-verification of existing SOURCES, so an aging wiki is brought up to the current model + rules a
+slice at a time instead of ever being regenerated. Every successful session stamps its source's
+manifest entry with an `ingested_at` last-checked time (`manifest.now_iso`; stamped ONLY in
+`mark_done`/the repo done-hook — moves and cache re-stamps CARRY the old stamp, so "last checked"
+never lies). `refresh.plan()` orders the manifest by that stamp (oldest first, a stampless
+pre-refresh entry counting as oldest; only model-imported, still-on-disk sources qualify;
+`--min-age-days` drops fresh ones so scheduled runs self-limit) and `refresh.refresh(limit=N)`
+hands the queue head to `ingest.ingest(paths, force=True)` — one `kind="reconcile"` session per
+source through the existing staging machinery, the success re-stamp rotating it to the back, so
+repeated runs walk the corpus round-robin with NO persisted queue (the manifest IS the queue).
+The budget is always explicit (`limit >= 1` enforced, default 1), mirroring `--force`'s
+no-accidental-corpus-wide-run refusal. CLI-only, like curate.
+
 **Status is the read-only corpus view** (`status.py`, `citadel status`): the manifest + failures
 catalog + one stat-only walk (never re-hashes) rendered as a per-source state table — ingested
-(model + rules_version, `(stale)` when it predates the current rulebook), failed (reason, attempts),
+(model + rules_version, `(stale)` when it predates the current rulebook, `checked YYYY-MM-DD` from
+the `ingested_at` stamp), failed (reason, attempts),
 skipped-duplicate, ignored (pattern), pending.
 
 **Other modules:** `okf.py` is the OKF format core (parse/dump, type→folder routing, link math, and

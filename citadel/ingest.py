@@ -649,9 +649,14 @@ def _partition_sources(
             if file_entry and not force and sha == manifest.entry_sha(entry):
                 # Unchanged content behind a stale/absent stat cache (a touched-but-identical
                 # file, a pre-PR4 entry, --full-rescan): refresh/backfill the entry in place —
-                # keeping the recorded model/rules_version — so the next run quick-skips it.
+                # keeping the recorded model/rules_version/ingested_at (no session ran, so the
+                # last-checked stamp must not move) — so the next run quick-skips it.
                 manifest_dict[key] = manifest.make_entry(
-                    sha, manifest.entry_model(entry), manifest.entry_rules_version(entry), st=st
+                    sha,
+                    manifest.entry_model(entry),
+                    manifest.entry_rules_version(entry),
+                    st=st,
+                    ingested_at=manifest.entry_ingested_at(entry),
                 )
                 mutated = True
                 skipped.append(key)
@@ -1798,9 +1803,11 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
         # None that `status` can't attribute and `--stale-rules` can never flag.
         carried_model = manifest.model_of(manifest_dict, old_key)
         carried_rules = manifest.entry_rules_version(manifest_dict.get(old_key))
+        carried_ingested = manifest.entry_ingested_at(manifest_dict.get(old_key))
         if old_key not in manifest_dict and old_key in pending_keys:
             carried_model = carried_model or model
             carried_rules = carried_rules or rules_ver
+            carried_ingested = carried_ingested or manifest.now_iso()
         if old_gone and old_key != new_key:
             try:
                 if store.rewrite_raw_references(old_key, new_key):
@@ -1812,7 +1819,9 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
                 continue
             manifest_dict.pop(old_key, None)
         moved_stat = scan.hashed[new_key][1] if new_key in scan.hashed else None
-        manifest_dict[new_key] = manifest.make_entry(sha, carried_model, carried_rules, st=moved_stat)
+        manifest_dict[new_key] = manifest.make_entry(
+            sha, carried_model, carried_rules, st=moved_stat, ingested_at=carried_ingested
+        )
         failures.clear(failures_dict, old_key)
         failures.clear(failures_dict, new_key)
         report.moved.append((old_key, new_key))
@@ -1823,6 +1832,7 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
         old_entry = manifest_dict.get(old_key)
         carried_remote = manifest.entry_remote(old_entry) if old_entry is not None else None
         carried_rules = manifest.entry_rules_version(old_entry)
+        carried_ingested = manifest.entry_ingested_at(old_entry)
         if old_key != new_key:
             try:
                 if store.rewrite_raw_references(old_key, new_key):
@@ -1831,7 +1841,9 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
                 report.errors.append(f"{new_key}: repoint refs from {old_key}: {exc}")
                 continue
             manifest_dict.pop(old_key, None)
-        manifest_dict[new_key] = manifest.make_repo_entry(ident, carried_model, carried_remote, carried_rules)
+        manifest_dict[new_key] = manifest.make_repo_entry(
+            ident, carried_model, carried_remote, carried_rules, ingested_at=carried_ingested
+        )
         report.moved.append((old_key, new_key))
     if report.moved:
         manifest.save(manifest_dict)
@@ -1966,9 +1978,11 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             return sessions, [tmp]
 
         def done() -> None:
-            # On success the manifest records the repo's CURRENT commit identity.
+            # On success the manifest records the repo's CURRENT commit identity, with a fresh
+            # last-checked stamp (an agent session just verified this repo — the one event that
+            # moves ingested_at).
             manifest_dict[rjob.key] = manifest.make_repo_entry(
-                repo.identity(rjob.path), model, repo.remote_url(rjob.path), rules_ver
+                repo.identity(rjob.path), model, repo.remote_url(rjob.path), rules_ver, ingested_at=manifest.now_iso()
             )
             failures.clear(failures_dict, rjob.key)
             manifest.save(manifest_dict)
