@@ -100,7 +100,11 @@ cited is dropped, never invented; conflicting sources produce a `> [!CONTRADICTI
 
 Every page's frontmatter records **when it last changed and which cite-citadel release wrote it**
 (`timestamp` + `citadel_version`, both stamped automatically), and `citadel curate --stale-rules`
-refreshes pages whose sources were ingested under an older rulebook. For a full audit trail, `git
+refreshes pages whose sources were ingested under an older rulebook. A wiki also outlives its
+models: rather than ever regenerating it after a model upgrade, `citadel refresh --limit N` re-verifies
+the N sources that have gone **longest unchecked** under the current model + rules — a budget you
+choose per run (e.g. part of a monthly token allowance), walking the corpus round-robin. See
+[`docs/maintenance.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/maintenance.md) § Refresh. For a full audit trail, `git
 init` the `wiki/` folder once (or set `CITADEL_WIKI_GIT=1`): citadel then **auto-commits the wiki
 after every ingest/curate run** — each change a reviewable diff — and can push to a remote
 (GitHub/GitLab) via `CITADEL_WIKI_GIT_REMOTE`. See

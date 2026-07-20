@@ -1,8 +1,10 @@
 # Maintain & customize
 
 Ingest builds the wiki; this page covers everything after that: `citadel curate` (the second
-lifecycle, which improves pages that already exist), `citadel status` (the read-only view of what
-has been ingested), and customizing the rules the ingest agent follows — without touching any code.
+lifecycle, which improves pages that already exist), `citadel refresh` (the third — re-verifying
+the least-recently-checked sources on a budget you choose), `citadel status` (the read-only view of
+what has been ingested), and customizing the rules the ingest agent follows — without touching any
+code.
 
 ## Curate
 
@@ -38,11 +40,50 @@ agent sessions forever. `--retry` is the explicit override that puts capped clus
 plan. Curate sessions use `CITADEL_CURATE_MODEL` when set (a cheaper/faster model is often fine
 here), falling back to the ingest model — see [configuration.md](configuration.md).
 
+## Refresh
+
+A wiki outlives its models. Sources imported a year ago by a weaker model carry that model's
+mistakes until *something* re-reads them — and regenerating the whole wiki after every model
+upgrade is unaffordable once the corpus has any size. `citadel refresh` is the sustainable
+alternative: it re-verifies the sources that have gone **longest unchecked**, on a budget **you**
+choose, so you can spend e.g. part of a monthly token allowance keeping the wiki current instead
+of ever rebuilding it.
+
+```bash
+citadel refresh --dry-run                      # show the head of the queue: who is due, and since when
+citadel refresh --limit 10                     # re-verify the 10 least-recently-checked sources
+citadel refresh --limit 20 --min-age-days 30   # monthly budget: skip anything checked in the last 30 days
+```
+
+How it works: every successful agent session stamps its source's manifest entry with an
+`ingested_at` last-checked time (`citadel status` shows it as `checked YYYY-MM-DD`). Refresh
+orders the manifest by that stamp — oldest first; a source never stamped counts as oldest — and
+hands the first `--limit` entries to a forced ingest run: each source gets one `reconcile` session
+(a repo a full `repo-reconcile` re-digest) under the **current** model and rules, all-or-nothing
+against a staging copy exactly like ingest. On success the entry is re-stamped, which rotates the
+source to the back of the queue — so repeated refresh runs walk the whole corpus **round-robin**
+with no persisted queue (the manifest *is* the queue; a re-run after upgrading
+`CITADEL_INGEST_MODEL` is how yesterday's weaker-model imports get re-checked by today's better
+one).
+
+The budget unit is **sources, not tokens** (citadel shells out to an agent CLI and never sees
+token counts) — but one source is exactly one agent session, so `--limit N` is an honest,
+predictable proxy. `--min-age-days D` makes a scheduled run self-limiting: once everything has
+been checked within D days, the run is a free no-op. There is deliberately no "refresh everything"
+mode — the limit defaults to 1 and must be explicit, mirroring `ingest --force`'s refusal to
+re-read the corpus by accident.
+
+Refresh vs. its neighbors: `ingest` handles **new/changed** sources (refresh never touches those —
+a changed source is picked up by the next ingest anyway), `curate` improves **pages** against
+offline findings without necessarily re-reading sources, and `ingest --force <paths>` is the
+manual, targeted form of the same forced re-read when you already know *which* source to re-check.
+
 ## Status
 
 `citadel status` is the read-only answer to "what state is my corpus in?": one table row per
 source — **ingested** (with the importing model and rules version, plus `(stale)` when the source
-was ingested under an older rulebook than the current one), **failed** (with the reason and attempt
+was ingested under an older rulebook than the current one, and `checked YYYY-MM-DD` — when a model
+last verified it, the ordering `citadel refresh` works through), **failed** (with the reason and attempt
 count), **skipped-duplicate**, **ignored** (which pattern matched), or **pending** (not yet
 ingested — the next `citadel ingest` will pick it up). It never runs an agent and never re-hashes
 sources, so it is always cheap to run. An MCP client gets the same table via the read-only

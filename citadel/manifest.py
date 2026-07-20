@@ -16,8 +16,12 @@ posix key to how it was last ingested: ``sha256`` is the hash of the source's co
 (``config.ingest_model_label``), so you can see WHICH raw file was imported by WHICH model;
 ``rules_version`` is the content hash of the effective rules tree the importing session ran under
 (``config.rules_version``) — what a later ``curate --stale-rules`` compares to find sources
-ingested under older rules. ``model``/``rules_version`` are omitted for a source that no model
-imported (a binary/unreadable file that was only seen and skipped).
+ingested under older rules; ``ingested_at`` is the UTC wall-clock time the importing/reconciling
+session finished — what ``citadel refresh`` orders by to find the LEAST-recently-checked sources
+(carried unchanged across moves and cache re-stamps: it means "a model last verified this source
+then", never "the file was last stat'ed then"). ``model``/``rules_version``/``ingested_at`` are
+omitted for a source that no model imported (a binary/unreadable file that was only seen and
+skipped).
 
 **The manifest is also the scan cache** (no second cache file): an
 entry additionally records the source's stat at hash time — ``size`` + ``mtime_ns`` (opaque
@@ -46,6 +50,7 @@ import hashlib
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import config
@@ -138,19 +143,37 @@ def entry_trusts_stat(entry: Entry | None, st: os.stat_result) -> bool:
     return isinstance(hashed_at, int) and st.st_mtime_ns < hashed_at - RACY_WINDOW_NS
 
 
+def now_iso() -> str:
+    """The current UTC wall-clock time as ``YYYY-MM-DDTHH:MM:SSZ`` — the ``ingested_at`` stamp
+    format. Fixed-width ISO-8601 UTC, so stamps compare correctly as plain strings (which is how
+    ``citadel refresh`` orders them, oldest first)."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def make_entry(
-    sha: str, model: str | None = None, rules_version: str | None = None, st: os.stat_result | None = None
+    sha: str,
+    model: str | None = None,
+    rules_version: str | None = None,
+    st: os.stat_result | None = None,
+    ingested_at: str | None = None,
 ) -> Entry:
     """Build a manifest value from a content hash, the importing model, and the rules-tree hash
     the importing session ran under (``config.rules_version``). ``model``/``rules_version`` are
     included only when set, so a source no model imported (binary/unreadable) records just its
     sha. ``st`` (the stat taken when the file was hashed) adds the scan-cache stat fields
-    (:func:`stat_fields`) so later runs can skip rehashing the unchanged file."""
+    (:func:`stat_fields`) so later runs can skip rehashing the unchanged file. ``ingested_at``
+    (when set) records WHEN a model last verified this source: :func:`mark_done` stamps a fresh
+    :func:`now_iso` after a successful session, while the carry sites (a move, a cache re-stamp
+    of unchanged content) pass the OLD entry's stamp through unchanged — the stamp must never be
+    refreshed by anything but an actual agent session, or ``citadel refresh`` would lose its
+    oldest-checked-first ordering."""
     entry: dict = {"sha256": sha}
     if model:
         entry["model"] = model
     if rules_version:
         entry["rules_version"] = rules_version
+    if ingested_at:
+        entry["ingested_at"] = ingested_at
     if st is not None:
         entry.update(stat_fields(st))
     return entry
@@ -166,14 +189,20 @@ def entry_sha(entry: Entry) -> str:
 
 
 def make_repo_entry(
-    commit: str, model: str | None = None, remote: str | None = None, rules_version: str | None = None
+    commit: str,
+    model: str | None = None,
+    remote: str | None = None,
+    rules_version: str | None = None,
+    ingested_at: str | None = None,
 ) -> dict:
     """Build a manifest value for a GIT-REPOSITORY source: ``{"kind": "git", "commit": ...}``
     plus the importing ``model``, the repo's ``remote`` URL when known, and the ``rules_version``
     hash the importing session ran under. ``commit`` is the repo's version identity (a HEAD
     commit, possibly with a ``+dirty.<hash>`` suffix, or a ``snap.<hash>`` aggregate for a
     git-less snapshot) — the source is re-ingested when it changes. No scan-cache stat fields: a
-    repo is a directory versioned by commit, not a stat-checkable file."""
+    repo is a directory versioned by commit, not a stat-checkable file. ``ingested_at`` follows
+    :func:`make_entry`'s rule: a fresh :func:`now_iso` only after an actual agent session, the
+    carried old stamp on a repo move."""
     entry: dict = {"kind": "git", "commit": commit}
     if model:
         entry["model"] = model
@@ -181,6 +210,8 @@ def make_repo_entry(
         entry["remote"] = remote
     if rules_version:
         entry["rules_version"] = rules_version
+    if ingested_at:
+        entry["ingested_at"] = ingested_at
     return entry
 
 
@@ -211,6 +242,17 @@ def entry_model(entry: Entry) -> str | None:
     if isinstance(entry, dict):
         model = entry.get("model")
         return str(model) if model else None
+    return None
+
+
+def entry_ingested_at(entry: Entry | None) -> str | None:
+    """The UTC wall-clock stamp of the last agent session that verified this source
+    (``ingested_at``, a :func:`now_iso` string), or None when unknown — a legacy/bare-string
+    entry, a source no model imported, or a pre-refresh manifest. ``citadel refresh`` treats a
+    missing stamp as OLDEST (it has provably never been re-checked since the feature existed)."""
+    if isinstance(entry, dict):
+        stamp = entry.get("ingested_at")
+        return str(stamp) if stamp else None
     return None
 
 
@@ -404,7 +446,9 @@ def mark_done(
     st: os.stat_result | None = None,
 ) -> None:
     """Record ``src`` as ingested: manifest[rel_key(src)] = {sha256, model, rules_version} plus
-    the scan-cache stat fields (mutates in place; caller saves). ``model`` is the model/backend
+    the scan-cache stat fields and — when a model imported it — a fresh ``ingested_at`` stamp
+    (this is THE stamp-refresh site: mark_done only runs after a successful agent session, which
+    is exactly what "last checked" must mean). Mutates in place; caller saves. ``model`` is the model/backend
     that imported it (config.ingest_model_label) and ``rules_version`` the effective-rules hash
     it ran under (config.rules_version — compute once per run, not per source); pass None for a
     source no model imported. ``sha``/``st`` are the content hash and the stat discovery already
@@ -418,4 +462,4 @@ def mark_done(
             st = None
     if sha is None:
         sha = file_sha256(src)
-    manifest[rel_key(src)] = make_entry(sha, model, rules_version, st=st)
+    manifest[rel_key(src)] = make_entry(sha, model, rules_version, st=st, ingested_at=now_iso() if model else None)

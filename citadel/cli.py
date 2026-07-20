@@ -5,6 +5,7 @@
     citadel init [DIR]           # scaffold a workspace (citadel.toml marker, .env, raw/, wiki/)
     citadel ingest [paths ...]   # fold raw/ (or explicit paths) into the wiki
     citadel curate [--dry-run] [--limit N] [--stale-rules] [--diff PATH] [--retry]  # improve existing pages
+    citadel refresh [--limit N] [--min-age-days D] [--dry-run]  # re-verify the least-recently-checked sources
     citadel status               # per-source corpus state (ingested/failed/skipped/ignored/pending; mirrors wiki_status)
     citadel doctor               # read-only environment/setup health check (OK/WARN/FAIL lines)
     citadel serve                # run the MCP stdio server
@@ -142,6 +143,51 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_curate.add_argument("--retry", action="store_true", help="Include attempt-capped clusters in this run.")
     p_curate.set_defaults(func=cmd_curate)
+
+    p_refresh = sub.add_parser(
+        "refresh",
+        help="Re-verify the least-recently-checked sources under the current model + rules, on a "
+        "budget you choose (--limit N sources = N agent sessions) — the third lifecycle beside "
+        "ingest and curate, for keeping an aging wiki current without ever regenerating it.",
+    )
+    p_refresh.add_argument(
+        "--limit",
+        type=int,
+        default=1,
+        metavar="N",
+        help="Refresh at most the N least-recently-checked sources (default 1; each source is one "
+        "agent session, so N is your per-run budget).",
+    )
+    p_refresh.add_argument(
+        "--min-age-days",
+        type=int,
+        default=0,
+        metavar="D",
+        help="Only consider sources last checked more than D days ago (default 0: no age floor). "
+        "Makes a scheduled run self-limiting: once everything is fresh it becomes a no-op.",
+    )
+    p_refresh.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print which sources WOULD be refreshed (oldest-checked first) and run zero agent sessions.",
+    )
+    p_refresh.add_argument(
+        "--quiet", action="store_true", help="Suppress the live per-file progress output (just print the final report)."
+    )
+    p_refresh.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Stream each LLM agent session's output live to the terminal (see `citadel ingest --verbose`).",
+    )
+    p_refresh.add_argument(
+        "--log-dir",
+        default=None,
+        metavar="DIR",
+        help="Write a transcript file per source to DIR (see `citadel ingest --log-dir`). "
+        "Overrides CITADEL_LLM_LOG_DIR.",
+    )
+    p_refresh.set_defaults(func=cmd_refresh)
 
     p_status = sub.add_parser(
         "status",
@@ -340,6 +386,36 @@ def cmd_curate(args: argparse.Namespace) -> int:
     )
     print(report.render())
     return 1 if report.failed else 0
+
+
+def cmd_refresh(args: argparse.Namespace) -> int:
+    """Run one budget-controlled refresh pass: re-verify the ``--limit`` least-recently-checked
+    sources (oldest ``ingested_at`` first) through forced reconcile sessions, so an aging wiki is
+    brought up to the current model + rules a slice at a time instead of ever being regenerated.
+    ``--dry-run`` prints the head of the queue and runs nothing. Mirrors ingest's exit contract:
+    1 when a refreshed source errored or left a broken link, else 0 (a no-op plan is 0)."""
+    from . import config, refresh
+
+    if args.limit < 1:
+        print(
+            "error: --limit must be >= 1 (each refreshed source runs one agent session; "
+            "the budget is always explicit).",
+            file=sys.stderr,
+        )
+        return 2
+    if args.verbose:
+        config.LLM_VERBOSE = True
+    if args.log_dir is not None:
+        config.LLM_LOG_DIR = args.log_dir
+    progress = None
+    if not args.quiet and not args.dry_run:
+        from .progress import ConsoleProgress
+
+        progress = ConsoleProgress(spinner=not config.LLM_VERBOSE)
+    report = refresh.refresh(limit=args.limit, min_age_days=args.min_age_days, dry_run=args.dry_run, progress=progress)
+    print(report.render(), end="")
+    ing = report.ingest_report
+    return 1 if ing is not None and (ing.errors or ing.broken_links) else 0
 
 
 def cmd_status(args: argparse.Namespace) -> int:

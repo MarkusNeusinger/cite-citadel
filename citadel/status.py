@@ -4,8 +4,9 @@ One command answering "what state is my corpus in?": per raw source, which lifec
 sits in —
 
 - **ingested** — folded into the wiki (with the importing model + the rules-tree hash it ran
-  under, and a ``(stale)`` flag when that hash predates the current rulebook — the ``curate
-  --stale-rules`` signal);
+  under, a ``(stale)`` flag when that hash predates the current rulebook — the ``curate
+  --stale-rules`` signal — and the ``checked`` date a model last verified it, the ``citadel
+  refresh`` ordering);
 - **failed** — unreadable / errored / timed-out, with the coarse reason and, for a stuck curate-
   style record, its attempt count;
 - **skipped-duplicate** — a same-basename twin skipped in favor of another format;
@@ -43,6 +44,7 @@ class SourceState:
     rules_version: str | None = None
     commit: str | None = None
     stale_rules: bool = False
+    ingested_at: str | None = None
     reason: str | None = None
     detail: str | None = None
     attempts: int = 0
@@ -81,6 +83,10 @@ class StatusReport:
                 parts.append(tag)
             elif s.stale_rules:
                 parts.append("rules (stale)")
+            if s.ingested_at:
+                # The date part is enough for "how long unchecked?" — `citadel refresh --dry-run`
+                # shows the full queue ordering.
+                parts.append(f"checked {s.ingested_at[:10]}")
             lines.append("  " + "  ".join(parts))
 
         lines.append(f"Failed ({len(self.failed)})")
@@ -194,6 +200,7 @@ def build_status() -> StatusReport:
                 commit=manifest.entry_commit(entry) or None,
                 rules_version=manifest.entry_rules_version(entry),
                 stale_rules=_is_stale_rules(entry, current),
+                ingested_at=manifest.entry_ingested_at(entry),
             )
         )
 
