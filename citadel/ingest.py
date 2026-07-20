@@ -1803,11 +1803,14 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
         # None that `status` can't attribute and `--stale-rules` can never flag.
         carried_model = manifest.model_of(manifest_dict, old_key)
         carried_rules = manifest.entry_rules_version(manifest_dict.get(old_key))
+        # ingested_at is CARRIED only, never minted here: unlike model/rules_version above, a
+        # fresh stamp would claim a session verified this copy when none did (the pending twin's
+        # session may not even succeed). A duplicate left stamp-less merely sorts to the front of
+        # `citadel refresh`'s queue — one re-verify session later it is stamped honestly.
         carried_ingested = manifest.entry_ingested_at(manifest_dict.get(old_key))
         if old_key not in manifest_dict and old_key in pending_keys:
             carried_model = carried_model or model
             carried_rules = carried_rules or rules_ver
-            carried_ingested = carried_ingested or manifest.now_iso()
         if old_gone and old_key != new_key:
             try:
                 if store.rewrite_raw_references(old_key, new_key):

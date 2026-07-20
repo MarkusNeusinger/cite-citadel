@@ -5,8 +5,8 @@ refresh re-verifies existing SOURCES. The motivating scenario is a wiki that out
 a source imported a year ago by a weaker model, whose pages nobody has re-checked since. Rather
 than ever regenerating the whole wiki after a model upgrade (unaffordable at corpus scale), you
 spend a SELF-CHOSEN budget regularly — e.g. monthly, when the token allowance renews —
-and refresh burns exactly that budget on the sources that need it most: the ones the longest
-unchecked.
+and refresh burns exactly that budget on the sources that need it most: the ones that have gone
+longest unchecked.
 
 Mechanically refresh plans, then delegates: it orders the manifest by the ``ingested_at``
 last-checked stamp (oldest first; a pre-refresh entry with no stamp counts as oldest — it has
@@ -56,11 +56,13 @@ class RefreshCandidate:
 class RefreshReport:
     """What one refresh run planned and (unless ``--dry-run``) did. ``selected`` is the head of
     the oldest-first queue this run took on, ``candidates`` the full queue length it was cut
-    from; ``ingest_report`` is the delegated forced run's own report (None on a dry run or an
-    empty plan)."""
+    from, ``eligible`` the re-verifiable sources BEFORE the age floor (so an empty queue can say
+    honestly whether nothing exists or everything is merely fresh); ``ingest_report`` is the
+    delegated forced run's own report (None on a dry run or an empty plan)."""
 
     selected: list[RefreshCandidate] = field(default_factory=list)
     candidates: int = 0
+    eligible: int = 0
     min_age_days: int = 0
     dry_run: bool = False
     ingest_report: ingest.IngestReport | None = None
@@ -69,10 +71,13 @@ class RefreshReport:
         """The refresh plan (and, after a real run, the delegated ingest report below it)."""
         lines = ["Refresh report", "==============", ""]
         if not self.selected:
-            if self.min_age_days and self.candidates == 0:
-                lines.append(f"Nothing to refresh: every source was checked within the last {self.min_age_days} days.")
+            if self.eligible == 0:
+                lines.append("Nothing to refresh: no re-verifiable sources in the manifest.")
             else:
-                lines.append("Nothing to refresh: no ingested sources in the manifest.")
+                lines.append(
+                    f"Nothing to refresh: all {self.eligible} re-verifiable source(s) were "
+                    f"checked within the last {self.min_age_days} days."
+                )
             return "\n".join(lines) + "\n"
         verb = "Would refresh" if self.dry_run else "Refreshing"
         lines.append(f"{verb} {len(self.selected)} of {self.candidates} candidate source(s), oldest-checked first:")
@@ -92,19 +97,24 @@ class RefreshReport:
         return "\n".join(lines).rstrip() + "\n"
 
 
+def _age_floor(queue: list[RefreshCandidate], min_age_days: int) -> list[RefreshCandidate]:
+    """Drop candidates whose ``ingested_at`` is younger than ``min_age_days`` — the self-limiting
+    knob for scheduled runs. An entry with NO stamp always stays (age unknown = provably never
+    re-checked, i.e. oldest); ``min_age_days <= 0`` is a no-op."""
+    if min_age_days <= 0:
+        return list(queue)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=min_age_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return [c for c in queue if c.ingested_at is None or c.ingested_at < cutoff]
+
+
 def plan(min_age_days: int = 0) -> list[RefreshCandidate]:
     """The full refresh queue: every re-verifiable source, ordered least-recently-checked first.
 
     A source qualifies when a model actually imported it (``entry_model`` set — an unreadable
     binary that was only sniffed has nothing to re-verify) and it still exists on disk (a gone
-    source is the deletion sweep's job). ``min_age_days > 0`` additionally drops sources whose
-    ``ingested_at`` is younger than that many days — the self-limiting knob for scheduled runs;
-    an entry with NO stamp always stays (age unknown = provably never re-checked, i.e. oldest).
-    Ordering is the stamp as a plain string (fixed-width ISO UTC sorts chronologically), missing
-    stamps first, key as the deterministic tie-break."""
-    cutoff: str | None = None
-    if min_age_days > 0:
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=min_age_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    source is the deletion sweep's job). ``min_age_days > 0`` additionally applies
+    :func:`_age_floor`. Ordering is the stamp as a plain string (fixed-width ISO UTC sorts
+    chronologically), missing stamps first, key as the deterministic tie-break."""
     out: list[RefreshCandidate] = []
     current_rules = config.rules_version()
     for key, entry in manifest.load().items():
@@ -113,20 +123,17 @@ def plan(min_age_days: int = 0) -> list[RefreshCandidate]:
             continue
         if not config.source_path_for_key(key).exists():
             continue
-        stamp = manifest.entry_ingested_at(entry)
-        if cutoff is not None and stamp is not None and stamp >= cutoff:
-            continue
         recorded_rules = manifest.entry_rules_version(entry)
         out.append(
             RefreshCandidate(
                 key=key,
-                ingested_at=stamp,
+                ingested_at=manifest.entry_ingested_at(entry),
                 model=model,
                 stale_rules=recorded_rules is not None and recorded_rules != current_rules,
             )
         )
     out.sort(key=lambda c: (c.ingested_at or "", c.key))
-    return out
+    return _age_floor(out, min_age_days)
 
 
 def refresh(limit: int = 1, min_age_days: int = 0, dry_run: bool = False, progress=None) -> RefreshReport:
@@ -138,9 +145,12 @@ def refresh(limit: int = 1, min_age_days: int = 0, dry_run: bool = False, progre
     the plan with zero sessions. ``progress`` is threaded through to ingest untouched."""
     if limit < 1:
         raise ValueError("refresh limit must be >= 1 (each refreshed source runs one agent session).")
-    queue = plan(min_age_days=min_age_days)
+    eligible = plan()
+    queue = _age_floor(eligible, min_age_days)
     selected = queue[:limit]
-    report = RefreshReport(selected=selected, candidates=len(queue), min_age_days=min_age_days, dry_run=dry_run)
+    report = RefreshReport(
+        selected=selected, candidates=len(queue), eligible=len(eligible), min_age_days=min_age_days, dry_run=dry_run
+    )
     if dry_run or not selected:
         return report
     # Hand ingest ABSOLUTE paths: manifest keys are workspace-relative, but ingest resolves

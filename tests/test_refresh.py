@@ -140,7 +140,38 @@ def test_refresh_empty_plan_is_a_cheap_noop(tmp_citadel, fake_agent):
     agent = fake_agent()
     report = refresh.refresh(limit=3)
     assert agent.count == 0 and report.ingest_report is None
-    assert "Nothing to refresh" in report.render()
+    assert "Nothing to refresh: no re-verifiable sources" in report.render()
+
+
+def test_refresh_empty_plan_messages_tell_none_from_fresh(tmp_citadel, fake_agent):
+    """The two empty-plan worlds render honestly: with NO re-verifiable sources the report must
+    not claim everything was 'checked recently'; with sources that are merely fresh under the
+    age floor, it says exactly that."""
+    fake_agent()
+    assert "no re-verifiable sources" in refresh.refresh(limit=1, min_age_days=30).render()
+
+    _track(tmp_citadel, "fresh.md", "f\n", ingested_at=manifest.now_iso())
+    report = refresh.refresh(limit=1, min_age_days=30)
+    assert report.eligible == 1 and report.candidates == 0
+    assert "all 1 re-verifiable source(s) were checked within the last 30 days" in report.render()
+
+
+def test_same_run_duplicate_never_mints_a_stamp(tmp_citadel, fake_agent, cite_page):
+    """Two byte-identical files discovered together: one runs the session (and is stamped), the
+    duplicate's manifest record carries the run's model/rules but NO minted ``ingested_at`` — no
+    session verified that copy, so it must sort to the FRONT of the refresh queue, not hide at
+    the back behind a stamp nothing backs."""
+    (tmp_citadel.raw / "a.md").write_text("same bytes\n", encoding="utf-8")
+    (tmp_citadel.raw / "b.md").write_text("same bytes\n", encoding="utf-8")
+    fake_agent(side_effect=_pager(cite_page))
+    ingest.ingest()
+
+    m = manifest.load()
+    stamped = [k for k in ("raw/a.md", "raw/b.md") if manifest.entry_ingested_at(m[k])]
+    unstamped = [k for k in ("raw/a.md", "raw/b.md") if not manifest.entry_ingested_at(m[k])]
+    assert len(stamped) == 1 and len(unstamped) == 1  # exactly the session-run twin is stamped
+    assert manifest.entry_model(m[unstamped[0]]) is not None  # provenance still attributed
+    assert refresh.plan()[0].key == unstamped[0]  # the unverified copy is first in line
 
 
 def test_refresh_limit_must_be_explicit_and_positive(tmp_citadel):
