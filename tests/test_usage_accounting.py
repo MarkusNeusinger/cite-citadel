@@ -110,6 +110,10 @@ def test_usage_from_claude_envelope_defensive():
     assert llm._usage_from_claude_envelope({"total_cost_usd": True, "usage": {"output_tokens": False}}) is None
     partial = llm._usage_from_claude_envelope({"usage": {"output_tokens": 7}})
     assert partial == llm.SessionUsage(cost_usd=None, input_tokens=None, output_tokens=7)
+    # First NUMERIC value wins: a present-but-junk total_cost_usd must not shadow a valid
+    # legacy cost_usd (the pre-GA envelope name).
+    legacy = llm._usage_from_claude_envelope({"total_cost_usd": None, "cost_usd": 0.12})
+    assert legacy.cost_usd == pytest.approx(0.12)
 
 
 def test_run_session_claude_returns_usage(monkeypatch):

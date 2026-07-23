@@ -1406,7 +1406,7 @@ class _SourceJob:
     """
 
     key: str
-    build_sessions: Callable[[], tuple[list[Callable[[], None]], list[str]]]
+    build_sessions: Callable[[], tuple[list[Callable[[], llm.SessionUsage | None]], list[str]]]
     on_success: Callable[[llm.SessionUsage | None], None]
     prepare_error: str
     extra_check: Callable[[], list[str]] | None = None

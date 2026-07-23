@@ -489,8 +489,16 @@ def _usage_from_claude_envelope(env: dict | None) -> SessionUsage | None:
     an envelope carrying nothing usable returns None."""
     if not isinstance(env, dict):
         return None
-    cost = env.get("total_cost_usd", env.get("cost_usd"))  # cost_usd: the pre-GA envelope name
-    cost_usd = float(cost) if isinstance(cost, (int, float)) and not isinstance(cost, bool) else None
+    # First NUMERIC value wins (cost_usd is the pre-GA envelope name): a present-but-junk
+    # total_cost_usd must not shadow a valid legacy field.
+    cost_usd = next(
+        (
+            float(value)
+            for value in (env.get("total_cost_usd"), env.get("cost_usd"))
+            if isinstance(value, (int, float)) and not isinstance(value, bool)
+        ),
+        None,
+    )
     usage = env.get("usage")
     usage = usage if isinstance(usage, dict) else {}
 
