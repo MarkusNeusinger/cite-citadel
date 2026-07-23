@@ -61,6 +61,17 @@ image sources: `CITADEL_IMAGE_SUPPORT=1` (the default) reads recognized images v
 - If discovery seems to miss files, confirm they're under a walked raw root (`CITADEL_RAW_DIR`, or
   every root in `CITADEL_RAW_DIRS` when set) and aren't matching an ignore glob.
 
+### A text file is reported "unreadable" — Dropbox/OneDrive online-only files
+
+If a plain `.md`/`.txt` source shows up as unreadable with *"reads as all NUL bytes - likely a
+cloud-only placeholder"*, the sync client has evicted its content to the cloud: Windows still
+reports the full file size, but reading it through WSL or a network share yields only zeros until
+the file is hydrated. Fix: make the file (or its whole folder) **available offline** in
+Dropbox/OneDrive — right-click it in Explorer, or open it once on the Windows side — then re-run
+`citadel ingest`. Placeholders are deliberately never stat-cached as done, so the next run picks up
+the hydrated content automatically. If your `raw/` lives in a synced folder permanently, pin it to
+"available offline" so newly synced files don't regress to placeholders.
+
 ### My wiki (or raw files) live outside the workspace
 
 That's supported: `wiki/`, `raw/`, and `docs/` can each sit on a mounted network drive or any

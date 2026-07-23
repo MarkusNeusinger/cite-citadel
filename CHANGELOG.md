@@ -40,6 +40,15 @@ All notable changes to this project are documented here. The format is based on
   `--dry-run` prints the head of the queue with zero sessions; `--min-age-days D` makes a scheduled
   run self-limiting (a no-op once everything was checked within D days); `citadel status` now shows
   each ingested source's `checked YYYY-MM-DD` date.
+- **Cloud-placeholder detection for unreadable sources.** A file whose bytes read as 100% NUL —
+  the signature of a Dropbox/OneDrive "online-only" placeholder seen through WSL or a network
+  share — is now reported with a targeted hint (*"reads as all NUL bytes - likely a cloud-only
+  placeholder; make it available offline"*) in the run report, `citadel status`, `log.md`, and the
+  `sources/index.md` failures table, instead of the generic "no extractable text" message. Unlike a
+  genuine binary it is **never stat-cached as done**: hydration restores the real content without
+  changing size or mtime, so a placeholder stays visibly stuck across runs and ingests
+  automatically once made available offline (previously the stat quick check could skip the
+  hydrated file forever).
 
 ## [0.4.0] - 2026-07-16
 

@@ -79,6 +79,10 @@ class IngestReport:
     moved: list[tuple[str, str]] = field(default_factory=list)
     # rel-keys of sources with no extractable text (binary/unsupported) — NOT ingested, logged.
     unreadable: list[str] = field(default_factory=list)
+    # Subset of ``unreadable`` whose bytes read as 100% NUL — cloud-only placeholders (Dropbox/
+    # OneDrive online-only files seen through WSL/SMB), surfaced with a make-it-available-offline
+    # hint instead of the generic binary message.
+    cloud_placeholders: list[str] = field(default_factory=list)
     # (dropped_key, kept_key) for same-basename document files skipped in favor of another format.
     duplicates: list[tuple[str, str]] = field(default_factory=list)
     # (forced_key, kept_key) for same-basename pairs a FORCED run ingested ALONGSIDE the kept
@@ -128,7 +132,13 @@ class IngestReport:
             lines.extend(f"  - {s}" for s in self.sources_deleted)
         if self.unreadable:
             lines.append("Unreadable (no extractable text; not ingested):")
-            lines.extend(f"  - {p}" for p in self.unreadable)
+            for p in self.unreadable:
+                if p in self.cloud_placeholders:
+                    lines.append(
+                        f"  - {p}  (reads as all NUL bytes - a cloud-only placeholder? make it available offline)"
+                    )
+                else:
+                    lines.append(f"  - {p}")
         if self.duplicates:
             lines.append("Skipped as duplicate (same basename as another format that was ingested):")
             lines.extend(f"  - {dropped} (kept {kept})" for dropped, kept in self.duplicates)
@@ -396,6 +406,21 @@ def _is_ingestible(path: Path) -> bool:
         return False
     nontext = chunk.translate(None, _TEXT_BYTES)
     return (len(nontext) / len(chunk)) <= 0.30
+
+
+def _reads_as_cloud_placeholder(path: Path) -> bool:
+    """True when a non-empty file's sniffed prefix reads as 100% NUL bytes — the signature of a
+    cloud-only placeholder (a Dropbox/OneDrive "online-only" file reports its full size, but a read
+    through WSL or SMB yields only zeros until the sync client hydrates it). Distinguishing this
+    from a genuine binary turns the unreadable report into an actionable hint AND changes the
+    bookkeeping: hydration restores the real bytes without touching size/mtime, so such a file must
+    never be stat-cached as done (see the unreadable finalization in :func:`ingest`). Never raises."""
+    try:
+        with open(path, "rb") as fh:
+            chunk = fh.read(_SNIFF_BYTES)
+    except OSError:
+        return False
+    return bool(chunk) and not chunk.strip(b"\x00")
 
 
 def _looks_like_image(head: bytes) -> bool:
@@ -1593,7 +1618,8 @@ def ingest(
     pending / already-ingested / **reorganized** (a file that only moved or is a byte-for-byte
     duplicate — recognized, not re-ingested; a real move repoints the wiki's resource/citation
     references and re-keys the manifest) / **unreadable** (no extractable text, e.g. a binary —
-    logged and marked done, never fed to the agent) / **deleted** (a tracked source that
+    logged and marked done, never fed to the agent; an all-NUL cloud-only placeholder is instead
+    kept re-evaluated so it ingests once hydrated) / **deleted** (a tracked source that
     vanished from disk — full runs only). Discovery is incremental: the manifest doubles as the
     scan cache, so an unchanged corpus is skipped on stat alone (``full_rescan=True`` — the
     ``--full-rescan`` flag — distrusts that cache and re-hashes everything; sha stays the sole
@@ -1859,10 +1885,27 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
         if key not in scan.hashed:
             continue  # not even its hash could be read (OS error on a brand-new file): retry next run
         sha, src_stat = scan.hashed[key]
+        report.unreadable.append(key)
+        if _reads_as_cloud_placeholder(src):
+            # A cloud-only placeholder: hydration restores the real content WITHOUT changing
+            # size/mtime — and on Windows st_ctime is the stable creation time — so marking it
+            # done would let the stat quick check skip the hydrated file forever. It lives only in
+            # the failures catalog, and deliberately WITHOUT sha/stat: a cached sha that the quick
+            # check trusts across a stat-stable hydration would thread the stale all-NUL sha into
+            # mark_done. The cost is one re-hash of the still-stuck placeholder per run; the win is
+            # that hydration always yields the real sha and the file ingests normally.
+            report.cloud_placeholders.append(key)
+            failures.record(
+                failures_dict,
+                key,
+                failures.UNREADABLE,
+                "reads as all NUL bytes - likely a cloud-only placeholder (Dropbox/OneDrive "
+                "online-only file); make it available offline and re-run",
+            )
+            continue
         # No model imported it (it was only sniffed and skipped), so record the sha alone — with
         # the stat cache, so a later run skips the unchanged binary without a content read.
         manifest_dict[key] = manifest.make_entry(sha, None, st=src_stat)
-        report.unreadable.append(key)
         # Persist the failure so it survives the run (surfaced in wiki/sources/index.md; written by
         # the finalization step below, which an unreadable source always triggers). sha+stat let the
         # quick check recognize the unchanged file next run.
@@ -2075,7 +2118,13 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
                 "recognized as moved, not re-ingested"
             )
         for key in report.unreadable:
-            store.append_log(f"could not ingest {key}: no readable text found (binary or unsupported); skipped")
+            if key in report.cloud_placeholders:
+                store.append_log(
+                    f"could not ingest {key}: reads as all NUL bytes - likely a cloud-only "
+                    "placeholder (online-only file); make it available offline"
+                )
+            else:
+                store.append_log(f"could not ingest {key}: no readable text found (binary or unsupported); skipped")
         for key in report.sources_deleted:
             store.append_log(
                 f"raw source {key} was deleted from disk; reconciled its citations out of the "
