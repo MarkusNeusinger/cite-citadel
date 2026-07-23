@@ -25,7 +25,7 @@ from __future__ import annotations
 import os
 from dataclasses import asdict, dataclass, field
 
-from . import config, failures, ingest, manifest
+from . import config, failures, ingest, llm, manifest
 
 
 # How much of a (long) content hash / rules-version / commit id to show in the table.
@@ -48,6 +48,11 @@ class SourceState:
     reason: str | None = None
     detail: str | None = None
     attempts: int = 0
+    # What the last verifying session(s) cost, per the manifest's usage stamp — None when the
+    # backend reported nothing (copilot, pre-cost-accounting entries).
+    cost_usd: float | None = None
+    tokens_in: int | None = None
+    tokens_out: int | None = None
 
 
 @dataclass
@@ -67,6 +72,12 @@ class StatusReport:
         headings. Deterministic (every bucket is sorted by key)."""
         lines = ["Corpus status", "=============", ""]
         lines.append(f"Rules version: {self.rules_version[:_ID_WIDTH] or '(none)'}")
+        costed = [s for s in self.ingested if s.cost_usd is not None]
+        if costed:
+            # The sum of each source's LAST verifying session — a maintenance-cost snapshot of
+            # the current corpus, not lifetime spend (per-run spend is on each run's report).
+            total = llm.format_cost(sum(s.cost_usd for s in costed))
+            lines.append(f"Recorded LLM cost: {total} over {len(costed)} source(s) (last session each)")
         lines.append("")
 
         lines.append(f"Ingested ({len(self.ingested)})")
@@ -87,6 +98,8 @@ class StatusReport:
                 # The date part is enough for "how long unchecked?" — `citadel refresh --dry-run`
                 # shows the full queue ordering.
                 parts.append(f"checked {s.ingested_at[:10]}")
+            if s.cost_usd is not None:
+                parts.append(llm.format_cost(s.cost_usd))
             lines.append("  " + "  ".join(parts))
 
         lines.append(f"Failed ({len(self.failed)})")
@@ -117,15 +130,19 @@ class StatusReport:
 
     def as_dict(self) -> dict:
         """The report as one JSON-ready dict (``citadel status --json``): the five buckets plus
-        ``rules_version``, each source row a plain dict with only its None fields dropped —
+        ``rules_version`` and ``cost_usd_total``, each source row a plain dict with only its None fields dropped —
         ``attempts: 0`` / ``stale_rules: false`` stay explicit, so scripts get a predictable
         shape for 'which sources failed and why' without scraping :meth:`render`'s table."""
 
         def row(s: SourceState) -> dict:
             return {k: v for k, v in asdict(s).items() if v is not None}
 
+        costed = [s.cost_usd for s in self.ingested if s.cost_usd is not None]
         return {
             "rules_version": self.rules_version,
+            # The render()'s "Recorded LLM cost" total, machine-readably: the sum of each
+            # source's last-session cost stamp (null when no entry carries one).
+            "cost_usd_total": round(sum(costed), 4) if costed else None,
             "ingested": [row(s) for s in self.ingested],
             "failed": [row(s) for s in self.failed],
             "skipped_duplicate": [row(s) for s in self.skipped_duplicate],
@@ -191,6 +208,7 @@ def build_status() -> StatusReport:
 
     for key in sorted(manifest_dict):
         entry = manifest_dict[key]
+        usage = manifest.entry_usage(entry)
         # One construction for both kinds: entry_commit is "" for a non-repo (file) source, so
         # `or None` leaves commit unset there and render falls back to the rules_version stamp.
         report.ingested.append(
@@ -201,6 +219,9 @@ def build_status() -> StatusReport:
                 rules_version=manifest.entry_rules_version(entry),
                 stale_rules=_is_stale_rules(entry, current),
                 ingested_at=manifest.entry_ingested_at(entry),
+                cost_usd=usage.get("cost_usd"),
+                tokens_in=usage.get("tokens_in"),
+                tokens_out=usage.get("tokens_out"),
             )
         )
 

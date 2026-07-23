@@ -327,14 +327,17 @@ def transformer_page() -> dict:
 class FakeAgent:
     """Deterministic stand-in for ``llm.run_ingest_session`` — the single seam tests patch.
 
-    The real agent has no return value: its file edits ARE the result. So the fake, per call:
+    The agent's file edits ARE the result (the return value is only the backend's best-effort
+    usage report). So the fake, per call:
       1. records ``(rel_key, kind)`` in ``self.calls`` (assert on ``calls``/``count``);
       2. raises ``error`` if given (a failed/timed-out session);
       3. writes ``pages`` into the configured wiki — ingest's per-source STAGING copy, since
          ``config.WIKI_DIR`` is read at call time (``{rel_path: (frontmatter, body)}`` dumped
          via ``okf.dump``, or ``{rel_path: str}`` written verbatim);
       4. passes the original args through to ``side_effect`` for bespoke per-call behavior
-         (e.g. deleting the pages that cite a removed source).
+         (e.g. deleting the pages that cite a removed source);
+      5. returns ``usage`` (a ``llm.SessionUsage`` PER SESSION, or the default None — a backend
+         that reports nothing), mirroring the real seam's return contract.
     """
 
     def __init__(
@@ -343,10 +346,12 @@ class FakeAgent:
         *,
         error: BaseException | None = None,
         side_effect: Callable[..., None] | None = None,
+        usage: llm.SessionUsage | None = None,
     ) -> None:
         self.pages = dict(pages or {})
         self.error = error
         self.side_effect = side_effect
+        self.usage = usage
         self.calls: list[tuple[str, str]] = []
 
     @property
@@ -356,7 +361,7 @@ class FakeAgent:
     def reset(self) -> None:
         self.calls.clear()
 
-    def __call__(self, *args, **kwargs) -> None:
+    def __call__(self, *args, **kwargs) -> llm.SessionUsage | None:
         rel_key = args[0] if args else kwargs.get("rel_key")
         kind = args[1] if len(args) > 1 else kwargs.get("kind", "ingest")
         self.calls.append((rel_key, kind))
@@ -369,6 +374,7 @@ class FakeAgent:
             target.write_text(text, encoding="utf-8")
         if self.side_effect is not None:
             self.side_effect(*args, **kwargs)
+        return self.usage
 
 
 @pytest.fixture
@@ -381,8 +387,9 @@ def fake_agent(monkeypatch) -> Callable[..., FakeAgent]:
         *,
         error: BaseException | None = None,
         side_effect: Callable[..., None] | None = None,
+        usage: llm.SessionUsage | None = None,
     ) -> FakeAgent:
-        agent = FakeAgent(pages, error=error, side_effect=side_effect)
+        agent = FakeAgent(pages, error=error, side_effect=side_effect, usage=usage)
         monkeypatch.setattr(llm, "run_ingest_session", agent, raising=False)
         return agent
 

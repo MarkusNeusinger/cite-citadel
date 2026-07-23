@@ -191,8 +191,9 @@ it is itself a workspace.
   these guards.
 - For each pending source it runs the agent against a **per-source staging copy** of the wiki (a
   sibling dir, never the live wiki), then snapshots before/after and **diffs by content hash** to
-  learn what the agent created/updated/deleted — the agent has no return value, its file edits *are*
-  the result.
+  learn what the agent created/updated/deleted — the agent's file edits *are* the result (the
+  session seam's return value is only passive cost/usage telemetry, never consulted for what
+  changed).
 - It then re-imposes invariants on every changed page (`validate.validate_page` + `store.write_page`
   to canonicalize YAML and stamp the timestamp) after **every** agent pass, repairs renamed-page
   links, and **only on a fully clean source promotes staging onto the live wiki — exactly once per
@@ -222,7 +223,7 @@ the propagation: `ingest` (new), `reconcile` (changed source — update/remove s
 just append), `delete` (source removed — strip its provenance), `repo`/`repo-reconcile` (a whole
 git repo folded as one digest), `image`/`image-reconcile` (an image read visually), and `curate`
 (improve an existing page cluster against a findings file read by path, not a raw source).
-`run_ingest_session` is the single seam tests monkeypatch.
+`run_ingest_session` is the single seam tests monkeypatch; it returns the session's best-effort `SessionUsage` (the backend's OWN cost/usage report: claude's result envelope, gemini's `--session-summary` behind a cached `--help` feature probe; None when nothing was reported — accounting is strictly passive and can never fail a session), which ingest sums per source into the manifest stamp and per run onto the reports.
 
 **Two checking layers, one implementation** (`validate.py`):
 - `citadel check` / `wiki_validate` — the **strict per-page gate** (required fields, honest/defined
@@ -247,7 +248,8 @@ revert-and-stop → attempt-capped failures-catalog record). `--dry-run`/`--limi
 `--diff` shape the run; `--retry` re-includes attempt-capped clusters (the explicit retry that
 bypasses the cap); sessions use `CITADEL_CURATE_MODEL` (falls back to the ingest model).
 `status.py` (`citadel status`) is the read-only per-source state view (manifest + failures + one
-stat-only walk; never re-hashes).
+stat-only walk; never re-hashes), incl. each source's last-session cost and a `Recorded LLM cost`
+corpus total.
 
 **Other modules:** `okf.py` is the OKF format core (parse/dump, type→folder routing, link math, and
 the non-negotiable `safe_join` path guard — reuse it for any wiki-relative path). `grammar.py` is
@@ -264,7 +266,9 @@ providers and the `log.md` writer); `linkgraph.py` (the deterministic link-rewri
 regenerating `index.md`, per-folder `index.md`, `sources/index.md`, and `open-points/index.md`
 mechanically from frontmatter + manifest); and `open_points.py` (parsing `## Open Points` threads
 and deriving each point's status). `manifest.py` tracks idempotency in
-`wiki/.citadel_ingested.json` (per source: sha256 or git commit + importing model). `repo.py` builds
+`wiki/.citadel_ingested.json` (per source: sha256 or git commit + importing model + the last
+session's backend-reported `cost_usd`/`tokens_in`/`tokens_out`, carried across moves/re-stamps
+like `ingested_at`). `repo.py` builds
 the digest for git-repo sources. `extract.py` pulls text from Office files (stdlib-only); the legacy
 OLE/CFBF salvage lives in `extract_ole.py`, imported lazily only when a legacy `.ppt`/`.doc`/`.xls`
 is dispatched. `curate.py` is the second lifecycle and `status.py` the read-only per-source state

@@ -19,7 +19,12 @@ posix key to how it was last ingested: ``sha256`` is the hash of the source's co
 ingested under older rules; ``ingested_at`` is the UTC wall-clock time the importing/reconciling
 session finished — what ``citadel refresh`` orders by to find the LEAST-recently-checked sources
 (carried unchanged across moves and cache re-stamps: it means "a model last verified this source
-then", never "the file was last stat'ed then"). ``model``/``rules_version``/``ingested_at`` are
+then", never "the file was last stat'ed then"). ``cost_usd``/``tokens_in``/``tokens_out`` record
+what that last verifying session(s) COST, exactly as the backend CLI reported it
+(:class:`citadel.llm.SessionUsage` — claude reports all three, gemini only tokens, copilot
+nothing) — the per-source half of the audit's cost observability; like ``ingested_at`` they
+describe the last actual agent session and are carried, never re-minted, across moves and cache
+re-stamps. ``model``/``rules_version``/``ingested_at`` (and the usage fields) are
 omitted for a source that no model imported (a binary/unreadable file that was only seen and
 skipped).
 
@@ -48,6 +53,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import sys
 from datetime import datetime, timezone
@@ -150,12 +156,36 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _usage_stamp_fields(cost_usd, tokens_in, tokens_out) -> dict:
+    """The defensively-validated usage fields for an entry — the ONE filter both the stamp sites
+    (:func:`make_entry` / :func:`make_repo_entry`) and the read side (:func:`entry_usage`) share,
+    so a junk value can neither enter the committed JSON nor crash a renderer reading it back:
+    only a FINITE numeric cost (never a bool, NaN/Infinity, or an int ``float()`` would overflow
+    on — the manifest must stay standard JSON and the human renderers sane) rounded to 4 decimals,
+    and non-negative real ints for the token counts. Anything else is dropped, never coerced."""
+    out: dict = {}
+    if isinstance(cost_usd, (int, float)) and not isinstance(cost_usd, bool):
+        try:
+            cost = float(cost_usd)
+        except (OverflowError, ValueError):
+            cost = math.inf  # filtered by the isfinite check below
+        if math.isfinite(cost):
+            out["cost_usd"] = round(cost, 4)
+    for key, value in (("tokens_in", tokens_in), ("tokens_out", tokens_out)):
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            out[key] = value
+    return out
+
+
 def make_entry(
     sha: str,
     model: str | None = None,
     rules_version: str | None = None,
     st: os.stat_result | None = None,
     ingested_at: str | None = None,
+    cost_usd: float | None = None,
+    tokens_in: int | None = None,
+    tokens_out: int | None = None,
 ) -> Entry:
     """Build a manifest value from a content hash, the importing model, and the rules-tree hash
     the importing session ran under (``config.rules_version``). ``model``/``rules_version`` are
@@ -166,7 +196,12 @@ def make_entry(
     :func:`now_iso` after a successful session, while the carry sites (a move, a cache re-stamp
     of unchanged content) pass the OLD entry's stamp through unchanged — the stamp must never be
     refreshed by anything but an actual agent session, or ``citadel refresh`` would lose its
-    oldest-checked-first ordering."""
+    oldest-checked-first ordering. ``cost_usd``/``tokens_in``/``tokens_out`` (each recorded only
+    when known AND sane — :func:`_usage_stamp_fields` is the shared filter) are what that session
+    actually cost, per the backend's own report — carried
+    across moves/re-stamps exactly like ``ingested_at`` (:func:`entry_usage` reads an old
+    entry's fields back as these kwargs). Cost is rounded to 4 decimals: sub-cent precision
+    without float-noise digits in a committed JSON file."""
     entry: dict = {"sha256": sha}
     if model:
         entry["model"] = model
@@ -174,6 +209,7 @@ def make_entry(
         entry["rules_version"] = rules_version
     if ingested_at:
         entry["ingested_at"] = ingested_at
+    entry.update(_usage_stamp_fields(cost_usd, tokens_in, tokens_out))
     if st is not None:
         entry.update(stat_fields(st))
     return entry
@@ -194,15 +230,19 @@ def make_repo_entry(
     remote: str | None = None,
     rules_version: str | None = None,
     ingested_at: str | None = None,
+    cost_usd: float | None = None,
+    tokens_in: int | None = None,
+    tokens_out: int | None = None,
 ) -> dict:
     """Build a manifest value for a GIT-REPOSITORY source: ``{"kind": "git", "commit": ...}``
     plus the importing ``model``, the repo's ``remote`` URL when known, and the ``rules_version``
     hash the importing session ran under. ``commit`` is the repo's version identity (a HEAD
     commit, possibly with a ``+dirty.<hash>`` suffix, or a ``snap.<hash>`` aggregate for a
     git-less snapshot) — the source is re-ingested when it changes. No scan-cache stat fields: a
-    repo is a directory versioned by commit, not a stat-checkable file. ``ingested_at`` follows
-    :func:`make_entry`'s rule: a fresh :func:`now_iso` only after an actual agent session, the
-    carried old stamp on a repo move."""
+    repo is a directory versioned by commit, not a stat-checkable file. ``ingested_at`` — and the
+    ``cost_usd``/``tokens_in``/``tokens_out`` usage stamp — follow
+    :func:`make_entry`'s rule: fresh values only after an actual agent session, the
+    carried old ones on a repo move."""
     entry: dict = {"kind": "git", "commit": commit}
     if model:
         entry["model"] = model
@@ -212,6 +252,7 @@ def make_repo_entry(
         entry["rules_version"] = rules_version
     if ingested_at:
         entry["ingested_at"] = ingested_at
+    entry.update(_usage_stamp_fields(cost_usd, tokens_in, tokens_out))
     return entry
 
 
@@ -254,6 +295,21 @@ def entry_ingested_at(entry: Entry | None) -> str | None:
         stamp = entry.get("ingested_at")
         return str(stamp) if stamp else None
     return None
+
+
+def entry_usage(entry: Entry | None) -> dict:
+    """The recorded per-session usage stamp of a manifest value, as :func:`make_entry` /
+    :func:`make_repo_entry` kwargs: a dict holding whichever of ``cost_usd`` / ``tokens_in`` /
+    ``tokens_out`` the entry carries with a sane value (empty for a legacy/bare-string
+    entry, a source no model imported, or a pre-cost-accounting stamp). The read applies the
+    SAME filter as the stamp sites (:func:`_usage_stamp_fields`), so a hand-edited manifest
+    carrying NaN/Infinity/negative junk is dropped here instead of reaching a renderer or the
+    ``--json`` output. Shaped as kwargs so the
+    carry sites (a move, a cache re-stamp) splat it straight through — the usage stamp, like
+    ``ingested_at``, must survive everything except an actual new agent session."""
+    if isinstance(entry, dict):
+        return _usage_stamp_fields(entry.get("cost_usd"), entry.get("tokens_in"), entry.get("tokens_out"))
+    return {}
 
 
 def entry_rules_version(entry: Entry | None) -> str | None:
@@ -444,6 +500,9 @@ def mark_done(
     *,
     sha: str | None = None,
     st: os.stat_result | None = None,
+    cost_usd: float | None = None,
+    tokens_in: int | None = None,
+    tokens_out: int | None = None,
 ) -> None:
     """Record ``src`` as ingested: manifest[rel_key(src)] = {sha256, model, rules_version} plus
     the scan-cache stat fields and — when a model imported it — a fresh ``ingested_at`` stamp
@@ -454,7 +513,10 @@ def mark_done(
     source no model imported. ``sha``/``st`` are the content hash and the stat discovery already
     took for this source — pass them through so the file is stream-hashed exactly ONCE per run
     (and so the recorded sha is the content that was actually ingested, not a post-session
-    re-read); when omitted (direct callers), they are computed here."""
+    re-read); when omitted (direct callers), they are computed here.
+    ``cost_usd``/``tokens_in``/``tokens_out`` are what the source's just-finished session(s)
+    cost, per the backend's own report (ingest combines a chunked source's segments) — recorded
+    only when known, so a backend that reports nothing leaves no misleading zeros."""
     if st is None:
         try:
             st = src.stat()
@@ -462,4 +524,13 @@ def mark_done(
             st = None
     if sha is None:
         sha = file_sha256(src)
-    manifest[rel_key(src)] = make_entry(sha, model, rules_version, st=st, ingested_at=now_iso() if model else None)
+    manifest[rel_key(src)] = make_entry(
+        sha,
+        model,
+        rules_version,
+        st=st,
+        ingested_at=now_iso() if model else None,
+        cost_usd=cost_usd,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+    )

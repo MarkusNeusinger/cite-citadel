@@ -94,6 +94,10 @@ class IngestReport:
     # The wiki-history note from wikigit.autocommit ("wiki git: committed <sha>", or a warning
     # naming what was skipped and why) — empty when the history layer had nothing to say.
     wiki_git: str = ""
+    # What this run's agent sessions cost, summed over EVERY session that reported usage —
+    # failed sources included (their money was spent too; only the manifest stamp is
+    # success-only). None when no backend reported anything (copilot, the test fakes).
+    usage: llm.SessionUsage | None = None
 
     def render(self) -> str:
         """Human-readable multi-line summary for CLI/MCP."""
@@ -112,6 +116,9 @@ class IngestReport:
             f"{len(self.duplicates)} duplicate(s) skipped, "
             f"{len(self.errors)} errors."
         )
+        described = self.usage.describe() if self.usage is not None else ""
+        if described:
+            lines.append(f"LLM usage: {described}.")
         if self.processed:
             lines.append("Processed:")
             lines.extend(f"  - {p}" for p in self.processed)
@@ -674,14 +681,16 @@ def _partition_sources(
             if file_entry and not force and sha == manifest.entry_sha(entry):
                 # Unchanged content behind a stale/absent stat cache (a touched-but-identical
                 # file, a pre-PR4 entry, --full-rescan): refresh/backfill the entry in place —
-                # keeping the recorded model/rules_version/ingested_at (no session ran, so the
-                # last-checked stamp must not move) — so the next run quick-skips it.
+                # keeping the recorded model/rules_version/ingested_at + usage stamp (no session
+                # ran, so neither the last-checked stamp nor the cost may move) — so the next run
+                # quick-skips it.
                 manifest_dict[key] = manifest.make_entry(
                     sha,
                     manifest.entry_model(entry),
                     manifest.entry_rules_version(entry),
                     st=st,
                     ingested_at=manifest.entry_ingested_at(entry),
+                    **manifest.entry_usage(entry),
                 )
                 mutated = True
                 skipped.append(key)
@@ -1253,7 +1262,9 @@ class _SourceOutcome:
     """Result of one agent-driven source (ingest / reconcile / delete). ``ok`` means the edit
     was validated and promoted onto the live wiki (the caller still updates the manifest + report);
     ``ok is False`` means nothing was promoted — the live wiki is unchanged — and ``errors`` says
-    why."""
+    why. ``usage`` is what the source's session(s) reported costing (segments combined; also set
+    on a FAILED outcome when earlier segments completed — that money was spent even though the
+    work was rolled back), or None when no session reported anything."""
 
     ok: bool
     created: list[str] = field(default_factory=list)
@@ -1261,6 +1272,23 @@ class _SourceOutcome:
     deleted: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     seconds: float = 0.0
+    usage: llm.SessionUsage | None = None
+
+
+def _usage_fields(usage: llm.SessionUsage | None) -> dict:
+    """A source's combined session usage as ``manifest.make_entry`` / ``make_repo_entry`` kwargs
+    (``cost_usd``/``tokens_in``/``tokens_out``, only the known fields) — the one translation from
+    the llm-layer shape to the manifest-layer stamp, so the done-hooks stay one-liners."""
+    if usage is None:
+        return {}
+    out: dict = {}
+    if usage.cost_usd is not None:
+        out["cost_usd"] = usage.cost_usd
+    if usage.input_tokens is not None:
+        out["tokens_in"] = usage.input_tokens
+    if usage.output_tokens is not None:
+        out["tokens_out"] = usage.output_tokens
+    return out
 
 
 def _run_agent_sessions(session_fns, rel_key: str, extra_check=None, allow_emptying: bool = False) -> _SourceOutcome:
@@ -1302,20 +1330,29 @@ def _run_agent_sessions(session_fns, rel_key: str, extra_check=None, allow_empty
     created: list[str] = []
     updated: list[str] = []
     deleted: list[str] = []
+    # Each session's backend-reported usage (None from the test fakes / silent backends),
+    # combined into the outcome on EVERY return path — a rolled-back source still spent money.
+    usage_parts: list[llm.SessionUsage | None] = []
     try:
         staging = _make_staging(live)
         with _redirect_wiki(staging):
             prev_pages = store.load()
             prev = _hash_pages(prev_pages)
             for i, session_fn in enumerate(session_fns):
-                session_fn()  # the agent edits the STAGING copy, never the live wiki
+                result = session_fn()  # the agent edits the STAGING copy, never the live wiki
+                usage_parts.append(result if isinstance(result, llm.SessionUsage) else None)
 
                 after = _snapshot()
                 seg_created, seg_updated, seg_deleted = _diff(prev, after)
 
                 val_errors = _validate_and_restamp(seg_created + seg_updated, rel_key)
                 if val_errors:
-                    return _SourceOutcome(False, errors=val_errors, seconds=time.monotonic() - started)
+                    return _SourceOutcome(
+                        False,
+                        errors=val_errors,
+                        seconds=time.monotonic() - started,
+                        usage=llm.combine_usage(usage_parts),
+                    )
 
                 _repair_renames(prev_pages, seg_created, seg_deleted)
 
@@ -1332,15 +1369,35 @@ def _run_agent_sessions(session_fns, rel_key: str, extra_check=None, allow_empty
             if extra_check is not None:
                 post_errors = extra_check()
                 if post_errors:
-                    return _SourceOutcome(False, created, updated, deleted, post_errors, time.monotonic() - started)
+                    return _SourceOutcome(
+                        False,
+                        created,
+                        updated,
+                        deleted,
+                        post_errors,
+                        time.monotonic() - started,
+                        usage=llm.combine_usage(usage_parts),
+                    )
 
         # Every session was clean: commit the source onto the live wiki (config now points back
         # at live). This is the ONLY step that touches the live wiki, it happens ONCE per source,
         # and it is non-destructive — so an interrupt here still cannot empty it.
         _promote(staging, live, allow_emptying=allow_emptying)
-        return _SourceOutcome(True, created, updated, deleted, [], time.monotonic() - started)
+        return _SourceOutcome(
+            True, created, updated, deleted, [], time.monotonic() - started, usage=llm.combine_usage(usage_parts)
+        )
     except Exception as exc:  # noqa: BLE001 - collect per-source, keep going; live wiki untouched
-        return _SourceOutcome(False, errors=[f"{rel_key}: {exc}"], seconds=time.monotonic() - started)
+        # A raising session never returned its usage, but the backend may still have reported
+        # what the FAILED attempt cost (claude's error envelope, gemini's stats file) — llm
+        # carries that on the exception, so the run total honors "failed sessions included".
+        salvaged = getattr(exc, "session_usage", None)
+        usage_parts.append(salvaged if isinstance(salvaged, llm.SessionUsage) else None)
+        return _SourceOutcome(
+            False,
+            errors=[f"{rel_key}: {exc}"],
+            seconds=time.monotonic() - started,
+            usage=llm.combine_usage(usage_parts),
+        )
     finally:
         # Discard staging on every exit (a clean source already promoted it; a failed or
         # interrupted one never touched the live wiki). A flaky share that refuses the delete only
@@ -1365,8 +1422,10 @@ class _SourceJob:
       the job succeeds immediately with zero page changes.
     - ``on_success``: the post-success bookkeeping that differs per kind — the manifest stamp
       (``mark_done`` / repo entry / key drop), clearing the failure record, the per-source
-      manifest save, and which report list the source lands in. Takes no arguments: the page
-      changes already went into the report before it runs, so a job needs no view of the diff.
+      manifest save, and which report list the source lands in. Takes exactly one argument, the
+      outcome's combined session usage (``llm.SessionUsage | None``) so the manifest stamp can
+      record what the verification cost; the page changes already went into the report before it
+      runs, so a job needs no view of the diff.
       (``citadel curate`` deliberately BYPASSES ``_SourceJob`` — its per-cluster report, different
       vocabulary, and NOOP outcome do not fit here — and rides :func:`_run_agent_sessions`
       directly, so nothing consumes a per-source outcome through this seam.)
@@ -1377,8 +1436,8 @@ class _SourceJob:
     """
 
     key: str
-    build_sessions: Callable[[], tuple[list[Callable[[], None]], list[str]]]
-    on_success: Callable[[], None]
+    build_sessions: Callable[[], tuple[list[Callable[[], llm.SessionUsage | None]], list[str]]]
+    on_success: Callable[[llm.SessionUsage | None], None]
     prepare_error: str
     extra_check: Callable[[], list[str]] | None = None
     allow_emptying: bool = False
@@ -1427,6 +1486,13 @@ def _run_source_jobs(jobs: list[_SourceJob], emit, report: IngestReport, failure
             # Always remove every temp dir the plan produced (success, error, or interrupt).
             for tmp in tmpdirs:
                 shutil.rmtree(tmp, ignore_errors=True)
+        # The run's usage total counts every outcome — a failed source's sessions were paid for
+        # too; only the per-source manifest stamp below is success-only. Deliberately NOT wired
+        # through the BaseException path (the return above): an interrupted run re-raises and
+        # its report is never rendered (_ingest_run's capture-finalize-reraise), so the in-flight
+        # source's partial usage has no surface to appear on — the completed sources' manifest
+        # stamps were already saved per-source with their usage intact.
+        report.usage = llm.combine_usage([report.usage, outcome.usage])
         if not outcome.ok:
             # Nothing was promoted (the live wiki is untouched) and the source is NOT marked
             # done, so it is retried next run. Persist the failure for triage.
@@ -1446,7 +1512,7 @@ def _run_source_jobs(jobs: list[_SourceJob], emit, report: IngestReport, failure
         report.pages_updated.extend(outcome.updated)
         report.pages_written.extend(outcome.created + outcome.updated)
         report.pages_deleted.extend(outcome.deleted)
-        job.on_success()
+        job.on_success(outcome.usage)
         emit(
             "source_done",
             index=index,
@@ -1591,21 +1657,23 @@ def _prepare_passes(
     return [(None, None)], []
 
 
-def _pending_session(rel_key: str, kind: str, read_key: str | None, segment: tuple[int, int] | None = None) -> None:
-    """Drive ONE ingest/reconcile agent session. When ``read_key`` is set (an Office source or a
-    large-source segment whose text was extracted), point the agent at it via ``read_path``;
-    otherwise call exactly as before so a non-Office source — and every existing test's faked
-    session — is byte-for-byte unchanged. ``segment`` carries ``(part, total)`` for a chunked
-    source, and is passed to the backend ONLY when set, so a single-pass Office/text session calls
-    it exactly as before chunking existed."""
+def _pending_session(
+    rel_key: str, kind: str, read_key: str | None, segment: tuple[int, int] | None = None
+) -> llm.SessionUsage | None:
+    """Drive ONE ingest/reconcile agent session, passing through the backend's usage report
+    (:class:`llm.SessionUsage` or None) for the outcome's accounting. When ``read_key`` is set
+    (an Office source or a large-source segment whose text was extracted), point the agent at it
+    via ``read_path``; otherwise call exactly as before so a non-Office source — and every
+    existing test's faked session — is byte-for-byte unchanged. ``segment`` carries
+    ``(part, total)`` for a chunked source, and is passed to the backend ONLY when set, so a
+    single-pass Office/text session calls it exactly as before chunking existed."""
     if read_key and segment is not None:
-        llm.run_ingest_session(rel_key, kind=kind, read_path=read_key, segment=segment)
-    elif read_key:
-        llm.run_ingest_session(rel_key, kind=kind, read_path=read_key)
-    elif segment is not None:
-        llm.run_ingest_session(rel_key, kind=kind, segment=segment)
-    else:
-        llm.run_ingest_session(rel_key, kind=kind)
+        return llm.run_ingest_session(rel_key, kind=kind, read_path=read_key, segment=segment)
+    if read_key:
+        return llm.run_ingest_session(rel_key, kind=kind, read_path=read_key)
+    if segment is not None:
+        return llm.run_ingest_session(rel_key, kind=kind, segment=segment)
+    return llm.run_ingest_session(rel_key, kind=kind)
 
 
 def ingest(
@@ -1829,11 +1897,13 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
         # None that `status` can't attribute and `--stale-rules` can never flag.
         carried_model = manifest.model_of(manifest_dict, old_key)
         carried_rules = manifest.entry_rules_version(manifest_dict.get(old_key))
-        # ingested_at is CARRIED only, never minted here: unlike model/rules_version above, a
-        # fresh stamp would claim a session verified this copy when none did (the pending twin's
-        # session may not even succeed). A duplicate left stamp-less merely sorts to the front of
-        # `citadel refresh`'s queue — one re-verify session later it is stamped honestly.
+        # ingested_at — and the cost/tokens usage stamp — are CARRIED only, never minted here:
+        # unlike model/rules_version above, a fresh stamp would claim a session verified this
+        # copy when none did (the pending twin's session may not even succeed). A duplicate left
+        # stamp-less merely sorts to the front of `citadel refresh`'s queue — one re-verify
+        # session later it is stamped honestly. (Read BEFORE the pop below.)
         carried_ingested = manifest.entry_ingested_at(manifest_dict.get(old_key))
+        carried_usage = manifest.entry_usage(manifest_dict.get(old_key))
         if old_key not in manifest_dict and old_key in pending_keys:
             carried_model = carried_model or model
             carried_rules = carried_rules or rules_ver
@@ -1849,7 +1919,7 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             manifest_dict.pop(old_key, None)
         moved_stat = scan.hashed[new_key][1] if new_key in scan.hashed else None
         manifest_dict[new_key] = manifest.make_entry(
-            sha, carried_model, carried_rules, st=moved_stat, ingested_at=carried_ingested
+            sha, carried_model, carried_rules, st=moved_stat, ingested_at=carried_ingested, **carried_usage
         )
         failures.clear(failures_dict, old_key)
         failures.clear(failures_dict, new_key)
@@ -1862,6 +1932,7 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
         carried_remote = manifest.entry_remote(old_entry) if old_entry is not None else None
         carried_rules = manifest.entry_rules_version(old_entry)
         carried_ingested = manifest.entry_ingested_at(old_entry)
+        carried_usage = manifest.entry_usage(old_entry)
         if old_key != new_key:
             try:
                 if store.rewrite_raw_references(old_key, new_key):
@@ -1871,7 +1942,7 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
                 continue
             manifest_dict.pop(old_key, None)
         manifest_dict[new_key] = manifest.make_repo_entry(
-            ident, carried_model, carried_remote, carried_rules, ingested_at=carried_ingested
+            ident, carried_model, carried_remote, carried_rules, ingested_at=carried_ingested, **carried_usage
         )
         report.moved.append((old_key, new_key))
     if report.moved:
@@ -1984,11 +2055,13 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             ]
             return sessions, tmpdirs
 
-        def done() -> None:
+        def done(usage: llm.SessionUsage | None) -> None:
             # mark_done records exactly what discovery hashed (sha_stat above). On a forced
-            # re-read this re-stamps the entry with the CURRENT model + rules_version.
+            # re-read this re-stamps the entry with the CURRENT model + rules_version. The
+            # source's combined session usage (cost/tokens, when the backend reported any)
+            # is stamped alongside — per-source cost observability.
             done_sha, done_stat = sha_stat
-            manifest.mark_done(manifest_dict, src, model, rules_ver, sha=done_sha, st=done_stat)
+            manifest.mark_done(manifest_dict, src, model, rules_ver, sha=done_sha, st=done_stat, **_usage_fields(usage))
             # A source that had failed before (unreadable/errored/duplicate) now succeeded: drop
             # its persisted failure record.
             failures.clear(failures_dict, rel_key)
@@ -2023,12 +2096,17 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             sessions = [lambda rp=read_key: llm.run_ingest_session(rjob.key, kind=rjob.kind, read_path=rp)]
             return sessions, [tmp]
 
-        def done() -> None:
+        def done(usage: llm.SessionUsage | None) -> None:
             # On success the manifest records the repo's CURRENT commit identity, with a fresh
             # last-checked stamp (an agent session just verified this repo — the one event that
-            # moves ingested_at).
+            # moves ingested_at) and the session's usage stamp when the backend reported one.
             manifest_dict[rjob.key] = manifest.make_repo_entry(
-                repo.identity(rjob.path), model, repo.remote_url(rjob.path), rules_ver, ingested_at=manifest.now_iso()
+                repo.identity(rjob.path),
+                model,
+                repo.remote_url(rjob.path),
+                rules_ver,
+                ingested_at=manifest.now_iso(),
+                **_usage_fields(usage),
             )
             failures.clear(failures_dict, rjob.key)
             manifest.save(manifest_dict)
@@ -2047,7 +2125,9 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
                 return [], []  # nothing cites it: no cleanup session, just forget it below
             return [lambda: llm.run_ingest_session(key, kind="delete")], []
 
-        def done() -> None:
+        def done(_usage: llm.SessionUsage | None) -> None:
+            # The cleanup session's usage lands only in the RUN total (report.usage) — the
+            # source's manifest key is dropped, so there is no entry left to stamp.
             manifest_dict.pop(key, None)
             failures.clear(failures_dict, key)
             manifest.save(manifest_dict)

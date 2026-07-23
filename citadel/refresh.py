@@ -19,9 +19,10 @@ and on success ``mark_done`` re-stamps the entry with the CURRENT model + rules_
 runs walk the whole corpus round-robin without any persisted queue (the manifest IS the queue
 state; ``--dry-run`` shows the current head of it).
 
-The budget unit is SOURCES, not tokens: citadel shells out to an agent CLI and never sees token
-counts, but one source is exactly one agent session (a chunked large source: a few), so
-``--limit N`` is an honest, predictable proxy — the same knob curate uses. ``--min-age-days``
+The budget unit is SOURCES, not tokens — one source is exactly one agent session (a chunked
+large source: a few), so ``--limit N`` is an honest, predictable proxy, the same knob curate
+uses. What each session actually cost is no longer invisible: the backend's own cost/usage
+report is stamped into the source's manifest entry and totaled on the delegated ingest report. ``--min-age-days``
 makes a scheduled run self-limiting: sources checked more recently than that are not candidates
 at all, so a cron'd ``citadel refresh --limit 20 --min-age-days 30`` becomes a cheap no-op once
 the corpus is fresh instead of pointlessly re-burning budget on it.

@@ -103,7 +103,9 @@ Every page's frontmatter records **when it last changed and which cite-citadel r
 refreshes pages whose sources were ingested under an older rulebook. A wiki also outlives its
 models: rather than ever regenerating it after a model upgrade, `citadel refresh --limit N` re-verifies
 the N sources that have gone **longest unchecked** under the current model + rules — a budget you
-choose per run (e.g. part of a monthly token allowance), walking the corpus round-robin. See
+choose per run (e.g. part of a monthly token allowance), walking the corpus round-robin — and the
+spend is visible: each session's cost/usage (as the agent CLI itself reports it) is stamped into
+the manifest per source, totaled on every run report, and summed by `citadel status`. See
 [`docs/maintenance.md`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/maintenance.md) § Refresh. For a full audit trail, `git
 init` the `wiki/` folder once (or set `CITADEL_WIKI_GIT=1`): citadel then **auto-commits the wiki
 after every ingest/curate run** — each change a reviewable diff — and can push to a remote

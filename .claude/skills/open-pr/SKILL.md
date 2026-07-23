@@ -130,6 +130,14 @@ gh api --method POST "repos/{owner}/{repo}/pulls/$PR/requested_reviewers" \
 Expected: a JSON blob echoing the PR with `copilot-pull-request-reviewer[bot]` under
 `requested_reviewers` (HTTP 201). Copilot posts its review within a minute or two.
 
+**Review-round budget (owner's rule): at most TWO Copilot rounds per PR.** Request the review
+ONCE here; Copilot re-reviews automatically on every push, so never re-request it after fix
+pushes. Address round 1's comments, and if a round 2 arrives after that push, address it too —
+then stop engaging: further rounds get fixes only for genuine bugs (a real correctness/safety
+defect), everything else is answered on the thread or left for the human. Only a genuinely LARGE
+new change on the same PR (a substantial new feature landing after the initial review, not fix
+commits) justifies more rounds.
+
 ## 7. Watch CI, then address the review
 
 **Wait for the checks to REGISTER before watching** — for a few seconds right after a push the PR has
