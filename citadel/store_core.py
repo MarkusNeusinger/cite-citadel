@@ -297,8 +297,8 @@ def search(query: str, pages: list[Page] | None = None, limit: int = 8) -> list[
         # The contiguous-phrase bonus, checked over the same five fields BM25 indexes. It doubles
         # as a substring net (a page the tokenizer cannot reach — a symbol-only query, an embedded
         # hyphenated form — still surfaces at 0.5), and because it is flat across fields, ties
-        # among equally-bonused pages fall back to BM25's column weights — including the case of a
-        # term present in EVERY candidate, where BM25's clamped idf alone degenerates to ~0.
+        # among equally-bonused pages fall back to BM25's field weights — which stay decisive even
+        # for a term present in EVERY candidate, where the smoothed idf is small but positive.
         haystack = "\n".join(
             (
                 page.title,
