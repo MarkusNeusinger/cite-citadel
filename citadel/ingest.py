@@ -1888,10 +1888,12 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
         report.unreadable.append(key)
         if _reads_as_cloud_placeholder(src):
             # A cloud-only placeholder: hydration restores the real content WITHOUT changing
-            # size/mtime (and not always ctime), so marking it done would let the stat quick check
-            # skip the hydrated file forever. Like a dedup-dropped twin it lives only in the
-            # failures catalog — whose sha+stat still spare the re-hash — so every later run
-            # re-evaluates it and the hydrated file ingests normally.
+            # size/mtime — and on Windows st_ctime is the stable creation time — so marking it
+            # done would let the stat quick check skip the hydrated file forever. It lives only in
+            # the failures catalog, and deliberately WITHOUT sha/stat: a cached sha that the quick
+            # check trusts across a stat-stable hydration would thread the stale all-NUL sha into
+            # mark_done. The cost is one re-hash of the still-stuck placeholder per run; the win is
+            # that hydration always yields the real sha and the file ingests normally.
             report.cloud_placeholders.append(key)
             failures.record(
                 failures_dict,
@@ -1899,8 +1901,6 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
                 failures.UNREADABLE,
                 "reads as all NUL bytes - likely a cloud-only placeholder (Dropbox/OneDrive "
                 "online-only file); make it available offline and re-run",
-                sha=sha,
-                st=src_stat,
             )
             continue
         # No model imported it (it was only sniffed and skipped), so record the sha alone — with

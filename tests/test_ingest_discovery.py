@@ -250,8 +250,11 @@ def test_cloud_placeholder_is_flagged_and_ingests_once_hydrated(tmp_citadel, fak
     """A file whose bytes read as 100% NUL — the signature of a Dropbox/OneDrive "online-only"
     placeholder seen through WSL/SMB — is surfaced with a targeted make-it-available-offline hint
     instead of the generic binary message, and is NOT marked done in the manifest: hydration
-    restores the real content without changing size/mtime, so a stat-cached entry would skip the
-    fixed file forever. Until hydrated it stays visibly stuck; once hydrated it ingests normally."""
+    restores the real content without changing size/mtime (and on Windows st_ctime is the stable
+    creation time), so a stat-cached entry would skip the fixed file forever — which is also why
+    the persisted failure deliberately caches no sha/stat: a trusted stale all-NUL sha would
+    otherwise be stamped into the manifest on ingest. Until hydrated it stays visibly stuck; once
+    hydrated it ingests normally and the manifest records the REAL content hash."""
     import json
     import os
 
@@ -269,6 +272,10 @@ def test_cloud_placeholder_is_flagged_and_ingests_once_hydrated(tmp_citadel, fak
     fdata = json.loads((tmp_citadel.wiki / ".citadel_failures.json").read_text(encoding="utf-8"))
     assert fdata["raw/notes.md"]["reason"] == "unreadable"
     assert "placeholder" in fdata["raw/notes.md"]["detail"]
+    # No cached sha/stat: on a filesystem where hydration leaves the whole stat unchanged
+    # (Windows ctime = creation time), a trusted cache would smuggle the NUL sha into mark_done.
+    assert "sha256" not in fdata["raw/notes.md"]
+    assert "mtime_ns" not in fdata["raw/notes.md"]
 
     # Still stuck: unlike a genuine binary it is re-surfaced, not silently skipped.
     second = ingest.ingest()
@@ -284,7 +291,8 @@ def test_cloud_placeholder_is_flagged_and_ingests_once_hydrated(tmp_citadel, fak
     assert "raw/notes.md" in third.processed
     assert third.unreadable == []
     assert agent.count == 1
-    assert "raw/notes.md" in tmp_citadel.read_manifest()  # now genuinely ingested
+    entry = tmp_citadel.read_manifest()["raw/notes.md"]  # now genuinely ingested…
+    assert entry["sha256"] == manifest.file_sha256(raw / "notes.md")  # …with the REAL content hash
     assert not (tmp_citadel.wiki / ".citadel_failures.json").exists()  # failure cleared
 
 
