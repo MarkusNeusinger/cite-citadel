@@ -107,6 +107,28 @@ $env:CITADEL_LLM_CLI = "copilot"
 | `CITADEL_DEDUP_BY_BASENAME` | `1` | When several same-folder files share a basename and are all export formats (e.g. `report.pptx` + `report.pdf`), ingest one (PDF → modern Office → legacy) and record the rest as skipped duplicates. |
 | `CITADEL_IGNORE_PATTERNS` | (built-in OS/junk globs) | Case-insensitive globs skipped at discovery (`Thumbs.db`, `.DS_Store`, `~$` locks, editor swap/backup files). A comma/newline list **replaces** the defaults; a `+` prefix **extends** them. |
 
+## Audio/video sources (whisper)
+
+Opt-in transcript ingest: a recognized recording (`.mp3`/`.wav`/`.m4a`/`.mp4`/`.mkv`/…) is
+transcribed **once** through a local whisper-class CLI — a shell-out seam exactly like the agent
+CLI, no SDK and no API key — and the agent session reads the `[HH:MM:SS]`-stamped transcript while
+citing the original media file. The transcript is cached content-addressed (by the file's sha256)
+in `.citadel_transcripts/` next to the wiki dir, and doubles as the offline verification text:
+`citadel lint` and `wiki_raw`/`citadel raw` resolve a citation's `lines A-B` locator against it.
+The binary must speak the openai-whisper flag convention (`<file> --output_format srt
+--output_dir <dir>`) — [openai-whisper](https://github.com/openai/whisper),
+[whisper-ctranslate2](https://github.com/Softcatala/whisper-ctranslate2), and
+[mlx_whisper](https://pypi.org/project/mlx-whisper/) qualify as-is; whisper.cpp needs a small
+wrapper script that maps the flags. `citadel doctor` warns when the knob is on but the binary is
+missing.
+
+| Variable | Default | What it does |
+|----------|---------|--------------|
+| `CITADEL_AUDIO_SUPPORT` | `0` | `1` transcribes recognized audio/video files and ingests the transcript. Off, they are recorded as unreadable (like images with `CITADEL_IMAGE_SUPPORT=0`). |
+| `CITADEL_WHISPER_CLI` | `whisper` | The whisper-class binary: a PATH name or an absolute path (this one knob is both selector and override). |
+| `CITADEL_WHISPER_MODEL` | (CLI default) | Passed as `--model` (e.g. `turbo` \| `small` \| `large-v3`). Switching models does not invalidate the cache — delete the `.citadel_transcripts/` entry and `ingest --force` the file to re-transcribe. |
+| `CITADEL_WHISPER_TIMEOUT` | `3600` | Per-file transcription timeout in seconds (separate from `CITADEL_LLM_TIMEOUT` — CPU transcription of long recordings is slow). |
+
 ## Git-repository sources
 
 | Variable | Default | What it does |

@@ -40,7 +40,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from . import config, extract, failures, llm, manifest, okf, repo, runlock, store, validate, wikigit
+from . import config, extract, failures, llm, manifest, okf, repo, runlock, store, transcribe, validate, wikigit
 from .okf import Page
 
 
@@ -550,6 +550,9 @@ class _Scan:
     mutated: bool = False
     out_of_root: list[str] = field(default_factory=list)
     unreadable_tracked: list[str] = field(default_factory=list)
+    # Pending audio/video sources — transcribed through the whisper seam (citadel.transcribe) in
+    # the per-source job, so a missing/failing whisper CLI is a retryable per-source error.
+    audio: set[Path] = field(default_factory=set)
 
 
 def _partition_sources(
@@ -637,6 +640,9 @@ def _partition_sources(
     office_text: dict[Path, str] = {}
     # Pending image sources — the agent reads these VISUALLY (no text extraction here).
     images: set[Path] = set()
+    # Pending audio/video sources — transcribed lazily in the per-source job, NOT here: partition
+    # must stay cheap, and a whisper failure has to be a retryable per-source error.
+    audio: set[Path] = set()
     # (sha, walk stat) for every candidate whose content hash became known — quick-check reuse or
     # ONE stream-hash — threaded through to mark_done/the failures catalog (no second hash).
     hashed: dict[str, tuple[str, os.stat_result]] = {}
@@ -740,6 +746,13 @@ def _partition_sources(
             # would reject its NUL bytes). No text is extracted here; the agent opens it by path.
             images.add(src)
             pending.append(src)
+        elif transcribe.is_audio_source(src):
+            # An audio/video recording (CITADEL_AUDIO_SUPPORT) — routed to pending BEFORE the
+            # binary sniff. Transcription happens in the per-source job, not here: a missing or
+            # failing whisper CLI must be a retryable per-source error, never a partition-time
+            # crash — and never a permanent unreadable mark that would need --force to undo.
+            audio.add(src)
+            pending.append(src)
         elif not _is_ingestible(src):
             unreadable.append(src)
             continue
@@ -773,6 +786,7 @@ def _partition_sources(
             for p in dropped:
                 office_text.pop(p, None)
                 images.discard(p)
+                audio.discard(p)
     return _Scan(
         pending=sorted(pending),
         skipped=skipped,
@@ -787,6 +801,7 @@ def _partition_sources(
         mutated=mutated,
         out_of_root=out_of_root,
         unreadable_tracked=unreadable_tracked,
+        audio=audio,
     )
 
 
@@ -1605,7 +1620,7 @@ def _split_text(text: str, max_chars: int) -> list[str]:
 
 
 def _prepare_passes(
-    src: Path, office: str | None, is_image: bool
+    src: Path, office: str | None, is_image: bool, is_audio: bool = False
 ) -> tuple[list[tuple[str | None, tuple[int, int] | None]], list[str]]:
     """Plan the agent session(s) for one pending source and return ``(passes, tmpdirs)``.
 
@@ -1614,17 +1629,22 @@ def _prepare_passes(
     (None = single pass). ``tmpdirs`` are temp directories the caller MUST remove afterwards.
 
     - image: one pass, read the file directly (viewed visually).
-    - a source (Office text, or — when chunking is on — a readable non-PDF text file) whose content
-      exceeds ``config.MAX_SOURCE_CHARS`` is SPLIT into segments, one pass each.
-    - a small Office file: one pass reading its extracted text (unchanged behavior).
+    - a source (pre-extracted Office text or an audio transcript arriving via ``office``, or —
+      when chunking is on — a readable non-PDF text file) whose content exceeds
+      ``config.MAX_SOURCE_CHARS`` is SPLIT into segments, one pass each.
+    - a small Office file / audio transcript: one pass reading the prepared text.
     - anything else (small plain text, a PDF, an image-less binary the agent reads): one pass
       reading the file directly (unchanged behavior).
+
+    ``is_audio`` marks the ``office`` text as a whisper transcript: same temp-file plumbing, but
+    the media extraction below must not try to unzip an ``.mp3``.
 
     Raises ``OSError`` if a temp segment/extract file can't be written (handled per-source)."""
     if is_image:
         return [(None, None)], []
     max_chars = config.MAX_SOURCE_CHARS
-    # Content we could chunk: pre-extracted Office text, or (chunking on) a readable text source.
+    # Content we could chunk: pre-extracted Office/transcript text, or (chunking on) a readable
+    # text source.
     content = office
     if content is None and max_chars > 0:
         content = _read_source_text(src)
@@ -1632,8 +1652,9 @@ def _prepare_passes(
         segments = _split_text(content, max_chars)
         # A chunked Office source keeps its embedded images: attached to the FIRST segment's temp,
         # exactly like the small-Office branch below — without this, a deck whose extracted text
-        # crossed the chunking threshold silently lost its diagrams/charts.
-        media = extract.extract_media(src) if office is not None and config.IMAGE_SUPPORT else []
+        # crossed the chunking threshold silently lost its diagrams/charts. (An audio source has
+        # no embeddable media — its bytes are not a ZIP container.)
+        media = extract.extract_media(src) if office is not None and not is_audio and config.IMAGE_SUPPORT else []
         passes: list[tuple[str | None, tuple[int, int] | None]] = []
         tmpdirs: list[str] = []
         try:
@@ -1649,8 +1670,9 @@ def _prepare_passes(
     if office is not None:
         # Small Office file: one pass reading the extracted text — plus its embedded images (decks
         # and docs often carry diagrams/charts/screenshots the text extractor can't see), written
-        # beside the text for the agent to VIEW. Skipped when image support is off.
-        media = extract.extract_media(src) if config.IMAGE_SUPPORT else []
+        # beside the text for the agent to VIEW. Skipped when image support is off — and for an
+        # audio transcript, which has no media to extract.
+        media = extract.extract_media(src) if config.IMAGE_SUPPORT and not is_audio else []
         read_key, tmp = _office_write_temp(office, src.name, media)
         return [(read_key, None)], [tmp]
     # Small plain text, a PDF, or any other agent-readable source: read the file directly.
@@ -2031,24 +2053,31 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
     def _file_job(src: Path) -> _SourceJob:
         rel_key = manifest.rel_key(src)
         is_image = src in scan.images
+        is_audio = src in scan.audio
         # The (sha, stat) discovery already took — the source's ONE content read this run —
         # threaded to the failures catalog and, on success, to mark_done (never re-hashed).
         sha_stat = scan.hashed.get(rel_key, (None, None))
         # An already-tracked key is a re-ingest — new bytes, or a FORCED re-read of unchanged
         # ones: reconcile (update/remove stale facts) rather than only appending. A brand-new key
-        # is a plain ingest. Image sources take the image propagation (the agent VIEWS them).
+        # is a plain ingest. Image sources take the image propagation (the agent VIEWS them);
+        # audio/video sources take the audio propagation (the agent reads the transcript).
         if is_image:
             kind = "image-reconcile" if rel_key in changed_keys else "image"
+        elif is_audio:
+            kind = "audio-reconcile" if rel_key in changed_keys else "audio"
         else:
             kind = "reconcile" if rel_key in changed_keys else "ingest"
         office = scan.office_text.get(src)
 
         def build() -> tuple[list, list[str]]:
             # Plan the pass(es): an Office source materializes its extracted text to a temp .md
-            # the agent reads; a source too large for one context is SPLIT into segments
-            # (promote-once per source — see _run_agent_sessions); anything else is a single
-            # direct read.
-            passes, tmpdirs = _prepare_passes(src, office, is_image)
+            # the agent reads; an audio/video source is transcribed HERE through the whisper seam
+            # (content-addressed cache; a raise is a retryable per-source prepare_error, and the
+            # cache makes the retry free); a source too large for one context is SPLIT into
+            # segments (promote-once per source — see _run_agent_sessions); anything else is a
+            # single direct read.
+            prepared = transcribe.transcript_for(src, sha=sha_stat[0]) if is_audio else office
+            passes, tmpdirs = _prepare_passes(src, prepared, is_image, is_audio=is_audio)
             sessions = [
                 (lambda rp=read_key, sg=segment: _pending_session(rel_key, kind, rp, sg))
                 for read_key, segment in passes
@@ -2071,7 +2100,11 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             report.processed.append(rel_key)
 
         return _SourceJob(
-            key=rel_key, build_sessions=build, on_success=done, prepare_error="write source text", sha_stat=sha_stat
+            key=rel_key,
+            build_sessions=build,
+            on_success=done,
+            prepare_error="transcribe audio" if is_audio else "write source text",
+            sha_stat=sha_stat,
         )
 
     # Repo sources: each git repository under raw/ is folded in by ONE session reading a

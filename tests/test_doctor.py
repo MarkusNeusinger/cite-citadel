@@ -315,6 +315,38 @@ def test_pdf_ok_images_on_claude(tmp_citadel, monkeypatch):
     assert doctor.check_pdf_mode().status == doctor.OK
 
 
+# --- audio support -----------------------------------------------------------------------
+
+
+def test_audio_ok_when_off(tmp_citadel, monkeypatch):
+    monkeypatch.setattr(config, "AUDIO_SUPPORT", False)
+    c = doctor.check_audio_support()
+    assert c.status == doctor.OK and "off" in c.detail
+
+
+def test_audio_warn_when_on_but_whisper_missing(tmp_citadel, monkeypatch):
+    from citadel import transcribe
+
+    monkeypatch.setattr(config, "AUDIO_SUPPORT", True)
+    monkeypatch.setattr(transcribe, "resolve_whisper", _raise_runtime)
+    c = doctor.check_audio_support()
+    assert c.status == doctor.WARN
+    assert "CITADEL_WHISPER_CLI" in c.detail
+
+
+def test_audio_ok_when_on_and_whisper_found(tmp_citadel, monkeypatch):
+    from citadel import transcribe
+
+    monkeypatch.setattr(config, "AUDIO_SUPPORT", True)
+    monkeypatch.setattr(transcribe, "resolve_whisper", lambda: "/opt/bin/whisper")
+    c = doctor.check_audio_support()
+    assert c.status == doctor.OK and "/opt/bin/whisper" in c.detail
+
+
+def _raise_runtime():
+    raise RuntimeError("not found")
+
+
 # --- update check: version compare -------------------------------------------------------
 
 
@@ -558,6 +590,7 @@ def test_run_emits_the_full_check_inventory(tmp_citadel, monkeypatch):
         "failures",
         "billing",
         "PDF mode",
+        "audio",
         "wiki git",
         "update",
         "workspace coherence",

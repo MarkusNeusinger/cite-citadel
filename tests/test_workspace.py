@@ -334,6 +334,7 @@ def test_packaged_rules_resolve_to_real_absolute_files():
         "formats/image.md",
         "formats/pdf.md",
         "formats/office.md",
+        "formats/transcripts.md",
     ):
         path = config.PACKAGED_RULES_DIR / relname
         assert path.is_file(), f"missing packaged rules file: {relname}"

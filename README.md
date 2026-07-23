@@ -17,7 +17,8 @@ Drop arbitrary files into `raw/`, in any sub-folder — **if the agent CLI you u
 can ingest it** (few exceptions). One agentic CLI session per source folds it into a cross-linked OKF
 wiki under `wiki/`, **routing each fact to the page it best fits** and splitting/merging pages as the
 corpus grows rather than making one page per file. Built-in helpers cover the rest: Office text
-extraction, visual image reading, multi-pass folding for oversized files, duplicate-format dedup, and a
+extraction, visual image reading, opt-in whisper transcription for audio/video recordings,
+multi-pass folding for oversized files, duplicate-format dedup, and a
 record (with the reason) in `wiki/sources/index.md` for anything that can't be read. Every fact cites its
 `raw/` source and the model uses **only** what is in `raw/`; an AI client then queries the synthesized
 wiki over MCP instead of re-reading your notes.
@@ -127,8 +128,9 @@ CITADEL_RAW_DIRS=raw, ~/Dropbox/wiki-inbox
 
 The vault needs no discipline: hidden folders like `.obsidian/` are skipped at discovery, a note you
 later edit is picked up as a reconcile (stale facts updated, not appended to), a note you move is
-recognized by content instead of re-ingested, and photos/screenshots are read visually
-(`CITADEL_IMAGE_SUPPORT`). The same setup turns *cleaning up an old, messy vault* into a single
+recognized by content instead of re-ingested, photos/screenshots are read visually
+(`CITADEL_IMAGE_SUPPORT`), and voice memos fold in as `[HH:MM:SS]`-stamped transcripts
+(`CITADEL_AUDIO_SUPPORT` + a local whisper CLI, opt-in). The same setup turns *cleaning up an old, messy vault* into a single
 ingest: point a raw root at it and citadel distills it into a cited wiki — sources are read-only,
 so the vault itself is never touched. Just keep the direction straight: a vault is **input**;
 don't let Obsidian write into `wiki/` (browsing it there is fine, but the generated indexes are

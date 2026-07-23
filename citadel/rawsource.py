@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import config, extract, grammar, manifest
+from . import config, extract, grammar, manifest, transcribe
 
 
 # Hard cap on returned characters. A whole-file read of a large source (pemberley's raw is ~730k
@@ -113,6 +113,14 @@ def _read_text(source_key: str, path: Path) -> str:
             raise SourceError(f"'{source_key}' is an Office file whose text could not be extracted offline")
         return text
     ext = path.suffix.lower()
+    if transcribe.is_audio_ext(path):
+        cached = transcribe.cached_transcript(path)
+        if cached is None:
+            raise SourceError(
+                f"'{source_key}' ({ext}) has no cached transcript on this machine — ingest it with "
+                f"CITADEL_AUDIO_SUPPORT=1 to transcribe it; the file is at {config.rel_or_abs_posix(path)}"
+            )
+        return cached
     if ext in _NO_TEXT_EXTS:
         raise SourceError(
             f"'{source_key}' ({ext}) has no offline text extraction — the ingest agent reads it "

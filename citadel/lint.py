@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import config, grammar, okf, store, validate
+from . import config, grammar, okf, store, transcribe, validate
 from .okf import Page
 
 
@@ -500,8 +500,12 @@ def _read_source_text(page_rel: str, target: str, cache: dict[str, str | None]) 
 
 def _load_source_text(abs_path: str) -> str | None:
     """Read one resolved source path as locator-checkable text, or None when it is missing, a
-    paginated/binary format, or undecodable (the uncached inner read behind :func:`_read_source_text`)."""
+    paginated/binary format, or undecodable (the uncached inner read behind :func:`_read_source_text`).
+    An audio/video source is checkable through its CACHED whisper transcript — the very text the
+    ingest agent read and cited — and skipped (None) when no cache exists on this machine."""
     path = Path(abs_path)
+    if transcribe.is_audio_ext(path):
+        return transcribe.cached_transcript(path)
     if path.suffix.lower() in _NON_TEXT_EXTS:
         return None
     try:

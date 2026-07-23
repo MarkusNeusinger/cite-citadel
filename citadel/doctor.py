@@ -25,6 +25,9 @@ One command answering "is my setup sane?" without touching a byte. Each check em
   once).
 - **PDF mode** — ``CITADEL_PDF_MODE=images`` against a non-``claude`` backend may silently ingest a
   PDF's text only, because a non-vision CLI cannot look at the figures.
+- **audio** — ``CITADEL_AUDIO_SUPPORT=1`` needs a whisper-class CLI on PATH
+  (``CITADEL_WHISPER_CLI``); WARN when the configured binary is missing — every audio/video source
+  would fail until it is installed. A plain OK note while the knob is off.
 - **update** — is a newer ``cite-citadel`` published on PyPI than the installed version? WARN with the
   exact upgrade command for the *detected* install method (dev checkout / uv tool / uvx / pipx / pip)
   when behind; OK when current. The PyPI lookup is best-effort over a 2s timeout — any network absence
@@ -270,6 +273,26 @@ def check_pdf_mode() -> Check:
     return Check(OK, "PDF mode", f"PDF mode {config.PDF_MODE}")
 
 
+def check_audio_support() -> Check:
+    """WARN when ``CITADEL_AUDIO_SUPPORT=1`` but the whisper-class CLI it needs is not on PATH —
+    every audio/video source would fail (and retry) until it is installed. A plain status echo
+    otherwise; WARN not FAIL, like the agent-CLI check (only ingest needs the binary)."""
+    if not config.AUDIO_SUPPORT:
+        return Check(OK, "audio", "audio support off (CITADEL_AUDIO_SUPPORT=0) - audio/video files log as unreadable")
+    from . import transcribe
+
+    try:
+        path = transcribe.resolve_whisper()
+    except RuntimeError:
+        return Check(
+            WARN,
+            "audio",
+            f"CITADEL_AUDIO_SUPPORT=1 but {config.WHISPER_CLI!r} is not on PATH - every audio/video "
+            "source will fail until it is installed (or point CITADEL_WHISPER_CLI at the binary)",
+        )
+    return Check(OK, "audio", f"{config.WHISPER_CLI!r} -> {path}")
+
+
 def check_wiki_git() -> Check:
     """Advisory line for the wiki-history layer (:mod:`citadel.wikigit`): which mode is active and
     whether an autocommit would actually run. WARN only when the user explicitly opted in
@@ -468,6 +491,7 @@ def run() -> DoctorReport:
             check_failures(),
             check_billing_shadow(),
             check_pdf_mode(),
+            check_audio_support(),
             check_wiki_git(),
             check_update(),
             check_workspace_coherence(),

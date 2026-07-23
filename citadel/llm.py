@@ -213,8 +213,10 @@ class _KindSpec:
     - ``format_policy`` — how the format brief is chosen: ``"source"`` (an Office extract arrives
       via ``read_path`` → ``formats/office.md``; a large-source slice is covered by the task brief;
       else a PDF is magic-sniffed → ``formats/pdf.md`` — the ingest/reconcile axis), ``"repo"``,
-      ``"image"``, or ``"none"``. ``"none"`` attaches NO format brief EVEN when a ``read_path`` is
-      present — curate's findings file arrives via ``read_path`` and must never pull in
+      ``"image"``, ``"audio"`` (a whisper transcript arrives via ``read_path`` →
+      ``formats/transcripts.md``, kept on EVERY segment — its cite-the-original and locator rules
+      bind per slice), or ``"none"``. ``"none"`` attaches NO format brief EVEN when a ``read_path``
+      is present — curate's findings file arrives via ``read_path`` and must never pull in
       ``formats/office.md``.
     - ``subject_prefix`` — the ``- <prefix>: <key>`` session bullet naming what the session acts on.
     """
@@ -232,9 +234,11 @@ class _KindSpec:
 _KIND_SPECS: dict[str, _KindSpec] = {
     "ingest": _KindSpec("tasks/ingest.md", True, "source", "Source (the source of record)"),
     "image": _KindSpec("tasks/ingest.md", True, "image", "Source (the source of record)"),
+    "audio": _KindSpec("tasks/ingest.md", True, "audio", "Source (the source of record)"),
     "repo": _KindSpec("tasks/ingest.md", True, "repo", "Source (the source of record)"),
     "reconcile": _KindSpec("tasks/reconcile.md", True, "source", "Source (the source of record)"),
     "image-reconcile": _KindSpec("tasks/reconcile.md", True, "image", "Source (the source of record)"),
+    "audio-reconcile": _KindSpec("tasks/reconcile.md", True, "audio", "Source (the source of record)"),
     "repo-reconcile": _KindSpec("tasks/reconcile.md", True, "repo", "Source (the source of record)"),
     "delete": _KindSpec("tasks/delete.md", False, "none", "Source (REMOVED from disk — do not open it)"),
     "curate": _KindSpec("tasks/curate.md", False, "none", "Page to curate (the cluster anchor)"),
@@ -268,7 +272,9 @@ def _format_brief(rel_key: str, kind: str, read_path: str | None, segment: tuple
     Python-detectable axis (repo markers, image magic, Office extraction, PDF magic); code selects
     the brief, genres stay the agent's content judgment.
 
-    - ``repo``/``image`` policies carry their format in the kind itself.
+    - ``repo``/``image``/``audio`` policies carry their format in the kind itself. ``audio`` keeps
+      its brief on every SEGMENT too (unlike the Office exemption below): the transcript brief's
+      cite-the-original-file and lines-locator rules bind for each slice of a long recording.
     - ``none`` (delete, curate) attaches NO brief — even with a ``read_path`` present (curate's
       findings file must not pull in ``formats/office.md``).
     - ``source`` (ingest/reconcile): a ``read_path`` WITHOUT a segment is a pre-extracted Office
@@ -280,6 +286,8 @@ def _format_brief(rel_key: str, kind: str, read_path: str | None, segment: tuple
         return "formats/repo.md"
     if policy == "image":
         return "formats/image.md"
+    if policy == "audio":
+        return "formats/transcripts.md"
     if policy == "none":
         return None
     if read_path:

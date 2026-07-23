@@ -178,3 +178,40 @@ def test_unresolvable_locator_is_an_error_not_a_silent_fallback(tmp_citadel, loc
 
     msg = str(exc.value)
     assert "lines A-B" in msg and "§ Heading" in msg and "omit the locator" in msg
+
+
+# --- audio sources: served through the cached whisper transcript -------------------------
+
+
+def _cite_audio(cit, name: str, transcript: str | None) -> str:
+    """Write a fake .mp3 under RAW_DIR, record it in the manifest, and (optionally) plant its
+    content-addressed transcript cache — returning its source key."""
+    from citadel import transcribe
+
+    path = cit.raw / name
+    path.write_bytes(b"ID3\x03\x00" + b"\x00\x01fake-frames-" + name.encode())
+    key = config.rel_or_abs_posix(path)
+    tracked = manifest.load()
+    tracked[key] = manifest.make_entry(manifest.file_sha256(path), model="sonnet")
+    manifest.save(tracked)
+    if transcript is not None:
+        config.robust_mkdir(transcribe.cache_dir())
+        transcribe.cache_path(manifest.file_sha256(path)).write_text(transcript, encoding="utf-8")
+    return key
+
+
+def test_audio_source_served_from_cached_transcript(tmp_citadel):
+    key = _cite_audio(tmp_citadel, "memo.mp3", "[00:00:01] Hello.\n[00:00:05] Budget approved.\n")
+
+    out = rawsource.raw_text(key)
+    assert "[00:00:01] Hello." in out and "[00:00:05] Budget approved." in out
+
+    sliced = rawsource.raw_text(key, "lines 2-2")
+    assert "Budget approved" in sliced and "Hello." not in sliced
+
+
+def test_audio_source_without_cache_names_the_knob(tmp_citadel):
+    key = _cite_audio(tmp_citadel, "memo.mp3", None)
+
+    with pytest.raises(rawsource.SourceError, match="CITADEL_AUDIO_SUPPORT"):
+        rawsource.raw_text(key)

@@ -600,6 +600,29 @@ REPO_PER_FILE_MAX_CHARS: int = _int_env("CITADEL_REPO_PER_FILE_MAX_CHARS", 8000)
 # CITADEL_IMAGE_SUPPORT=0 to keep images out of the wiki (they then log as unreadable, as before).
 IMAGE_SUPPORT: bool = _bool_env("CITADEL_IMAGE_SUPPORT", True)
 
+# Audio/video sources (transcript ingest). OPT-IN, default OFF — unlike images this needs an extra
+# LOCAL binary and real CPU time per recording. When on, a recognized audio/video file
+# (.mp3/.wav/.m4a/.mp4/…, extension AND magic) is transcribed ONCE through the whisper-class CLI
+# below (citadel.transcribe — a shell-out seam exactly like the agent CLI: no SDK, no API key),
+# the [HH:MM:SS]-stamped transcript is cached content-addressed in a dotdir SIBLING of the wiki
+# (<wiki>/../.citadel_transcripts/<sha256>.md), and the agent session reads THAT text while citing
+# the ORIGINAL media file — so `lines A-B` locators into audio sources stay offline-verifiable
+# (lint and wiki_raw resolve them against the same cached transcript). Off (the default),
+# audio/video files log as unreadable, exactly like images with CITADEL_IMAGE_SUPPORT=0.
+AUDIO_SUPPORT: bool = _bool_env("CITADEL_AUDIO_SUPPORT", False)
+# The whisper-class binary transcription shells out to: a name looked up on PATH or an absolute
+# path (this ONE knob is both selector and override — no separate *_CLI_PATH var). It must speak
+# the openai-whisper flag convention (`<file> --output_format srt --output_dir <dir>`) —
+# whisper-ctranslate2 and mlx_whisper are drop-in compatible; whisper.cpp needs a small wrapper.
+WHISPER_CLI: str = os.environ.get("CITADEL_WHISPER_CLI", "").strip() or "whisper"
+# Optional model passed as `--model <value>` (e.g. turbo | small | large-v3); empty = the CLI's
+# own default. Recorded nowhere — the transcript cache is keyed by source content, so switching
+# models re-transcribes only after the cache entry is deleted (see docs/troubleshooting.md).
+WHISPER_MODEL: str = os.environ.get("CITADEL_WHISPER_MODEL", "").strip()
+# Per-FILE transcription timeout in seconds — deliberately separate from (and larger than)
+# CITADEL_LLM_TIMEOUT: CPU transcription of a long recording takes minutes, not seconds.
+WHISPER_TIMEOUT: int = _int_env("CITADEL_WHISPER_TIMEOUT", 3600)
+
 # The wiki's TARGET LANGUAGE (BCP 47-ish code, default "en"): all wiki prose, titles, headings,
 # descriptions, and tags are written in it REGARDLESS of the raw sources' languages (including a
 # mixed-language corpus). Two provenance-honoring exceptions live in the rules (schema.md § Wiki

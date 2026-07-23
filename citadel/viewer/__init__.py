@@ -60,7 +60,7 @@ import webbrowser
 from importlib import resources
 from pathlib import Path
 
-from .. import config, extract, grammar, store
+from .. import config, extract, grammar, store, transcribe
 from .. import manifest as manifest_mod
 
 
@@ -250,9 +250,18 @@ def _read_source(path: Path) -> tuple[str, str]:
     - ``("...", "text")``  — a UTF-8 text file (markdown/code/notes), embedded verbatim;
     - ``("...", "office")`` — a ``.pptx``/``.docx`` whose text we extract with the stdlib (reusing
       the ingest extractor), so Office sources are readable inline too;
+    - ``("...", "audio")`` — an audio/video recording whose cached whisper transcript exists
+      (:func:`transcribe.cached_transcript` — the text the ingest agent actually read);
     - ``("", "binary")``   — anything we can't turn into text without a heavyweight dependency,
       e.g. a PDF. The viewer then offers an "open the original file" link instead of inline text.
     """
+    if transcribe.is_audio_ext(path):
+        # BEFORE the text attempt: an audio file must serve its transcript, never a lucky
+        # UTF-8 decode of its container bytes. No cache -> fall through (a renamed text file
+        # still renders as text; a real recording lands on "binary").
+        cached = transcribe.cached_transcript(path)  # None when never transcribed here
+        if cached:
+            return cached, "audio"
     try:
         return path.read_text(encoding="utf-8"), "text"
     except (OSError, ValueError, UnicodeError):
@@ -430,7 +439,7 @@ def _build_sources(pages) -> dict:
     Each record carries the CITED EXCERPTS of the file (via :func:`_embed_source` — a whole ``body``
     for a short/mostly-cited file, else ``segments`` + ``total_lines``), a title/snippet computed
     from the full text, the model that imported it (from the manifest), the wiki pages that cite it
-    (the live link graph), a kind (text/office/binary), an "open the original" href, and a missing
+    (the live link graph), a kind (text/office/audio/binary), an "open the original" href, and a missing
     flag when the file isn't on disk. Includes file
     sources tracked in the manifest even if currently uncited, so the Sources axis is complete;
     skips git-repository manifest entries (a folder, not a readable file). The manifest is read
@@ -466,7 +475,7 @@ def _build_sources(pages) -> dict:
             "model": manifest_mod.entry_model(manifest[key]) if key in manifest else None,
             "cited_by": store.find_raw_references(key, pages),
             "missing": not present,
-            "kind": kind,  # "text" | "office" | "binary"
+            "kind": kind,  # "text" | "office" | "audio" | "binary"
             "href": _source_href(abs_path) if present else None,
             "snippet": _source_snippet(text),
         }

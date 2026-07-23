@@ -32,7 +32,10 @@ cite-citadel has a small, honest data-flow surface — understanding it is the b
 - **Transcript privacy.** A `CITADEL_LLM_LOG_DIR` transcript (prompt + full CLI stdout/stderr) can
   contain source content. It is written **local-only** — keep it out of version control and off
   shared locations. The generated `wiki/.citadel_failures.json` is likewise per-machine derived state
-  and is gitignored.
+  and is gitignored. The same applies to the audio transcript cache (`CITADEL_AUDIO_SUPPORT`):
+  `.citadel_transcripts/` next to the wiki dir holds each recording's spoken content as plaintext —
+  transcription itself runs fully locally (a whisper-class CLI on your machine), but treat the
+  cache like the raw recordings themselves.
 - **Billing shadow.** If a provider API key sits in your environment while `CITADEL_LLM_CLI=claude`,
   the CLI may bill the metered API instead of your subscription. `citadel doctor` warns about this;
   the same subscription-vs-API story is covered in the terms note above.
