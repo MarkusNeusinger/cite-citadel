@@ -1362,6 +1362,11 @@ def _run_agent_sessions(session_fns, rel_key: str, extra_check=None, allow_empty
             True, created, updated, deleted, [], time.monotonic() - started, usage=llm.combine_usage(usage_parts)
         )
     except Exception as exc:  # noqa: BLE001 - collect per-source, keep going; live wiki untouched
+        # A raising session never returned its usage, but the backend may still have reported
+        # what the FAILED attempt cost (claude's error envelope, gemini's stats file) — llm
+        # carries that on the exception, so the run total honors "failed sessions included".
+        salvaged = getattr(exc, "session_usage", None)
+        usage_parts.append(salvaged if isinstance(salvaged, llm.SessionUsage) else None)
         return _SourceOutcome(
             False,
             errors=[f"{rel_key}: {exc}"],

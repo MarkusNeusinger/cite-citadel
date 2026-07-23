@@ -566,9 +566,10 @@ CURATE_MODEL: str = os.environ.get("CITADEL_CURATE_MODEL", "").strip()
 LLM_TIMEOUT: int = _int_env("CITADEL_LLM_TIMEOUT", 1200)
 
 # Observability for the otherwise-headless agent session — by default the CLI's stdout/stderr is
-# captured only to detect failure and then DISCARDED, so there is no record of what the model
-# actually did (the very thing you need when one backend/model produces no edits while another
-# does). Two opt-in knobs, both read at call time (so tests/CLI flags can override them):
+# captured only to detect failure and read the result envelope's cost/usage figures, then
+# DISCARDED, so there is no record of what the model actually DID (the very thing you need when
+# one backend/model produces no edits while another does). Two opt-in knobs, both read at call
+# time (so tests/CLI flags can override them):
 #
 # - CITADEL_LLM_LOG_DIR: a directory to write ONE transcript file per agent session (prompt + full
 #   stdout/stderr + exit code + duration). Relative paths resolve under WORKSPACE_ROOT. Empty = off.

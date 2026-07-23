@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -478,3 +479,192 @@ def test_refresh_restamps_cost_and_reports_it(tmp_citadel, fake_agent):
     assert report.ingest_report.usage == llm.SessionUsage(cost_usd=0.04)
     assert "LLM usage: $0.04." in report.render()
     assert tmp_citadel.read_manifest()["raw/notes.md"]["cost_usd"] == 0.04
+
+
+# --- hardening round (adversarial review + Copilot findings) -----------------------------------
+
+
+def test_format_cost_never_raises_on_non_finite():
+    """A hand-edited manifest is external input: a NaN/Infinity cost must render, not crash."""
+    assert llm.format_cost(float("nan")) == "$nan"
+    assert llm.format_cost(float("inf")) == "$inf"
+
+
+def test_usage_from_claude_envelope_rejects_non_finite_and_overflowing_cost():
+    """json.loads accepts Infinity/NaN and arbitrary-precision ints — none of them may survive
+    into a SessionUsage (or crash the parse via float() OverflowError)."""
+    assert llm._usage_from_claude_envelope({"total_cost_usd": float("inf")}) is None
+    assert llm._usage_from_claude_envelope({"total_cost_usd": float("nan")}) is None
+    assert llm._usage_from_claude_envelope({"total_cost_usd": 10**309}) is None
+    # ...and a junk primary field still falls through to a valid legacy one.
+    env = json.loads('{"total_cost_usd": Infinity, "cost_usd": 0.1}')
+    assert llm._usage_from_claude_envelope(env).cost_usd == pytest.approx(0.1)
+
+
+def test_manifest_stamp_rejects_non_finite_and_junk_values():
+    """The stamp sites and entry_usage share ONE filter: only finite costs and non-negative real
+    ints reach the committed JSON — and junk already IN a manifest is dropped on read."""
+    entry = manifest.make_entry("abc", "m", "rv", cost_usd=float("nan"), tokens_in=-5, tokens_out=3)
+    assert "cost_usd" not in entry and "tokens_in" not in entry
+    assert entry["tokens_out"] == 3
+    assert "cost_usd" not in manifest.make_entry("abc", "m", "rv", cost_usd=True)
+    assert "cost_usd" not in manifest.make_repo_entry("deadbeef", "m", cost_usd=float("inf"))
+    hand_edited = {"sha256": "abc", "cost_usd": float("inf"), "tokens_in": -1, "tokens_out": 10**9}
+    assert manifest.entry_usage(hand_edited) == {"tokens_out": 10**9}
+    assert manifest.entry_usage({"sha256": "abc", "cost_usd": 10**309}) == {}
+
+
+def test_run_session_claude_error_envelope_carries_usage_on_the_exception(monkeypatch):
+    """A failure envelope still reports what the session COST (error_max_turns, API errors) —
+    the raised error carries it so the run total can honor 'failed sessions included'."""
+    envelope = json.dumps(
+        {
+            "type": "result",
+            "is_error": True,
+            "api_error_status": 429,
+            "result": "quota",
+            "total_cost_usd": 1.87,
+            "usage": {"output_tokens": 12},
+        }
+    )
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeProc(0, envelope))
+    with pytest.raises(RuntimeError) as excinfo:
+        llm._run_session("claude", ["claude", "-p"], "PROMPT")
+    carried = excinfo.value.session_usage
+    assert carried.cost_usd == pytest.approx(1.87) and carried.output_tokens == 12
+
+
+def test_failed_session_exception_usage_counts_in_run_total(tmp_citadel, fake_agent):
+    """The ingest side of the carry: a session that RAISES (vs. one that returns and then fails
+    validation) still lands its exception-carried spend in the run total — never the manifest."""
+    (tmp_citadel.raw / "notes.md").write_text("alpha\n", encoding="utf-8")
+    error = RuntimeError("claude CLI error (429): quota")
+    error.session_usage = llm.SessionUsage(cost_usd=0.8)
+    fake_agent(error=error)
+
+    report = ingest.ingest()
+
+    assert report.errors
+    assert "raw/notes.md" not in tmp_citadel.read_manifest()
+    assert report.usage == llm.SessionUsage(cost_usd=0.8)
+
+
+def test_run_session_verbose_claude_still_returns_usage(monkeypatch):
+    """CITADEL_LLM_VERBOSE=1 routes through _stream_subprocess — the envelope parse (and thus
+    every cost stamp) must work on the streamed output exactly like the captured path."""
+    monkeypatch.setattr(config, "LLM_VERBOSE", True, raising=False)
+    monkeypatch.setattr(config, "LLM_LOG_DIR", "", raising=False)
+    envelope = '{"type":"result","is_error":false,"total_cost_usd":0.07,"usage":{"output_tokens":3}}'
+    monkeypatch.setattr(llm, "_stream_subprocess", lambda cli, argv, stdin_text: (0, envelope, ""))
+    usage = llm._run_session("claude", ["claude", "-p"], "PROMPT")
+    assert usage.cost_usd == pytest.approx(0.07) and usage.output_tokens == 3
+
+
+def test_cli_help_probe_uses_devnull_stdin(monkeypatch):
+    """The --help probe must never inherit stdin (a blocking --help would stall against the
+    timeout; on Windows a killed .cmd shim can hang the collect) — DEVNULL gives immediate EOF."""
+    monkeypatch.setattr(llm, "_HELP_TEXT_CACHE", {})
+    seen: dict = {}
+
+    def fake_run(argv, **kwargs):
+        seen.update(kwargs)
+        return _FakeProc(0, "--session-summary")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    llm._cli_help_text("/bin/gemini")
+    assert seen.get("stdin") == subprocess.DEVNULL
+
+
+def test_gemini_summary_file_survives_unwritable_tempdir(monkeypatch):
+    """An unwritable/full temp dir reads as 'no accounting this session' — never as a failed
+    source (the session must run exactly as it would have pre-accounting)."""
+    monkeypatch.setattr(llm, "_HELP_TEXT_CACHE", {"/bin/gemini": "--session-summary <file>"})
+
+    def boom(*a, **k):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(llm.tempfile, "mkstemp", boom)
+    assert llm._gemini_summary_file("gemini", "/bin/gemini") is None
+
+
+def test_usage_from_gemini_summary_survives_pathological_nesting(tmp_path):
+    """A pathologically nested stats file blows the recursion limit inside json.loads (or the
+    walk) — that must record nothing, never fail the session it accounts for."""
+    deep = tmp_path / "deep.json"
+    deep.write_text("[" * 200000, encoding="utf-8")
+    assert llm._usage_from_gemini_summary(deep) is None
+
+
+def test_delete_cleanup_usage_counts_in_run_total(tmp_citadel, fake_agent):
+    """A vanished source's delete-cleanup session spends real money too: it lands in the RUN
+    total only — the source's manifest key is dropped, so there is no entry left to stamp."""
+    src = tmp_citadel.raw / "notes.md"
+    src.write_text("alpha\n", encoding="utf-8")
+    fake_agent(_valid_page(), usage=llm.SessionUsage(cost_usd=0.05))
+    ingest.ingest()
+
+    def delete_citing_page(*args, **kwargs):
+        (Path(config.WIKI_DIR) / "concepts/topic.md").unlink()
+
+    agent = fake_agent(side_effect=delete_citing_page, usage=llm.SessionUsage(cost_usd=0.02))
+    src.unlink()
+    report = ingest.ingest()
+
+    assert "raw/notes.md" in report.sources_deleted
+    assert agent.calls == [("raw/notes.md", "delete")]
+    assert report.usage == llm.SessionUsage(cost_usd=0.02)
+    assert "raw/notes.md" not in tmp_citadel.read_manifest()
+
+
+def _repo_page(repo_key: str) -> dict:
+    return {
+        "systems/svc.md": (
+            {"type": "System", "title": "Svc", "description": "d", "tags": ["t"], "resource": repo_key},
+            f"Fact.[^s1]\n\n## Sources\n\n[^s1]: [{repo_key}]({repo_key.replace('raw/', '../../raw/')}) "
+            "- repo (ingested 2026-06-21)\n",
+        )
+    }
+
+
+def test_repo_ingest_stamps_usage(repo_wiki, fake_agent, make_repo):
+    """The repo done-hook stamps the session's usage into the commit-keyed entry — the repo twin
+    of the file-source stamp guarantee."""
+    make_repo(repo_wiki.raw, "svc", {"README.md": "# Svc\n"})
+    fake_agent(_repo_page("raw/svc"), usage=llm.SessionUsage(cost_usd=0.09, input_tokens=7, output_tokens=2))
+    ingest.ingest()
+
+    entry = repo_wiki.read_manifest()["raw/svc"]
+    assert entry["kind"] == "git"
+    assert entry["cost_usd"] == 0.09 and entry["tokens_in"] == 7 and entry["tokens_out"] == 2
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git not installed")
+def test_repo_move_carries_usage_stamp(repo_wiki, fake_agent):
+    """A repo folder rename (same commit, old path gone) is a MOVE: re-keyed without a session,
+    the usage stamp carried — snap-identity marker repos are excluded from move detection, so
+    this needs a REAL git repo (local git only, still offline)."""
+    root = repo_wiki.raw / "svc"
+    (root / "src").mkdir(parents=True)
+    (root / "src" / "app.py").write_text("x\n", encoding="utf-8")
+    for args in (
+        ["init", "-q"],
+        ["config", "user.email", "t@t.t"],
+        ["config", "user.name", "t"],
+        ["config", "commit.gpgsign", "false"],
+        ["add", "-A"],
+        ["commit", "-qm", "one"],
+    ):
+        subprocess.run(["git", *args], cwd=str(root), check=True, capture_output=True)
+    fake_agent(_repo_page("raw/svc"), usage=llm.SessionUsage(cost_usd=0.09, input_tokens=7, output_tokens=2))
+    ingest.ingest()
+    assert repo_wiki.read_manifest()["raw/svc"]["cost_usd"] == 0.09
+
+    agent = fake_agent(pages={})  # a move must not re-run a session
+    root.rename(repo_wiki.raw / "svc-renamed")
+    ingest.ingest()
+
+    entries = repo_wiki.read_manifest()
+    assert "raw/svc" not in entries
+    moved = entries["raw/svc-renamed"]
+    assert moved["cost_usd"] == 0.09 and moved["tokens_in"] == 7 and moved["tokens_out"] == 2
+    assert agent.count == 0

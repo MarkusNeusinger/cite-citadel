@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import sys
 from datetime import datetime, timezone
@@ -155,6 +156,27 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _usage_stamp_fields(cost_usd, tokens_in, tokens_out) -> dict:
+    """The defensively-validated usage fields for an entry — the ONE filter both the stamp sites
+    (:func:`make_entry` / :func:`make_repo_entry`) and the read side (:func:`entry_usage`) share,
+    so a junk value can neither enter the committed JSON nor crash a renderer reading it back:
+    only a FINITE numeric cost (never a bool, NaN/Infinity, or an int ``float()`` would overflow
+    on — the manifest must stay standard JSON and the human renderers sane) rounded to 4 decimals,
+    and non-negative real ints for the token counts. Anything else is dropped, never coerced."""
+    out: dict = {}
+    if isinstance(cost_usd, (int, float)) and not isinstance(cost_usd, bool):
+        try:
+            cost = float(cost_usd)
+        except (OverflowError, ValueError):
+            cost = math.inf  # filtered by the isfinite check below
+        if math.isfinite(cost):
+            out["cost_usd"] = round(cost, 4)
+    for key, value in (("tokens_in", tokens_in), ("tokens_out", tokens_out)):
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            out[key] = value
+    return out
+
+
 def make_entry(
     sha: str,
     model: str | None = None,
@@ -175,7 +197,8 @@ def make_entry(
     of unchanged content) pass the OLD entry's stamp through unchanged — the stamp must never be
     refreshed by anything but an actual agent session, or ``citadel refresh`` would lose its
     oldest-checked-first ordering. ``cost_usd``/``tokens_in``/``tokens_out`` (each recorded only
-    when known) are what that session actually cost, per the backend's own report — carried
+    when known AND sane — :func:`_usage_stamp_fields` is the shared filter) are what that session
+    actually cost, per the backend's own report — carried
     across moves/re-stamps exactly like ``ingested_at`` (:func:`entry_usage` reads an old
     entry's fields back as these kwargs). Cost is rounded to 4 decimals: sub-cent precision
     without float-noise digits in a committed JSON file."""
@@ -186,12 +209,7 @@ def make_entry(
         entry["rules_version"] = rules_version
     if ingested_at:
         entry["ingested_at"] = ingested_at
-    if cost_usd is not None:
-        entry["cost_usd"] = round(float(cost_usd), 4)
-    if tokens_in is not None:
-        entry["tokens_in"] = int(tokens_in)
-    if tokens_out is not None:
-        entry["tokens_out"] = int(tokens_out)
+    entry.update(_usage_stamp_fields(cost_usd, tokens_in, tokens_out))
     if st is not None:
         entry.update(stat_fields(st))
     return entry
@@ -234,12 +252,7 @@ def make_repo_entry(
         entry["rules_version"] = rules_version
     if ingested_at:
         entry["ingested_at"] = ingested_at
-    if cost_usd is not None:
-        entry["cost_usd"] = round(float(cost_usd), 4)
-    if tokens_in is not None:
-        entry["tokens_in"] = int(tokens_in)
-    if tokens_out is not None:
-        entry["tokens_out"] = int(tokens_out)
+    entry.update(_usage_stamp_fields(cost_usd, tokens_in, tokens_out))
     return entry
 
 
@@ -287,20 +300,16 @@ def entry_ingested_at(entry: Entry | None) -> str | None:
 def entry_usage(entry: Entry | None) -> dict:
     """The recorded per-session usage stamp of a manifest value, as :func:`make_entry` /
     :func:`make_repo_entry` kwargs: a dict holding whichever of ``cost_usd`` / ``tokens_in`` /
-    ``tokens_out`` the entry carries with a sane numeric value (empty for a legacy/bare-string
-    entry, a source no model imported, or a pre-cost-accounting stamp). Shaped as kwargs so the
+    ``tokens_out`` the entry carries with a sane value (empty for a legacy/bare-string
+    entry, a source no model imported, or a pre-cost-accounting stamp). The read applies the
+    SAME filter as the stamp sites (:func:`_usage_stamp_fields`), so a hand-edited manifest
+    carrying NaN/Infinity/negative junk is dropped here instead of reaching a renderer or the
+    ``--json`` output. Shaped as kwargs so the
     carry sites (a move, a cache re-stamp) splat it straight through — the usage stamp, like
     ``ingested_at``, must survive everything except an actual new agent session."""
-    out: dict = {}
     if isinstance(entry, dict):
-        cost = entry.get("cost_usd")
-        if isinstance(cost, (int, float)) and not isinstance(cost, bool):
-            out["cost_usd"] = float(cost)
-        for key in ("tokens_in", "tokens_out"):
-            value = entry.get(key)
-            if isinstance(value, int) and not isinstance(value, bool):
-                out[key] = value
-    return out
+        return _usage_stamp_fields(entry.get("cost_usd"), entry.get("tokens_in"), entry.get("tokens_out"))
+    return {}
 
 
 def entry_rules_version(entry: Entry | None) -> str | None:

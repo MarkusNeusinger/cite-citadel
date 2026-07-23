@@ -192,8 +192,9 @@ it is itself a workspace.
   don't weaken these guards.
 - For each pending source it runs the agent against a **per-source staging copy** of the wiki (a
   sibling dir, never the live wiki), then snapshots before/after and **diffs by content hash** to
-  learn what the agent created/updated/deleted — the agent has no return value, its file edits *are*
-  the result.
+  learn what the agent created/updated/deleted — the agent's file edits *are* the result (the
+  session seam's return value is only passive cost/usage telemetry, never consulted for what
+  changed).
 - It then re-imposes invariants on every changed page (`validate.validate_page` + `store.write_page`
   to canonicalize YAML and stamp the timestamp) after **every** agent pass, repairs renamed-page
   links, and **only on a fully clean source promotes staging onto the live wiki — exactly once per

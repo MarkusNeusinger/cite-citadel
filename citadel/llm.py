@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import math
 import os
 import re
 import shutil
@@ -105,11 +106,29 @@ def combine_usage(parts) -> SessionUsage | None:
 
 def format_cost(cost_usd: float) -> str:
     """``$0.053`` / ``$1.20`` / ``$1,234.50`` — four decimals so a sub-cent session never rounds
-    to a lying ``$0.00``, trailing zeros trimmed but never below the conventional two decimals."""
+    to a lying ``$0.00``, trailing zeros trimmed but never below the conventional two decimals.
+    Never raises: a non-finite value (a hand-edited manifest is external input) formats without
+    the decimal-point trimming (``$nan``) instead of crashing a status/report render."""
+    if not math.isfinite(cost_usd):
+        return f"${cost_usd}"
     text = f"{cost_usd:,.4f}"
     while text.endswith("0") and len(text) - text.rindex(".") > 3:  # keep >= 2 decimals
         text = text[:-1]
     return f"${text}"
+
+
+def _finite_cost(value) -> float | None:
+    """``value`` as a finite float, or None — the ONE sanitizer for externally-supplied cost
+    figures. Rejects non-numbers, bools (an int subclass), non-finite floats (json.loads accepts
+    ``Infinity``/``NaN`` by default), and ints too large for a float (``float()`` would raise
+    OverflowError — accounting must never be able to fail a session)."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    try:
+        out = float(value)
+    except (OverflowError, ValueError):
+        return None
+    return out if math.isfinite(out) else None
 
 
 # CLI binary resolution (env override name -> default binary name).
@@ -496,15 +515,11 @@ def _usage_from_claude_envelope(env: dict | None) -> SessionUsage | None:
     an envelope carrying nothing usable returns None."""
     if not isinstance(env, dict):
         return None
-    # First NUMERIC value wins (cost_usd is the pre-GA envelope name): a present-but-junk
-    # total_cost_usd must not shadow a valid legacy field.
+    # First FINITE-NUMERIC value wins (cost_usd is the pre-GA envelope name): a present-but-junk
+    # total_cost_usd — a string, a bool, NaN/Infinity, an overflowing int — must not shadow a
+    # valid legacy field, and must never raise (see _finite_cost).
     cost_usd = next(
-        (
-            float(value)
-            for value in (env.get("total_cost_usd"), env.get("cost_usd"))
-            if isinstance(value, (int, float)) and not isinstance(value, bool)
-        ),
-        None,
+        (cost for cost in map(_finite_cost, (env.get("total_cost_usd"), env.get("cost_usd"))) if cost is not None), None
     )
     usage = env.get("usage")
     usage = usage if isinstance(usage, dict) else {}
@@ -533,7 +548,16 @@ def _cli_help_text(cli_path: str) -> str:
     if cli_path not in _HELP_TEXT_CACHE:
         try:
             proc = subprocess.run(
-                [cli_path, "--help"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30
+                [cli_path, "--help"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=30,
+                # DEVNULL, never the inherited stdin: a --help that blocks reading stdin (or the
+                # MCP stdio pipe under `citadel serve`) gets immediate EOF instead of stalling
+                # the probe against the 30s timeout.
+                stdin=subprocess.DEVNULL,
             )
             _HELP_TEXT_CACHE[cli_path] = (proc.stdout or "") + (proc.stderr or "")
         except (OSError, subprocess.SubprocessError):
@@ -547,12 +571,18 @@ def _gemini_summary_file(cli: str, cli_path: str) -> Path | None:
     binary) — an older gemini must never be handed an unknown flag that would fail the whole
     session over optional accounting. The advertisement check is an exact flag-token match
     (a longer option like ``--session-summary-file`` must not read as this flag; a false
-    NEGATIVE is safe — it merely disables optional accounting). The caller owns deleting the
-    file."""
+    NEGATIVE is safe — it merely disables optional accounting). The temp-file creation is
+    guarded like every other usage-path operation: an unwritable/full temp dir (a real
+    Windows/AV/quota failure mode) reads as "no accounting this session", never as a failed
+    source — the session must run exactly as it would have pre-accounting. The caller owns
+    deleting the file."""
     if cli != "gemini" or not re.search(r"--session-summary(?![\w-])", _cli_help_text(cli_path)):
         return None
-    fd, name = tempfile.mkstemp(prefix="citadel_gemini_stats_", suffix=".json")
-    os.close(fd)
+    try:
+        fd, name = tempfile.mkstemp(prefix="citadel_gemini_stats_", suffix=".json")
+        os.close(fd)
+    except OSError:
+        return None
     return Path(name)
 
 
@@ -561,11 +591,10 @@ def _usage_from_gemini_summary(path: Path) -> SessionUsage | None:
     design: the wrapper shape has shifted across gemini versions, so instead of pinning one
     schema this walks the JSON for the stable inner token dicts (integer ``prompt`` /
     ``candidates`` counts) and sums them across models; a missing/unreadable/foreign-shaped
-    file records nothing (None). Gemini reports no dollar cost, so ``cost_usd`` stays None."""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
+    file records nothing (None). The parse AND the walk sit under one guard that includes
+    ``RecursionError`` (a pathologically nested document blows the stack in either) — a stats
+    file is external input and must never fail the session it accounts for. Gemini reports no
+    dollar cost, so ``cost_usd`` stays None."""
     totals = {"in": 0, "out": 0}
     found = False
 
@@ -587,7 +616,10 @@ def _usage_from_gemini_summary(path: Path) -> SessionUsage | None:
             for value in node:
                 walk(value)
 
-    walk(data)
+    try:
+        walk(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, ValueError, RecursionError):
+        return None
     if not found:
         return None
     return SessionUsage(input_tokens=totals["in"], output_tokens=totals["out"])
@@ -820,13 +852,21 @@ def _run_session(
                 env = _last_result_envelope(out)
         if isinstance(env, dict) and env.get("is_error"):
             status = env.get("api_error_status")
-            raise RuntimeError(
+            error = RuntimeError(
                 "claude CLI error"
                 + (f" ({status})" if status else "")
                 + f": {env.get('result') or err or 'unknown error'}"
             )
+            # A failure envelope still reports what the session COST (error_max_turns, API
+            # errors) — carry it on the exception so the run total counts the failed spend
+            # (the documented "failed sessions included" contract; the manifest stamp stays
+            # success-only regardless).
+            error.session_usage = _usage_from_claude_envelope(env)
+            raise error
         if returncode != 0:
-            raise RuntimeError(f"the claude CLI failed (exit {returncode}): {(err or out)[:500]}")
+            error = RuntimeError(f"the claude CLI failed (exit {returncode}): {(err or out)[:500]}")
+            error.session_usage = _usage_from_claude_envelope(env)
+            raise error
         return _usage_from_claude_envelope(env)
 
     # copilot / gemini (and any unknown CLI): the exit code is the success signal.
@@ -870,6 +910,13 @@ def run_ingest_session(
         if summary_path is not None:
             usage = combine_usage([usage, _usage_from_gemini_summary(summary_path)])
         return usage
+    except RuntimeError as exc:
+        # A FAILED gemini session may still have written its stats file before dying — attach
+        # the tokens to the exception (mirroring the claude error-envelope carry) so ingest's
+        # failure path can count the spend in the run total.
+        if summary_path is not None and getattr(exc, "session_usage", None) is None:
+            exc.session_usage = _usage_from_gemini_summary(summary_path)
+        raise
     finally:
         if summary_path is not None:
             with contextlib.suppress(OSError):
