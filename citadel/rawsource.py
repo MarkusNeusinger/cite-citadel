@@ -115,12 +115,15 @@ def _read_text(source_key: str, path: Path) -> str:
     ext = path.suffix.lower()
     if transcribe.is_audio_ext(path):
         cached = transcribe.cached_transcript(path)
-        if cached is None:
+        if cached is not None:
+            return cached
+        if transcribe.is_audio_file(path):
             raise SourceError(
                 f"'{source_key}' ({ext}) has no cached transcript on this machine — ingest it with "
                 f"CITADEL_AUDIO_SUPPORT=1 to transcribe it; the file is at {config.rel_or_abs_posix(path)}"
             )
-        return cached
+        # A text file merely RENAMED .mp3 (no audio magic — it ingested as ordinary text):
+        # fall through to the normal text read below.
     if ext in _NO_TEXT_EXTS:
         raise SourceError(
             f"'{source_key}' ({ext}) has no offline text extraction — the ingest agent reads it "

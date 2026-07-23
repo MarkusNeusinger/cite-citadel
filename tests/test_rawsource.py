@@ -215,3 +215,12 @@ def test_audio_source_without_cache_names_the_knob(tmp_citadel):
 
     with pytest.raises(rawsource.SourceError, match="CITADEL_AUDIO_SUPPORT"):
         rawsource.raw_text(key)
+
+
+def test_text_file_renamed_mp3_is_served_as_text(tmp_citadel):
+    """A UTF-8 text file merely RENAMED .mp3 (no audio magic) ingested as ordinary text — wiki_raw
+    must serve it through the normal text path, not demand a transcript cache."""
+    key = _cite(tmp_citadel, "notes.mp3", "alpha\nbeta\ngamma\n")
+
+    out = rawsource.raw_text(key, "lines 2-3")
+    assert "beta" in out and "gamma" in out

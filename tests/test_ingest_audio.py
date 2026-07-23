@@ -238,6 +238,21 @@ def test_lint_flags_out_of_range_locator_against_cached_transcript(tmp_citadel, 
     assert lint.check_locators(store.load()) == []
 
 
+def test_lint_still_verifies_locators_of_text_file_renamed_mp3(tmp_citadel, audio_on, seed_page):
+    """A text file merely RENAMED .mp3 ingested as ordinary text — its line locators must keep
+    being verified (the audio branch falls through on no-cache + no-audio-magic), so a bad range
+    is still flagged instead of silently becoming agent-verified."""
+    raw = tmp_citadel.raw
+    (raw / "notes.mp3").write_text("alpha\nbeta\n", encoding="utf-8")
+    seed_page(
+        "misc/notes.md",
+        {"type": "Note", "title": "Notes", "description": "d", "tags": ["a"], "resource": "raw/notes.mp3"},
+        "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/notes.mp3](../../raw/notes.mp3), lines 7-9 - notes\n",
+    )
+    issues = lint.check_locators(store.load())
+    assert issues and "out of range" in issues[0][1]
+
+
 def test_lint_skips_audio_locators_without_a_cache(tmp_citadel, audio_on, seed_page):
     """No cache on this machine -> the locator is agent-verified (skipped, advisory) — never a
     false flag from reading the binary itself."""

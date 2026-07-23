@@ -292,3 +292,22 @@ def test_cached_transcript_none_without_cache_or_file(tmp_citadel):
     _make_mp3(src)
     assert transcribe.cached_transcript(src) is None  # never transcribed
     assert transcribe.cached_transcript(tmp_citadel.raw / "gone.mp3") is None  # unreadable file
+
+
+def test_corrupted_cache_entry_degrades_and_retranscribes(tmp_citadel, monkeypatch):
+    """A cache file that is not valid UTF-8 (disk corruption, a stray write) must keep the
+    'never raises' contract: cached_transcript degrades to None for lint/wiki_raw/viewer, and
+    transcript_for treats it as a miss — re-transcribing and OVERWRITING the corrupt entry."""
+    from citadel import manifest
+
+    src = tmp_citadel.raw / "memo.mp3"
+    _make_mp3(src)
+    sha = manifest.file_sha256(src)
+    config.robust_mkdir(transcribe.cache_dir())
+    transcribe.cache_path(sha).write_bytes(b"\xff\xfe not utf-8 \x80\x81")
+
+    assert transcribe.cached_transcript(src) is None  # degrades, never raises
+
+    monkeypatch.setattr(transcribe, "_run_whisper", lambda p: "[00:00:01] Recovered.\n")
+    assert transcribe.transcript_for(src) == "[00:00:01] Recovered.\n"
+    assert transcribe.cached_transcript(src) == "[00:00:01] Recovered.\n"  # corrupt entry replaced

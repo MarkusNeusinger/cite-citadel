@@ -89,17 +89,25 @@ def _looks_like_audio(head: bytes) -> bool:
     return head.startswith(b"\x30\x26\xb2\x75\x8e\x66\xcf\x11")  # ASF (wma/wmv)
 
 
-def is_audio_source(path: Path) -> bool:
-    """True when audio ingestion is on (``config.AUDIO_SUPPORT``) and ``path`` is a recognized
-    audio/video recording (extension AND matching magic). Such a source is transcribed through the
-    whisper seam instead of being rejected by the binary sniff. Never raises."""
-    if not config.AUDIO_SUPPORT or not is_audio_ext(path):
+def is_audio_file(path: Path) -> bool:
+    """True when ``path`` is a genuine audio/video recording — extension AND matching magic —
+    regardless of the ``CITADEL_AUDIO_SUPPORT`` knob. Never raises. The ungated check
+    lint/``wiki_raw`` use to tell a real recording (verifiable only through its transcript cache)
+    from a text file merely RENAMED ``.mp3`` (which ingests — and verifies — as ordinary text)."""
+    if not is_audio_ext(path):
         return False
     try:
         with open(path, "rb") as fh:
             return _looks_like_audio(fh.read(16))
     except OSError:
         return False
+
+
+def is_audio_source(path: Path) -> bool:
+    """True when audio ingestion is on (``config.AUDIO_SUPPORT``) and ``path`` is a recognized
+    audio/video recording (:func:`is_audio_file`). Such a source is transcribed through the
+    whisper seam instead of being rejected by the binary sniff. Never raises."""
+    return config.AUDIO_SUPPORT and is_audio_file(path)
 
 
 def cache_dir() -> Path:
@@ -127,7 +135,7 @@ def cached_transcript(path: Path, sha: str | None = None) -> str | None:
             return None
     try:
         text = cache_path(sha).read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeError):  # missing OR corrupted cache entry — nothing to serve
         return None
     return text if text.strip() else None
 
@@ -242,7 +250,7 @@ def transcript_for(src: Path, sha: str | None = None) -> str:
     target = cache_path(sha)
     try:
         text = target.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeError):  # missing OR corrupted cache entry: re-transcribe (overwrites)
         text = None
     if text is None:
         text = _run_whisper(src)
