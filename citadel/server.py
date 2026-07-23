@@ -90,18 +90,26 @@ _SEARCH_OFFSET_MAX = 200
 
 @mcp.tool(annotations=_annotations(**_READ_ONLY))
 def wiki_search(query: str, limit: int = 8, tag: str = "", offset: int = 0) -> str:
-    """Keyword search across all OKF wiki pages (title/tags/description/body).
+    """Ranked full-text search across all OKF wiki pages
+    (title/aliases/tags/description/body).
 
-    Optionally restrict to pages carrying ``tag`` (case-insensitive). Returns a
-    ranked markdown list; each entry gives the page rel_path, its score, the
-    title, its tags, and a short body snippet around the first matching token.
-    A ``limit`` <= 0 is treated as unset and falls back to the default (8) — a
-    miscomputed limit must not read as a confident "No matches" — and is capped
-    at 50 (one call must not dump the whole ranked corpus). ``offset`` skips the
-    first N ranked hits, so results past the first page stay reachable
-    (``offset=8`` continues where the default first call stopped); it is capped
-    at 200. The primary 'make the wiki usable' tool: an AI searches the
-    synthesized wiki instead of re-retrieving the raw sources.
+    Bare query terms are matched AND (every content word must hit; English
+    stopwords are not required, and a query no page fully matches is retried
+    as OR) and scored by BM25 with title > aliases > tags > description > body
+    field weighting plus an exact-phrase bonus. ``tag:x`` / ``type:y`` tokens
+    inside the query filter instead of match (tag by prefix, type exactly) —
+    ``type:person`` alone lists every person page. Optionally restrict to
+    pages carrying ``tag`` (case-insensitive). Returns a ranked markdown list;
+    each entry gives the page rel_path, its score (comparable within one
+    result list only), the title, its tags, and a short body snippet around
+    the first matching token. A ``limit`` <= 0 is treated as unset and falls
+    back to the default (8) — a miscomputed limit must not read as a confident
+    "No matches" — and is capped at 50 (one call must not dump the whole
+    ranked corpus). ``offset`` skips the first N ranked hits, so results past
+    the first page stay reachable (``offset=8`` continues where the default
+    first call stopped); it is capped at 200. The primary 'make the wiki
+    usable' tool: an AI searches the synthesized wiki instead of re-retrieving
+    the raw sources.
     """
     from . import store
 

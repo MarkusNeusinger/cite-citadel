@@ -246,7 +246,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_sources.set_defaults(func=cmd_sources)
 
-    p_search = sub.add_parser("search", help="Keyword search across the wiki pages.")
+    p_search = sub.add_parser(
+        "search", help="Ranked BM25 search across the wiki pages (terms AND-matched; tag:x/type:y filter)."
+    )
     p_search.add_argument("query", help="Search query.")
     p_search.add_argument(
         "--limit", type=int, default=8, help="Maximum number of hits to return (default: 8; <= 0 falls back to 8)."

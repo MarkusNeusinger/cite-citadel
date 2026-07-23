@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **Ranked BM25 search behind the unchanged `search()` seam** (the 2026-07 audit's backlog #1).
+  Queries now share the offline viewer's grammar — bare terms are AND-matched (English stopwords
+  exempt, so "how do you brew coffee" matches on *brew coffee*; a query no page fully matches is
+  retried once as OR so the closest pages still surface), and `tag:x` / `type:y` tokens filter
+  instead of match (tag by prefix, type exactly; an operator-only query like `type:person` lists
+  the filtered pages) — closing the audit's "two divergent search implementations" finding.
+  Ranking is real BM25 (term-frequency saturation, prose-field length normalization,
+  Lucene-smoothed IDF) over the title 3.0 / aliases 2.5 / tags 2.0 / description 1.5 / body 1.0
+  field ladder, plus the exact-phrase bonus, computed in memory per call — no persisted index,
+  the wiki stays the database, zero new dependencies. The audit-scoped SQLite FTS5 route was
+  built first and rejected on measurement: FTS5's `bm25()` clamps the IDF of any term appearing
+  in more than half the corpus to ~0, so in a topical wiki the topic word ("coffee" in a coffee
+  wiki) degenerated every score to noise; the Python scorer keeps IDF strictly positive, and
+  "how do you brew coffee" now ranks the brewing page first instead of losing it entirely.
+  Signature, MCP surface, and the `pages=` tag-filter seam are unchanged.
+
 ### Added
 
 - **`citadel refresh` — budget-controlled re-verification of the least-recently-checked sources
