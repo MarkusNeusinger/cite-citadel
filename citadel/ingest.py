@@ -1457,7 +1457,11 @@ def _run_source_jobs(jobs: list[_SourceJob], emit, report: IngestReport, failure
             for tmp in tmpdirs:
                 shutil.rmtree(tmp, ignore_errors=True)
         # The run's usage total counts every outcome — a failed source's sessions were paid for
-        # too; only the per-source manifest stamp below is success-only.
+        # too; only the per-source manifest stamp below is success-only. Deliberately NOT wired
+        # through the BaseException path (the return above): an interrupted run re-raises and
+        # its report is never rendered (_ingest_run's capture-finalize-reraise), so the in-flight
+        # source's partial usage has no surface to appear on — the completed sources' manifest
+        # stamps were already saved per-source with their usage intact.
         report.usage = llm.combine_usage([report.usage, outcome.usage])
         if not outcome.ok:
             # Nothing was promoted (the live wiki is untouched) and the source is NOT marked
