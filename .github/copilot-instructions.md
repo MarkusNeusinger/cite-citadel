@@ -171,7 +171,9 @@ it is itself a workspace.
 
 **Ingest is the heart of the system** (`ingest.py` → `llm.py`). The flow per source:
 - `ingest.ingest()` partitions candidates into pending / already-ingested (sha match) / reorganized
-  (moved-or-duplicate) / unreadable (binary) / deleted (vanished from disk, full runs only) /
+  (moved-or-duplicate) / unreadable (binary; an all-NUL read is flagged as a cloud-only placeholder
+  — Dropbox/OneDrive online-only — and never stat-cached as done, so it ingests once hydrated) /
+  deleted (vanished from disk, full runs only) /
   same-basename document duplicates (skipped in favor of one preferred format). A pending Office
   source is extracted to text first; a pending image is read visually; a pending source larger than
   `CITADEL_MAX_SOURCE_CHARS` is folded in over several passes (all against one staging copy — see

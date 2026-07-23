@@ -246,6 +246,66 @@ def test_binary_raw_file_is_logged_unreadable_not_ingested(tmp_citadel, fake_age
     assert agent.count == 1  # not re-run
 
 
+def test_cloud_placeholder_is_flagged_and_ingests_once_hydrated(tmp_citadel, fake_agent, transformer_page):
+    """A file whose bytes read as 100% NUL — the signature of a Dropbox/OneDrive "online-only"
+    placeholder seen through WSL/SMB — is surfaced with a targeted make-it-available-offline hint
+    instead of the generic binary message, and is NOT marked done in the manifest: hydration
+    restores the real content without changing size/mtime, so a stat-cached entry would skip the
+    fixed file forever. Until hydrated it stays visibly stuck; once hydrated it ingests normally."""
+    import json
+    import os
+
+    raw = tmp_citadel.raw
+    agent = fake_agent(transformer_page)
+    real = b"# Attention\n\nTransformers use self-attention.\n"
+    (raw / "notes.md").write_bytes(b"\x00" * len(real))
+
+    report = ingest.ingest()
+    assert "raw/notes.md" in report.unreadable
+    assert "raw/notes.md" in report.cloud_placeholders
+    assert "cloud-only placeholder" in report.render()
+    assert agent.count == 0
+    assert "raw/notes.md" not in tmp_citadel.read_manifest()  # NOT stat-cached as done
+    fdata = json.loads((tmp_citadel.wiki / ".citadel_failures.json").read_text(encoding="utf-8"))
+    assert fdata["raw/notes.md"]["reason"] == "unreadable"
+    assert "placeholder" in fdata["raw/notes.md"]["detail"]
+
+    # Still stuck: unlike a genuine binary it is re-surfaced, not silently skipped.
+    second = ingest.ingest()
+    assert "raw/notes.md" in second.unreadable
+    assert agent.count == 0
+
+    # "Hydration": the real bytes appear under the SAME size and mtime — only ctime may move.
+    st = (raw / "notes.md").stat()
+    (raw / "notes.md").write_bytes(real)
+    os.utime(raw / "notes.md", ns=(st.st_atime_ns, st.st_mtime_ns))
+
+    third = ingest.ingest()
+    assert "raw/notes.md" in third.processed
+    assert third.unreadable == []
+    assert agent.count == 1
+    assert "raw/notes.md" in tmp_citadel.read_manifest()  # now genuinely ingested
+    assert not (tmp_citadel.wiki / ".citadel_failures.json").exists()  # failure cleared
+
+
+def test_all_nul_binary_vs_mixed_binary_detail(tmp_citadel, fake_agent):
+    """Only the 100%-NUL read gets the placeholder hint — a normal binary (NUL bytes mixed with
+    other content) keeps the generic no-extractable-text message and IS marked done."""
+    import json
+
+    raw = tmp_citadel.raw
+    fake_agent()
+    (raw / "blob.bin").write_bytes(b"\x00\x01\x02BINARY\xff\x00")
+
+    report = ingest.ingest()
+    assert "raw/blob.bin" in report.unreadable
+    assert report.cloud_placeholders == []
+    assert "placeholder" not in report.render()
+    assert "raw/blob.bin" in tmp_citadel.read_manifest()  # marked done, quick-skipped next run
+    fdata = json.loads((tmp_citadel.wiki / ".citadel_failures.json").read_text(encoding="utf-8"))
+    assert fdata["raw/blob.bin"]["detail"] == "no extractable text (binary/unsupported)"
+
+
 def test_failures_are_persisted_surfaced_and_cleared(tmp_citadel, fake_agent, transformer_page):
     """Unreadable AND errored/failed sources are written to a persistent .citadel_failures.json with
     a reason and surfaced in wiki/sources/index.md — and a source that later succeeds drops off,
