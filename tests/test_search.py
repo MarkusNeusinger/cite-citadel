@@ -156,6 +156,19 @@ def test_stopwords_are_not_required_by_the_and_match(tmp_citadel, seed_page):
     assert [p.rel_path for p, _ in hits] == ["concepts/brewing.md"]
 
 
+def test_punctuation_adjacent_stopwords_are_still_exempt(tmp_citadel, seed_page):
+    """The stopword exemption is judged on the TOKENS, not the raw whitespace-split term, so
+    'you?', a quoted '"the"', and a contracted "they're" are exempt exactly like their bare
+    forms. Were they still required, the AND pass would match nothing and the OR rescue would
+    also surface the decoy page — the assertion pins the single exact hit."""
+    seed_page("concepts/brewing.md", {"type": "concept", "title": "Coffee Brewing"}, "Brew it slowly.\n")
+    seed_page("concepts/chatty.md", {"type": "concept", "title": "Notes"}, "The coffee you like.\n")
+
+    assert [p.rel_path for p, _ in store.search("do you? brew coffee")] == ["concepts/brewing.md"]
+    assert [p.rel_path for p, _ in store.search('"the" brew')] == ["concepts/brewing.md"]
+    assert [p.rel_path for p, _ in store.search("they're brewing coffee")] == ["concepts/brewing.md"]
+
+
 def test_stopword_only_query_keeps_its_terms(tmp_citadel, seed_page):
     """A query consisting ONLY of stopwords is not filtered to nothing — the terms stay and
     match normally, so searching for 'the' still works."""

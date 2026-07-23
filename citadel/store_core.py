@@ -137,11 +137,23 @@ _FIELD_B = (0.0, 0.0, 0.0, 0.75, 0.75)
 # natural-language query — the MCP consumer asks questions, not keywords — is AND-matched on its
 # content words only: "how do you brew coffee" must reach the brewing pages, not just whichever
 # page happens to contain "how", "do", and "you". A query of ONLY stopwords keeps its terms.
+# The trailing ll/re/ve are the contraction fragments tokenization leaves behind ("they're" ->
+# they + re), so a contracted stopword is exempt exactly like its bare form.
 _STOPWORDS = frozenset(
     """a an and are as at be but by can could did do does for from had has have how i if in is it
     its no not of on or should that the their them then there these they this those to was were
-    what when where which who why will with would you your""".split()
+    what when where which who why will with would you your ll re ve""".split()
 )
+
+
+def _is_stopword_term(term: str) -> bool:
+    """True when every token of the (already lowercased) query term is a stopword or too short
+    to index — judged on the TOKENS, not the raw whitespace-split term, so punctuation-adjacent
+    forms (``you?``, ``"the"``, ``they're``) are exempt from the AND requirement exactly like
+    their bare forms. A term with no tokens at all (pure symbols) is NOT a stopword term: it
+    stays for the phrase/substring net."""
+    tokens = _TOKEN_RE.findall(term)
+    return bool(tokens) and all(len(tok) < 2 or tok in _STOPWORDS for tok in tokens)
 
 
 def _field_counts(page: Page) -> list[dict[str, int]]:
@@ -276,7 +288,7 @@ def search(query: str, pages: list[Page] | None = None, limit: int = 8) -> list[
     if not terms:  # operator-only: a flat filter listing, like the viewer's
         candidates.sort(key=lambda p: p.rel_path)
         return [(page, 1.0) for page in candidates[:limit]]
-    content_terms = [t for t in terms if t not in _STOPWORDS] or terms
+    content_terms = [t for t in terms if not _is_stopword_term(t)] or terms
     scores = _bm25_scores(content_terms, candidates)
     phrase = " ".join(terms)
     scored: list[tuple[Page, float]] = []
