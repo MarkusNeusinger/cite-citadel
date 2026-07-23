@@ -66,12 +66,18 @@ class SessionUsage:
 
     def describe(self) -> str:
         """One ASCII report fragment: ``$0.42, tokens 1,234,567 in / 45,678 out`` — only the
-        fields that are actually known, "" when none are (so callers can skip the line)."""
+        fields that are actually known (an unknown side is OMITTED, never rendered as a 0 that
+        reads like a real count), "" when none are (so callers can skip the line)."""
         parts: list[str] = []
         if self.cost_usd is not None:
             parts.append(format_cost(self.cost_usd))
-        if self.input_tokens is not None or self.output_tokens is not None:
-            parts.append(f"tokens {self.input_tokens or 0:,} in / {self.output_tokens or 0:,} out")
+        tokens = [
+            f"{count:,} {label}"
+            for count, label in ((self.input_tokens, "in"), (self.output_tokens, "out"))
+            if count is not None
+        ]
+        if tokens:
+            parts.append("tokens " + " / ".join(tokens))
         return ", ".join(parts)
 
 

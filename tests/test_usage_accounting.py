@@ -74,7 +74,9 @@ def test_describe_renders_only_known_fields():
     full = llm.SessionUsage(cost_usd=0.05, input_tokens=1234567, output_tokens=45678)
     assert full.describe() == "$0.05, tokens 1,234,567 in / 45,678 out"
     assert llm.SessionUsage(cost_usd=0.31).describe() == "$0.31"
-    assert llm.SessionUsage(output_tokens=9).describe() == "tokens 0 in / 9 out"
+    # An unknown side is omitted — never rendered as a 0 that reads like a real count.
+    assert llm.SessionUsage(output_tokens=9).describe() == "tokens 9 out"
+    assert llm.SessionUsage(input_tokens=5).describe() == "tokens 5 in"
     assert llm.SessionUsage().describe() == ""
 
 
