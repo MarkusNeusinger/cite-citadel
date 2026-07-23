@@ -604,7 +604,9 @@ def _usage_from_gemini_summary(path: Path) -> SessionUsage | None:
             counted = False
             for key, bucket in (("prompt", "in"), ("candidates", "out")):
                 value = node.get(key)
-                if isinstance(value, int) and not isinstance(value, bool):
+                # Positive real ints only (matching the claude-side count filter): a corrupted/
+                # hand-edited stats file must not surface negative token counts on a report.
+                if isinstance(value, int) and not isinstance(value, bool) and value > 0:
                     totals[bucket] += value
                     counted = True
             if counted:

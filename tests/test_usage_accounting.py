@@ -226,6 +226,10 @@ def test_usage_from_gemini_summary_defensive(tmp_path):
     foreign = tmp_path / "foreign.json"
     foreign.write_text('{"lastUpdated": "2026-07-23"}', encoding="utf-8")
     assert llm._usage_from_gemini_summary(foreign) is None
+    # Negative counts in a corrupted/hand-edited stats file never surface (positive ints only).
+    negative = tmp_path / "negative.json"
+    negative.write_text('{"models": {"g": {"tokens": {"prompt": -5, "candidates": -2}}}}', encoding="utf-8")
+    assert llm._usage_from_gemini_summary(negative) is None
 
 
 def test_run_ingest_session_gemini_appends_flag_parses_and_cleans_up(monkeypatch):
