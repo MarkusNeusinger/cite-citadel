@@ -26,6 +26,20 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Per-session LLM cost accounting** (the 2026-07 audit's backlog #2). Every agent session's
+  cost/usage is now captured from the backend CLI's own report — claude's `--output-format json`
+  result envelope (`total_cost_usd` + token counts, cache traffic included) and gemini's
+  `--session-summary` stats file (token counts; the flag is appended only when the installed
+  binary advertises it in `--help`, so an older gemini is never handed an unknown flag) — summed
+  per source (a chunked source's segments combined) and stamped into its manifest entry
+  (`cost_usd`/`tokens_in`/`tokens_out`, carried across moves and cache re-stamps exactly like
+  `ingested_at`: only a real agent session ever refreshes it). Surfaced wherever the money went:
+  ingest/refresh reports and `citadel curate` print an `LLM usage:` run total (failed and NOOP
+  sessions included — that spend was real too), and `citadel status` gains a per-source cost
+  column plus a `Recorded LLM cost` corpus total (`--json`: `cost_usd_total`). Accounting is
+  strictly passive: parsing is defensive, no usage path can fail a session, and "no data" stays
+  `None` (copilot reports nothing machine-readable) — never a fabricated `$0.00`. `refresh
+  --limit`'s budget unit stays sources, but each run now tells you what the slice actually cost.
 - **`citadel refresh` — budget-controlled re-verification of the least-recently-checked sources
   (the third lifecycle beside ingest and curate).** Every successful agent session now stamps its
   source's manifest entry with an `ingested_at` last-checked time (carried unchanged across moves

@@ -140,6 +140,10 @@ class CurateReport:
     skipped: list[str] = field(default_factory=list)
     # The wiki-history note from wikigit.autocommit — empty when the history layer had nothing to say.
     wiki_git: str = ""
+    # What this run's cluster sessions cost, summed over every session that reported usage —
+    # NOOP and failed clusters included (their sessions were paid for too). None when no
+    # backend reported anything.
+    usage: llm.SessionUsage | None = None
 
     def render(self) -> str:
         lines = ["Curate report", "=============", ""]
@@ -154,6 +158,10 @@ class CurateReport:
             lines.append(f"{label}: {len(group)}")
             for page in group:
                 lines.append(f"  - {page}")
+        described = self.usage.describe() if self.usage is not None else ""
+        if described:
+            lines.append("")
+            lines.append(f"LLM usage: {described}.")
         if self.wiki_git:
             lines.append("")
             lines.append(self.wiki_git)
@@ -714,6 +722,9 @@ def curate(
                 finally:
                     shutil.rmtree(tmpdir, ignore_errors=True)
 
+                # The run total counts every cluster's sessions — a rolled-back or NOOP cluster
+                # spent its session too.
+                report.usage = llm.combine_usage([report.usage, outcome.usage])
                 if not outcome.ok:
                     report.failed.append(page_rel)
                     _record_cluster_failure(failures_dict, page_rel, outcome, model)

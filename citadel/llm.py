@@ -18,8 +18,11 @@ and the operational invariants (see :func:`_build_instruction`).
   their own default model.
 
 One function does real work: ``run_ingest_session(rel_key)`` runs the chosen CLI once against
-the workspace. It has no return value — the result is whatever the agent wrote under ``wiki/``,
-which ``ingest`` discovers via a filesystem diff. It raises ``RuntimeError`` on a missing/
+the workspace. The RESULT is whatever the agent wrote under ``wiki/``, which ``ingest``
+discovers via a filesystem diff; the return value is only the session's best-effort
+:class:`SessionUsage` (what the run cost, as the backend itself reports it — claude's
+``--output-format json`` envelope, gemini's ``--session-summary`` stats file; None when the
+backend reports nothing, e.g. copilot). It raises ``RuntimeError`` on a missing/
 unusable CLI, a non-zero exit, a claude ``is_error`` envelope, or a timeout (the failure
 surface ``ingest``'s per-source ``try/except`` already expects).
 """
@@ -32,12 +35,74 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from . import config
+
+
+@dataclass(frozen=True)
+class SessionUsage:
+    """What ONE agent session cost, exactly as the backend CLI reports it — never estimated,
+    never priced by us (the audit's cost-observability gap: the product argues in budgets while
+    the CLIs' own cost envelopes were discarded).
+
+    - ``cost_usd`` — the backend's own dollar figure (claude's ``total_cost_usd``); None for a
+      backend that prices nothing (gemini/copilot).
+    - ``input_tokens`` — the prompt-side total actually processed, INCLUDING cache writes/reads
+      (the honest volume, not just the uncached slice).
+    - ``output_tokens`` — the completion-side total.
+
+    Every field is None when unknown; a whole-unknown session is represented as ``None`` rather
+    than an empty instance (:func:`combine_usage` returns None when no part knew anything), so
+    "no data" never renders as "$0.00"."""
+
+    cost_usd: float | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+
+    def describe(self) -> str:
+        """One ASCII report fragment: ``$0.42, tokens 1,234,567 in / 45,678 out`` — only the
+        fields that are actually known, "" when none are (so callers can skip the line)."""
+        parts: list[str] = []
+        if self.cost_usd is not None:
+            parts.append(format_cost(self.cost_usd))
+        if self.input_tokens is not None or self.output_tokens is not None:
+            parts.append(f"tokens {self.input_tokens or 0:,} in / {self.output_tokens or 0:,} out")
+        return ", ".join(parts)
+
+
+def combine_usage(parts) -> SessionUsage | None:
+    """Sum an iterable of ``SessionUsage | None`` into one (a chunked source's segments, a run's
+    sources). Each field sums over the parts that KNOW it and stays None when none did — so a
+    claude+gemini mix keeps honest semantics (cost from the sessions that priced themselves,
+    tokens from the ones that counted). Returns None when no part carried anything, and skips
+    non-``SessionUsage`` values entirely (the test fakes return None)."""
+    cost = tokens_in = tokens_out = None
+    for part in parts:
+        if not isinstance(part, SessionUsage):
+            continue
+        if part.cost_usd is not None:
+            cost = (cost or 0.0) + part.cost_usd
+        if part.input_tokens is not None:
+            tokens_in = (tokens_in or 0) + part.input_tokens
+        if part.output_tokens is not None:
+            tokens_out = (tokens_out or 0) + part.output_tokens
+    if cost is None and tokens_in is None and tokens_out is None:
+        return None
+    return SessionUsage(cost_usd=cost, input_tokens=tokens_in, output_tokens=tokens_out)
+
+
+def format_cost(cost_usd: float) -> str:
+    """``$0.053`` / ``$1.20`` / ``$1,234.50`` — four decimals so a sub-cent session never rounds
+    to a lying ``$0.00``, trailing zeros trimmed but never below the conventional two decimals."""
+    text = f"{cost_usd:,.4f}"
+    while text.endswith("0") and len(text) - text.rindex(".") > 3:  # keep >= 2 decimals
+        text = text[:-1]
+    return f"${text}"
 
 
 # CLI binary resolution (env override name -> default binary name).
@@ -416,6 +481,100 @@ def _build_invocation(
     return [cli_path, "-p", prompt], None
 
 
+def _usage_from_claude_envelope(env: dict | None) -> SessionUsage | None:
+    """The session's cost/usage from claude's ``--output-format json`` result envelope:
+    ``total_cost_usd`` plus the ``usage`` token counts. Input tokens include the cache
+    creation/read counts — the prompt-side volume actually billed, not just the uncached slice.
+    Defensive by design (an envelope is external input): non-numeric fields read as absent, and
+    an envelope carrying nothing usable returns None."""
+    if not isinstance(env, dict):
+        return None
+    cost = env.get("total_cost_usd", env.get("cost_usd"))  # cost_usd: the pre-GA envelope name
+    cost_usd = float(cost) if isinstance(cost, (int, float)) and not isinstance(cost, bool) else None
+    usage = env.get("usage")
+    usage = usage if isinstance(usage, dict) else {}
+
+    def count(key: str) -> int:
+        value = usage.get(key)
+        return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
+
+    tokens_in = count("input_tokens") + count("cache_creation_input_tokens") + count("cache_read_input_tokens")
+    tokens_out = count("output_tokens")
+    if cost_usd is None and not tokens_in and not tokens_out:
+        return None
+    return SessionUsage(cost_usd=cost_usd, input_tokens=tokens_in or None, output_tokens=tokens_out or None)
+
+
+# --help output per resolved CLI binary, probed at most once per process (the gemini
+# feature-detection below; a probe failure caches "" so a broken binary is not re-probed).
+_HELP_TEXT_CACHE: dict[str, str] = {}
+
+
+def _cli_help_text(cli_path: str) -> str:
+    """The CLI's ``--help`` output (stdout+stderr merged), cached per binary path — the
+    feature probe behind :func:`_gemini_summary_file`. Best-effort: any spawn failure or
+    timeout degrades to "" (the probed feature simply reads as absent), because usage
+    accounting must never be able to break an ingest."""
+    if cli_path not in _HELP_TEXT_CACHE:
+        try:
+            proc = subprocess.run(
+                [cli_path, "--help"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30
+            )
+            _HELP_TEXT_CACHE[cli_path] = (proc.stdout or "") + (proc.stderr or "")
+        except (OSError, subprocess.SubprocessError):
+            _HELP_TEXT_CACHE[cli_path] = ""
+    return _HELP_TEXT_CACHE[cli_path]
+
+
+def _gemini_summary_file(cli: str, cli_path: str) -> Path | None:
+    """A fresh temp file for gemini's ``--session-summary`` stats JSON, or None when the backend
+    is not gemini or its binary does not ADVERTISE the flag in ``--help`` (probed once per
+    binary) — an older gemini must never be handed an unknown flag that would fail the whole
+    session over optional accounting. The caller owns deleting the file."""
+    if cli != "gemini" or "--session-summary" not in _cli_help_text(cli_path):
+        return None
+    fd, name = tempfile.mkstemp(prefix="citadel_gemini_stats_", suffix=".json")
+    os.close(fd)
+    return Path(name)
+
+
+def _usage_from_gemini_summary(path: Path) -> SessionUsage | None:
+    """Token counts from the stats JSON gemini's ``--session-summary`` writes. Best-effort by
+    design: the wrapper shape has shifted across gemini versions, so instead of pinning one
+    schema this walks the JSON for the stable inner token dicts (integer ``prompt`` /
+    ``candidates`` counts) and sums them across models; a missing/unreadable/foreign-shaped
+    file records nothing (None). Gemini reports no dollar cost, so ``cost_usd`` stays None."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    totals = {"in": 0, "out": 0}
+    found = False
+
+    def walk(node) -> None:
+        nonlocal found
+        if isinstance(node, dict):
+            counted = False
+            for key, bucket in (("prompt", "in"), ("candidates", "out")):
+                value = node.get(key)
+                if isinstance(value, int) and not isinstance(value, bool):
+                    totals[bucket] += value
+                    counted = True
+            if counted:
+                found = True
+                return  # a tokens leaf — never descend into it (no double counting)
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(data)
+    if not found:
+        return None
+    return SessionUsage(input_tokens=totals["in"], output_tokens=totals["out"])
+
+
 def _last_result_envelope(text: str) -> dict | None:
     """Fallback for claude: the last JSONL object whose ``type`` is ``result`` (in case the
     CLI streams instead of emitting one JSON object)."""
@@ -565,10 +724,15 @@ def _write_transcript(
         pass  # logging is diagnostic only — never let it abort an ingest
 
 
-def _run_session(cli: str, argv: list[str], stdin_text: str | None, *, log_label: str | None = None) -> None:
+def _run_session(
+    cli: str, argv: list[str], stdin_text: str | None, *, log_label: str | None = None
+) -> SessionUsage | None:
     """Run the agentic CLI once in ``config.WORKSPACE_ROOT``. Success = the session completed
-    without error; the agent's edits are on disk. Raises ``RuntimeError`` on timeout, a
-    spawn error, a non-zero exit, or (for claude) an ``is_error`` result envelope.
+    without error; the agent's edits are on disk. Returns the session's :class:`SessionUsage`
+    when the backend reported one (claude's result envelope; None for copilot/gemini, whose
+    stdout carries no cost data — gemini's stats file is read by ``run_ingest_session``).
+    Raises ``RuntimeError`` on timeout, a spawn error, a non-zero exit, or (for claude) an
+    ``is_error`` result envelope.
 
     Output handling is observability-aware but otherwise unchanged: when ``config.LLM_VERBOSE`` is
     set the CLI's output is TEED to the terminal live (:func:`_stream_subprocess`); otherwise it is
@@ -628,7 +792,8 @@ def _run_session(cli: str, argv: list[str], stdin_text: str | None, *, log_label
     if cli == "claude":
         # `--output-format json` returns a single result envelope:
         # {"type":"result","is_error":bool,"api_error_status":int|null,"result":str,...}.
-        # We read it ONLY to detect failure; the agent's work is on disk, not in `result`.
+        # We read it to detect failure — and, on success, for its cost/usage fields; the
+        # agent's WORK is on disk, not in `result`.
         env: dict | None = None
         if out:
             try:
@@ -644,17 +809,17 @@ def _run_session(cli: str, argv: list[str], stdin_text: str | None, *, log_label
             )
         if returncode != 0:
             raise RuntimeError(f"the claude CLI failed (exit {returncode}): {(err or out)[:500]}")
-        return
+        return _usage_from_claude_envelope(env)
 
     # copilot / gemini (and any unknown CLI): the exit code is the success signal.
     if returncode != 0:
         raise RuntimeError(f"the {cli!r} CLI failed (exit {returncode}): {(err or out)[:500]}")
-    return
+    return None
 
 
 def run_ingest_session(
     rel_key: str, kind: str = "ingest", read_path: str | None = None, segment: tuple[int, int] | None = None
-) -> None:
+) -> SessionUsage | None:
     """Run the configured agentic CLI once to propagate the raw source ``rel_key`` into the wiki.
 
     ``kind`` picks the propagation (see :func:`_build_instruction`): ``"ingest"`` folds in a new
@@ -668,11 +833,26 @@ def run_ingest_session(
     granted to the CLI alongside any out-of-workspace wiki/raw. ``segment`` is ``(part, total)`` for a
     large source split across passes.
 
-    Side-effecting only: the agent edits files under ``config.WIKI_DIR``. Returns None;
-    ``ingest`` discovers what changed via a filesystem diff. Raises ``RuntimeError`` (collected
-    per-source by ingest) on a missing/failed CLI or a timeout."""
+    The agent's edits under ``config.WIKI_DIR`` are the real result — ``ingest`` discovers what
+    changed via a filesystem diff. The return value is only the session's best-effort
+    :class:`SessionUsage` (the backend's own cost/usage report: claude's result envelope,
+    gemini's ``--session-summary`` stats file when its binary advertises the flag; None when
+    nothing was reported — copilot, an older gemini, or any parse miss). Accounting is strictly
+    passive: no usage path can fail the session. Raises ``RuntimeError`` (collected per-source
+    by ingest) on a missing/failed CLI or a timeout."""
     cli = (config.LLM_CLI or "claude").strip().lower()
     cli_path = _resolve_cli(cli)
     prompt = _build_instruction(rel_key, kind, read_path, segment)
     argv, stdin_text = _build_invocation(cli, cli_path, prompt, _external_dirs(rel_key, read_path))
-    _run_session(cli, argv, stdin_text, log_label=f"{kind}.{rel_key}")
+    summary_path = _gemini_summary_file(cli, cli_path)
+    if summary_path is not None:
+        argv = argv + ["--session-summary", str(summary_path)]
+    try:
+        usage = _run_session(cli, argv, stdin_text, log_label=f"{kind}.{rel_key}")
+        if summary_path is not None:
+            usage = combine_usage([usage, _usage_from_gemini_summary(summary_path)])
+        return usage
+    finally:
+        if summary_path is not None:
+            with contextlib.suppress(OSError):
+                summary_path.unlink()

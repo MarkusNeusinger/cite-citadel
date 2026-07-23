@@ -66,9 +66,12 @@ with no persisted queue (the manifest *is* the queue; a re-run after upgrading
 `CITADEL_INGEST_MODEL` is how yesterday's weaker-model imports get re-checked by today's better
 one).
 
-The budget unit is **sources, not tokens** (citadel shells out to an agent CLI and never sees
-token counts) — but one source is exactly one agent session, so `--limit N` is an honest,
-predictable proxy. `--min-age-days D` makes a scheduled run self-limiting: once everything has
+The budget unit is **sources, not tokens** — one source is exactly one agent session, so
+`--limit N` is an honest, predictable proxy. And the spend is no longer invisible: every
+session's cost/usage, as reported by the agent CLI itself (claude's result envelope, gemini's
+`--session-summary`), is stamped into the source's manifest entry and totaled on the run report,
+so each refresh run tells you what the slice actually cost and `citadel status` shows the
+per-source and corpus figures. `--min-age-days D` makes a scheduled run self-limiting: once everything has
 been checked within D days, the run is a free no-op. There is deliberately no "refresh everything"
 mode — the limit defaults to 1 and must be explicit, mirroring `ingest --force`'s refusal to
 re-read the corpus by accident.
@@ -82,10 +85,13 @@ manual, targeted form of the same forced re-read when you already know *which* s
 
 `citadel status` is the read-only answer to "what state is my corpus in?": one table row per
 source — **ingested** (with the importing model and rules version, plus `(stale)` when the source
-was ingested under an older rulebook than the current one, and `checked YYYY-MM-DD` — when a model
-last verified it, the ordering `citadel refresh` works through), **failed** (with the reason and attempt
+was ingested under an older rulebook than the current one, `checked YYYY-MM-DD` — when a model
+last verified it, the ordering `citadel refresh` works through — and what that last verification
+cost when the backend reported it, e.g. `$0.05`), **failed** (with the reason and attempt
 count), **skipped-duplicate**, **ignored** (which pattern matched), or **pending** (not yet
-ingested — the next `citadel ingest` will pick it up). It never runs an agent and never re-hashes
+ingested — the next `citadel ingest` will pick it up). A `Recorded LLM cost` line above the table
+totals the per-source stamps (the maintenance-cost snapshot of the current corpus; `--json`
+carries it as `cost_usd_total`). It never runs an agent and never re-hashes
 sources, so it is always cheap to run. An MCP client gets the same table via the read-only
 `wiki_status` tool (see [mcp.md](mcp.md)).
 
