@@ -38,7 +38,7 @@ orientation for free.
 
 | Tool | What it does |
 |------|--------------|
-| `wiki_search` | Keyword search across all pages (title/tags/description/body); ranked hits with snippets. `limit` (default 8, capped at 50) and `offset` page through the ranked list. |
+| `wiki_search` | Ranked BM25 search across all pages (title/aliases/tags/description/body). Terms are AND-matched on content words (OR-retried when nothing fully matches); `tag:x` / `type:y` tokens in the query filter instead of match. `limit` (default 8, capped at 50) and `offset` page through the ranked list. |
 | `wiki_define` | Glossary lookup — the meaning/expansion of a term (abbreviation → exact title → search fallback). |
 | `wiki_read` | Full verbatim OKF page text for a rel_path, including all `[^sN]` citations. Output capped at 20k chars (`max_chars=0` lifts the cap). |
 | `wiki_raw` | Read the raw source behind a `[^sN]` citation (locator-aware: `lines A-B`, `§ Heading`, or combined) — the trust-but-verify spot-check. Output line-numbered and capped at 20k chars; narrow with a locator. |

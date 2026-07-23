@@ -1,11 +1,12 @@
 """Core of the wiki 'database': load / read / write / delete / search + the text providers.
 
 Loads every .md under wiki/ (skipping index.md, log.md, per-directory index.md, dotfiles) into
-Page objects; offers a dead-simple keyword scan (the ONE swappable search function);
-writes/overwrites pages with path-safety and a reserved-name guard; deletes pages; the shared
-page/index/sources text providers behind the CLI and MCP surfaces; and the append-only log.md
-writer. No SQLite, no embeddings. The link graph, catalogs, and open-points live in sibling
-modules (:mod:`citadel.linkgraph`, :mod:`citadel.catalogs`, :mod:`citadel.open_points`); the
+Page objects; offers ranked full-text search (the ONE swappable search function — BM25 computed
+in memory per call, so nothing is persisted and the wiki stays the database); writes/overwrites
+pages with path-safety and a reserved-name guard; deletes pages; the shared page/index/sources
+text providers behind the CLI and MCP surfaces; and the append-only log.md writer. No on-disk
+index, no embeddings. The link graph, catalogs, and open-points live in sibling modules
+(:mod:`citadel.linkgraph`, :mod:`citadel.catalogs`, :mod:`citadel.open_points`); the
 :mod:`citadel.store` facade re-exports the whole surface.
 """
 
@@ -117,88 +118,185 @@ def _tokenize(text: str) -> set[str]:
     return {_stem(tok) for tok in _TOKEN_RE.findall(text.lower()) if len(tok) >= 2}
 
 
-# The per-field match weights, in _field_tokens order: title, aliases, tags, description, body.
+# The per-field BM25 weights, in _field_counts order: title, aliases, tags, description, body.
+# Aliases are a page's declared alternate names/synonyms (an abbreviation's spelled-out form, a
+# lay term for the concept), so weighting them lets a paraphrased query reach the page by a word
+# the title lacks — purely lexical, no synonym map.
 _FIELD_WEIGHTS = (3.0, 2.5, 2.0, 1.5, 1.0)
 
+# The standard BM25 constants: _K1 saturates repeated occurrences of a term (the 10th mention
+# adds far less than the 2nd); _FIELD_B scales the per-field length normalization (a term hit
+# lost in a long text says less than one in a short text). Only the prose fields (description,
+# body) are length-normalized: title/aliases/tags are short structured fields where document
+# length carries no relevance signal — and normalizing them against a corpus where most pages
+# leave the field empty would punish exactly the pages that use it.
+_K1 = 1.2
+_FIELD_B = (0.0, 0.0, 0.0, 0.75, 0.75)
 
-def _field_tokens(page: Page) -> tuple[set[str], ...]:
-    """One tokenization of a page's five scored fields (title, aliases, tags, description, body),
-    in :data:`_FIELD_WEIGHTS` order. Computed ONCE per page per search and shared by the IDF pass
-    and the scoring pass — tokenizing the whole corpus twice per query (once for document
-    frequencies, again per-page for the overlap score) used to dominate `wiki_search` latency."""
-    return (
-        _tokenize(page.title),
-        _tokenize(" ".join(_aliases_of(page))),
-        _tokenize(" ".join(page.tags)),
-        _tokenize(page.description),
-        _tokenize(page.body),
-    )
+# English function words dropped from the MATCHED terms (never from the phrase bonus) so a
+# natural-language query — the MCP consumer asks questions, not keywords — is AND-matched on its
+# content words only: "how do you brew coffee" must reach the brewing pages, not just whichever
+# page happens to contain "how", "do", and "you". A query of ONLY stopwords keeps its terms.
+_STOPWORDS = frozenset(
+    """a an and are as at be but by can could did do does for from had has have how i if in is it
+    its no not of on or should that the their them then there these they this those to was were
+    what when where which who why will with would you your""".split()
+)
 
 
-def _idf_weights(fields_by_page: list[tuple[set[str], ...]]) -> dict[str, float]:
-    """Smoothed inverse document frequency per token across the candidate pages' precomputed
-    :func:`_field_tokens`. A token appearing in every page weighs 1.0; a token in just one weighs
-    more, so a rare, discriminating term (e.g. an acronym or a proper noun) outranks one common to
-    the whole corpus (e.g. the corpus's own topic word). idf = log((N+1)/(1+df)) + 1 — smoothed so
-    the weight never drops below 1.0 (a match is never penalized) while rare tokens are amplified.
-    Recomputed per search over the candidate set, holding to 'the wiki IS the database' (no
-    persisted index)."""
-    n = len(fields_by_page)
-    if n == 0:
+def _field_counts(page: Page) -> list[dict[str, int]]:
+    """Stemmed token counts (term frequencies) for a page's five scored fields — title, aliases,
+    tags, description, body, in :data:`_FIELD_WEIGHTS` order. Computed ONCE per page per search
+    and shared by the document-frequency pass and the scoring pass."""
+    counted: list[dict[str, int]] = []
+    for text in (
+        page.title,
+        " ".join(sorted(_aliases_of(page))),
+        " ".join(str(t) for t in page.tags),
+        page.description,
+        page.body,
+    ):
+        counts: dict[str, int] = {}
+        for tok in _TOKEN_RE.findall(text.lower()):
+            if len(tok) >= 2:
+                stemmed = _stem(tok)
+                counts[stemmed] = counts.get(stemmed, 0) + 1
+        counted.append(counts)
+    return counted
+
+
+def _bm25_scores(terms: list[str], pages: list[Page]) -> dict[int, float]:
+    """BM25 relevance per candidate page, computed in memory from `pages` on every call —
+    holding to 'the wiki IS the database' (no persisted index, nothing to go stale). Fields are
+    weighted in the classic ladder (title 3.0, aliases 2.5, tags 2.0, description 1.5, body 1.0,
+    a simplified BM25F); term and page text share one stemmer (:func:`_stem`) so inflected forms
+    match. IDF uses the Lucene smoothing ``log(1 + (N - df + 0.5) / (df + 0.5))``, which is
+    strictly positive — deliberately NOT SQLite FTS5's ``bm25()``, whose unsmoothed Robertson
+    IDF clamps any term appearing in more than half the corpus to ~0, gutting the field ladder
+    for exactly the most common query shape in a topical wiki (the corpus's own topic word).
+    Terms are matched AND (every term must appear in some field, like the viewer); when a
+    multi-term AND matches nothing the query is retried once as OR, so a partially-wrong
+    phrasing still surfaces the closest pages instead of a flat miss. Returns
+    ``{page index: score}``, higher = better; ``{}`` when nothing tokenizes or matches."""
+    query_tokens = _tokenize(" ".join(terms))
+    n = len(pages)
+    if not query_tokens or n == 0:
         return {}
-    df: dict[str, int] = {}
-    for fields in fields_by_page:
-        for tok in set().union(*fields):
-            df[tok] = df.get(tok, 0) + 1
-    return {tok: math.log((n + 1) / (1 + d)) + 1.0 for tok, d in df.items()}
+    docs = [_field_counts(page) for page in pages]
+    lengths = [[sum(field.values()) for field in fields] for fields in docs]
+    df = dict.fromkeys(query_tokens, 0)
+    for fields in docs:
+        for tok in query_tokens:
+            if any(tok in field for field in fields):
+                df[tok] += 1
+    idf = {tok: math.log(1.0 + (n - d + 0.5) / (d + 0.5)) for tok, d in df.items()}
+    # Average field length over the pages that USE the field (a mostly-empty corpus field must
+    # not punish the pages that fill it), for the length-normalized prose fields.
+    avglen = []
+    for f in range(len(_FIELD_WEIGHTS)):
+        filled = [lens[f] for lens in lengths if lens[f]]
+        avglen.append(sum(filled) / len(filled) if filled else 0.0)
+    for require_all in (True, False):
+        scores: dict[int, float] = {}
+        for i, fields in enumerate(docs):
+            present = {tok for tok in query_tokens if any(tok in field for field in fields)}
+            if require_all and present != query_tokens:
+                continue
+            score = 0.0
+            for tok in present:
+                weighted = 0.0
+                for f, (weight, field) in enumerate(zip(_FIELD_WEIGHTS, fields, strict=True)):
+                    tf = field.get(tok, 0)
+                    if not tf:
+                        continue
+                    b = _FIELD_B[f]
+                    norm = 1.0 - b + b * (lengths[i][f] / avglen[f]) if b and avglen[f] else 1.0
+                    weighted += weight * tf * (_K1 + 1.0) / (tf + _K1 * norm)
+                score += idf[tok] * weighted
+            if score > 0.0:
+                scores[i] = score
+        if scores or len(query_tokens) < 2:
+            return scores
+    return scores
 
 
-def _score(query_tokens: set[str], fields: tuple[set[str], ...], idf: dict[str, float] | None = None) -> float:
-    """Token-overlap score over one page's precomputed :func:`_field_tokens`. Each matching query
-    token contributes its field weight — title 3.0, aliases 2.5, tags 2.0, description 1.5,
-    body 1.0 — scaled by the token's IDF weight (from :func:`_idf_weights`) so a rare,
-    discriminating token outweighs one common to many pages. Aliases are a page's declared
-    alternate names/synonyms (an abbreviation's spelled-out form, a lay term for the concept), so
-    weighting them lets a paraphrased query reach the page by a word the title lacks — purely
-    lexical, no synonym map. With ``idf=None`` every token weighs 1.0, i.e. plain overlap
-    counting. 0.0 == no match. (The 0.5 raw-substring bonus is applied in search(), which knows
-    the original query string.)"""
-    if not query_tokens:
-        return 0.0
+def _parse_query(query: str) -> tuple[list[str], list[str], list[str]]:
+    """Split a query into lowercased bare terms plus ``tag:``/``type:`` operator filters —
+    the SAME grammar the offline viewer's search box parses, so the two search surfaces accept
+    one query language. Any other ``prefix:`` token stays a literal bare term. Returns
+    ``(terms, tag_filters, type_filters)``."""
+    terms: list[str] = []
+    tag_filters: list[str] = []
+    type_filters: list[str] = []
+    for tok in (query or "").strip().lower().split():
+        if tok.startswith("tag:") and len(tok) > 4:
+            tag_filters.append(tok[4:])
+        elif tok.startswith("type:") and len(tok) > 5:
+            type_filters.append(tok[5:])
+        else:
+            terms.append(tok)
+    return terms, tag_filters, type_filters
 
-    def w(tok: str) -> float:
-        return idf.get(tok, 1.0) if idf else 1.0
 
-    return sum(
-        weight * sum(w(t) for t in query_tokens & field_tokens)
-        for weight, field_tokens in zip(_FIELD_WEIGHTS, fields, strict=True)
-    )
+def _passes_operators(page: Page, tag_filters: list[str], type_filters: list[str]) -> bool:
+    """Viewer-convergent operator semantics: every ``tag:`` filter must PREFIX-match one of the
+    page's tags (``tag:brew`` hits ``brewing``), and the page's type must equal one of the
+    ``type:`` filters exactly (case-insensitive). No filters -> passes."""
+    if type_filters and (page.type or "").strip().lower() not in type_filters:
+        return False
+    for tf in tag_filters:
+        if not any(str(t).strip().lower().startswith(tf) for t in page.tags):
+            return False
+    return True
 
 
 def search(query: str, pages: list[Page] | None = None, limit: int = 8) -> list[tuple[Page, float]]:
-    """THE single swappable search seam. If pages is None, call load(). Score every page
-    (IDF-weighted token overlap with title*3/aliases*2.5/tags*2/description*1.5/body*1.0 — a
-    rare, discriminating query token outweighs one common to the whole corpus — plus a 0.5
-    substring bonus when the lowercased query appears in the title or body), drop zeros,
-    sort desc by score then rel_path, return the top `limit` as (page, score). IDF is
-    computed over the candidate `pages` each call, so a tag-pre-filtered search weighs
-    rarity within that subset. (Future: replace this body with SQLite FTS5 bm25 —
-    signature + MCP surface stay identical.)"""
+    """THE single swappable search seam. If pages is None, call load(). Ranked full-text search
+    over the candidate pages: bare terms are matched AND (every term must hit — English
+    stopwords are excluded from the requirement so a natural-language question matches on its
+    content words, and the query is retried once as OR when it would otherwise miss entirely)
+    and scored by BM25 (:func:`_bm25_scores` — in-memory, Lucene-smoothed IDF, term-frequency
+    saturation, length normalization) with the title 3.0 / aliases 2.5 / tags 2.0 /
+    description 1.5 / body 1.0 field weights, both sides stemmed by :func:`_stem`, plus a 0.5
+    bonus when the contiguous lowercased phrase appears in any indexed field — so an exact
+    phrase outranks the same words scattered. ``tag:x`` / ``type:y`` operator tokens filter
+    instead of match (tag by prefix, type exactly), the same query grammar as the offline
+    viewer's search box — the two search surfaces converge. An operator-only query returns the
+    filtered pages as a flat listing (score 1.0, rel_path order). Zero scores are dropped;
+    results sort desc by score then rel_path; the top `limit` is returned as (page, score).
+    Scores are comparable within one result list only (BM25 is corpus-relative)."""
     if limit <= 0:
         return []
     if pages is None:
         pages = load()
-    query_tokens = _tokenize(query)
-    raw_query = query.strip().lower()
-    # Tokenize every candidate page ONCE; the IDF pass and the per-page scores share the sets.
-    fields_by_page = [_field_tokens(page) for page in pages] if query_tokens else None
-    # Weight by rarity only when there are tokens to weight: an empty or one-char query still
-    # surfaces pages via the substring bonus below, and skips the full-corpus IDF pass.
-    idf = _idf_weights(fields_by_page) if fields_by_page else None
+    terms, tag_filters, type_filters = _parse_query(query)
+    if not terms and not tag_filters and not type_filters:
+        return []
+    candidates = [page for page in pages if _passes_operators(page, tag_filters, type_filters)]
+    if not terms:  # operator-only: a flat filter listing, like the viewer's
+        candidates.sort(key=lambda p: p.rel_path)
+        return [(page, 1.0) for page in candidates[:limit]]
+    content_terms = [t for t in terms if t not in _STOPWORDS] or terms
+    scores = _bm25_scores(content_terms, candidates)
+    phrase = " ".join(terms)
     scored: list[tuple[Page, float]] = []
-    for i, page in enumerate(pages):
-        score = _score(query_tokens, fields_by_page[i], idf) if fields_by_page else 0.0
-        if raw_query and (raw_query in page.title.lower() or raw_query in page.body.lower()):
+    for i, page in enumerate(candidates):
+        score = scores.get(i, 0.0)
+        # The contiguous-phrase bonus, checked over the same five fields BM25 indexes. It doubles
+        # as a substring net (a page the tokenizer cannot reach — a symbol-only query, an embedded
+        # hyphenated form — still surfaces at 0.5), and because it is flat across fields, ties
+        # among equally-bonused pages fall back to BM25's column weights — including the case of a
+        # term present in EVERY candidate, where BM25's clamped idf alone degenerates to ~0.
+        haystack = "\n".join(
+            (
+                page.title,
+                " ".join(sorted(_aliases_of(page))),
+                " ".join(str(t) for t in page.tags),
+                page.description,
+                page.body,
+            )
+        ).lower()
+        if phrase in haystack:
             score += 0.5
         if score > 0.0:
             scored.append((page, score))
