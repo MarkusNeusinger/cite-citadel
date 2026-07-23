@@ -32,6 +32,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -544,8 +545,11 @@ def _gemini_summary_file(cli: str, cli_path: str) -> Path | None:
     """A fresh temp file for gemini's ``--session-summary`` stats JSON, or None when the backend
     is not gemini or its binary does not ADVERTISE the flag in ``--help`` (probed once per
     binary) — an older gemini must never be handed an unknown flag that would fail the whole
-    session over optional accounting. The caller owns deleting the file."""
-    if cli != "gemini" or "--session-summary" not in _cli_help_text(cli_path):
+    session over optional accounting. The advertisement check is an exact flag-token match
+    (a longer option like ``--session-summary-file`` must not read as this flag; a false
+    NEGATIVE is safe — it merely disables optional accounting). The caller owns deleting the
+    file."""
+    if cli != "gemini" or not re.search(r"--session-summary(?![\w-])", _cli_help_text(cli_path)):
         return None
     fd, name = tempfile.mkstemp(prefix="citadel_gemini_stats_", suffix=".json")
     os.close(fd)

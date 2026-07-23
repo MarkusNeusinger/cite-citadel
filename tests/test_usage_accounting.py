@@ -162,6 +162,13 @@ def test_gemini_summary_file_requires_advertised_flag(monkeypatch):
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeProc(0, "usage: gemini\n  --approval-mode\n"))
     assert llm._gemini_summary_file("gemini", "/bin/gemini") is None
 
+    # An exact flag TOKEN is required: a longer option must not read as this flag (a false
+    # positive would hand the CLI an unknown flag and fail the session — the very thing the
+    # probe exists to prevent; a false negative merely disables optional accounting).
+    monkeypatch.setattr(llm, "_HELP_TEXT_CACHE", {})
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeProc(0, "  --session-summary-file <file>\n"))
+    assert llm._gemini_summary_file("gemini", "/bin/gemini") is None
+
     monkeypatch.setattr(llm, "_HELP_TEXT_CACHE", {})
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeProc(0, "  --session-summary <file>\n"))
     path = llm._gemini_summary_file("gemini", "/bin/gemini")
