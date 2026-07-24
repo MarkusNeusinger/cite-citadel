@@ -26,6 +26,33 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Resumable chunked ingest** (the 2026-07 audit's backlog #9): a large source folded in over
+  several segments no longer throws away the earlier segments' paid agent work when a run dies at
+  segment N. Each completed segment banks the delta it produced — the *promote that would have
+  happened*, computed with the promote's own file-level view, so link repairs and any non-page file
+  are in it — as a checkpoint in `.citadel_resume/` beside the wiki (new `citadel/resume.py`,
+  `CITADEL_RESUME`, on by default). The next run replays that delta into its fresh staging copy and
+  opens at segment N; even a promote that failed *after* the last segment now replays for free,
+  with no session at all. **Promotion is unchanged**: still exactly once, still only after the last
+  segment, and a failure still leaves the live wiki byte-for-byte as it was — the guarantee did not
+  move, only the bill. Every reuse is guarded offline before a single token is spent — identity
+  (source sha256, ingest model, rules version, the segment plan's *content*, and the prompt-shaping
+  knobs `rules_version` does not cover: wiki language, style profiles, PDF/image mode), blob
+  integrity, per-page base state in the live wiki (so a page another source changed in between is
+  never clobbered and a banked deletion never destroys newer work), re-validation of the replayed
+  pages plus a no-new-broken-links check, an attempt cap so a deterministically failing segment
+  cannot wedge a source into failing cheaply forever, and run-lock ownership so a stalled run never
+  writes over the run that reclaimed its lock. **Every guard failure falls back to a full restart
+  at segment 1 in the same run** — the pre-resume behavior is the floor, never the failure mode.
+  Cost accounting stays honest on both sides: the run report counts only what that run spent, while
+  the manifest stamps the whole cost of importing the source across the runs that paid it (so
+  `citadel status` never under-reports a resumed source). `citadel doctor` lists what is waiting.
+  Deviation from the audit's scoped design (`claude --resume` session IDs): checkpoints are
+  backend-agnostic — copilot/gemini expose no session-resume flag, and a resumed conversation would
+  anyway find the staging tree it edited deleted; replaying the delta keeps the work instead of
+  re-running it. No rules change was needed — a resumed segment sees exactly the wiki an unbroken
+  run's segment would have seen.
+
 - **Sync & scheduling recipes** (the 2026-07 audit's backlog #13 + #14, docs-only). New
   `docs/recipes.md`, linked from the docs hub: multi-device sync under the one-writer-many-readers
   rule (wiki-history git + a private remote as the recommended lane, whole-workspace git with the

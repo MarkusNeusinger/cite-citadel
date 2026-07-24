@@ -91,19 +91,32 @@ def _is_stale(path: Path, holder: dict) -> bool:
     return age > _stale_after_s()
 
 
+def owned() -> bool:
+    """True when the workspace lock on disk is still THIS process's (same pid + host).
+
+    The house predicate behind every write a stalled run must not make: if this run crossed the
+    staleness window and another run legitimately reclaimed the lock, the wiki (and every piece of
+    durable state beside it) now belongs to that run. :func:`heartbeat` uses it so a foreign lock's
+    mtime is never bumped; :mod:`citadel.resume` uses it so a stalled run never overwrites the new
+    holder's checkpoints with its own stale view. Never raises — an unreadable/absent lockfile
+    reads as "not ours"."""
+    with contextlib.suppress(OSError, ValueError):
+        holder = json.loads(lock_path().read_text(encoding="utf-8"))
+        return holder.get("pid") == os.getpid() and holder.get("host") == socket.gethostname()
+    return False
+
+
 def heartbeat() -> None:
     """Refresh the lock's mtime (best-effort) so a long multi-source run never looks stale.
     Called at every per-source boundary; a failure never breaks the run.
 
-    Only refreshes a lock THIS process still owns (same pid + host guard as the release path):
-    if this run stalled past the staleness window and another run legitimately reclaimed the
-    lock, bumping the new holder's mtime would mask ITS staleness — so a foreign lock is left
-    strictly alone."""
-    path = lock_path()
-    with contextlib.suppress(OSError, ValueError):
-        holder = json.loads(path.read_text(encoding="utf-8"))
-        if holder.get("pid") == os.getpid() and holder.get("host") == socket.gethostname():
-            os.utime(path)
+    Only refreshes a lock THIS process still owns (:func:`owned` — the same pid + host guard as the
+    release path): if this run stalled past the staleness window and another run legitimately
+    reclaimed the lock, bumping the new holder's mtime would mask ITS staleness — so a foreign lock
+    is left strictly alone."""
+    with contextlib.suppress(OSError):
+        if owned():
+            os.utime(lock_path())
 
 
 @contextmanager

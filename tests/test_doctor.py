@@ -381,6 +381,30 @@ def test_audio_ok_when_on_and_whisper_found(tmp_citadel, monkeypatch):
     assert c.status == doctor.OK and "/opt/bin/whisper" in c.detail
 
 
+# --- resume checkpoints ------------------------------------------------------------------
+
+
+def test_resume_ok_when_off(tmp_citadel, monkeypatch):
+    monkeypatch.setattr(config, "RESUME", False)
+    c = doctor.check_resume()
+    assert c.status == doctor.OK and "off" in c.detail
+
+
+def test_resume_names_the_waiting_checkpoints(tmp_citadel, monkeypatch):
+    """A banked half-import is otherwise invisible — this line is why doctor knows about it."""
+    from citadel import resume
+
+    monkeypatch.setattr(resume, "pending", lambda: [("raw/book.txt", 3, 7)])
+    c = doctor.check_resume()
+    assert c.status == doctor.OK  # never a WARN: there is no dependency that can be missing
+    assert "raw/book.txt (3/7 segments)" in c.detail
+
+
+def test_resume_ok_when_nothing_pending(tmp_citadel):
+    c = doctor.check_resume()
+    assert c.status == doctor.OK and "none pending" in c.detail
+
+
 def _raise_runtime():
     raise RuntimeError("not found")
 
@@ -631,6 +655,7 @@ def test_run_emits_the_full_check_inventory(tmp_citadel, monkeypatch):
         "PDF mode",
         "PDF text",
         "audio",
+        "resume",
         "wiki git",
         "update",
         "workspace coherence",

@@ -206,8 +206,14 @@ it is itself a workspace.
   links, and **only on a fully clean source promotes staging onto the live wiki — exactly once per
   source** — with a non-destructive copy-over-then-prune. A chunked large source folds ALL its
   segments into that one staging copy before the single promote (the live wiki
-  never holds a partially imported source; the accepted trade-off is that a failure at segment N
-  discards the earlier segments' work and the source retries from segment 1 next run). Any
+  never holds a partially imported source; a failure at segment N still discards the whole staging
+  copy — but no longer the MONEY: each completed segment banks its delta as a **resume checkpoint**
+  (`resume.py`, `CITADEL_RESUME`, `.citadel_resume/` beside the wiki) that the next run replays into
+  its fresh staging copy to continue at segment N. Every reuse is guarded — identity (source sha,
+  model, rules version, segment content, prompt knobs), blob integrity, per-page base state in the
+  live wiki, plus re-validation and a no-new-broken-links check of the replayed delta — and every
+  guard failure falls back to a full restart at segment 1 *in the same run*, so the pre-resume
+  behavior is the floor). Any
   failure/timeout/Ctrl+C leaves the live wiki exactly as it was; the source is retried next run.
   Deletion cleanups, then pending files, then repos all drive this through ONE shared per-source
   loop (`_SourceJob` + `_run_source_jobs`) — **deletions run first** so a delete cleanup strips a
@@ -287,7 +293,7 @@ cached content-addressed in `.citadel_transcripts/` beside the wiki — the same
 ingest seam tests monkeypatch. `pdftext.py` is the same idea for PDFs (bundled pypdf,
 `CITADEL_PDF_TEXT`): the extracted `[p. N]`-marked text layer, cached in `.citadel_pdftext/`,
 read under the `pdf`/`pdf-reconcile` kinds and verified/served by `lint`/`wiki_raw`/the viewer;
-`text_for` is its (never-raising, best-effort) ingest seam. `curate.py` is the second lifecycle and `status.py` the read-only per-source state
+`text_for` is its (never-raising, best-effort) ingest seam. `resume.py` is the chunked-source resume-checkpoint store (`CITADEL_RESUME`): after each completed segment ingest banks the promote-shaped delta in `.citadel_resume/` beside the wiki, guarded by identity (source sha, model, rules version, segment content, prompt knobs), blob integrity, per-page live base state, re-validation of the replay and an attempt cap — so an interrupted large source continues at its failed segment instead of re-buying the earlier ones, and every guard failure degrades to a full restart. `curate.py` is the second lifecycle and `status.py` the read-only per-source state
 view (both above); `doctor.py` (`citadel doctor`) is the read-only setup health check (OK/WARN/FAIL
 lines over workspace resolution, the rules tree, the agent CLI on PATH, raw-root reachability,
 manifest parse + stamp, failures summary, the API-key/PDF/audio advisories, the wiki-git state, a
@@ -337,7 +343,9 @@ CLI-only, `wiki_lint`/`wiki_status` close the `lint`/`status` gaps from the MCP 
   `CITADEL_REPO_SUPPORT`, `CITADEL_IMAGE_SUPPORT` (read images visually), `CITADEL_AUDIO_SUPPORT`
   (opt-in whisper transcript ingest for audio/video, with `CITADEL_WHISPER_CLI`/
   `CITADEL_WHISPER_MODEL`/`CITADEL_WHISPER_TIMEOUT` tuning the seam), `CITADEL_MAX_SOURCE_CHARS`
-  (large-source chunking threshold), `CITADEL_DEDUP_BY_BASENAME` (skip same-basename document
+  (large-source chunking threshold), `CITADEL_RESUME` (resume checkpoints for those chunked
+  sources: continue at the segment an interrupted run died on instead of re-paying for the earlier
+  ones; default on), `CITADEL_DEDUP_BY_BASENAME` (skip same-basename document
   duplicates), `CITADEL_IGNORE_PATTERNS` (OS/junk-file globs skipped at discovery — `Thumbs.db`,
   `desktop.ini`, `~$` locks, …; a `+` prefix extends the built-in defaults), `CITADEL_WIKI_LANG`
   (target language of all wiki prose, default `en`; verbatim quotes stay original),

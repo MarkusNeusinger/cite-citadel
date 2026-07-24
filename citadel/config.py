@@ -693,6 +693,18 @@ DEDUP_BY_BASENAME: bool = _bool_env("CITADEL_DEDUP_BY_BASENAME", True)
 # to disable) for a very large one.
 MAX_SOURCE_CHARS: int = _int_env("CITADEL_MAX_SOURCE_CHARS", 300000)
 
+# Resume checkpoints for CHUNKED sources (citadel/resume.py). Promotion stays all-or-nothing — the
+# live wiki only ever holds fully-imported sources — but when ON (default) each completed segment
+# records the delta it produced in a dotdir sibling of the wiki (.citadel_resume/), so a run that
+# died at segment N does not throw away segments 1..N-1's paid agent work: the next run replays
+# that delta into a fresh staging copy, re-validates it, and continues at segment N. Every reuse is
+# guarded (source sha, model, rules version, segment content, prompt knobs, per-page base state,
+# re-validation) and every guard failure falls back to a full restart at segment 1 in the same run.
+# Default ON like the PDF text pre-pass — it needs no extra binary and changes no wiki content, it
+# only stops paying twice; 0 turns it off (nothing is written or read) if the plaintext page
+# sidecar is unwanted. Only chunked sources ever create one.
+RESUME: bool = _bool_env("CITADEL_RESUME", True)
+
 # Wiki history (git). After every run that CHANGED the wiki (ingest or curate), citadel can commit
 # the whole wiki directory so every change is a reviewable diff — the long-term audit trail
 # log.md cannot give you. Modes (CITADEL_WIKI_GIT):

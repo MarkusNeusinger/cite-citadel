@@ -5,9 +5,10 @@ pass leaves the source pending.
 PROMOTE-ONCE ("no silently partial imports"): all segments of one
 chunked source fold into a SINGLE staging copy; validation runs after EVERY segment (fail fast)
 but PROMOTION happens exactly once, after the last segment passes — the live wiki only ever
-contains fully-imported sources. Trade-off accepted: a failure at segment N discards the whole
-staging copy (N-1 segments' agent work), and the source retries from segment 1 next run.
-``llm.run_ingest_session`` is replaced by ``fake_agent``.
+contains fully-imported sources. A failure at segment N still discards the whole staging copy and
+promotes nothing. What it no longer discards is the MONEY: segment N-1's work was checkpointed, so
+the next run replays it and continues at segment N (citadel/resume.py — the resume behavior itself
+is pinned in tests/test_ingest_resume.py). ``llm.run_ingest_session`` is replaced by ``fake_agent``.
 """
 
 from __future__ import annotations
@@ -94,12 +95,17 @@ def test_large_pdf_is_not_chunked(tmp_citadel, fake_agent, cite_page, monkeypatc
 
 
 def test_segment_failure_discards_all_segments_nothing_live(tmp_citadel, fake_agent, cite_page, monkeypatch):
-    """DELIBERATE PIN FLIP ("no silently partial imports"): when segment 2 of a chunked
-    source fails, the LIVE wiki holds NOTHING from the source — the whole single staging copy is
-    discarded. (The previous pin here documented the opposite: segment 1's page was promoted and
-    stayed live, a silently half-folded source. The promote-once design accepts the trade-off: a failure at segment N
-    discards N-1 segments' agent work; the all-or-nothing guarantee is worth more.) The manifest
-    is untouched, the failure is recorded, and the NEXT run retries from segment 1 in full."""
+    """DELIBERATE PIN FLIP #2 ("no silently partial imports", now without the wasted spend): when
+    segment 2 of a chunked source fails, the LIVE wiki still holds NOTHING from the source — the
+    whole single staging copy is discarded — the manifest is untouched and the failure is recorded.
+
+    Pin history, because the trade-off moved twice:
+      1. originally segment 1's page was PROMOTED and stayed live — a silently half-folded source;
+      2. promote-once flipped that: nothing reaches live, but the NEXT RUN RE-RAN SEGMENT 1,
+         discarding N-1 segments' paid agent work;
+      3. now (resume checkpoints, citadel/resume.py) the next run CONTINUES AT SEGMENT 2, replaying
+         segment 1's checkpointed work into the fresh staging copy. What reaches the live wiki is
+         unchanged in every case — only the bill is."""
     wiki, raw = tmp_citadel.wiki, tmp_citadel.raw
     monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 120)
     (raw / "big.txt").write_text(_paras(6), encoding="utf-8")
@@ -120,20 +126,25 @@ def test_segment_failure_discards_all_segments_nothing_live(tmp_citadel, fake_ag
     assert "raw/big.txt" not in tmp_citadel.read_manifest()  # not marked done -> pending next run
     assert failures.load()["raw/big.txt"]["reason"] == failures.ERROR  # the failure is persisted
 
-    # The next run retries the WHOLE source from segment 1 (nothing was salvaged to merge into).
+    # The next run picks the source back up at segment 2 — segment 1 is never re-run, and its page
+    # is restored from the checkpoint (this fake deliberately writes NOTHING, so a page that exists
+    # afterwards can only have come from the replay).
     segments: list[tuple[int, int]] = []
 
     def fake_retry(rel_key, kind="ingest", read_path=None, segment=None):
         segments.append(segment)
-        if segment[0] == 1:
-            cite_page("misc/big.md", rel_key, "A fact from segment one.")
+        # Segment 1's page is already in the staging copy when the resumed segment opens.
+        assert (Path(config.WIKI_DIR) / "misc" / "big.md").exists()
 
     fake_agent(side_effect=fake_retry)
     second = ingest.ingest()
 
+    total = segments[0][1]
     assert second.processed == ["raw/big.txt"]
-    assert segments[0] == (1, segments[0][1]) and len(segments) == segments[0][1]  # full retry, 1..N
-    assert (wiki / "misc" / "big.md").exists()
+    assert segments == [(i, total) for i in range(2, total + 1)]  # continued at 2, 1 never re-run
+    assert (wiki / "misc" / "big.md").exists()  # segment 1's work: replayed, then promoted
+    assert "segment one" in (wiki / "misc" / "big.md").read_text(encoding="utf-8")
+    assert second.resumed and "segments 1-1" in second.resumed[0]  # and the report says so
     assert "raw/big.txt" not in failures.load()  # success clears the record
 
 
