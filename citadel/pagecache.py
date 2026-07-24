@@ -17,7 +17,10 @@ still reading the filesystem's own answer to "did anything change?" on every sin
 2. *A settle window.* A snapshot whose newest stamp is younger than :data:`_SETTLE_NS` is not
    stored at all, because a filesystem with coarse timestamps (FAT's 2 s, some SMB/NFS mounts) can
    hide a same-tick rewrite behind an unchanged ``(size, mtime, ctime)``. Freshly written wikis
-   therefore keep re-loading — exactly the pre-cache behavior — until they stop changing.
+   therefore keep re-loading — exactly the pre-cache behavior — until they stop changing. The
+   window is checked when the snapshot is STORED and never again, and that is sufficient: once a
+   stamp is older than the coarsest tick, any later write necessarily lands in a later tick and so
+   moves it.
 3. *A single slot, keyed by the wiki directory.* Ingest redirects ``config.WIKI_DIR`` at its
    per-source staging copy; a snapshot of one directory can never be served for another, and the
    single slot means the unbounded stream of staging dirs cannot accumulate entries.
@@ -34,6 +37,10 @@ consulted, ``0`` = never, ``auto`` = the per-process opt-in).
 :func:`memo` additionally hangs derived, page-shaped values off the live snapshot — used for
 search's per-page term-frequency tables, the *other* half of a search call's cost. They die with
 the snapshot they were computed from, so an invalidation can never leave a stale index behind.
+
+Cost: one wiki's parsed pages plus (once searched) their term-frequency tables stay resident —
+roughly the size of the wiki's text again, on the order of 10-20 MB for a 1000-page wiki. A single
+slot, dropped on every invalidation, bounds it to one wiki at a time.
 """
 
 from __future__ import annotations
