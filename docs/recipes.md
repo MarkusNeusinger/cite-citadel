@@ -34,7 +34,10 @@ CITADEL_WIKI_GIT_REMOTE=origin
 ```
 
 Every ingest/curate run now ends with one commit and one push (best-effort — a failed push is a
-report note, never a failed run). On any other device, `git clone` once and `git pull` whenever:
+report note, never a failed run). One caveat: if your *workspace* already sits inside a git
+working tree (say, a dotfiles or project checkout), `git init` in `wiki/` creates a nested repo —
+workable, but confusing (`CITADEL_WIKI_GIT=1` refuses to auto-init exactly this layout). In that
+situation prefer the whole-workspace recipe below. On any other device, `git clone` once and `git pull` whenever:
 the wiki opens as-is in [Obsidian](https://obsidian.md), any markdown editor, or the git host's
 web/mobile UI. Because the manifest (`.citadel_ingested.json`) lives *inside* `wiki/`, it travels
 with the pages — a pulled mirror answers `citadel status`, `search`, and `serve` correctly.
@@ -169,6 +172,8 @@ Use the portable invocation (`uv run python -m citadel …` — see the README's
 ```powershell
 schtasks /Create /SC DAILY /ST 03:00 /TN "citadel ingest" `
   /TR "cmd /c cd /d C:\Users\me\knowledge && uv run python -m citadel ingest --quiet >> citadel-cron.log 2>&1"
+schtasks /Create /SC WEEKLY /D SUN /ST 04:00 /TN "citadel refresh" `
+  /TR "cmd /c cd /d C:\Users\me\knowledge && uv run python -m citadel refresh --limit 5 --min-age-days 30 >> citadel-cron.log 2>&1"
 ```
 
 ### A scheduled agent instead of cron ("smart cron")
