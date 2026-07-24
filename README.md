@@ -285,12 +285,16 @@ the occasional confident invention where a source leaves a blank.
 
 ## MCP server
 
-`citadel serve` exposes **twelve tools** over stdio — eleven read-only (`wiki_search`,
+`citadel serve` exposes **thirteen tools** over stdio — eleven read-only (`wiki_search`,
 `wiki_define`, `wiki_read`, `wiki_raw`, `wiki_neighbors`, `wiki_index`, `wiki_sources`,
-`wiki_tags`, `wiki_validate`, `wiki_lint`, `wiki_status`) and one mutating (`wiki_ingest`) — each
-with MCP behavior annotations (`readOnlyHint` etc.) so a client can tell them apart. Every tool has
-a CLI counterpart (`citadel read`, `citadel index`, `citadel lint`, …), so an AI without MCP access
-can do everything through the shell.
+`wiki_tags`, `wiki_validate`, `wiki_lint`, `wiki_status`) and two mutating: `wiki_capture` (append
+an attributed note from the conversation to the raw/ capture log — the next ingest folds it in
+with real citations; see
+[docs/capture.md](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/capture.md)) and
+`wiki_ingest` (the only tool that writes the wiki) — each with MCP behavior annotations
+(`readOnlyHint` etc.) so a client can tell them apart. Every tool has a CLI counterpart
+(`citadel read`, `citadel index`, `citadel capture`, …), so an AI without MCP access can do
+everything through the shell.
 
 Wire it into any stdio MCP client (Claude Desktop, Claude Code, a generic stdio client) by launching
 `citadel serve` (portably: `uv run python -m citadel serve`) with `CITADEL_WORKSPACE` set to your

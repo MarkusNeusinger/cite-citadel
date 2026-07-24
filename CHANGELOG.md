@@ -26,6 +26,23 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Conversational capture bridge** (the 2026-07 audit's backlog #5 — the last of the audit's
+  three named access-side gaps). A new `wiki_capture` MCP tool (the server's 13th tool, its
+  second mutating one) and its CLI twin `citadel capture <text> [--from WHO] [--topic T]`
+  (`-` reads stdin) append ONE dated, attributed note from a conversation to a monthly capture
+  log under the primary raw root (`raw/captures/YYYY-MM.md`, created with an explanatory
+  header). The log is an ordinary raw SOURCE — capture never touches the wiki: the next
+  ingest/`wiki_ingest` folds the entry in through the normal staged, validated lifecycle with
+  real `[^sN]` line-locator citations (the tool reports the appended line range — the future
+  locator), and a later append changes the log's sha so the run after it RECONCILES
+  (update-don't-re-append). Captured statements enter the wiki as attributed claims ("X said Y
+  on DATE"), never as bare facts; empty and oversized texts (>100k chars — a whole transcript
+  belongs in raw/ as its own file) are refused loudly, and a log outside the configured
+  `CITADEL_RAW_DIRS` walk roots is flagged with the explicit-ingest hint instead of silently
+  never being discovered. The new [docs/capture.md](docs/capture.md) documents both capture
+  lanes: the tool for single notes, and the save-the-transcript-as-a-file convention
+  (`raw/conversations/…`) for whole conversations, which the existing chat/transcript genre
+  briefs already govern.
 - **Transcript ingest for audio/video sources via a whisper-CLI seam** (the 2026-07 audit's
   backlog #3). With `CITADEL_AUDIO_SUPPORT=1` (opt-in, default off), a recognized recording
   (`.mp3`/`.wav`/`.m4a`/`.mp4`/`.mkv`/…, extension AND magic bytes) is transcribed ONCE through a

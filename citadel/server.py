@@ -1,16 +1,19 @@
 """MCP stdio server exposing the OKF wiki to AI clients.
 
-A FastMCP instance over stdio with twelve tools: eleven read-only
+A FastMCP instance over stdio with thirteen tools: eleven read-only
 (wiki_search / wiki_define / wiki_read / wiki_raw / wiki_neighbors / wiki_index / wiki_sources /
-wiki_tags / wiki_validate / wiki_lint / wiki_status) and one mutating (wiki_ingest). Every tool
-returns a plain markdown/text string, which an LLM consumes best, and NEVER raises out of the tool:
+wiki_tags / wiki_validate / wiki_lint / wiki_status) and two mutating — wiki_capture (append ONE
+attributed conversational note to the raw/ capture log; it never touches the wiki) and wiki_ingest
+(the only tool that writes the WIKI, through the staged agent lifecycle). Every tool returns a
+plain markdown/text string, which an LLM consumes best, and NEVER raises out of the tool:
 not-found / unsafe-path / missing-or-unusable-LLM-CLI conditions are returned as clear error strings
 so the server stays up.
 
 Each tool carries MCP **behavior annotations** (``readOnlyHint`` / ``destructiveHint`` /
 ``idempotentHint`` / ``openWorldHint``) so a client can reason about a tool before calling it: the
-eleven readers are read-only, and only ``wiki_ingest`` mutates (non-destructive, idempotent via the
-sha manifest, and open-world because it spawns your external coding-agent CLI). If the installed
+eleven readers are read-only; ``wiki_capture`` mutates only the raw capture log (non-destructive —
+append-only — and closed-world); ``wiki_ingest`` mutates the wiki (non-destructive, idempotent via
+the sha manifest, and open-world because it spawns your external coding-agent CLI). If the installed
 ``mcp`` predates tool annotations, they are silently omitted — a client that ignores hints is
 unaffected.
 
@@ -34,7 +37,8 @@ def _annotations(**hints):
     return ToolAnnotations(**hints) if ToolAnnotations is not None else None
 
 
-# The eleven readers share this profile; wiki_ingest overrides it at its decorator.
+# The eleven readers share this profile; wiki_capture and wiki_ingest override it at their
+# decorators.
 _READ_ONLY = {"readOnlyHint": True, "openWorldHint": False}
 
 
@@ -45,9 +49,12 @@ _INSTRUCTIONS = (
     "find pages with wiki_search / wiki_define, and answer from wiki_read's full cited page text — "
     "the wiki is the synthesized, cited layer, so prefer it over re-reading raw files. wiki_raw "
     "verifies a single [^sN] citation against its raw source (a spot-check, not bulk retrieval); "
-    "wiki_neighbors walks the link graph; wiki_status shows per-source corpus state. wiki_ingest is "
-    "the ONLY mutating tool (it spawns the configured coding-agent CLI and may take minutes); every "
-    "other tool is read-only, and errors always come back as plain 'error: …' strings."
+    "wiki_neighbors walks the link graph; wiki_status shows per-source corpus state. wiki_capture "
+    "appends ONE attributed note from the conversation to the raw/ capture log (use it when the "
+    "user states something durable worth keeping — it never touches the wiki). wiki_ingest is the "
+    "only tool that writes the WIKI (it spawns the configured coding-agent CLI and may take "
+    "minutes) — it also folds captured notes in; every other tool is read-only, and errors always "
+    "come back as plain 'error: …' strings."
 )
 
 mcp = FastMCP("citadel", instructions=_INSTRUCTIONS)
@@ -355,14 +362,44 @@ def wiki_validate(rel_path: str = "") -> str:
         return f"error: validation failed: {e}"
 
 
+@mcp.tool(
+    annotations=_annotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False)
+)
+def wiki_capture(text: str, source: str = "", topic: str = "") -> str:
+    """Capture ONE attributed note from this conversation into the raw/ capture log — the
+    conversational bridge into the wiki's provenance lifecycle.
+
+    Appends (never edits or deletes) a dated entry to ``raw/captures/YYYY-MM.md`` under the
+    primary raw root: ``text`` is the statement worth keeping (the user said something durable —
+    a decision, a fact about their world, a "remember that …"), ``source`` attributes it (who
+    said it / where it came from, e.g. ``"Kim, chat 2026-07-24"``), ``topic`` is an optional
+    heading hint. The wiki itself is NOT touched: the log is an ordinary raw source, so the next
+    wiki_ingest folds the entry in through the normal staged, validated lifecycle with real
+    ``[^sN]`` line-locator citations into the log — captured statements enter the wiki as
+    attributed claims ("X said Y"), never as bare facts. Returns the log's source key and the
+    appended line range (the future citation locator), plus the ingest reminder; empty or
+    oversized text (a whole transcript belongs in raw/ as its own file) comes back as a clear
+    error string. Never raises out of the tool.
+    """
+    from . import capture as capture_mod
+
+    try:
+        return capture_mod.capture(text, source=source, topic=topic).render()
+    except ValueError as e:  # empty / oversized text — the refusal is the answer
+        return f"error: {e}"
+    except Exception as e:  # never raise out of the tool
+        return f"error: capture failed: {e}"
+
+
 @mcp.tool(annotations=_annotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True))
 def wiki_ingest(paths: list[str] | None = None) -> str:
     """Trigger ingest of new/changed raw files (default: all of raw/).
 
     Folds freshly-dropped sources into the wiki on demand; idempotent via the
-    sha256 manifest. Returns the IngestReport.render() text. The ONLY mutating
-    tool. If the configured LLM CLI is missing or not logged in, that surfaces
-    as a per-source error inside the returned report (or a clear error string) —
+    sha256 manifest. Returns the IngestReport.render() text. The ONLY tool that
+    writes the WIKI (wiki_capture only appends to the raw/ capture log). If the
+    configured LLM CLI is missing or not logged in, that surfaces as a
+    per-source error inside the returned report (or a clear error string) —
     the tool never raises out.
     """
     from . import ingest

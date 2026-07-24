@@ -9,6 +9,7 @@
     citadel status               # per-source corpus state (ingested/failed/skipped/ignored/pending; mirrors wiki_status)
     citadel doctor               # read-only environment/setup health check (OK/WARN/FAIL lines)
     citadel serve                # run the MCP stdio server
+    citadel capture <text> [--from WHO] [--topic T]  # append a note to the raw/ capture log (mirrors wiki_capture)
     citadel search <query> [--limit N] [--tag T]
     citadel define <term>        # glossary lookup: what a term / abbreviation stands for (mirrors wiki_define)
     citadel read <rel_path>      # print one page's full OKF text (mirrors wiki_read)
@@ -22,9 +23,9 @@
     citadel view [--out PATH] [--no-open] [--obsidian]   # offline single-file HTML viewer
     citadel rules list|show|eject   # inspect / fork the rules files the ingest agent reads
 
-The define/read/raw/neighbors/index/sources/lint/status subcommands give an AI without MCP access full parity
-with the server's tools (`view` stays CLI-only; `wiki_lint`/`wiki_status` close the `lint`/`status`
-gaps from the MCP side).
+The define/read/raw/neighbors/index/sources/capture/lint/status subcommands give an AI without MCP
+access full parity with the server's tools (`view` stays CLI-only; `wiki_lint`/`wiki_status` close
+the `lint`/`status` gaps from the MCP side).
 
 Every subcommand except ``init`` and ``rules`` needs a resolved WORKSPACE (see config's discovery
 order); ``main`` fails loud with exit 2 — pointing at ``citadel init`` and ``CITADEL_WORKSPACE``
@@ -215,9 +216,27 @@ def build_parser() -> argparse.ArgumentParser:
     p_doctor.set_defaults(func=cmd_doctor, needs_workspace=False)
 
     p_serve = sub.add_parser(
-        "serve", help="Run the MCP stdio server (12 tools: 11 read-only + the mutating wiki_ingest)."
+        "serve", help="Run the MCP stdio server (13 tools: 11 read-only + the mutating wiki_capture/wiki_ingest)."
     )
     p_serve.set_defaults(func=cmd_serve)
+
+    p_capture = sub.add_parser(
+        "capture",
+        help="Append one attributed note from a conversation to the raw/ capture log "
+        "(raw/captures/YYYY-MM.md; mirrors wiki_capture) — the next ingest folds it into the wiki.",
+    )
+    p_capture.add_argument(
+        "text", help="The note to capture, or '-' to read it from stdin (e.g. piping a statement in)."
+    )
+    p_capture.add_argument(
+        "--from",
+        dest="source",
+        default="",
+        metavar="WHO",
+        help="Attribution: who said it / where it came from (e.g. 'Kim, chat 2026-07-24').",
+    )
+    p_capture.add_argument("--topic", default="", help="Optional topic hint for the entry heading.")
+    p_capture.set_defaults(func=cmd_capture)
 
     p_read = sub.add_parser("read", help="Print the full OKF text of one wiki page (mirrors the wiki_read MCP tool).")
     p_read.add_argument("rel_path", help="Page to print, e.g. concepts/transformer.md.")
@@ -534,6 +553,22 @@ def cmd_serve(args: argparse.Namespace) -> int:
     from .server import main as serve_main
 
     serve_main()
+    return 0
+
+
+def cmd_capture(args: argparse.Namespace) -> int:
+    """Append one note to the raw/ capture log (the CLI twin of wiki_capture) and print where it
+    landed. ``-`` reads the text from stdin. Returns 2 on empty/oversized text — a usage error,
+    matching the argparse convention — so a scripted capture that lost its payload fails loud."""
+    from . import capture as capture_mod
+
+    text = sys.stdin.read() if args.text == "-" else args.text
+    try:
+        result = capture_mod.capture(text, source=args.source, topic=args.topic)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    print(result.render(), end="")
     return 0
 
 
