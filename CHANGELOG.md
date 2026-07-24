@@ -26,26 +26,29 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
-- **Optional PDF text-layer pre-pass** (the 2026-07 audit's backlog #10 — the PDF half of its
-  "locators into PDF/Office/image sources are never offline-verified" finding). With the
-  optional, pure-Python [pypdf](https://pypi.org/project/pypdf/) installed
-  (`pip install cite-citadel[pdf]`; the new `CITADEL_PDF_TEXT` knob defaults to `auto` =
-  on-when-importable), a genuine PDF (`%PDF-` magic) ingests through a new `citadel/pdftext.py`
+- **PDF text-layer pre-pass** (the 2026-07 audit's backlog #10 — the PDF half of its
+  "locators into PDF/Office/image sources are never offline-verified" finding).
+  [pypdf](https://pypi.org/project/pypdf/) ships as a **bundled runtime dependency** (PDFs are one
+  of the commonest `raw/` source classes, so the offline-verifiable path is on by default — pypdf
+  is pure-Python, BSD, with no transitive runtime deps; `pip install cite-citadel[pdf]` stays a
+  no-op compat alias). With the new `CITADEL_PDF_TEXT` knob (default `auto` = on when pypdf
+  imports), a genuine PDF (`%PDF-` magic) ingests through a new `citadel/pdftext.py`
   seam: its embedded text layer is extracted ONCE per content into a `[p. N]`-page-marked,
   line-stable text the agent reads under new `pdf`/`pdf-reconcile` kinds while citing the
   original `.pdf` — so PDF citations carry real `lines A-B` locators instead of agent-trusted
   `p. N` ones. The extraction is cached content-addressed in `.citadel_pdftext/` beside the wiki
-  (pruned when the source is deleted or its bytes change) and doubles as the offline
+  (pruned by sha when the source is deleted or its bytes change, guarded so byte-identical
+  siblings keep the shared entry) and doubles as the offline
   verification text: `citadel lint`/curate verify PDF line locators against it, `wiki_raw`/
   `citadel raw` serve and slice it, and the viewer embeds it ("Text layer extracted from the
   original PDF"). Large PDFs now chunk correctly — line windows over ONE full extraction (the
   audio contract: numbering never rebases) instead of being unchunkable. Everything is
-  best-effort by design: pypdf missing, `CITADEL_PDF_TEXT=0`, a scanned/encrypted/corrupt PDF
+  best-effort by design: `CITADEL_PDF_TEXT=0`, a scanned/encrypted/corrupt PDF
   (or any extraction failure) falls back per source to the pre-existing agent-native read —
   the pre-pass can never fail a session — and `p. N` page locators stay legal for the fallback
   and for figure-only facts in `CITADEL_PDF_MODE=images` (which still has the agent open the
   original PDF for figures on top of the extraction). `citadel doctor` gained a "PDF text"
-  advisory (WARN only when `CITADEL_PDF_TEXT=1` without pypdf); `formats/pdf.md` now teaches
+  advisory (WARN only if the bundled pypdf was force-removed); `formats/pdf.md` teaches
   both setups.
 
 - **Conversational capture bridge** (the 2026-07 audit's backlog #5 — the last of the audit's

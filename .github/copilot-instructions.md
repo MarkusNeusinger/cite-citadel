@@ -9,8 +9,9 @@ sync when either changes.
 personal wiki in Google's [Open Knowledge Format](../docs/okf-reference.md), with an MCP server so an
 AI can search and read it. It implements Karpathy's LLM-Wiki pattern: drop arbitrary text-bearing
 files into `raw/`, and one agentic CLI session per source folds each into a cross-linked OKF wiki
-under `wiki/`. Pure Python 3.12, KISS. Runtime deps are only `mcp` and `pyyaml` — **there is no LLM
-SDK and no API key**: ingest shells out to a coding-agent CLI you already have logged in
+under `wiki/`. Pure Python 3.12, KISS. Runtime deps are only `mcp`, `pyyaml`, and `pypdf` (all
+pure-Python, no native/transitive weight) — **there is no LLM SDK and no API key**: ingest shells
+out to a coding-agent CLI you already have logged in
 (`claude`/`copilot`/`gemini`).
 
 ## Commands
@@ -178,7 +179,7 @@ it is itself a workspace.
   source is extracted to text first; a pending image is read visually; a pending audio/video
   recording (`CITADEL_AUDIO_SUPPORT`, opt-in) is transcribed through the whisper seam
   (`transcribe.py`, cached in `.citadel_transcripts/` beside the wiki) and the agent reads the
-  `[HH:MM:SS]`-stamped transcript; a pending PDF (optional pypdf installed — `CITADEL_PDF_TEXT`,
+  `[HH:MM:SS]`-stamped transcript; a pending PDF (pypdf is a bundled dep — `CITADEL_PDF_TEXT`,
   default auto) gets its text layer extracted (`pdftext.py`, cached in `.citadel_pdftext/`) and
   the agent reads the `[p. N]`-marked extraction, falling back to the direct agent read when
   there is no usable text layer; a pending source larger than
@@ -283,7 +284,7 @@ is dispatched. `transcribe.py` is the whisper-CLI seam for audio/video sources
 (`CITADEL_AUDIO_SUPPORT`, opt-in): one shell-out per content, the `[HH:MM:SS]`-per-line transcript
 cached content-addressed in `.citadel_transcripts/` beside the wiki — the same cached text
 `lint`/`wiki_raw`/the viewer verify and serve audio citations against; `transcript_for` is the
-ingest seam tests monkeypatch. `pdftext.py` is the same idea for PDFs (optional pypdf,
+ingest seam tests monkeypatch. `pdftext.py` is the same idea for PDFs (bundled pypdf,
 `CITADEL_PDF_TEXT`): the extracted `[p. N]`-marked text layer, cached in `.citadel_pdftext/`,
 read under the `pdf`/`pdf-reconcile` kinds and verified/served by `lint`/`wiki_raw`/the viewer;
 `text_for` is its (never-raising, best-effort) ingest seam. `curate.py` is the second lifecycle and `status.py` the read-only per-source state
@@ -341,7 +342,7 @@ CLI-only, `wiki_lint`/`wiki_status` close the `lint`/`status` gaps from the MCP 
   `desktop.ini`, `~$` locks, …; a `+` prefix extends the built-in defaults), `CITADEL_WIKI_LANG`
   (target language of all wiki prose, default `en`; verbatim quotes stay original),
   `CITADEL_PDF_MODE` (`text` | `images` — whether the agent also reads a PDF's figures),
-  `CITADEL_PDF_TEXT` (`auto` | `1` | `0` — the optional pypdf text-layer pre-pass),
+  `CITADEL_PDF_TEXT` (`auto` | `1` | `0` — the bundled-pypdf text-layer pre-pass),
   `CITADEL_STYLE_PROFILES` (opt-in persona/style capture on `persons/` pages, default `0`),
   `CITADEL_WIKI_GIT` (wiki-history auto-commit after ingest/curate: `auto` acts only when the wiki
   dir is its own git repo, `1` also `git init`s it, `0` off) + `CITADEL_WIKI_GIT_REMOTE` (optional

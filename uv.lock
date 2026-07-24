@@ -110,6 +110,7 @@ name = "cite-citadel"
 source = { editable = "." }
 dependencies = [
     { name = "mcp" },
+    { name = "pypdf" },
     { name = "pyyaml" },
 ]
 
@@ -120,7 +121,6 @@ pdf = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "pypdf" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
@@ -129,6 +129,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "mcp", specifier = ">=1.2" },
+    { name = "pypdf", specifier = ">=4" },
     { name = "pypdf", marker = "extra == 'pdf'", specifier = ">=4" },
     { name = "pyyaml", specifier = ">=6.0" },
 ]
@@ -136,7 +137,6 @@ provides-extras = ["pdf"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "pypdf", specifier = ">=4" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-cov", specifier = ">=5" },
     { name = "ruff", specifier = ">=0.15" },

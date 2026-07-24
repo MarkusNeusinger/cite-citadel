@@ -649,13 +649,13 @@ def _pdf_text_mode() -> str:
     return "auto"
 
 
-# PDF text-layer pre-pass (citadel/pdftext.py): when the OPTIONAL pure-Python pypdf dependency is
-# installed (`pip install cite-citadel[pdf]`), a PDF's embedded text layer is extracted once per
-# content and the agent reads the extraction — giving real, offline-verifiable `lines A-B`
-# locators (lint/wiki_raw/viewer check them against the same cached text) and correct large-PDF
-# chunking. Modes: "auto" (default) — on exactly when pypdf is importable; "1" — force on (a
-# missing pypdf then falls back per source, with a doctor warning); "0" — force off (the agent
-# opens the PDF itself; `p. N` page locators, agent-verified — the pre-pre-pass behavior).
+# PDF text-layer pre-pass (citadel/pdftext.py): pypdf is a bundled runtime dependency (PDFs are a
+# common raw/ class), so a PDF's embedded text layer is extracted once per content and the agent
+# reads the extraction — giving real, offline-verifiable `lines A-B` locators (lint/wiki_raw/viewer
+# check them against the same cached text) and correct large-PDF chunking. Modes: "auto" (default)
+# — on when pypdf imports, which it does unless it was deliberately uninstalled; "1" — force on (a
+# force-removed pypdf then falls back per source, with a doctor warning); "0" — force off (the
+# agent opens the PDF itself; `p. N` page locators, agent-verified — the pre-pre-pass behavior).
 # Orthogonal to CITADEL_PDF_MODE: "images" still has the agent open the ORIGINAL PDF for its
 # figures on top of the extraction.
 PDF_TEXT: str = _pdf_text_mode()

@@ -38,13 +38,17 @@ classifiers = [
     "Topic :: Software Development :: Documentation",
     "Topic :: Text Processing :: Markup :: Markdown",
 ]
-# Ingest runs through a coding-agent CLI you already have logged in, so there is
-# no LLM SDK / API-key dependency here — just the MCP server SDK and a YAML parser.
-dependencies = ["mcp>=1.2", "pyyaml>=6.0"]
+# Ingest runs through a coding-agent CLI you already have logged in, so there is no LLM SDK /
+# API-key dependency here — just the MCP server SDK, a YAML parser, and pypdf. pypdf is a hard
+# dependency (not an optional extra) because PDFs are one of the commonest raw/ source classes:
+# it powers the text-layer pre-pass (citadel/pdftext.py) so PDF citations get real, offline-
+# verifiable `lines A-B` locators out of the box. It is pure-Python, BSD, with no transitive
+# runtime deps — the same lightweight profile as pyyaml.
+dependencies = ["mcp>=1.2", "pyyaml>=6.0", "pypdf>=4"]
 
-# Optional, pure-Python extras. `pdf` enables the PDF text-layer pre-pass (citadel/pdftext.py):
-# PDFs ingest via an extracted, cached text layer, giving real `lines A-B` locators that
-# lint/wiki_raw/the viewer verify offline. Without it, PDFs are read agent-natively (unchanged).
+# `pdf` is now a NO-OP compatibility alias: pypdf ships by default (see dependencies above), so
+# `pip install cite-citadel[pdf]` still resolves and installs nothing extra. Kept so existing
+# install commands / requirements files don't break.
 [project.optional-dependencies]
 pdf = ["pypdf>=4"]
 
@@ -54,9 +58,10 @@ Repository = "https://github.com/MarkusNeusinger/cite-citadel"
 Issues = "https://github.com/MarkusNeusinger/cite-citadel/issues"
 
 # uv installs the `dev` group by default on `uv sync` (PEP 735) — the ONLY place dev deps live.
+# pypdf is a runtime dependency now, so the offline pdftext tests exercise the REAL extraction
+# path without listing it here.
 [dependency-groups]
-# pypdf sits here too so the offline pdftext tests exercise the REAL extraction path.
-dev = ["pypdf>=4", "pytest>=8", "pytest-cov>=5", "ruff>=0.15"]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.15"]
 
 [project.scripts]
 citadel = "citadel.cli:main"

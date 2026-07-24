@@ -30,8 +30,8 @@ Your run instruction also names the active **PDF mode**:
 
 ## B) No prepared file (agent-native reading)
 
-No text layer was extracted (pypdf not installed, a scanned/image-only PDF, or the pre-pass is
-off). Open and read the PDF directly with your file reader.
+No text layer was extracted (a scanned/image-only PDF, or the pre-pass was turned off with
+`CITADEL_PDF_TEXT=0`). Open and read the PDF directly with your file reader.
 
 - Such a PDF is read **whole, unchunked by design** — the system never splits the PDF file into
   segments the way it does large text sources, because page numbers, figures, and layout carry

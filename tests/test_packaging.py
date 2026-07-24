@@ -39,15 +39,19 @@ def test_dunder_version_in_the_configured_file_matches_the_package():
 
 def test_dev_deps_live_only_in_the_pep735_dependency_group():
     """No duplicated [project.optional-dependencies].dev table — [dependency-groups] (PEP 735,
-    what `uv sync` installs by default) is the ONE place dev deps live. Runtime extras are a
-    different thing and stay allowed (the `pdf` extra ships the optional pypdf pre-pass)."""
+    what `uv sync` installs by default) is the ONE place dev deps live. The only extra is the
+    no-op `pdf` compat alias (pypdf ships as a hard runtime dep now)."""
     data = _pyproject()
     extras = data["project"].get("optional-dependencies", {})
     assert "dev" not in extras
     assert set(extras) <= {"pdf"}, f"unexpected extras: {sorted(extras)}"
     assert any(dep.startswith("pypdf") for dep in extras.get("pdf", []))
-    assert any(dep.startswith("pytest") for dep in data["dependency-groups"]["dev"])
-    assert any(dep.startswith("ruff") for dep in data["dependency-groups"]["dev"])
+    dev = data["dependency-groups"]["dev"]
+    assert any(dep.startswith("pytest") for dep in dev)
+    assert any(dep.startswith("ruff") for dep in dev)
+    # pypdf is a RUNTIME dependency (PDFs are a common raw/ class — offline-verifiable locators
+    # out of the box), not a dev-group or optional-only one.
+    assert any(dep.startswith("pypdf") for dep in data["project"]["dependencies"])
 
 
 def test_pyproject_metadata_is_free_of_vendor_marks():

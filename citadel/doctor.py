@@ -277,31 +277,24 @@ def check_pdf_mode() -> Check:
 
 
 def check_pdf_text() -> Check:
-    """Advisory line for the optional pypdf text-layer pre-pass (:mod:`citadel.pdftext`): WARN
-    only when the user forced it on (``CITADEL_PDF_TEXT=1``) but pypdf is not installed — every
-    PDF then silently falls back to agent-native reading. Otherwise a plain state echo: on (with
-    what it buys), or off with the one-line install pointer."""
+    """Advisory line for the pypdf text-layer pre-pass (:mod:`citadel.pdftext`). pypdf is a bundled
+    dependency, so this WARNs only in the unusual case that it was force-removed from the
+    environment (``CITADEL_PDF_TEXT`` on/auto but pypdf unimportable) — every PDF then falls back
+    to agent-native reading. Otherwise a plain state echo: on (with what it buys), or off."""
     from . import pdftext
 
     have = pdftext.available()
     mode = config.PDF_TEXT
     if mode == "off":
         return Check(OK, "PDF text", "text-layer pre-pass off (CITADEL_PDF_TEXT=0) - PDF locators stay agent-verified")
-    if mode == "on" and not have:
+    if not have:
         return Check(
             WARN,
             "PDF text",
-            "CITADEL_PDF_TEXT=1 but pypdf is not installed - every PDF falls back to agent-native "
-            "reading; install it (`pip install cite-citadel[pdf]`, or `pip install pypdf` into the "
-            "same environment)",
-        )
-    if not have:
-        return Check(
-            OK,
-            "PDF text",
-            "pypdf not installed - PDFs are read agent-natively and their locators stay agent-verified; "
-            "install cite-citadel[pdf] to extract text layers and make `lines A-B` PDF citations "
-            "offline-verifiable",
+            "pypdf (a bundled dependency) is not importable - it was force-removed from this "
+            "environment, so PDFs fall back to agent-native reading and their locators stay "
+            "agent-verified; reinstall it (`pip install pypdf`, or reinstall cite-citadel) to make "
+            "`lines A-B` PDF citations offline-verifiable",
         )
     return Check(OK, "PDF text", "text-layer pre-pass on (pypdf) - PDF `lines A-B` locators verify offline")
 
