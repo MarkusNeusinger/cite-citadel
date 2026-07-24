@@ -141,6 +141,31 @@ jobs:
               print(f"all showcase stamps match the current rulebook ({current})")
           EOF
 
+  # The offline suite never opens a browser; the ~2k-line viewer app.js is smoke-tested here in
+  # real headless Chromium (boot, search, page open, citation popover — zero page errors). One
+  # ubuntu cell is enough: the JS under test is identical on every OS, and the matrix cells skip
+  # the file cleanly (the optional `browser` dependency group is not installed there).
+  viewer-smoke:
+    name: viewer-smoke (headless chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install dependencies (+ browser group)
+        run: uv sync --dev --group browser
+
+      - name: Install headless chromium
+        run: uv run playwright install --with-deps chromium
+
+      - name: Run the viewer browser smoke test
+        run: uv run pytest tests/test_viewer_browser.py -q
+
   lint:
     runs-on: ubuntu-latest
     steps:

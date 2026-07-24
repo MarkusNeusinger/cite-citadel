@@ -26,6 +26,23 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Tests for the two riskiest hand-rolled surfaces** (the 2026-07 audit's backlog #8). The
+  222-line CFBF (OLE2) binary parser in `citadel/extract_ole.py` — previously exercised for real
+  only by the kontor corpus, which needs a live LLM run — now has a spec-shaped CFBF *writer*
+  fixture in `tests/test_extract_ole.py` pinning every container path offline: mini-FAT/
+  mini-stream storage, multi-sector streams and directory chains, a DIFAT sector chain past the
+  header's 109 slots, the BIFF5 `Book` fallback and `Workbook` preference, and the corruption
+  guards (FAT and mini-FAT cycles terminate, out-of-file chains / truncation / a bad sector
+  shift / a rootless container all degrade to whole-file salvage, never a crash). And the
+  ~2k-line offline-viewer `app.js` — previously asserted on only as a built HTML string — gains
+  a headless-Chromium smoke test (`tests/test_viewer_browser.py`): boot + sidebar render,
+  search filter/recover, hash-routed page open, the citation hover popover, and `/`-to-search
+  keyboard focus, with zero JS page errors asserted throughout. The browser test is opt-in (a
+  new `browser` dependency group; it self-skips without playwright, so the default suite stays
+  offline and browser-free) and runs in CI as the dedicated ubuntu `viewer-smoke` job;
+  `CITADEL_TEST_BROWSER` points it at a pre-provisioned chromium build where downloads are
+  unavailable.
+
 - **Hermetic agent sessions + an honest model knob** (the 2026-07 audit's backlog #6). Ingest
   sessions now run **hermetically by default**: when the installed backend CLI advertises a
   session-isolation flag (claude `--bare` — skip user hooks/`CLAUDE.md`/MCP discovery), it is
