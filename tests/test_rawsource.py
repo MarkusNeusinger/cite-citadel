@@ -219,14 +219,24 @@ def test_audio_source_without_cache_names_the_knob(tmp_citadel):
 
 def test_audio_source_served_via_manifest_sha_without_rehashing(tmp_citadel, monkeypatch):
     """The cache lookup keys on the MANIFEST's recorded sha — the content the wiki's citations
-    were built from — so serving a citation never re-hashes a multi-GB recording."""
+    were built from — so serving a citation never re-hashes a multi-GB recording, and the gate's
+    one manifest read serves the lookup too (no second load per request)."""
     key = _cite_audio(tmp_citadel, "memo.mp3", "[00:00:01] Hello.\n")
 
     def boom(path):
         raise AssertionError("wiki_raw must not re-hash the media file")
 
+    loads = {"n": 0}
+    real_load = manifest.load
+
+    def counting_load(*args, **kwargs):
+        loads["n"] += 1
+        return real_load(*args, **kwargs)
+
     monkeypatch.setattr(manifest, "file_sha256", boom)
+    monkeypatch.setattr(manifest, "load", counting_load)
     assert "[00:00:01] Hello." in rawsource.raw_text(key)
+    assert loads["n"] == 1  # the provenance gate's read is the ONLY manifest read
 
 
 def test_text_file_renamed_mp3_is_served_as_text(tmp_citadel):
