@@ -324,6 +324,33 @@ def check_pdf_text() -> Check:
     return Check(OK, "PDF text", "text-layer pre-pass on (pypdf) - PDF `lines A-B` locators verify offline")
 
 
+def check_resume() -> Check:
+    """State echo for resume checkpoints (:mod:`citadel.resume`), naming any that are waiting.
+
+    There is no dependency that can be missing here, so this never FAILs and never WARNs: it exists
+    because a banked half-import is otherwise completely invisible — "raw/book.pdf (3/7 segments)"
+    is what tells you the next run continues there instead of re-buying the first three passes.
+    (A bad ``CITADEL_RESUME`` value is already reported by the config-fallback check.)"""
+    from . import resume
+
+    if not config.RESUME:
+        return Check(OK, "resume", "resume checkpoints off (CITADEL_RESUME=0) - a chunked source restarts at segment 1")
+    waiting = resume.pending()
+    if not waiting:
+        return Check(OK, "resume", "resume checkpoints on - none pending")
+    from . import llm
+
+    def describe(p) -> str:
+        # The banked spend appears NOWHERE else: an unfinished source has no manifest entry, so
+        # `citadel status` files it under Failed with no cost at all.
+        cost = f", {llm.format_cost(p.cost_usd)} banked" if p.cost_usd is not None else ""
+        return f"{p.key} ({p.completed}/{p.total} segments{cost})"
+
+    listed = ", ".join(describe(p) for p in waiting[:5])
+    more = f", +{len(waiting) - 5} more" if len(waiting) > 5 else ""
+    return Check(OK, "resume", f"{len(waiting)} checkpoint(s) waiting to continue: {listed}{more}")
+
+
 def check_audio_support() -> Check:
     """WARN when ``CITADEL_AUDIO_SUPPORT=1`` but the whisper-class CLI it needs is not on PATH —
     every audio/video source would fail (and retry) until it is installed. A plain status echo
@@ -545,6 +572,7 @@ def run() -> DoctorReport:
             check_pdf_mode(),
             check_pdf_text(),
             check_audio_support(),
+            check_resume(),
             check_wiki_git(),
             check_update(),
             check_workspace_coherence(),

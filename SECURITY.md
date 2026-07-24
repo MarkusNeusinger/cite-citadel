@@ -38,7 +38,11 @@ cite-citadel has a small, honest data-flow surface — understanding it is the b
   i.e. by default, unless `CITADEL_PDF_TEXT=0` or pypdf was force-removed), which holds each PDF's
   extracted text the same way —
   transcription itself runs fully locally (a whisper-class CLI on your machine), but treat the
-  cache like the raw recordings themselves.
+  cache like the raw recordings themselves. Resume checkpoints (`CITADEL_RESUME`, on by default)
+  are the same class of derived state: `.citadel_resume/` next to the wiki dir banks the wiki pages
+  a chunked source's completed segments produced, in plaintext, until that source finishes (or an
+  age sweep clears it). It only ever materializes for a large source whose run was interrupted;
+  `CITADEL_RESUME=0` turns it off entirely, at the cost of re-paying for those segments.
 - **Billing shadow.** If a provider API key sits in your environment while `CITADEL_LLM_CLI=claude`,
   the CLI may bill the metered API instead of your subscription. `citadel doctor` warns about this;
   the same subscription-vs-API story is covered in the terms note above.

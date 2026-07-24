@@ -34,6 +34,8 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import os
+import shutil
+import stat
 import time
 from pathlib import Path, PurePosixPath
 
@@ -395,6 +397,43 @@ def robust_mkdir(path: Path | str, attempts: int = 5) -> None:
             time.sleep(0.2 * (attempt + 1))
 
 
+def robust_rmtree(path: Path | str, attempts: int = 5) -> None:
+    """Best-effort recursive delete that tolerates the Windows read-only bit and the transient
+    locks/latency common on network shares. Retries a few times and never raises — a tree that
+    still will not delete is left for the caller (which overwrites it via ``dirs_exist_ok=True``,
+    or sweeps it next run), which beats aborting the whole run.
+
+    Replaces a bare ``shutil.rmtree(..., ignore_errors=True)``: that swallowed the failure and left
+    the directory in place, which then made a follow-up ``copytree`` crash with ``FileExistsError``.
+    Lives here (beside :func:`robust_mkdir`/:func:`atomic_write_text`) because every module that
+    writes derived state beside the wiki needs the same hardening — ingest's staging copies and
+    resume's checkpoint slots alike."""
+
+    def _clear_readonly(func, p, _exc):
+        # Windows marks some files read-only; add the write bit (OR onto the existing mode so we
+        # don't wipe read/execute — clearing a directory's execute bit on POSIX would block the
+        # traversal the retried delete needs) and retry the one failed operation.
+        try:
+            os.chmod(p, os.stat(p).st_mode | stat.S_IWRITE)
+            func(p)
+        except OSError:
+            pass
+
+    for attempt in range(attempts):
+        if not os.path.exists(path):
+            return
+        # "Never raises" has to hold literally: `onexc` covers per-entry failures, but rmtree can
+        # still raise from the call itself (the target vanishing between the exists() check and the
+        # walk, a non-directory, a share error the callback cannot resolve). This runs in `finally`
+        # blocks, where an escaping exception would MASK the original failure — so swallow it and
+        # let the exists() check + retry below decide.
+        with contextlib.suppress(OSError):
+            shutil.rmtree(path, onexc=_clear_readonly)
+        if not os.path.exists(path):
+            return
+        time.sleep(0.2 * (attempt + 1))
+
+
 def atomic_write_text(path: Path | str, text: str, attempts: int = 4) -> None:
     """Write ``text`` to ``path`` atomically: a same-directory temp sibling + ``os.replace``, so a
     concurrent reader never sees a torn file and a crash mid-write leaves the previous version
@@ -692,6 +731,18 @@ DEDUP_BY_BASENAME: bool = _bool_env("CITADEL_DEDUP_BY_BASENAME", True)
 # only genuinely large sources are split; lower it for a small-context backend, raise it (or set 0
 # to disable) for a very large one.
 MAX_SOURCE_CHARS: int = _int_env("CITADEL_MAX_SOURCE_CHARS", 300000)
+
+# Resume checkpoints for CHUNKED sources (citadel/resume.py). Promotion stays all-or-nothing — the
+# live wiki only ever holds fully-imported sources — but when ON (default) each completed segment
+# records the delta it produced in a dotdir sibling of the wiki (.citadel_resume/), so a run that
+# died at segment N does not throw away segments 1..N-1's paid agent work: the next run replays
+# that delta into a fresh staging copy, re-validates it, and continues at segment N. Every reuse is
+# guarded (source sha, model, rules version, segment content, prompt knobs, per-page base state,
+# re-validation) and every guard failure falls back to a full restart at segment 1 in the same run.
+# Default ON like the PDF text pre-pass — it needs no extra binary and changes no wiki content, it
+# only stops paying twice; 0 turns it off (nothing is written or read) if the plaintext page
+# sidecar is unwanted. Only chunked sources ever create one.
+RESUME: bool = _bool_env("CITADEL_RESUME", True)
 
 # Wiki history (git). After every run that CHANGED the wiki (ingest or curate), citadel can commit
 # the whole wiki directory so every change is a reviewable diff — the long-term audit trail

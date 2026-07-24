@@ -203,7 +203,9 @@ def test_keyboardinterrupt_mid_segment_discards_whole_source(tmp_citadel, fake_a
     the capture-finalize-reraise semantics — the interrupt still propagates AFTER finalization ran
     for the previously completed source — and leaves the live wiki with NOTHING from the segmented
     source (previously segment 1's page was already promoted; that partial is flipped away by
-    the single staging copy). The whole source retries from segment 1 next run."""
+    the single staging copy). The source stays PENDING, so the next run re-imports it — continuing
+    at segment 2 from the resume checkpoint segment 1 wrote (tests/test_ingest_resume.py), which
+    changes nothing about what is on the live wiki right now: still nothing."""
     wiki, raw = tmp_citadel.wiki, tmp_citadel.raw
     monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 120)
     (raw / "a.md").write_text("a small source that fits one pass\n", encoding="utf-8")

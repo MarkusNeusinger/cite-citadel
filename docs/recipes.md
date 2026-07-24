@@ -53,6 +53,7 @@ wiki-history layer only auto-commits a wiki dir that is its *own* repo — in th
 .citadel_run.lock
 .citadel_pdftext/        # regenerable content-addressed caches
 .citadel_transcripts/
+.citadel_resume/         # banked segments of an interrupted chunked ingest
 wiki/.citadel_viewer.html
 ```
 

@@ -31,6 +31,15 @@ lose no correct pages. Heavy or unattended ingest against a consumer subscriptio
 provider's rate limits — space the runs out, or use the tier the provider designates for
 programmatic use.
 
+A source large enough to be **chunked** (over `CITADEL_MAX_SOURCE_CHARS`) runs several sessions, and
+the retry no longer starts over: each completed segment is checkpointed, so the next run replays
+that work and continues at the segment that died (`citadel doctor` lists what is waiting, e.g.
+`resume: 1 checkpoint(s) waiting to continue: raw/book.txt (3/7 segments)`). The checkpoint is
+dropped automatically whenever it could no longer be trusted — you edited the source, changed model
+/rules/language, or another run changed a page it had banked — and then the source is re-imported in
+full. To force that yourself, delete `.citadel_resume/` next to the wiki dir, or set
+`CITADEL_RESUME=0`.
+
 ### Windows: `citadel` / `citadel.exe` is blocked or missing
 
 Antivirus can quarantine the `citadel.exe` shim `uv` generates. Use the portable invocation

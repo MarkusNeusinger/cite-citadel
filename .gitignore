@@ -247,6 +247,11 @@ _site/
 # extractions, a dotdir sibling of the wiki. Per-machine derived state holding document content.
 .citadel_pdftext/
 
+# citadel resume checkpoints (CITADEL_RESUME): a chunked source's completed segments, banked as a
+# dotdir sibling of the wiki so an interrupted run continues instead of re-paying. Per-machine
+# derived state holding wiki page text — never commit.
+.citadel_resume/
+
 # JetBrains IDE
 .idea/
 
