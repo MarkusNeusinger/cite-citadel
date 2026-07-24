@@ -272,6 +272,30 @@ def test_deleted_pdf_prunes_its_cached_extraction(tmp_citadel, fake_agent, cite_
     assert not cached_file.exists()  # pruned with the source
 
 
+def test_deleted_pdf_under_a_non_pdf_name_still_prunes_its_cache(tmp_citadel, fake_agent, cite_page):
+    """A PDF routes by %PDF- MAGIC, not by extension, so it can be ingested under any name — and
+    its cached extraction must still be pruned on delete (else plaintext orphans in the cache).
+    The delete path prunes BY SHA, never gated on the extension."""
+    raw = tmp_citadel.raw
+    _make_pdf(raw / "report.bin", TWO_PAGES)  # a genuine PDF wearing a .bin name
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+        if kind == "delete":
+            delete_citing_pages(rel_key)
+        else:
+            cite_page("misc/report.md", rel_key, "A pdf fact.")
+
+    fake_agent(side_effect=fake)
+    ingest.ingest()
+    assert list(pdftext.cache_dir().glob("*.md")), "a magic-detected PDF should be extracted+cached"
+
+    (raw / "report.bin").unlink()
+    report = ingest.ingest()
+
+    assert report.sources_deleted == ["raw/report.bin"]
+    assert list(pdftext.cache_dir().glob("*.md")) == []  # pruned despite the non-.pdf name
+
+
 def test_prune_guard_spares_a_sha_another_entry_still_holds(tmp_citadel):
     """The cache is content-addressed, so two byte-identical sources under different keys share ONE
     cache entry. ``_sha_shared_by_other_entry`` is the guard that keeps a prune from deleting a

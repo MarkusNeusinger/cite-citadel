@@ -2266,13 +2266,14 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             # it holds the source's content in plaintext (SECURITY.md) — so prune it, but only
             # when NO other tracked source still shares those bytes (the cache is content-keyed;
             # a byte-identical sibling must keep the entry it verifies against). The file is gone,
-            # so the extension is the best identity check left.
+            # so its bytes can't be re-sniffed: prune BOTH caches BY SHA — each is a safe no-op
+            # when there is no entry for this sha (a plain-text delete touches nothing). Crucially
+            # this must NOT gate on the extension: a PDF routes by %PDF- MAGIC (is_pdf_file), so it
+            # can be cached under any name, and an ext gate would orphan its plaintext extraction.
             del_sha = manifest.entry_sha(entry) if entry is not None else None
             if entry is not None and not _sha_shared_by_other_entry(manifest_dict, del_sha, key):
-                if transcribe.is_audio_ext(Path(key)):
-                    transcribe.prune_cached(del_sha)
-                elif pdftext.is_pdf_ext(Path(key)):
-                    pdftext.prune_cached(del_sha)
+                transcribe.prune_cached(del_sha)
+                pdftext.prune_cached(del_sha)
             manifest_dict.pop(key, None)
             failures.clear(failures_dict, key)
             manifest.save(manifest_dict)
