@@ -62,6 +62,10 @@ Issues = "https://github.com/MarkusNeusinger/cite-citadel/issues"
 # path without listing it here.
 [dependency-groups]
 dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.15"]
+# Opt-in, NOT part of `uv sync`'s default groups: the headless-chromium smoke test for the
+# offline viewer's JS (tests/test_viewer_browser.py — it self-skips when playwright is absent).
+# Setup: `uv sync --group browser && uv run playwright install chromium`.
+browser = ["playwright>=1.49"]
 
 [project.scripts]
 citadel = "citadel.cli:main"
