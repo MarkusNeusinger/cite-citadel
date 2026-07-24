@@ -116,18 +116,39 @@ def cache_dir() -> Path:
     return Path(config.WIKI_DIR).parent / CACHE_DIR_NAME
 
 
+# A sha256 hexdigest and nothing else — the ONLY string shape allowed to become a cache filename.
+_SHA256_RE = re.compile(r"[0-9a-f]{64}")
+
+
+def _valid_sha(sha: str | None) -> str | None:
+    """``sha`` normalized to a lowercase sha256 hexdigest, or None when it is not one. Callers
+    that receive a sha from PERSISTED data (a manifest entry someone could have hand-edited or
+    corrupted) must pass it through here first: an arbitrary string carrying path separators
+    must never reach :func:`cache_path`."""
+    sha = (sha or "").strip().lower()
+    return sha if _SHA256_RE.fullmatch(sha) else None
+
+
 def cache_path(sha: str) -> Path:
     """Where the transcript for a source with content hash ``sha`` lives — content-addressed, so
-    a changed recording re-transcribes and an unchanged one never does."""
-    return cache_dir() / f"{sha}.md"
+    a changed recording re-transcribes and an unchanged one never does. Raises ``ValueError`` on
+    anything that is not a sha256 hexdigest (defense in depth behind :func:`_valid_sha`: a
+    malformed value from persisted data must never traverse out of the cache dir)."""
+    checked = _valid_sha(sha)
+    if checked is None:
+        raise ValueError(f"not a sha256 hexdigest: {sha!r}")
+    return cache_dir() / f"{checked}.md"
 
 
 def cached_transcript(path: Path, sha: str | None = None) -> str | None:
     """The cached transcript text for ``path``, or None when there is none to serve: never
     transcribed on this machine, the cache was deleted, the file itself is unreadable — or the
     cached transcript is EMPTY (whisper found no speech; there is nothing to verify against).
-    ``sha`` skips the re-hash when the caller already knows the content hash. Never raises — the
-    read-only consumers (lint, ``wiki_raw``, the viewer) degrade to "no offline text" instead."""
+    ``sha`` skips the re-hash when the caller already knows the content hash; a value that is not
+    a sha256 hexdigest (a corrupted manifest entry) falls back to the safe re-hash. Never raises
+    — the read-only consumers (lint, ``wiki_raw``, the viewer) degrade to "no offline text"
+    instead."""
+    sha = _valid_sha(sha)
     if sha is None:
         try:
             sha = manifest.file_sha256(path)
@@ -168,8 +189,10 @@ def prune_cached(sha: str | None) -> None:
     """Best-effort removal of the cache entry for ``sha`` — called by ingest when a recording is
     DELETED from raw/ or its bytes CHANGED (re-recorded): the old transcript would otherwise sit
     orphaned forever, and it holds the recording's spoken content in plaintext (SECURITY.md).
-    Never raises; a None/empty ``sha`` is a no-op."""
-    if not sha:
+    Never raises; a None/empty/non-hexdigest ``sha`` (the manifest is persisted data someone
+    could have corrupted — such a value must never become an unlink path) is a no-op."""
+    sha = _valid_sha(sha)
+    if sha is None:
         return
     try:
         cache_path(sha).unlink(missing_ok=True)
@@ -263,6 +286,7 @@ def transcript_for(src: Path, sha: str | None = None) -> str:
 
     The cache write is best-effort: a cache dir that cannot be written costs re-transcription next
     run and offline locator verification (lint/``wiki_raw`` read the cache), never the session."""
+    sha = _valid_sha(sha)
     if sha is None:
         sha = manifest.file_sha256(src)
     target = cache_path(sha)

@@ -328,6 +328,40 @@ def test_cached_transcript_none_without_cache_or_file(tmp_citadel):
     assert transcribe.cached_transcript(tmp_citadel.raw / "gone.mp3") is None  # unreadable file
 
 
+def test_malformed_sha_never_becomes_a_cache_path(tmp_citadel, monkeypatch):
+    """A sha from PERSISTED data (a manifest entry someone hand-edited or corrupted) must never
+    traverse out of the cache dir: cache_path refuses it outright, cached_transcript falls back
+    to the safe re-hash, and prune_cached is a no-op — an outside file is never read or deleted."""
+    from citadel import manifest
+
+    with pytest.raises(ValueError, match="not a sha256 hexdigest"):
+        transcribe.cache_path("../../wiki/index")
+    with pytest.raises(ValueError, match="not a sha256 hexdigest"):
+        transcribe.cache_path("")
+
+    # An uppercase hexdigest is normalized, not refused (same entry as its lowercase form).
+    sha = "AB" * 32
+    assert transcribe.cache_path(sha) == transcribe.cache_path(sha.lower())
+
+    # cached_transcript with a malformed sha: falls back to hashing the file — and still finds
+    # the real entry.
+    src = tmp_citadel.raw / "memo.mp3"
+    _make_mp3(src)
+    monkeypatch.setattr(transcribe, "_run_whisper", lambda p: "[00:00:01] Real entry.\n")
+    transcribe.transcript_for(src)
+    assert transcribe.cached_transcript(src, sha="../../evil") == "[00:00:01] Real entry.\n"
+
+    # prune_cached with a traversal string: no-op — a file outside the cache dir survives.
+    outside = tmp_citadel.root / "precious.md"
+    outside.write_text("do not delete\n", encoding="utf-8")
+    transcribe.prune_cached("../precious")
+    transcribe.prune_cached("../../" + outside.name)
+    assert outside.exists()
+    # And the legitimate entry is still prunable by its real sha.
+    transcribe.prune_cached(manifest.file_sha256(src))
+    assert transcribe.cached_transcript(src) is None
+
+
 def test_corrupted_cache_entry_degrades_and_retranscribes(tmp_citadel, monkeypatch):
     """A cache file that is not valid UTF-8 (disk corruption, a stray write) must keep the
     'never raises' contract: cached_transcript degrades to None for lint/wiki_raw/viewer, and
