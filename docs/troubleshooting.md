@@ -50,6 +50,20 @@ By default (`CITADEL_PDF_MODE=text`) ingest reads a PDF's body text only. Set
 an agent CLI whose reader actually renders PDF pages (a vision-capable backend). The same applies to
 image sources: `CITADEL_IMAGE_SUPPORT=1` (the default) reads recognized images visually.
 
+### An audio/video recording isn't in the wiki
+
+Audio transcript ingest is **opt-in**: set `CITADEL_AUDIO_SUPPORT=1` and install a whisper-class
+CLI (see [configuration — Audio/video sources](configuration.md#audiovideo-sources-whisper);
+`citadel doctor` checks the binary). Two follow-ups worth knowing:
+
+- A recording ingested **while the knob was off** was recorded as unreadable and marked done — it
+  is not re-checked on later runs. After turning the knob on, re-read it deliberately:
+  `citadel ingest --force raw/meeting.mp3`.
+- Transcripts are cached content-addressed in `.citadel_transcripts/` next to the wiki dir, so an
+  unchanged recording is never transcribed twice — including after you switch
+  `CITADEL_WHISPER_MODEL`. To re-transcribe with a better model, delete the file's cache entry
+  (or the whole cache dir) and run `citadel ingest --force <path>`.
+
 ### "Nothing got ingested"
 
 - Run `citadel status` — the read-only per-source state table shows exactly what happened to each

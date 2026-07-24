@@ -26,6 +26,22 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Transcript ingest for audio/video sources via a whisper-CLI seam** (the 2026-07 audit's
+  backlog #3). With `CITADEL_AUDIO_SUPPORT=1` (opt-in, default off), a recognized recording
+  (`.mp3`/`.wav`/`.m4a`/`.mp4`/`.mkv`/…, extension AND magic bytes) is transcribed ONCE through a
+  local whisper-class CLI — a shell-out seam exactly like the agent CLI, no SDK and no API key
+  (`CITADEL_WHISPER_CLI`, openai-whisper flag convention; whisper-ctranslate2 and mlx_whisper are
+  drop-in compatible; `CITADEL_WHISPER_MODEL` and a separate `CITADEL_WHISPER_TIMEOUT` tune it) —
+  and folded in by the new `audio`/`audio-reconcile` session kinds reading the `[HH:MM:SS]`-stamped
+  transcript under the new `formats/transcripts.md` brief: cite the ORIGINAL media file, `lines
+  A-B` locators, unlabeled voices stay roles, mis-heard names/numbers stay hedged. The transcript
+  is cached content-addressed (source sha256) in `.citadel_transcripts/` next to the wiki dir —
+  transcription runs at most once per content, a failed session's retry is free, and the cache IS
+  the offline verification text: `citadel lint` verifies audio-citation locators against it, and
+  `wiki_raw`/`citadel raw` and the offline viewer serve it (a class PDFs still lack). Long
+  recordings chunk through the existing multi-pass folding; a missing/failing whisper binary is a
+  retryable per-source error (never a permanent unreadable mark), and `citadel doctor` gained an
+  `audio` line warning when the knob is on but the binary is missing.
 - **Per-session LLM cost accounting** (the 2026-07 audit's backlog #2). Every agent session's
   cost/usage is now captured from the backend CLI's own report — claude's `--output-format json`
   result envelope (`total_cost_usd` + token counts, cache traffic included) and gemini's

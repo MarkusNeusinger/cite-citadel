@@ -117,6 +117,7 @@ def make_citadel(tmp_path: Path, monkeypatch) -> Callable[..., CitadelTmp]:
             "formats/image.md",
             "formats/pdf.md",
             "formats/office.md",
+            "formats/transcripts.md",
             "genres/prose.md",
         ):
             stub = packaged_rules / rel

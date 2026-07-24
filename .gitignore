@@ -239,6 +239,10 @@ _site/
 # Individual *.log files are already ignored above; this covers the suggested default dir.
 .citadel_llm_logs/
 
+# citadel audio transcript cache (CITADEL_AUDIO_SUPPORT): content-addressed whisper transcripts,
+# a dotdir sibling of the wiki. Per-machine derived state holding spoken content — never commit.
+.citadel_transcripts/
+
 # JetBrains IDE
 .idea/
 

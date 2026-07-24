@@ -178,7 +178,10 @@ it is itself a workspace.
   — Dropbox/OneDrive online-only — and never stat-cached as done, so it ingests once hydrated) /
   deleted (vanished from disk, full runs only) /
   same-basename document duplicates (skipped in favor of one preferred format). A pending Office
-  source is extracted to text first; a pending image is read visually; a pending source larger than
+  source is extracted to text first; a pending image is read visually; a pending audio/video
+  recording (`CITADEL_AUDIO_SUPPORT`, opt-in) is transcribed through a local whisper-class CLI
+  (`transcribe.py`, content-addressed cache `.citadel_transcripts/` beside the wiki) and the agent
+  reads the `[HH:MM:SS]`-stamped transcript; a pending source larger than
   `CITADEL_MAX_SOURCE_CHARS` is folded in over several passes (all against one staging copy — see
   the promote bullet below). `ingest --force <paths>` bypasses the sha short-circuit: the named
   sources land in pending as reconciles (a repo re-digests in full), and the manifest is re-stamped
@@ -224,7 +227,8 @@ the source and rules by path, never embeds file content — which keeps argv tin
 file, whether it reads a source, and its format policy; an unknown kind fails loud. `kind` selects
 the propagation: `ingest` (new), `reconcile` (changed source — update/remove stale facts, don't
 just append), `delete` (source removed — strip its provenance), `repo`/`repo-reconcile` (a whole
-git repo folded as one digest), `image`/`image-reconcile` (an image source read visually), and
+git repo folded as one digest), `image`/`image-reconcile` (an image source read visually),
+`audio`/`audio-reconcile` (an audio/video source read via its whisper transcript), and
 `curate` (improve an existing page cluster against a findings file — reads that file by path, not a
 raw source). A large source is split into segments and folded in over several passes
 (`segment=(part, total)` on `run_ingest_session`, telling later passes to MERGE into earlier ones).
@@ -309,10 +313,16 @@ Office files (stdlib-only): OOXML `.pptx`/`.docx`/`.xlsx` (+ macro-enabled) via 
 and legacy OLE `.ppt`/`.doc`/`.xls` via the CFBF reader + best-effort text salvage in
 `extract_ole.py` (imported lazily, only when a legacy OLE file is dispatched); its
 `extract_media` also pulls embedded raster images out of OOXML files so the agent can view them.
+`transcribe.py` is the whisper-CLI seam for audio/video sources (`CITADEL_AUDIO_SUPPORT`, opt-in):
+detection by extension+magic, one shell-out per content (openai-whisper flag convention), the
+`[HH:MM:SS]`-per-line transcript cached content-addressed in `.citadel_transcripts/` beside the
+wiki — the same cached text `lint`/`wiki_raw`/the viewer verify and serve audio citations against;
+`transcript_for` is the ingest seam tests monkeypatch (whisper itself is never an LLM concern, so
+this lives beside `extract.py`, not in `llm.py`).
 `curate.py` is the second lifecycle (offline detectors + staged cluster sessions; see above).
 `status.py` is the read-only per-source state view; `doctor.py` (`citadel doctor`) is the read-only
 setup health check (OK/WARN/FAIL lines over workspace resolution, the rules tree, the agent CLI on
-PATH, raw-root reachability, manifest parse + stamp, failures summary, the API-key/PDF
+PATH, raw-root reachability, manifest parse + stamp, failures summary, the API-key/PDF/audio
 advisories, the wiki-git state, a best-effort PyPI update check naming the right upgrade command
 per install method, and workspace coherence).
 `wikigit.py` is the best-effort wiki-HISTORY layer: after every run that changed the wiki (ingest or
@@ -358,7 +368,9 @@ the MCP tools as subcommands (full parity: `define`/`read`/`raw`/`neighbors`/`in
   `citadel/templates/env.example`): `CITADEL_LLM_CLI`,
   `CITADEL_INGEST_MODEL`, `CITADEL_CURATE_MODEL` (model for `citadel curate` sessions; falls back to
   `CITADEL_INGEST_MODEL`), `CITADEL_LLM_TIMEOUT`, `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,
-  `CITADEL_REPO_SUPPORT`, `CITADEL_IMAGE_SUPPORT` (read images visually), `CITADEL_MAX_SOURCE_CHARS`
+  `CITADEL_REPO_SUPPORT`, `CITADEL_IMAGE_SUPPORT` (read images visually), `CITADEL_AUDIO_SUPPORT`
+  (opt-in whisper transcript ingest for audio/video, with `CITADEL_WHISPER_CLI`/
+  `CITADEL_WHISPER_MODEL`/`CITADEL_WHISPER_TIMEOUT` tuning the seam), `CITADEL_MAX_SOURCE_CHARS`
   (large-source chunking threshold), `CITADEL_DEDUP_BY_BASENAME` (skip same-basename document
   duplicates), `CITADEL_IGNORE_PATTERNS` (OS/junk-file globs skipped at discovery — `Thumbs.db`,
   `desktop.ini`, `~$` locks, …; a `+` prefix extends the built-in defaults), `CITADEL_WIKI_LANG`

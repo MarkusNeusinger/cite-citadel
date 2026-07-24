@@ -10,14 +10,15 @@ files changes how the wiki is built — **with no code change**; treat them as p
 | ---- | ------- | ----------- |
 | `schema.md` | The format contract: OKF frontmatter, folder routing, citation grammar + locators, grounding/quality contract, contradictions, links, tags, abbreviations, wiki language, opinions & style | every session |
 | `core.md` | Generic behavior: paths-verbatim, workflow, path-as-context, code essence, genre selection, restructuring, off-limits, self-check | every session |
-| `tasks/ingest.md` | Fold a NEW source in; segmented large-source passes | kinds `ingest`, `image`, `repo` |
-| `tasks/reconcile.md` | Re-fold a CHANGED (or force-re-read) source: update/remove stale facts, re-check locators, keep genre treatment | kinds `reconcile`, `image-reconcile`, `repo-reconcile` |
+| `tasks/ingest.md` | Fold a NEW source in; segmented large-source passes | kinds `ingest`, `image`, `audio`, `repo` |
+| `tasks/reconcile.md` | Re-fold a CHANGED (or force-re-read) source: update/remove stale facts, re-check locators, keep genre treatment | kinds `reconcile`, `image-reconcile`, `audio-reconcile`, `repo-reconcile` |
 | `tasks/delete.md` | Strip a REMOVED source's provenance | kind `delete` |
 | `tasks/curate.md` | Improve EXISTING pages against a run's findings checklist: re-sort, split, merge, re-verify — improve-or-NOOP, never invent, never break provenance | kind `curate` (`citadel curate`) |
 | `formats/repo.md` | A git repo as one source: the digest, capture-by-use, System pages, repo-reconcile | repo sources |
 | `formats/image.md` | View an image source and transcribe its facts | image sources |
 | `formats/pdf.md` | PDFs read whole; `text` vs `images` mode; page locators | PDF sources |
 | `formats/office.md` | Pre-extracted Office text + embedded `media/`; cite the original file | Office sources |
+| `formats/transcripts.md` | Machine-transcribed audio/video: read the `[HH:MM:SS]` transcript, cite the original recording, `lines A-B` locators | audio sources |
 | `genres/prose.md` | Extraction restraint for essays/articles; author claims vs reported facts | agent judgment |
 | `genres/meeting-minutes.md` | Tracking artifacts: `## Open Points` threads, `## Change Log`, dates, supersede ≠ contradiction | agent judgment |
 | `genres/email.md` | Threads and quoting: attribute to the original author; dedupe quote chains | agent judgment |
@@ -30,7 +31,7 @@ files changes how the wiki is built — **with no code change**; treat them as p
 | `genres/cv.md` | CVs/applications: everything is self-reported and attributed, claims vs corroborating evidence | agent judgment |
 
 The two axes are decided by two different parties: a **format** is structurally detectable, so
-the *code* selects the format brief (repo markers, image/Office extensions, PDF); a **genre** is
+the *code* selects the format brief (repo markers, image/Office/audio extensions, PDF); a **genre** is
 a judgment about what the text *is*, so the *agent* selects genre briefs from the content —
 never from the filename, and never in Python.
 

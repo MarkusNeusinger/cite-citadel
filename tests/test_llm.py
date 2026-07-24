@@ -206,6 +206,18 @@ def test_pdf_brief_names_both_modes_and_page_locators():
     assert "page locator" in brief
 
 
+def test_transcripts_brief_covers_original_file_lines_locators_and_roles():
+    """formats/transcripts.md must keep the load-bearing audio rules: read the prepared
+    [HH:MM:SS] transcript, cite the ORIGINAL recording as the source of record, `lines A-B`
+    locators only (no invented timestamp form), and unlabeled voices stay roles."""
+    brief = (REAL_RULES_DIR / "formats/transcripts.md").read_text(encoding="utf-8").lower()
+    assert "[hh:mm:ss]" in brief and "transcribed" in brief
+    assert "source of record" in brief and "resource" in brief
+    assert "lines a-b" in brief and "locator" in brief
+    assert "do not invent" in brief  # no timestamp locator form
+    assert "role" in brief  # unlabeled speakers stay roles (genres/transcript.md)
+
+
 def test_first_person_genre_gates_style_profiling_on_run_instruction():
     """genres/first-person.md: attributed positions ALWAYS; style profiling ONLY when the run
     instruction turns it on (CITADEL_STYLE_PROFILES) — the opt-in idiolect vision."""
@@ -278,8 +290,26 @@ def test_plain_source_gets_no_format_brief_and_no_prepared_file():
     """A normal text source maps to NO format brief, and no prepared-file bullet leaks in."""
     prompt = llm._build_instruction("raw/notes.md")
     assert "Prepared file" not in prompt
-    for fmt in ("formats/office.md", "formats/image.md", "formats/repo.md", "formats/pdf.md"):
+    for fmt in ("formats/office.md", "formats/image.md", "formats/repo.md", "formats/pdf.md", "formats/transcripts.md"):
         assert _ref(fmt) not in prompt
+
+
+def test_audio_kinds_map_to_transcripts_brief_with_transcript_as_prepared_file():
+    for kind, task in (("audio", "tasks/ingest.md"), ("audio-reconcile", "tasks/reconcile.md")):
+        prompt = llm._build_instruction("raw/memo.mp3", kind, "/tmp/okf_extract_x/memo.md")
+        assert _ref("formats/transcripts.md") in prompt
+        assert _ref(task) in prompt
+        assert "/tmp/okf_extract_x/memo.md" in prompt  # the transcript the agent reads
+        assert "raw/memo.mp3" in prompt  # the recording stays the source of record
+
+
+def test_audio_segment_keeps_transcripts_brief():
+    """Unlike the Office exemption (a slice is not an Office extract), a chunked long recording
+    keeps formats/transcripts.md on EVERY segment — its cite-the-original and lines-locator rules
+    bind per slice."""
+    prompt = llm._build_instruction("raw/podcast.mp3", "audio", "/tmp/okf_extract_x/podcast.md", (2, 3))
+    assert _ref("formats/transcripts.md") in prompt
+    assert "part 2 of 3" in prompt
 
 
 def test_image_kinds_map_to_image_brief():
@@ -347,7 +377,7 @@ def test_delete_kind_reads_delete_brief_no_format_no_genres():
     assert "raw/gone.md" in prompt
     assert "REMOVED from disk" in prompt and "do not open" in prompt
     assert "Judge the source's genre" not in prompt
-    for fmt in ("formats/office.md", "formats/image.md", "formats/repo.md", "formats/pdf.md"):
+    for fmt in ("formats/office.md", "formats/image.md", "formats/repo.md", "formats/pdf.md", "formats/transcripts.md"):
         assert _ref(fmt) not in prompt
     assert len(prompt) < PROMPT_CHAR_BUDGET
 
@@ -379,7 +409,7 @@ def test_curate_kind_reads_curate_brief_via_findings_no_office_no_genres():
     assert findings in prompt  # the findings checklist, referenced BY PATH (not embedded)
     assert "cluster anchor" in prompt
     assert "Judge the source's genre" not in prompt  # no genre enumeration for curate
-    for fmt in ("formats/office.md", "formats/image.md", "formats/repo.md", "formats/pdf.md"):
+    for fmt in ("formats/office.md", "formats/image.md", "formats/repo.md", "formats/pdf.md", "formats/transcripts.md"):
         assert _ref(fmt) not in prompt
     assert len(prompt) < PROMPT_CHAR_BUDGET
 
@@ -542,6 +572,9 @@ _KIND_VARIANTS = [
     ("ingest", "/tmp/okf_extract_x/big.md", (1, 4)),  # large-source segments
     ("ingest", "/tmp/okf_extract_x/big.md", (3, 4)),
     ("reconcile", "/tmp/okf_extract_x/big.md", (2, 4)),
+    ("audio", "/tmp/okf_extract_x/memo.md", None),  # whisper transcript
+    ("audio-reconcile", "/tmp/okf_extract_x/memo.md", None),
+    ("audio", "/tmp/okf_extract_x/podcast.md", (2, 3)),  # chunked long recording
     ("curate", "/tmp/okf_findings_x/findings.md", None),  # curate: findings file arrives via read_path
 ]
 
