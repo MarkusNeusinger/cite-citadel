@@ -41,7 +41,10 @@ per-source state table: ingested / failed / skipped-duplicate / ignored / pendin
 (read-only setup health check — OK/WARN/FAIL lines for workspace / rules / config-parse fallbacks /
 agent CLI / raw roots /
 manifest / billing / wiki-git state / a best-effort PyPI update check / workspace coherence; needs no workspace, exits 1 only on a FAIL), `serve` (MCP
-stdio server), `search <query> [--tag T] [--limit N]`, `define <term>` / `read <rel_path>` /
+stdio server), `capture <text> [--from WHO] [--topic T]` (append one attributed note from a
+conversation to the raw/ capture log `raw/captures/YYYY-MM.md`; `-` reads stdin; the next ingest
+folds it in — the conversational-capture bridge, MCP twin `wiki_capture`),
+`search <query> [--tag T] [--limit N]`, `define <term>` / `read <rel_path>` /
 `raw <key> [--locator L]` / `neighbors <rel_path>` / `index` / `sources` (CLI twins of the
 `wiki_define`/`wiki_read`/`wiki_raw`/`wiki_neighbors`/`wiki_index`/`wiki_sources` MCP tools
 — full CLI↔MCP parity),
@@ -329,18 +332,24 @@ per install method, and workspace coherence).
 curate) it commits the whole wiki dir as ONE commit (and pushes to `CITADEL_WIKI_GIT_REMOTE` when
 set), so every change is a reviewable diff; `auto` (default) only acts when the wiki dir is already
 its own git repo, `CITADEL_WIKI_GIT=1` also `git init`s it on first use (refusing an embedded repo
-inside another working tree), and any git problem is a report note, never a failed run. `server.py` is the FastMCP stdio server (12
+inside another working tree), and any git problem is a report note, never a failed run. `server.py` is the FastMCP stdio server (13
 tools — 11 read-only incl. `wiki_raw` (the cited-source reader, backed by `rawsource.py`),
 `wiki_neighbors` (a page's links-out/backlinks/cited-sources graph), `wiki_lint` (with a tunable
-`stale_days`) and `wiki_status` (the per-source state view), only
-`wiki_ingest` mutates; every tool carries MCP behavior
+`stale_days`) and `wiki_status` (the per-source state view), plus two mutating:
+`wiki_capture` (append-only conversational note capture into `raw/captures/`, backed by
+`capture.py` — it never touches the wiki) and `wiki_ingest` (the only wiki-writer); every tool carries MCP behavior
 annotations — `readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint` — never raises,
 returning error strings instead, and hands the recommended tool flow up through
 `initialize.instructions`). The `viewer/` subpackage builds the self-contained offline HTML
 viewer (build logic in `__init__.py`; `template.html`/`app.css`/`app.js` are real package-data
 assets loaded via `importlib.resources`). `config.py` resolves all paths/settings. `cli.py` mirrors
-the MCP tools as subcommands (full parity: `define`/`read`/`raw`/`neighbors`/`index`/`sources` twin the reader tools;
-`view` stays CLI-only and `wiki_lint`/`wiki_status` close the `lint`/`status` gaps from the MCP side). `rawsource.py` backs
+the MCP tools as subcommands (full parity: `define`/`read`/`raw`/`neighbors`/`index`/`sources`/`capture` twin their tools;
+`view` stays CLI-only and `wiki_lint`/`wiki_status` close the `lint`/`status` gaps from the MCP side). `capture.py`
+is the conversational-capture bridge behind `wiki_capture`/`citadel capture`: an append-only,
+dated, attributed note into the monthly `raw/captures/YYYY-MM.md` log under the primary raw root
+— an ordinary raw source the normal lifecycle ingests/reconciles, so captured statements get real
+`[^sN]` line locators and the wiki is never written directly (docs/capture.md also documents the
+save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` backs
 `wiki_raw`/`citadel raw`: the provenance-gated, locator-aware reader for the raw source behind a
 `[^sN]` citation (verify-only — the wiki stays the synthesized layer for retrieval).
 

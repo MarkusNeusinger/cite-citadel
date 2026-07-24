@@ -56,11 +56,12 @@ def seeded_wiki(tmp_citadel, seed_page):
 
 
 def test_all_tools_registered():
-    """The FastMCP instance exposes exactly the twelve documented tools (eleven read-only + the
-    one mutating wiki_ingest) — a rename or a lost decorator would silently drop a tool from
-    every MCP client."""
+    """The FastMCP instance exposes exactly the thirteen documented tools (eleven read-only + the
+    mutating wiki_capture/wiki_ingest) — a rename or a lost decorator would silently drop a tool
+    from every MCP client."""
     tools = asyncio.run(server.mcp.list_tools())
     assert sorted(t.name for t in tools) == [
+        "wiki_capture",
         "wiki_define",
         "wiki_index",
         "wiki_ingest",
@@ -77,9 +78,10 @@ def test_all_tools_registered():
 
 
 def test_read_only_tools_are_annotated_read_only():
-    """Every reader carries the MCP ``readOnlyHint`` behavior annotation and only ``wiki_ingest``
-    is left un-read-only — so a client can tell the mutating tool apart before calling it. Skipped
-    gracefully if the installed mcp predates tool annotations."""
+    """Every reader carries the MCP ``readOnlyHint`` behavior annotation and only
+    ``wiki_capture``/``wiki_ingest`` are left un-read-only — so a client can tell the mutating
+    tools apart before calling them. Skipped gracefully if the installed mcp predates tool
+    annotations."""
     if server.ToolAnnotations is None:  # older mcp without annotations -> nothing to assert
         return
     tools = {t.name: t for t in asyncio.run(server.mcp.list_tools())}
@@ -99,6 +101,11 @@ def test_read_only_tools_are_annotated_read_only():
     for name in readers:
         assert tools[name].annotations is not None and tools[name].annotations.readOnlyHint is True
     assert tools["wiki_ingest"].annotations.readOnlyHint is False
+    # wiki_capture mutates only the raw capture log: not read-only, but append-only (never
+    # destructive) and closed-world (no external CLI is spawned).
+    assert tools["wiki_capture"].annotations.readOnlyHint is False
+    assert tools["wiki_capture"].annotations.destructiveHint is False
+    assert tools["wiki_capture"].annotations.openWorldHint is False
 
 
 def test_initialize_instructions_are_set():

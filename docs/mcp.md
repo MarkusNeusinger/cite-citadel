@@ -30,11 +30,12 @@ the `CITADEL_*_DIR` overrides — see [configuration.md](configuration.md#paths-
 
 ## Tools
 
-`citadel serve` exposes **twelve tools** — eleven read-only and one mutating (`wiki_ingest`). Each
-carries MCP behavior annotations (`readOnlyHint` etc.) so a client can tell the readers from the one
-mutating tool, and none ever raises — errors come back as plain strings. The server also hands the
-recommended tool flow up through `initialize.instructions`, so a client that surfaces it gets the
-orientation for free.
+`citadel serve` exposes **thirteen tools** — eleven read-only and two mutating: `wiki_capture`
+(append-only note capture into the raw/ capture log — it never touches the wiki) and `wiki_ingest`
+(the only tool that writes the wiki). Each carries MCP behavior annotations (`readOnlyHint` etc.)
+so a client can tell the readers from the mutating tools, and none ever raises — errors come back
+as plain strings. The server also hands the recommended tool flow up through
+`initialize.instructions`, so a client that surfaces it gets the orientation for free.
 
 | Tool | What it does |
 |------|--------------|
@@ -49,7 +50,8 @@ orientation for free.
 | `wiki_validate` | The strict per-page gate (required fields, honest citations, non-broken links). |
 | `wiki_lint` | The whole-wiki advisory health check (contradictions, orphans, missing cites, …; tunable `stale_days`). |
 | `wiki_status` | Per-source corpus state (ingested/failed/skipped/ignored/pending) — the read-only twin of `citadel status`. |
-| `wiki_ingest` | **The only mutating tool** — fold new/changed raw files into the wiki (idempotent via the sha manifest). |
+| `wiki_capture` | Append ONE attributed, dated note from the conversation to `raw/captures/YYYY-MM.md` — the conversational-capture bridge (see [capture.md](capture.md)). Append-only, never touches the wiki; the next ingest folds it in with real `[^sN]` line locators. |
+| `wiki_ingest` | **The only tool that writes the wiki** — fold new/changed raw files into it (idempotent via the sha manifest). |
 
 ## Claude Desktop
 
