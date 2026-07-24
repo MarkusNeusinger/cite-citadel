@@ -564,6 +564,13 @@ INGEST_MODEL: str = os.environ.get("CITADEL_INGEST_MODEL", "sonnet")
 # ingest_model_label). Read at call time / swapped in by curate.py so tests can monkeypatch it.
 CURATE_MODEL: str = os.environ.get("CITADEL_CURATE_MODEL", "").strip()
 LLM_TIMEOUT: int = _int_env("CITADEL_LLM_TIMEOUT", 1200)
+# Hermetic agent sessions (the 2026-07 audit's reproducibility fix): when ON (default) and the
+# installed CLI ADVERTISES a session-isolation flag (claude --bare — skip user hooks/CLAUDE.md/MCP
+# discovery), that flag is appended to every agent session, so the user's PERSONAL agent
+# configuration never leaks into ingest — sessions run on citadel's rules tree alone. The flag is
+# feature-probed per binary (llm._hermetic_flags), so an older CLI without it runs exactly as
+# before; 0 deliberately re-admits the personal config. Read at call time (tests monkeypatch it).
+HERMETIC: bool = _bool_env("CITADEL_HERMETIC", True)
 
 # Observability for the otherwise-headless agent session — by default the CLI's stdout/stderr is
 # captured only to detect failure and read the result envelope's cost/usage figures, then

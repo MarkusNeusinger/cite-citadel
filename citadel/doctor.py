@@ -13,6 +13,9 @@ One command answering "is my setup sane?" without touching a byte. Each check em
   line is where that fallback becomes visible.
 - **agent CLI** — is the ``CITADEL_LLM_CLI`` binary on PATH (which path does it resolve to)? WARN,
   not FAIL — the CLI is only needed to *ingest*, and doctor must stay useful before it is installed.
+- **ingest model** — ``CITADEL_INGEST_MODEL`` explicitly set while the backend is copilot/gemini is
+  silently inert (only the claude backend is passed ``--model``); WARN naming the backend's own
+  model env var (``COPILOT_MODEL`` / ``GEMINI_MODEL``) as the real selector.
 - **raw roots** — is every raw root ingest actually walks (``CITADEL_RAW_DIRS``) reachable (a dir
   on disk)? Also WARNs when the primary ``raw/`` was configured OUT of the walk list while holding
   files — those would silently never be ingested.
@@ -157,6 +160,28 @@ def check_agent_cli() -> Check:
             f"(or set CITADEL_LLM_CLI / *_CLI_PATH)",
         )
     return Check(OK, "agent CLI", f"{cli!r} -> {path}")
+
+
+def check_ingest_model() -> Check:
+    """WARN when ``CITADEL_INGEST_MODEL`` is explicitly set while the backend is copilot/gemini:
+    only the ``claude`` backend is passed ``--model``, so the knob selects nothing there (the
+    audit's silently-inert finding) — the backend's own env var (``COPILOT_MODEL`` /
+    ``GEMINI_MODEL``) is the real selector; at most the knob shapes the manifest's recorded model
+    label. The claude-only default (``sonnet``) counts only when actually exported (mirroring
+    :func:`config.ingest_model_label`), so an untouched setup stays OK."""
+    cli = (config.LLM_CLI or "claude").strip().lower()
+    explicit = os.environ.get("CITADEL_INGEST_MODEL", "").strip()
+    if cli != "claude" and explicit:
+        native = config._CLI_MODEL_ENV.get(cli)
+        hint = f"set {native} to choose the model" if native else "use the backend's own model setting"
+        return Check(
+            WARN,
+            "ingest model",
+            f"CITADEL_INGEST_MODEL={explicit} is set but CITADEL_LLM_CLI={cli} - only the claude "
+            f"backend is passed --model, so this does not select the model that runs ({hint}); "
+            "at most it shapes the manifest's recorded model label",
+        )
+    return Check(OK, "ingest model", f"recorded as {config.ingest_model_label()!r}")
 
 
 def _primary_raw_excluded_from_walk(walked: list[Path]) -> bool:
@@ -512,6 +537,7 @@ def run() -> DoctorReport:
             check_rules(),
             check_config(),
             check_agent_cli(),
+            check_ingest_model(),
             check_raw_roots(),
             check_manifest(),
             check_failures(),
