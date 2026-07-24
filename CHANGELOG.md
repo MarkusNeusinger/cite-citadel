@@ -8,6 +8,25 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **`citadel serve` stops re-reading the whole wiki on every call** (the 2026-07 audit's backlog
+  #15, closing its finding 1.2.6 and the remainder of the § 1.3 retrieval assessment). An MCP
+  server lives for a whole client session, but every read tool re-walked and re-parsed the entire
+  corpus per call — at 1000 pages that is ~0.7 s before a single result is scored, and a
+  `wiki_search` cost ~1.4 s. A new `citadel/pagecache.py` keeps the last load in memory and
+  re-validates it on **every** consult with a stat-only `os.scandir` walk (~4 ms at 1000 pages)
+  over exactly the files `load()` parses; search additionally memoizes that snapshot's per-page
+  term-frequency tables. Measured at 1000 pages: `load()` ~700 ms → ~9 ms, `wiki_search` ~1.4 s →
+  ~50 ms, `tag:`/`type:` queries ~630 ms → ~11 ms. **Nothing is persisted** — the wiki stays the
+  database, there is no index file to go stale, and the filesystem still answers "did anything
+  change?" on every call. Staleness is designed out rather than hoped away: the fingerprint is
+  taken before AND after the load and must match (a page rewritten mid-load is never cached), a
+  snapshot whose newest stamp is younger than a 2 s settle window is not stored at all (a
+  coarse-timestamp filesystem could hide a same-length same-tick rewrite), the single slot is keyed
+  by wiki directory (ingest's staging redirect can never be served the live wiki, and the endless
+  stream of staging dirs cannot accumulate), `write_page`/`delete_page` invalidate directly, and
+  `ingest()`/`curate()` wear `@pagecache.bypass` so the staged diff-by-hash always reads the truth
+  from disk. Off by default: `citadel serve` opts in (`CITADEL_PAGE_CACHE=auto`), `1` enables it
+  wherever citadel reads the wiki, `0` restores the pre-cache behavior everywhere.
 - **Ranked BM25 search behind the unchanged `search()` seam** (the 2026-07 audit's backlog #1).
   Queries now share the offline viewer's grammar — bare terms are AND-matched (English stopwords
   exempt, so "how do you brew coffee" matches on *brew coffee*; a query no page fully matches is

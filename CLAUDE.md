@@ -317,7 +317,19 @@ link-rewrite safety nets `rewrite_links`, `rewrite_raw_references`, `find_raw_re
 `find_broken_links`, and the `inbound_map` backlink graph, all fence-aware via `grammar.py`);
 `catalogs.py` (`rebuild_indexes()`, which regenerates `index.md`, per-folder `index.md`,
 `sources/index.md`, and `open-points/index.md` mechanically from frontmatter + manifest); and
-`open_points.py` (parsing `## Open Points` threads and deriving each point's status). `manifest.py` tracks idempotency in
+`open_points.py` (parsing `## Open Points` threads and deriving each point's status).
+`pagecache.py` is the read-path snapshot cache behind `store_core.load()` (`CITADEL_PAGE_CACHE`,
+`auto` = on only in `citadel serve`, which opts in): a long-lived MCP server otherwise re-walks and
+re-parses the WHOLE wiki on every tool call, so the last load is kept in memory and re-validated
+per call by a **stat-only** scandir fingerprint (`(rel_path, size, mtime_ns, ctime_ns)` over exactly
+the files `load()` parses) — ~4 ms vs ~700 ms at 1000 pages, with search's per-page term-frequency
+tables memoized on the same snapshot (a 1000-page `wiki_search`: ~1.4 s → ~50 ms). Nothing is
+persisted (the wiki stays the database) and staleness is designed out: the fingerprint is taken
+BEFORE and AFTER the load and must match, a snapshot whose newest stamp is younger than the settle
+window is never stored (coarse-mtime filesystems), the single slot is keyed by wiki dir (ingest's
+staging redirect can never be served the live wiki), `write_page`/`delete_page` invalidate, and
+`ingest()`/`curate()` wear `@pagecache.bypass` so the diff-by-hash machinery always reads disk.
+`manifest.py` tracks idempotency in
 `wiki/.citadel_ingested.json` (per source: sha256 or git commit + importing model + the last
 session's backend-reported `cost_usd`/`tokens_in`/`tokens_out`, carried across moves/re-stamps
 like `ingested_at`). `failures.py`
@@ -403,7 +415,8 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   `CITADEL_INGEST_MODEL`, `CITADEL_CURATE_MODEL` (model for `citadel curate` sessions; falls back to
   `CITADEL_INGEST_MODEL`), `CITADEL_LLM_TIMEOUT`, `CITADEL_HERMETIC` (session isolation — append claude's `--bare` when the
   installed binary advertises it, so personal `~/.claude` config never leaks into ingest; default
-  on, probe-gated), `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,
+  on, probe-gated), `CITADEL_PAGE_CACHE` (the serve-side page snapshot cache: `auto` = on in
+  `citadel serve` only, `1` = everywhere, `0` = never), `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,
   `CITADEL_REPO_SUPPORT`, `CITADEL_IMAGE_SUPPORT` (read images visually), `CITADEL_AUDIO_SUPPORT`
   (opt-in whisper transcript ingest for audio/video, with `CITADEL_WHISPER_CLI`/
   `CITADEL_WHISPER_MODEL`/`CITADEL_WHISPER_TIMEOUT` tuning the seam), `CITADEL_MAX_SOURCE_CHARS`

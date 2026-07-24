@@ -611,7 +611,16 @@ def page_resource(folder: str, name: str) -> str:
 
 
 def main() -> None:
-    """Run the MCP server over stdio."""
+    """Run the MCP server over stdio.
+
+    Opts this process into the page-snapshot cache (:mod:`citadel.pagecache`): a server lives for
+    a whole client session and every read tool otherwise re-walks and re-parses the entire wiki per
+    call. The cache re-verifies the wiki with a stat-only walk on each consult and is bypassed
+    outright by ``wiki_ingest``'s mutating run, so answers stay exactly as fresh as before —
+    ``CITADEL_PAGE_CACHE=0`` opts back out."""
+    from . import pagecache  # imported here like the tools' store import: lazy by module policy
+
+    pagecache.enable()
     mcp.run()
 
 

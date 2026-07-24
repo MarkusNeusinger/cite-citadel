@@ -280,7 +280,15 @@ providers and the `log.md` writer); `linkgraph.py` (the deterministic link-rewri
 `inbound_map` backlink graph, all fence-aware via `grammar.py`); `catalogs.py` (`rebuild_indexes()`,
 regenerating `index.md`, per-folder `index.md`, `sources/index.md`, and `open-points/index.md`
 mechanically from frontmatter + manifest); and `open_points.py` (parsing `## Open Points` threads
-and deriving each point's status). `manifest.py` tracks idempotency in
+and deriving each point's status). `pagecache.py` is the read-path snapshot cache behind
+`store_core.load()` (`CITADEL_PAGE_CACHE`, `auto` = on only in `citadel serve`, which opts in): the
+last load is kept in memory and re-validated per call by a stat-only scandir fingerprint over
+exactly the files `load()` parses (~4 ms vs ~700 ms at 1000 pages), with search's per-page
+term-frequency tables memoized on the same snapshot (a 1000-page `wiki_search`: ~1.4 s → ~50 ms).
+Nothing is persisted, and staleness is designed out: the fingerprint is taken before AND after the
+load and must match, a snapshot younger than the settle window is never stored, the single slot is
+keyed by wiki dir, `write_page`/`delete_page` invalidate, and `ingest()`/`curate()` wear
+`@pagecache.bypass` so the diff-by-hash machinery always reads disk. `manifest.py` tracks idempotency in
 `wiki/.citadel_ingested.json` (per source: sha256 or git commit + importing model + the last
 session's backend-reported `cost_usd`/`tokens_in`/`tokens_out`, carried across moves/re-stamps
 like `ingested_at`). `repo.py` builds
@@ -339,7 +347,9 @@ CLI-only, `wiki_lint`/`wiki_status` close the `lint`/`status` gaps from the MCP 
 - Config knobs live in the workspace-root `.env` (auto-loaded, gitignored; template:
   `citadel/templates/env.example`): `CITADEL_LLM_CLI`,
   `CITADEL_INGEST_MODEL`, `CITADEL_CURATE_MODEL` (model for `citadel curate` sessions; falls back to
-  `CITADEL_INGEST_MODEL`), `CITADEL_LLM_TIMEOUT`, `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,
+  `CITADEL_INGEST_MODEL`), `CITADEL_LLM_TIMEOUT`, `CITADEL_PAGE_CACHE` (the serve-side page
+  snapshot cache: `auto` = on in `citadel serve` only, `1` = everywhere, `0` = never),
+  `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,
   `CITADEL_REPO_SUPPORT`, `CITADEL_IMAGE_SUPPORT` (read images visually), `CITADEL_AUDIO_SUPPORT`
   (opt-in whisper transcript ingest for audio/video, with `CITADEL_WHISPER_CLI`/
   `CITADEL_WHISPER_MODEL`/`CITADEL_WHISPER_TIMEOUT` tuning the seam), `CITADEL_MAX_SOURCE_CHARS`

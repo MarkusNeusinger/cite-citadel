@@ -5,7 +5,8 @@ Page objects; offers ranked full-text search (the ONE swappable search function 
 in memory per call, so nothing is persisted and the wiki stays the database); writes/overwrites
 pages with path-safety and a reserved-name guard; deletes pages; the shared page/index/sources
 text providers behind the CLI and MCP surfaces; and the append-only log.md writer. No on-disk
-index, no embeddings. The link graph, catalogs, and open-points live in sibling modules
+index, no embeddings — a long-lived reader (``citadel serve``) may hold the last load in memory
+via :mod:`citadel.pagecache`, but only while a stat-only walk proves the wiki unchanged. The link graph, catalogs, and open-points live in sibling modules
 (:mod:`citadel.linkgraph`, :mod:`citadel.catalogs`, :mod:`citadel.open_points`); the
 :mod:`citadel.store` facade re-exports the whole surface.
 """
@@ -17,7 +18,7 @@ import os
 import re
 from datetime import datetime, timezone
 
-from . import __version__, config, okf
+from . import __version__, config, okf, pagecache
 from .okf import Page
 
 
@@ -40,8 +41,25 @@ def load() -> list[Page]:
     """Walk config.WIKI_DIR; parse each *.md (not index.md/log.md, not a dotfile)
     into a Page whose rel_path is its posix path relative to WIKI_DIR. Missing
     'type' is surfaced by lint, not load, so failing pages are still included.
-    Return the list sorted by rel_path."""
+    Return the list sorted by rel_path.
+
+    In a long-lived READ process (``citadel serve``) the result is served from
+    :mod:`citadel.pagecache` while a stat-only walk proves the wiki unchanged — same pages, no
+    re-parse. The cache is off by default, always off inside the mutating lifecycles, and every
+    consult re-checks the filesystem, so this function's contract is unchanged: it never returns
+    anything a fresh walk would not have produced."""
     wiki_dir = config.WIKI_DIR
+    cached = pagecache.get(wiki_dir)
+    if cached is not None:
+        return cached
+    before = pagecache.fingerprint(wiki_dir, is_skipped_name)
+    pages = _load_pages(wiki_dir)
+    pagecache.put(wiki_dir, pages, before, is_skipped_name)
+    return pages
+
+
+def _load_pages(wiki_dir) -> list[Page]:
+    """The uncached walk+parse behind :func:`load` — the one place pages are read from disk."""
     pages: list[Page] = []
     if not os.path.isdir(wiki_dir):
         return pages
@@ -156,6 +174,15 @@ def _is_stopword_term(term: str) -> bool:
     return bool(tokens) and all(len(tok) < 2 or tok in _STOPWORDS for tok in tokens)
 
 
+def _field_counts_for(page: Page) -> list[dict[str, int]]:
+    """:func:`_field_counts` for one page, memoized on the live :mod:`citadel.pagecache` snapshot
+    when there is one — tokenizing the corpus is the other half of a search call's cost (at 1000
+    pages: ~0.7 s of the ~1.4 s), and it depends only on the page content the snapshot is already
+    proving unchanged. With the cache off (the default) this is a plain call, exactly as before.
+    The returned tables are shared by reference: read-only for callers."""
+    return pagecache.memo(page, "field_counts", lambda: _field_counts(page))
+
+
 def _field_counts(page: Page) -> list[dict[str, int]]:
     """Stemmed token counts (term frequencies) for a page's five scored fields — title, aliases,
     tags, description, body, in :data:`_FIELD_WEIGHTS` order. Computed ONCE per page per search
@@ -194,7 +221,7 @@ def _bm25_scores(terms: list[str], pages: list[Page]) -> dict[int, float]:
     n = len(pages)
     if not query_tokens or n == 0:
         return {}
-    docs = [_field_counts(page) for page in pages]
+    docs = [_field_counts_for(page) for page in pages]
     lengths = [[sum(field.values()) for field in fields] for fields in docs]
     df = dict.fromkeys(query_tokens, 0)
     for fields in docs:
@@ -533,6 +560,7 @@ def write_page(rel_path: str, frontmatter: dict, body: str) -> Page:
     frontmatter["timestamp"] = utc_now_iso()
     frontmatter["citadel_version"] = __version__
     target.write_text(okf.dump(frontmatter, body), encoding="utf-8")
+    pagecache.invalidate()  # an in-process write must be visible to the very next load()
     return Page(rel_path=rel_path, frontmatter=frontmatter, body=body)
 
 
@@ -550,6 +578,7 @@ def delete_page(rel_path: str) -> bool:
     target = okf.safe_join(config.WIKI_DIR, rel_path)  # rejects ''/absolute/'..'
     if target.is_file():
         target.unlink()
+        pagecache.invalidate()  # as in write_page: the next load() must not see the page
         return True
     return False
 

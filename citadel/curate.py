@@ -47,7 +47,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import config, failures, grammar, ingest, lint, llm, manifest, okf, runlock, store, wikigit
+from . import config, failures, grammar, ingest, lint, llm, manifest, okf, pagecache, runlock, store, wikigit
 from .okf import Page
 
 
@@ -639,6 +639,7 @@ def _select_pages(pages: list[Page], paths: list[str] | None) -> set[str] | None
     return wanted
 
 
+@pagecache.bypass
 def curate(
     paths: list[str] | None = None,
     *,
