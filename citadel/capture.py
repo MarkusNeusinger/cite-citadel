@@ -27,6 +27,10 @@ The whole module is offline and deterministic — no LLM, no network.
 
 from __future__ import annotations
 
+import contextlib
+import os
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -43,6 +47,50 @@ CAPTURES_SUBDIR = "captures"
 CAPTURE_MAX_CHARS = 100_000
 
 _HEADER_TITLE = "# Captured notes — "
+
+# The per-log append lock (see :func:`_capture_lock`): how often/long to retry acquiring it, and
+# how old (mtime) a leftover lock from a crashed capture may get before it is reclaimed. A capture
+# holds the lock for milliseconds, so the retry budget (~5s) resolves any real contention and the
+# staleness window (30s) is generous. Module constants so tests can shrink them.
+_LOCK_RETRIES = 50
+_LOCK_WAIT_S = 0.1
+_LOCK_STALE_S = 30.0
+
+
+@contextmanager
+def _capture_lock(log_path: Path):
+    """A tiny cross-process mutex around one log's read-modify-write, so two concurrent captures
+    (the MCP server and the CLI, say) can never interleave read→append→replace and silently drop
+    each other's note (``atomic_write_text`` alone only prevents TORN files, not lost updates).
+
+    Same primitive as ``runlock.py`` — ``O_CREAT | O_EXCL``, atomic on POSIX filesystems, NTFS,
+    and SMB shares — but deliberately NOT the workspace run lock: capture only touches ``raw/``
+    and must keep working while a long ingest/curate run holds that one. The lockfile is a hidden
+    dotfile sibling of the log (``.<log>.lock``), so the discovery walk (which skips dotfiles)
+    can never pick a leftover lock up as a source."""
+    lock = log_path.with_name(f".{log_path.name}.lock")
+    for _ in range(_LOCK_RETRIES):
+        try:
+            os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            break
+        except FileExistsError:
+            reclaimed = False
+            with contextlib.suppress(OSError):
+                if time.time() - lock.stat().st_mtime > _LOCK_STALE_S:
+                    lock.unlink()
+                    reclaimed = True
+            if not reclaimed:
+                time.sleep(_LOCK_WAIT_S)
+    else:
+        raise RuntimeError(
+            f"could not acquire the capture lock at {lock} - another capture appears stuck; "
+            "retry, or delete the lock file if no capture is running"
+        )
+    try:
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            lock.unlink()
 
 
 def _header(month: str) -> str:
@@ -97,7 +145,9 @@ def capture(text: str, source: str = "", topic: str = "") -> CaptureResult:
     caller mistakes worth refusing loudly (an MCP client that miscomputed its argument must not
     silently write an empty entry, nor dump a whole transcript into the log).
 
-    The write is atomic (``config.atomic_write_text``), so a concurrent reader — including an
+    The read-modify-write runs under a per-log cross-process lock (:func:`_capture_lock`), so two
+    concurrent captures serialize instead of one silently overwriting the other's note, and the
+    write itself is atomic (``config.atomic_write_text``), so a concurrent reader — including an
     ingest run's discovery walk — never sees a torn log; the appended entry is picked up as a
     new/changed source on the NEXT run either way.
     """
@@ -114,14 +164,7 @@ def capture(text: str, source: str = "", topic: str = "") -> CaptureResult:
     stamp = manifest.now_iso()  # the ingested_at stamp format — one grammar for all timestamps
     month = stamp[:7]
     path = Path(config.RAW_DIR) / CAPTURES_SUBDIR / f"{month}.md"
-
-    try:
-        existing = path.read_text(encoding="utf-8-sig")
-    except FileNotFoundError:
-        existing = _header(month)
-    # Normalize the tail to exactly one blank separator line, so entries stay uniformly spaced
-    # no matter how the previous write ended (hand edits included).
-    base = existing.rstrip("\n") + "\n\n"
+    config.robust_mkdir(path.parent)
 
     heading = f"## {stamp} — {_one_line(topic) or 'note'}"
     entry_lines = [heading, ""]
@@ -130,11 +173,17 @@ def capture(text: str, source: str = "", topic: str = "") -> CaptureResult:
         entry_lines += [f"From: {attribution}", ""]
     entry_lines += normalized.split("\n")
 
-    start_line = base.count("\n") + 1
-    end_line = start_line + len(entry_lines) - 1
-
-    config.robust_mkdir(path.parent)
-    config.atomic_write_text(path, base + "\n".join(entry_lines) + "\n")
+    with _capture_lock(path):
+        try:
+            existing = path.read_text(encoding="utf-8-sig")
+        except FileNotFoundError:
+            existing = _header(month)
+        # Normalize the tail to exactly one blank separator line, so entries stay uniformly
+        # spaced no matter how the previous write ended (hand edits included).
+        base = existing.rstrip("\n") + "\n\n"
+        start_line = base.count("\n") + 1
+        end_line = start_line + len(entry_lines) - 1
+        config.atomic_write_text(path, base + "\n".join(entry_lines) + "\n")
 
     return CaptureResult(
         path=path,

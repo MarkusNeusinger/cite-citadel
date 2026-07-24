@@ -31,7 +31,9 @@ All notable changes to this project are documented here. The format is based on
   second mutating one) and its CLI twin `citadel capture <text> [--from WHO] [--topic T]`
   (`-` reads stdin) append ONE dated, attributed note from a conversation to a monthly capture
   log under the primary raw root (`raw/captures/YYYY-MM.md`, created with an explanatory
-  header). The log is an ordinary raw SOURCE — capture never touches the wiki: the next
+  header; the append is atomic and serialized by a per-log cross-process lock, so two
+  concurrent captures can never silently drop each other's note). The log is an ordinary raw
+  SOURCE — capture never touches the wiki: the next
   ingest/`wiki_ingest` folds the entry in through the normal staged, validated lifecycle with
   real `[^sN]` line-locator citations (the tool reports the appended line range — the future
   locator), and a later append changes the log's sha so the run after it RECONCILES

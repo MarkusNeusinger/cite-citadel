@@ -10,7 +10,7 @@ import io
 import pytest
 
 from citadel import capture as capture_mod
-from citadel import cli, config, ingest, server
+from citadel import cli, config, ingest, manifest, server
 
 
 # --- capture() ---------------------------------------------------------------------------
@@ -96,6 +96,58 @@ def test_render_names_key_locator_and_ingest(tmp_citadel):
     assert "Captured to raw/captures/" in out
     assert "lines " in out
     assert "ingest" in out
+
+
+# --- the per-log append lock -------------------------------------------------------------
+
+
+def _lock_path_for(res_path):
+    return res_path.with_name(f".{res_path.name}.lock")
+
+
+def test_capture_releases_its_lock_and_keeps_it_hidden(tmp_citadel):
+    """The lock is a DOTFILE sibling (discovery skips dotfiles, so a leftover lock can never be
+    picked up as a raw source) and is removed after a successful capture."""
+    res = capture_mod.capture("A note.")
+    lock = _lock_path_for(res.path)
+    assert lock.name.startswith(".")
+    assert not lock.exists()
+
+
+def _plant_lock(tmp_citadel):
+    """Create this month's capture lock by hand, as a racing capture would."""
+    log_dir = tmp_citadel.raw / capture_mod.CAPTURES_SUBDIR
+    log_dir.mkdir(parents=True, exist_ok=True)
+    lock = log_dir / f".{manifest.now_iso()[:7]}.md.lock"
+    lock.write_text("", encoding="utf-8")
+    return lock
+
+
+def test_capture_blocks_on_a_live_lock(tmp_citadel, monkeypatch):
+    """A fresh (non-stale) lock held by another capture makes this one fail loud after its retry
+    budget — never a silent lost update (retries shrunk so the test stays fast)."""
+    monkeypatch.setattr(capture_mod, "_LOCK_RETRIES", 3)
+    monkeypatch.setattr(capture_mod, "_LOCK_WAIT_S", 0.01)
+    lock = _plant_lock(tmp_citadel)
+    with pytest.raises(RuntimeError, match="capture lock"):
+        capture_mod.capture("Blocked note.")
+    assert lock.exists()  # a foreign live lock is never clobbered
+
+
+def test_capture_reclaims_a_stale_lock(tmp_citadel, monkeypatch):
+    """A leftover lock from a crashed capture (mtime past the staleness window) is reclaimed and
+    the capture succeeds."""
+    import os as _os
+    import time as _time
+
+    monkeypatch.setattr(capture_mod, "_LOCK_RETRIES", 3)
+    monkeypatch.setattr(capture_mod, "_LOCK_WAIT_S", 0.01)
+    lock = _plant_lock(tmp_citadel)
+    old = _time.time() - (capture_mod._LOCK_STALE_S + 5)
+    _os.utime(lock, (old, old))
+    res = capture_mod.capture("Reclaimed note.")
+    assert "Reclaimed note." in res.path.read_text(encoding="utf-8")
+    assert not lock.exists()
 
 
 # --- hand-off into the ingest lifecycle --------------------------------------------------
