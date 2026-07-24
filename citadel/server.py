@@ -17,6 +17,13 @@ the sha manifest, and open-world because it spawns your external coding-agent CL
 ``mcp`` predates tool annotations, they are silently omitted — a client that ignores hints is
 unaffected.
 
+Beyond tools, the server publishes four workflow **prompts** (``wiki_answer`` / ``wiki_verify`` /
+``wiki_capture_note`` / ``wiki_health`` — the recommended tool flows packaged as
+slash-command-like entries) and the wiki's documents as ``wiki://`` **resources**
+(``wiki://index`` / ``wiki://sources`` / ``wiki://tags`` plus the ``wiki://page/{folder}/{name}``
+per-page template). Resources return the same text as their tool twins and share the tools'
+never-raise contract.
+
 Run via ``citadel serve`` or ``python -m citadel.server``.
 """
 
@@ -54,7 +61,10 @@ _INSTRUCTIONS = (
     "user states something durable worth keeping — it never touches the wiki). wiki_ingest is the "
     "only tool that writes the WIKI (it spawns the configured coding-agent CLI and may take "
     "minutes) — it also folds captured notes in; every other tool is read-only, and errors always "
-    "come back as plain 'error: …' strings."
+    "come back as plain 'error: …' strings. The same flows are packaged as prompts "
+    "(wiki_answer / wiki_verify / wiki_capture_note / wiki_health), and the catalogs and pages "
+    "are also addressable as wiki:// resources (wiki://index, wiki://sources, wiki://tags, "
+    "wiki://page/{folder}/{name})."
 )
 
 mcp = FastMCP("citadel", instructions=_INSTRUCTIONS)
@@ -451,6 +461,143 @@ def wiki_status() -> str:
         return status.build_status().render()
     except Exception as e:  # never raise out of the tool
         return f"error: could not read corpus status: {e}"
+
+
+# --- Prompts -----------------------------------------------------------------------------
+# Packaged workflows exposed as MCP **prompts** (clients surface them as slash-command-like
+# entries). Each renders to ONE user message that walks the model through the recommended
+# tool flow — the prompt is orientation, the tools do the work. Names share the tools'
+# ``wiki_`` prefix so the prompt and the tools it drives read as one surface.
+
+
+@mcp.prompt(title="Answer from the wiki")
+def wiki_answer(question: str) -> str:
+    """Answer a question strictly from the cited wiki — the recommended read flow
+    (orient → search → read → cite, with wiki_raw as the spot-check) packaged as one prompt."""
+    return (
+        f"Answer this question from the citadel wiki — the synthesized, fully-cited layer over "
+        f"the user's raw sources:\n\n{question}\n\n"
+        "Work like this:\n"
+        "1. Orient: call wiki_index for the page catalog, or wiki_define first if the question "
+        "is a what-does-X-mean lookup.\n"
+        "2. Find: call wiki_search with the question's content words; refine the query (or page "
+        "with offset) if the first hits miss.\n"
+        "3. Read: call wiki_read on every promising rel_path and answer strictly from the page "
+        "text — every fact there carries a [^sN] citation into an immutable raw source.\n"
+        "4. Cite: name the wiki pages (rel_paths) the answer draws on. Spot-check any "
+        "load-bearing claim with wiki_raw (source key + locator from the page's ## Sources) "
+        "before asserting it.\n"
+        "5. If the wiki does not cover the question, say so plainly instead of filling the gap "
+        "from memory — new knowledge enters via files dropped into raw/ (folded in by "
+        "wiki_ingest) or a wiki_capture note."
+    )
+
+
+@mcp.prompt(title="Verify a page's citations")
+def wiki_verify(rel_path: str) -> str:
+    """Spot-check one page against its provenance: read it, then resolve every [^sN]
+    citation through wiki_raw and report supported / unsupported / unreadable per fact."""
+    return (
+        f"Verify the wiki page {rel_path} against its cited sources.\n\n"
+        "1. Call wiki_read with rel_path=" + repr(rel_path) + " and max_chars=0 for the full "
+        "text, and note each fact's [^sN] footnote and the ## Sources entry it points to.\n"
+        "2. For every citation, call wiki_raw with that entry's source key and its locator tail "
+        "verbatim (e.g. 'lines 12-18' or '§ Heading') and check the returned lines actually "
+        "support the fact as stated.\n"
+        "3. Also run wiki_validate on the page for the structural gate.\n"
+        "Report one line per citation — supported / unsupported / source unreadable, with the "
+        "mismatch quoted — and finish with an overall verdict. Do not try to fix anything: the "
+        "wiki is only ever written by staged ingest/curate sessions."
+    )
+
+
+@mcp.prompt(title="Capture a note")
+def wiki_capture_note(statement: str, source: str = "") -> str:
+    """Record ONE durable statement from the conversation through wiki_capture — attributed,
+    append-only, into the raw/ capture log the next ingest folds in."""
+    attribution = source.strip() or "the user in this conversation (add today's date)"
+    return (
+        "Capture this durable statement into the citadel raw/ capture log:\n\n"
+        f"{statement}\n\n"
+        f"Call wiki_capture with that text, source={attribution!r} as the attribution, and a "
+        "short topic hint. Keep it to ONE statement — a whole transcript belongs in raw/ as its "
+        "own file — and leave out secrets or credentials. Then report the returned source key "
+        "and line range (the future [^sN] locator) and remind the user that the next "
+        "wiki_ingest folds the note into the wiki as an attributed claim."
+    )
+
+
+@mcp.prompt(title="Wiki health review")
+def wiki_health() -> str:
+    """Review corpus + wiki health (wiki_status, then wiki_lint) and recommend the single
+    next maintenance action."""
+    return (
+        "Review the health of this citadel workspace.\n\n"
+        "1. Call wiki_status for the per-source corpus state (pending / failed / stale "
+        "sources).\n"
+        "2. Call wiki_lint for the advisory wiki scan (contradictions, orphans, missing "
+        "citations, broken links, locator issues).\n"
+        "Summarize both briefly, then recommend the single most useful next action: wiki_ingest "
+        "when sources are pending or failed-retryable, `citadel curate` for page-quality "
+        "findings, `citadel refresh` for aging ingested sources (both CLI-only lifecycles). "
+        "Keep the whole review short and actionable."
+    )
+
+
+# --- Resources ---------------------------------------------------------------------------
+# The wiki's documents as addressable MCP **resources** under a ``wiki://`` scheme: the two
+# catalogs and the tag overview as concrete resources, and every OKF page through one
+# ``wiki://page/{folder}/{name}`` template (an OKF rel_path is always exactly
+# ``folder/name.md`` — pages are routed one folder deep by okf.folder_for_type). Each
+# resource returns the SAME text as its tool twin and shares the tools' never-raise
+# contract: a missing page, an unsafe path, or a broken store reads back as a clear
+# ``error: …`` body, so a resource-pulling client can never crash the server. Subscribe /
+# ``listChanged`` notifications are deliberately not offered — FastMCP's registry is static,
+# and the wiki only changes through staged ingest/curate runs anyway.
+
+
+@mcp.resource(
+    "wiki://index",
+    name="wiki-index",
+    title="Page catalog",
+    mime_type="text/markdown",
+    description="index.md — every wiki page with a one-line description (wiki_index's twin).",
+)
+def index_resource() -> str:
+    return wiki_index()
+
+
+@mcp.resource(
+    "wiki://sources",
+    name="wiki-sources",
+    title="Provenance catalog",
+    mime_type="text/markdown",
+    description="sources/index.md — every ingested raw source and the pages citing it (wiki_sources's twin).",
+)
+def sources_resource() -> str:
+    return wiki_sources()
+
+
+@mcp.resource(
+    "wiki://tags",
+    name="wiki-tags",
+    title="Tag overview",
+    mime_type="text/markdown",
+    description="Every tag and the pages under it (wiki_tags's twin).",
+)
+def tags_resource() -> str:
+    return wiki_tags()
+
+
+@mcp.resource(
+    "wiki://page/{folder}/{name}",
+    name="wiki-page",
+    title="Wiki page",
+    mime_type="text/markdown",
+    description="One OKF page's full cited text by rel_path, e.g. wiki://page/concepts/transformer.md (wiki_read's twin, uncapped — a resource is a whole document).",
+)
+def page_resource(folder: str, name: str) -> str:
+    return wiki_read(f"{folder}/{name}", max_chars=0)
 
 
 def main() -> None:

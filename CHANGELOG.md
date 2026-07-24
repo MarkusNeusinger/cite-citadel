@@ -26,6 +26,22 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **MCP prompts + resources** (the 2026-07 audit's backlog #4). Beyond its thirteen tools,
+  `citadel serve` now publishes four workflow **prompts** — `wiki_answer` (answer strictly from
+  the cited wiki via the orient → search → read → cite ladder), `wiki_verify` (resolve one page's
+  every `[^sN]` citation through `wiki_raw` and report supported/unsupported per fact),
+  `wiki_capture_note` (record ONE attributed statement via `wiki_capture`), and `wiki_health`
+  (`wiki_status` + `wiki_lint` + the single next maintenance action) — surfaced by clients as
+  slash-command-like entries, so the recommended tool flows are invokable instead of narrated.
+  The wiki's documents are also addressable as `wiki://` **resources**: `wiki://index`,
+  `wiki://sources`, and `wiki://tags` mirror their tool twins byte-identically, and one
+  `wiki://page/{folder}/{name}` template serves any page's full uncapped text. Resources share
+  the tools' never-raise contract (a missing page or unsafe path reads back as an `error: …`
+  body, never a crashed server); subscribe/`listChanged` notifications are deliberately omitted
+  — the wiki only changes through staged ingest/curate runs, so re-reading after `wiki_ingest`
+  is the refresh model. Pure `citadel/server.py` additions; every tool, its annotations, and the
+  CLI twins are unchanged.
+
 - **PDF text-layer pre-pass** (the 2026-07 audit's backlog #10 — the PDF half of its
   "locators into PDF/Office/image sources are never offline-verified" finding).
   [pypdf](https://pypi.org/project/pypdf/) ships as a **bundled runtime dependency** (PDFs are one

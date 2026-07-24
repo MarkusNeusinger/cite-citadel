@@ -728,3 +728,107 @@ def test_read_negative_max_chars_falls_back_to_the_default_cap(tmp_citadel, seed
     seed_page("concepts/huge.md", {"type": "Concept", "title": "Huge"}, big_body + "\n")
     out = server.wiki_read("concepts/huge.md", max_chars=-5)
     assert "truncated at 20000 chars" in out
+
+
+# --- prompts -----------------------------------------------------------------------------
+
+
+def test_all_prompts_registered():
+    """The server publishes exactly the four documented workflow prompts, each self-describing —
+    a rename or a lost decorator would silently drop a slash-command entry from every client."""
+    prompts = asyncio.run(server.mcp.list_prompts())
+    assert sorted(p.name for p in prompts) == ["wiki_answer", "wiki_capture_note", "wiki_health", "wiki_verify"]
+    assert all(p.description for p in prompts)
+
+
+def test_prompt_arguments_and_required_flags():
+    """Prompt arguments mirror the function signatures: defaults become optional arguments."""
+    prompts = {p.name: p for p in asyncio.run(server.mcp.list_prompts())}
+    assert [(a.name, a.required) for a in prompts["wiki_answer"].arguments] == [("question", True)]
+    assert [(a.name, a.required) for a in prompts["wiki_verify"].arguments] == [("rel_path", True)]
+    assert [(a.name, a.required) for a in prompts["wiki_capture_note"].arguments] == [
+        ("statement", True),
+        ("source", False),
+    ]
+    assert not prompts["wiki_health"].arguments
+
+
+def test_wiki_answer_prompt_renders_the_read_flow():
+    """The answer prompt embeds the question and drives the recommended tool ladder."""
+    out = asyncio.run(server.mcp.get_prompt("wiki_answer", {"question": "how do transformers work?"}))
+    text = out.messages[0].content.text
+    assert "how do transformers work?" in text
+    for tool in ("wiki_index", "wiki_search", "wiki_read", "wiki_raw"):
+        assert tool in text
+
+
+def test_wiki_verify_prompt_targets_the_page():
+    out = asyncio.run(server.mcp.get_prompt("wiki_verify", {"rel_path": "concepts/transformer.md"}))
+    text = out.messages[0].content.text
+    assert "concepts/transformer.md" in text
+    assert "wiki_raw" in text and "wiki_validate" in text
+
+
+def test_wiki_capture_note_prompt_defaults_attribution():
+    """With no source, the prompt attributes to the user in-conversation; a given source is
+    passed through verbatim."""
+    bare = asyncio.run(server.mcp.get_prompt("wiki_capture_note", {"statement": "We ship Fridays."}))
+    text = bare.messages[0].content.text
+    assert "We ship Fridays." in text and "the user in this conversation" in text
+    attributed = asyncio.run(
+        server.mcp.get_prompt("wiki_capture_note", {"statement": "We ship Fridays.", "source": "Kim, standup"})
+    )
+    assert "'Kim, standup'" in attributed.messages[0].content.text
+
+
+def test_wiki_health_prompt_drives_status_then_lint():
+    text = asyncio.run(server.mcp.get_prompt("wiki_health", {})).messages[0].content.text
+    assert "wiki_status" in text and "wiki_lint" in text
+
+
+# --- resources ---------------------------------------------------------------------------
+
+
+def test_resources_and_template_registered():
+    """The three concrete wiki:// documents plus the one per-page template are published."""
+    res = asyncio.run(server.mcp.list_resources())
+    assert sorted(str(r.uri) for r in res) == ["wiki://index", "wiki://sources", "wiki://tags"]
+    assert all(r.description and r.mimeType == "text/markdown" for r in res)
+    templates = asyncio.run(server.mcp.list_resource_templates())
+    assert [t.uriTemplate for t in templates] == ["wiki://page/{folder}/{name}"]
+
+
+def test_catalog_resources_match_their_tool_twins(seeded_wiki):
+    """wiki://index / wiki://sources / wiki://tags serve byte-identical text to the tools."""
+    store.rebuild_indexes()
+    for uri, twin in (
+        ("wiki://index", server.wiki_index),
+        ("wiki://sources", server.wiki_sources),
+        ("wiki://tags", server.wiki_tags),
+    ):
+        contents = list(asyncio.run(server.mcp.read_resource(uri)))
+        assert contents[0].content == twin()
+        assert contents[0].mime_type == "text/markdown"
+
+
+def test_page_resource_serves_the_full_uncapped_page(seeded_wiki):
+    """The page template resolves folder/name.md and serves the whole document (a resource is a
+    document read, so the tool's default context cap does not apply)."""
+    contents = list(asyncio.run(server.mcp.read_resource("wiki://page/concepts/transformer.md")))
+    assert contents[0].content == server.wiki_read("concepts/transformer.md", max_chars=0)
+    assert "Transformers use self-attention.[^s1]" in contents[0].content
+
+
+def test_page_resource_shares_the_never_raise_contract(seeded_wiki):
+    """A missing page or a traversal attempt reads back as an 'error: …' body — the resource
+    surface can never crash the server or escape the wiki root."""
+    missing = list(asyncio.run(server.mcp.read_resource("wiki://page/concepts/nope.md")))
+    assert missing[0].content.startswith("error: page not found")
+    traversal = list(asyncio.run(server.mcp.read_resource("wiki://page/../secrets.md")))
+    assert traversal[0].content.startswith("error: unsafe path")
+
+
+def test_index_resource_error_body_before_first_ingest(tmp_citadel):
+    """An empty workspace reads as the tool's clear error string, not a protocol failure."""
+    contents = list(asyncio.run(server.mcp.read_resource("wiki://index")))
+    assert contents[0].content == "error: wiki index not found (run `citadel ingest` first)."

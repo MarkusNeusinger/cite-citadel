@@ -354,7 +354,11 @@ tools — 11 read-only incl. `wiki_raw` (the cited-source reader, backed by `raw
 `capture.py` — it never touches the wiki) and `wiki_ingest` (the only wiki-writer); every tool carries MCP behavior
 annotations — `readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint` — never raises,
 returning error strings instead, and hands the recommended tool flow up through
-`initialize.instructions`). The `viewer/` subpackage builds the self-contained offline HTML
+`initialize.instructions`; the server also publishes four workflow **prompts** —
+`wiki_answer`/`wiki_verify`/`wiki_capture_note`/`wiki_health`, slash-command-like packaged flows
+— and the wiki's documents as `wiki://` **resources** (`wiki://index`/`wiki://sources`/
+`wiki://tags` + the `wiki://page/{folder}/{name}` per-page template), byte-identical to their
+tool twins and sharing the tools' never-raise contract). The `viewer/` subpackage builds the self-contained offline HTML
 viewer (build logic in `__init__.py`; `template.html`/`app.css`/`app.js` are real package-data
 assets loaded via `importlib.resources`). `config.py` resolves all paths/settings. `cli.py` mirrors
 the MCP tools as subcommands (full parity: `define`/`read`/`raw`/`neighbors`/`index`/`sources`/`capture` twin their tools;

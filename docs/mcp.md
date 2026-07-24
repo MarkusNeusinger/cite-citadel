@@ -35,7 +35,9 @@ the `CITADEL_*_DIR` overrides — see [configuration.md](configuration.md#paths-
 (the only tool that writes the wiki). Each carries MCP behavior annotations (`readOnlyHint` etc.)
 so a client can tell the readers from the mutating tools, and none ever raises — errors come back
 as plain strings. The server also hands the recommended tool flow up through
-`initialize.instructions`, so a client that surfaces it gets the orientation for free.
+`initialize.instructions`, so a client that surfaces it gets the orientation for free — and the
+same flows ship as [prompts](#prompts), with the wiki's documents addressable as
+[`wiki://` resources](#resources).
 
 | Tool | What it does |
 |------|--------------|
@@ -52,6 +54,36 @@ as plain strings. The server also hands the recommended tool flow up through
 | `wiki_status` | Per-source corpus state (ingested/failed/skipped/ignored/pending) — the read-only twin of `citadel status`. |
 | `wiki_capture` | Append ONE attributed, dated note from the conversation to `raw/captures/YYYY-MM.md` — the conversational-capture bridge (see [capture.md](capture.md)). Append-only, never touches the wiki; the next ingest folds it in with real `[^sN]` line locators. |
 | `wiki_ingest` | **The only tool that writes the wiki** — fold new/changed raw files into it (idempotent via the sha manifest). |
+
+## Prompts
+
+The recommended tool flows also ship as four MCP **prompts** — clients like Claude Desktop
+surface them as slash-command-like entries, so a user can invoke a whole workflow instead of
+narrating it:
+
+| Prompt | Arguments | Workflow it packages |
+|--------|-----------|----------------------|
+| `wiki_answer` | `question` | Answer strictly from the cited wiki: orient (`wiki_index`/`wiki_define`) → `wiki_search` → `wiki_read` → cite pages, spot-checking load-bearing claims via `wiki_raw`. |
+| `wiki_verify` | `rel_path` | Verify one page against its provenance: resolve every `[^sN]` citation through `wiki_raw` and report supported / unsupported / unreadable per fact, plus the `wiki_validate` gate. |
+| `wiki_capture_note` | `statement`, `source` (optional) | Record ONE durable statement via `wiki_capture`, attributed (defaulting to the user in-conversation), and report the appended line range. |
+| `wiki_health` | — | Corpus + wiki review: `wiki_status`, then `wiki_lint`, then the single most useful next maintenance action. |
+
+## Resources
+
+The wiki's documents are also addressable as MCP **resources** under a `wiki://` scheme
+(`text/markdown`, byte-identical to their tool twins):
+
+- `wiki://index` — the page catalog (`wiki_index`'s twin),
+- `wiki://sources` — the provenance catalog (`wiki_sources`'s twin),
+- `wiki://tags` — the tag overview (`wiki_tags`'s twin),
+- `wiki://page/{folder}/{name}` — a **template** serving any page's full, uncapped text by
+  rel_path, e.g. `wiki://page/concepts/transformer.md` (an OKF rel_path is always exactly
+  `folder/name.md`).
+
+Resources share the tools' never-raise contract: a missing page or an unsafe path reads back
+as a clear `error: …` body, never a crashed server. Subscribe/`listChanged` notifications are
+not offered — the wiki only changes through staged ingest/curate runs, so re-reading after a
+`wiki_ingest` is the refresh model.
 
 ## Claude Desktop
 

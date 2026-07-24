@@ -296,7 +296,11 @@ with real citations; see
 `wiki_ingest` (the only tool that writes the wiki) — each with MCP behavior annotations
 (`readOnlyHint` etc.) so a client can tell them apart. Every tool has a CLI counterpart
 (`citadel read`, `citadel index`, `citadel capture`, …), so an AI without MCP access can do
-everything through the shell.
+everything through the shell. The recommended flows also ship as four **prompts**
+(`wiki_answer`, `wiki_verify`, `wiki_capture_note`, `wiki_health` — slash-command-like entries in
+clients that surface them), and the catalogs plus every page are addressable as `wiki://`
+**resources** (`wiki://index`, `wiki://sources`, `wiki://tags`,
+`wiki://page/{folder}/{name}`).
 
 Wire it into any stdio MCP client (Claude Desktop, Claude Code, a generic stdio client) by launching
 `citadel serve` (portably: `uv run python -m citadel serve`) with `CITADEL_WORKSPACE` set to your
