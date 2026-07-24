@@ -17,7 +17,9 @@ Drop arbitrary files into `raw/`, in any sub-folder — **if the agent CLI you u
 can ingest it** (few exceptions). One agentic CLI session per source folds it into a cross-linked OKF
 wiki under `wiki/`, **routing each fact to the page it best fits** and splitting/merging pages as the
 corpus grows rather than making one page per file. Built-in helpers cover the rest: Office text
-extraction, visual image reading, opt-in whisper transcription for audio/video recordings,
+extraction, visual image reading, a built-in PDF text-layer pre-pass (text-layer PDF citations
+get real, offline-verifiable `lines A-B` locators — no extra install; scanned/image-only PDFs keep
+agent-verified `p. N` page locators), opt-in whisper transcription for audio/video recordings,
 multi-pass folding for oversized files, duplicate-format dedup, and a
 record (with the reason) in `wiki/sources/index.md` for anything that can't be read. Every fact cites its
 `raw/` source and the model uses **only** what is in `raw/`; an AI client then queries the synthesized

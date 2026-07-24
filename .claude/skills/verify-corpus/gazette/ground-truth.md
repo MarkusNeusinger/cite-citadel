@@ -101,9 +101,18 @@ text-layer (present in both modes).
 
 - `citadel check` → "OK — no validation issues." (0 errors), both modes.
 - `citadel lint` → exit 0; **Fabricated/missing sources: 0** (settles `P2`).
-- **Page locators:** every `[^sN]` into a PDF carries a **page locator** (`p. N` / `page N` per
-  `schema.md` § Locators) — a PDF is read whole, so a bare or `lines`-style locator on a PDF citation
-  is wrong. (Advisory in lint, but graded here.)
+- **PDF locators** depend on how the PDF was read (`citadel/rules/formats/pdf.md`):
+  - With the **pypdf text-layer pre-pass** active (`CITADEL_PDF_TEXT`, default auto — pypdf is a
+    bundled runtime dep, so this is on by default), a text-layer PDF is read through its extracted text, so its text-fact citations
+    carry **`lines A-B` locators into that extraction** — offline-verifiable (`lint` reports **0
+    locator issues** against the cached extraction). A **figure-only / scanned** fact (no text
+    layer — e.g. the `0.42` chart value, the suspension notice) still carries a **page locator**
+    (`p. N`), agent-verified.
+  - **Without** the pre-pass (pypdf absent, `CITADEL_PDF_TEXT=0`, or a scanned PDF), the PDF is
+    read agent-natively and **every** `[^sN]` carries a **page locator** (`p. N` / `page N` per
+    `schema.md` § Locators) — a bare locator on such a citation is wrong.
+  Either way, a `lines A-B` locator that does not resolve against the cached extraction is a
+  locator issue; `p. N` locators stay agent-verified. (Advisory in lint, but graded here.)
 
 ## Retrieval battery — find the knowledge like a user (Tier 2)
 

@@ -25,6 +25,9 @@ One command answering "is my setup sane?" without touching a byte. Each check em
   once).
 - **PDF mode** — ``CITADEL_PDF_MODE=images`` against a non-``claude`` backend may silently ingest a
   PDF's text only, because a non-vision CLI cannot look at the figures.
+- **PDF text layer** — is the pypdf pre-pass active (``CITADEL_PDF_TEXT``)? pypdf is a bundled
+  dependency, so this WARNs only in the unusual case that it was force-removed from the environment
+  (PDF locators then stay agent-verified instead of offline-checkable); otherwise a plain on/off echo.
 - **audio** — ``CITADEL_AUDIO_SUPPORT=1`` needs a whisper-class CLI on PATH
   (``CITADEL_WHISPER_CLI``); WARN when the configured binary is missing — every audio/video source
   would fail until it is installed. A plain OK note while the knob is off.
@@ -273,6 +276,29 @@ def check_pdf_mode() -> Check:
     return Check(OK, "PDF mode", f"PDF mode {config.PDF_MODE}")
 
 
+def check_pdf_text() -> Check:
+    """Advisory line for the pypdf text-layer pre-pass (:mod:`citadel.pdftext`). pypdf is a bundled
+    dependency, so this WARNs only in the unusual case that it was force-removed from the
+    environment (``CITADEL_PDF_TEXT`` on/auto but pypdf unimportable) — every PDF then falls back
+    to agent-native reading. Otherwise a plain state echo: on (with what it buys), or off."""
+    from . import pdftext
+
+    have = pdftext.available()
+    mode = config.PDF_TEXT
+    if mode == "off":
+        return Check(OK, "PDF text", "text-layer pre-pass off (CITADEL_PDF_TEXT=0) - PDF locators stay agent-verified")
+    if not have:
+        return Check(
+            WARN,
+            "PDF text",
+            "pypdf (a bundled dependency) is not importable - it was force-removed from this "
+            "environment, so PDFs fall back to agent-native reading and their locators stay "
+            "agent-verified; reinstall it (`pip install pypdf`, or reinstall cite-citadel) to make "
+            "`lines A-B` PDF citations offline-verifiable",
+        )
+    return Check(OK, "PDF text", "text-layer pre-pass on (pypdf) - PDF `lines A-B` locators verify offline")
+
+
 def check_audio_support() -> Check:
     """WARN when ``CITADEL_AUDIO_SUPPORT=1`` but the whisper-class CLI it needs is not on PATH —
     every audio/video source would fail (and retry) until it is installed. A plain status echo
@@ -491,6 +517,7 @@ def run() -> DoctorReport:
             check_failures(),
             check_billing_shadow(),
             check_pdf_mode(),
+            check_pdf_text(),
             check_audio_support(),
             check_wiki_git(),
             check_update(),

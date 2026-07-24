@@ -243,6 +243,10 @@ _site/
 # a dotdir sibling of the wiki. Per-machine derived state holding spoken content — never commit.
 .citadel_transcripts/
 
+# citadel PDF text-layer cache (CITADEL_PDF_TEXT / the optional pypdf pre-pass): content-addressed
+# extractions, a dotdir sibling of the wiki. Per-machine derived state holding document content.
+.citadel_pdftext/
+
 # JetBrains IDE
 .idea/
 

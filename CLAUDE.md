@@ -8,8 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 personal wiki in Google's [Open Knowledge Format](docs/okf-reference.md), with an MCP server so an
 AI can search and read it. It implements Karpathy's LLM-Wiki pattern: drop arbitrary text-bearing
 files into `raw/`, and one agentic CLI session per source folds each into a cross-linked OKF wiki
-under `wiki/`. Pure Python 3.12, KISS. Runtime deps are only `mcp` and `pyyaml` — **there is no LLM
-SDK and no API key**: ingest shells out to a coding-agent CLI you already have logged in
+under `wiki/`. Pure Python 3.12, KISS. Runtime deps are only `mcp`, `pyyaml`, and `pypdf` (all
+pure-Python, no native/transitive weight) — **there is no LLM SDK and no API key**: ingest shells
+out to a coding-agent CLI you already have logged in
 (`claude`/`copilot`/`gemini`).
 
 ## Commands
@@ -184,7 +185,10 @@ it is itself a workspace.
   source is extracted to text first; a pending image is read visually; a pending audio/video
   recording (`CITADEL_AUDIO_SUPPORT`, opt-in) is transcribed through a local whisper-class CLI
   (`transcribe.py`, content-addressed cache `.citadel_transcripts/` beside the wiki) and the agent
-  reads the `[HH:MM:SS]`-stamped transcript; a pending source larger than
+  reads the `[HH:MM:SS]`-stamped transcript; a pending PDF (pypdf is a bundled dep —
+  `CITADEL_PDF_TEXT`, default auto) gets its text layer extracted (`pdftext.py`, content-addressed
+  cache `.citadel_pdftext/`) and the agent reads the `[p. N]`-marked extraction, falling back to
+  the direct agent read when there is no usable text layer; a pending source larger than
   `CITADEL_MAX_SOURCE_CHARS` is folded in over several passes (all against one staging copy — see
   the promote bullet below). `ingest --force <paths>` bypasses the sha short-circuit: the named
   sources land in pending as reconciles (a repo re-digests in full), and the manifest is re-stamped
@@ -231,7 +235,8 @@ file, whether it reads a source, and its format policy; an unknown kind fails lo
 the propagation: `ingest` (new), `reconcile` (changed source — update/remove stale facts, don't
 just append), `delete` (source removed — strip its provenance), `repo`/`repo-reconcile` (a whole
 git repo folded as one digest), `image`/`image-reconcile` (an image source read visually),
-`audio`/`audio-reconcile` (an audio/video source read via its whisper transcript), and
+`audio`/`audio-reconcile` (an audio/video source read via its whisper transcript),
+`pdf`/`pdf-reconcile` (a PDF read via its pypdf text-layer extraction), and
 `curate` (improve an existing page cluster against a findings file — reads that file by path, not a
 raw source). A large source is split into segments and folded in over several passes
 (`segment=(part, total)` on `run_ingest_session`, telling later passes to MERGE into earlier ones).
@@ -322,6 +327,15 @@ detection by extension+magic, one shell-out per content (openai-whisper flag con
 wiki — the same cached text `lint`/`wiki_raw`/the viewer verify and serve audio citations against;
 `transcript_for` is the ingest seam tests monkeypatch (whisper itself is never an LLM concern, so
 this lives beside `extract.py`, not in `llm.py`).
+`pdftext.py` is the same idea for PDFs (the audio pattern applied to the PDF class): pypdf is a
+bundled runtime dep (PDFs are a common raw/ class), so with `CITADEL_PDF_TEXT` (default auto = on
+when pypdf imports, which it always does unless deliberately uninstalled) a
+genuine PDF's (`%PDF-` magic) text layer is extracted once per content into a `[p. N]`-page-marked
+line-stable text, cached content-addressed in `.citadel_pdftext/` beside the wiki — the agent
+reads it under the `pdf`/`pdf-reconcile` kinds while citing the original `.pdf` with `lines A-B`
+locators the same cache lets `lint`/`wiki_raw`/the viewer verify offline; `text_for` is the ingest
+seam, strictly best-effort (scanned / encrypted / corrupt / pypdf force-removed → None → the
+agent-native read with agent-verified `p. N` locators — never a failed source).
 `curate.py` is the second lifecycle (offline detectors + staged cluster sessions; see above).
 `status.py` is the read-only per-source state view; `doctor.py` (`citadel doctor`) is the read-only
 setup health check (OK/WARN/FAIL lines over workspace resolution, the rules tree, the agent CLI on
@@ -385,6 +399,8 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   `desktop.ini`, `~$` locks, …; a `+` prefix extends the built-in defaults), `CITADEL_WIKI_LANG`
   (target language of all wiki prose, default `en`; verbatim quotes stay original),
   `CITADEL_PDF_MODE` (`text` | `images` — whether the agent also reads a PDF's figures),
+  `CITADEL_PDF_TEXT` (`auto` | `1` | `0` — the pypdf text-layer pre-pass; auto = on when pypdf
+  imports, which it does by default; `0` forces agent-native reading),
   `CITADEL_STYLE_PROFILES` (opt-in persona/style capture on `persons/` pages, default `0`),
   `CITADEL_WIKI_GIT` (wiki-history auto-commit after ingest/curate: `auto` acts only when the wiki
   dir is its own git repo, `1` also `git init`s it, `0` off) + `CITADEL_WIKI_GIT_REMOTE` (optional

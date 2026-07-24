@@ -34,6 +34,9 @@ cite-citadel has a small, honest data-flow surface — understanding it is the b
   shared locations. The generated `wiki/.citadel_failures.json` is likewise per-machine derived state
   and is gitignored. The same applies to the audio transcript cache (`CITADEL_AUDIO_SUPPORT`):
   `.citadel_transcripts/` next to the wiki dir holds each recording's spoken content as plaintext —
+  and to the PDF text-layer cache (`.citadel_pdftext/`, written whenever the pypdf pre-pass runs —
+  i.e. by default, unless `CITADEL_PDF_TEXT=0` or pypdf was force-removed), which holds each PDF's
+  extracted text the same way —
   transcription itself runs fully locally (a whisper-class CLI on your machine), but treat the
   cache like the raw recordings themselves.
 - **Billing shadow.** If a provider API key sits in your environment while `CITADEL_LLM_CLI=claude`,

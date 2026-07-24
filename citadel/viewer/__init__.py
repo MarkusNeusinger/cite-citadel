@@ -60,7 +60,7 @@ import webbrowser
 from importlib import resources
 from pathlib import Path
 
-from .. import config, extract, grammar, store, transcribe
+from .. import config, extract, grammar, pdftext, store, transcribe
 from .. import manifest as manifest_mod
 
 
@@ -252,8 +252,11 @@ def _read_source(path: Path) -> tuple[str, str]:
       the ingest extractor), so Office sources are readable inline too;
     - ``("...", "audio")`` — an audio/video recording whose cached whisper transcript exists
       (:func:`transcribe.cached_transcript` — the text the ingest agent actually read);
+    - ``("...", "pdf")``   — a PDF whose cached pypdf text-layer extraction exists
+      (:func:`pdftext.cached_text` — likewise the text the ingest agent actually read);
     - ``("", "binary")``   — anything we can't turn into text without a heavyweight dependency,
-      e.g. a PDF. The viewer then offers an "open the original file" link instead of inline text.
+      e.g. a cache-less PDF. The viewer then offers an "open the original file" link instead of
+      inline text.
     """
     if transcribe.is_audio_ext(path):
         # BEFORE the text attempt: an audio file must serve its transcript, never a lucky
@@ -262,6 +265,12 @@ def _read_source(path: Path) -> tuple[str, str]:
         cached = transcribe.cached_transcript(path)  # None when never transcribed here
         if cached:
             return cached, "audio"
+    if pdftext.is_pdf_file(path):
+        # Same for a genuine PDF: serve the cached extraction its `lines A-B` locators point
+        # into. No cache -> "binary" (the open-the-original affordance) DIRECTLY: an ASCII-only
+        # PDF would survive the UTF-8 read below and embed its raw object soup as "text".
+        cached = pdftext.cached_text(path)
+        return (cached, "pdf") if cached else ("", "binary")
     try:
         return path.read_text(encoding="utf-8"), "text"
     except (OSError, ValueError, UnicodeError):

@@ -590,6 +590,7 @@ def test_run_emits_the_full_check_inventory(tmp_citadel, monkeypatch):
         "failures",
         "billing",
         "PDF mode",
+        "PDF text",
         "audio",
         "wiki git",
         "update",

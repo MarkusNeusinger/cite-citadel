@@ -215,9 +215,10 @@ class _KindSpec:
       else a PDF is magic-sniffed → ``formats/pdf.md`` — the ingest/reconcile axis), ``"repo"``,
       ``"image"``, ``"audio"`` (a whisper transcript arrives via ``read_path`` →
       ``formats/transcripts.md``, kept on EVERY segment — its cite-the-original and locator rules
-      bind per slice), or ``"none"``. ``"none"`` attaches NO format brief EVEN when a ``read_path``
-      is present — curate's findings file arrives via ``read_path`` and must never pull in
-      ``formats/office.md``.
+      bind per slice), ``"pdf"`` (a pypdf text-layer extraction arrives via ``read_path`` →
+      ``formats/pdf.md``, kept on every segment for the same reason), or ``"none"``. ``"none"``
+      attaches NO format brief EVEN when a ``read_path`` is present — curate's findings file
+      arrives via ``read_path`` and must never pull in ``formats/office.md``.
     - ``subject_prefix`` — the ``- <prefix>: <key>`` session bullet naming what the session acts on.
     """
 
@@ -235,10 +236,12 @@ _KIND_SPECS: dict[str, _KindSpec] = {
     "ingest": _KindSpec("tasks/ingest.md", True, "source", "Source (the source of record)"),
     "image": _KindSpec("tasks/ingest.md", True, "image", "Source (the source of record)"),
     "audio": _KindSpec("tasks/ingest.md", True, "audio", "Source (the source of record)"),
+    "pdf": _KindSpec("tasks/ingest.md", True, "pdf", "Source (the source of record)"),
     "repo": _KindSpec("tasks/ingest.md", True, "repo", "Source (the source of record)"),
     "reconcile": _KindSpec("tasks/reconcile.md", True, "source", "Source (the source of record)"),
     "image-reconcile": _KindSpec("tasks/reconcile.md", True, "image", "Source (the source of record)"),
     "audio-reconcile": _KindSpec("tasks/reconcile.md", True, "audio", "Source (the source of record)"),
+    "pdf-reconcile": _KindSpec("tasks/reconcile.md", True, "pdf", "Source (the source of record)"),
     "repo-reconcile": _KindSpec("tasks/reconcile.md", True, "repo", "Source (the source of record)"),
     "delete": _KindSpec("tasks/delete.md", False, "none", "Source (REMOVED from disk — do not open it)"),
     "curate": _KindSpec("tasks/curate.md", False, "none", "Page to curate (the cluster anchor)"),
@@ -272,9 +275,10 @@ def _format_brief(rel_key: str, kind: str, read_path: str | None, segment: tuple
     Python-detectable axis (repo markers, image magic, Office extraction, PDF magic); code selects
     the brief, genres stay the agent's content judgment.
 
-    - ``repo``/``image``/``audio`` policies carry their format in the kind itself. ``audio`` keeps
-      its brief on every SEGMENT too (unlike the Office exemption below): the transcript brief's
-      cite-the-original-file and lines-locator rules bind for each slice of a long recording.
+    - ``repo``/``image``/``audio``/``pdf`` policies carry their format in the kind itself.
+      ``audio`` and ``pdf`` keep their brief on every SEGMENT too (unlike the Office exemption
+      below): the brief's cite-the-original-file and lines-locator rules bind for each slice of a
+      long recording / large extraction.
     - ``none`` (delete, curate) attaches NO brief — even with a ``read_path`` present (curate's
       findings file must not pull in ``formats/office.md``).
     - ``source`` (ingest/reconcile): a ``read_path`` WITHOUT a segment is a pre-extracted Office
@@ -288,6 +292,8 @@ def _format_brief(rel_key: str, kind: str, read_path: str | None, segment: tuple
         return "formats/image.md"
     if policy == "audio":
         return "formats/transcripts.md"
+    if policy == "pdf":
+        return "formats/pdf.md"
     if policy == "none":
         return None
     if read_path:
@@ -373,7 +379,8 @@ def _build_instruction(
     correctly instead of a hardcoded ``wiki/``.
 
     The external ``kind`` strings (``ingest`` / ``reconcile`` / ``delete`` / ``repo`` /
-    ``repo-reconcile`` / ``image`` / ``image-reconcile``) are the stable API; they map internally
+    ``repo-reconcile`` / ``image`` / ``image-reconcile`` / ``audio`` / ``audio-reconcile`` /
+    ``pdf`` / ``pdf-reconcile``) are the stable API; they map internally
     onto (task brief, format brief). ``read_path`` is the prepared file for a pre-extracted
     Office source, one segment's slice of a large source (with ``segment=(part, total)``), or a
     repo digest — the agent reads it for content while citing ``rel_key`` as the source of
@@ -427,12 +434,14 @@ def _build_instruction(
     if segment is not None:
         lines.append(f"- Segment: part {segment[0]} of {segment[1]}")
         if line_range is not None:
-            # A chunked AUDIO pass: the prepared file is the WHOLE transcript (its line numbers
-            # are the verification cache's), and this bullet bounds the pass — no rebased slice,
-            # so every `lines A-B` locator the agent writes is correct by construction.
+            # A chunked AUDIO/PDF-extract pass: the prepared file is the WHOLE transcript /
+            # extraction (its line numbers are the verification cache's), and this bullet bounds
+            # the pass — no rebased slice, so every `lines A-B` locator the agent writes is
+            # correct by construction.
+            noun = "transcript" if fmt == "formats/transcripts.md" else "extracted text"
             lines.append(
-                f"- Transcript window for THIS pass: lines {line_range[0]}-{line_range[1]} — the "
-                "prepared file holds the WHOLE transcript; read ONLY this window (use a "
+                f"- {noun.capitalize()} window for THIS pass: lines {line_range[0]}-{line_range[1]} — the "
+                f"prepared file holds the WHOLE {noun}; read ONLY this window (use a "
                 "ranged/offset read, the file may be too large to read whole) and fold in its "
                 "facts; the file's own line numbers ARE the locator line numbers"
             )
@@ -910,16 +919,18 @@ def run_ingest_session(
 
     ``kind`` picks the propagation (see :func:`_build_instruction`): ``"ingest"`` folds in a new
     source, ``"reconcile"`` re-ingests a CHANGED source (updating/removing its stale facts),
-    ``"image"``/``"image-reconcile"`` VIEW an image source, and ``"delete"`` strips the provenance
-    of a source that was REMOVED from disk.
+    ``"image"``/``"image-reconcile"`` VIEW an image source, ``"pdf"``/``"pdf-reconcile"`` read a
+    PDF through its pypdf text-layer extraction, and ``"delete"`` strips the provenance of a
+    source that was REMOVED from disk.
 
     ``read_path`` (ingest/reconcile only) is the path to the pre-extracted text of a binary Office
     source — or, when ``segment`` is set, this segment's slice of a large source: when set, the
     agent is told to READ it for content while still citing ``rel_key``, and its directory is
     granted to the CLI alongside any out-of-workspace wiki/raw. ``segment`` is ``(part, total)`` for a
-    large source split across passes. ``line_range`` (chunked AUDIO only) is the 1-based inclusive
-    full-transcript line window this pass processes — the prepared file is the WHOLE transcript,
-    shared by every pass, so locator line numbers never rebase.
+    large source split across passes. ``line_range`` (chunked AUDIO/PDF-extract only) is the
+    1-based inclusive line window of the full prepared text this pass processes — the prepared
+    file is the WHOLE transcript/extraction, shared by every pass, so locator line numbers never
+    rebase.
 
     The agent's edits under ``config.WIKI_DIR`` are the real result — ``ingest`` discovers what
     changed via a filesystem diff. The return value is only the session's best-effort
