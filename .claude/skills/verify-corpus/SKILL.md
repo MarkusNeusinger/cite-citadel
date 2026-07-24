@@ -494,6 +494,15 @@ End with a one-line verdict per corpus and, on any hard fail, the specific guara
 (organized / links / provenance / temporal / findable), **whether it is a creation or a retrieval
 defect** (which the grep backstop settled), the lane it routes to, and the file+fact involved.
 
+**Then persist the lanes — the report alone is not the deliverable.** Append the run to the committed
+ledger [`docs/verify-corpus-backlog.md`](../../../docs/verify-corpus-backlog.md) following its
+Protocol section: one `### <date> <corpus>` sub-block for this run under the file's single `## Runs`
+section (corpus, mode, model, `rules_version`, verdict),
+one ledger row per miss that did not become an immediate fix (new `VCB-` id, or bump `last seen` on a
+reproduced entry), and flip to `fixed (…)` any open entry this run verified as resolved. A clean run
+records `misses: none`. Sandboxes are throwaways — the ledger is the only place a grading insight
+survives the `rm -rf`.
+
 ## `all`
 
 Run all nine corpora **sequentially**, each in its own sandbox (never share a workspace). Grade each,
