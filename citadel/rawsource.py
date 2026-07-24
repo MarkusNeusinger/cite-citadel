@@ -51,10 +51,10 @@ def raw_text(source_key: str, locator: str = "") -> str:
     the whole source. Raises :class:`SourceError` (not a cited source / missing on disk / no offline
     text / locator out of range, naming a missing heading, or not offline-resolvable). Output is
     line-numbered and capped."""
-    path = _resolve_and_gate(source_key)
+    path, sha = _resolve_and_gate(source_key)
     if not path.is_file():
         raise SourceError(f"'{source_key}' is cited by the wiki but is missing on disk")
-    text = _read_text(source_key, path)
+    text = _read_text(source_key, path, sha)
     lines = text.splitlines()
     tail = locator.strip()
     if not tail:
@@ -85,28 +85,36 @@ def raw_text(source_key: str, locator: str = "") -> str:
     return _render(source_key, lines, 1, len(lines))
 
 
-def _resolve_and_gate(source_key: str) -> Path:
-    """The provenance gate: the absolute path a cited ``source_key`` denotes, or raise
-    :class:`SourceError`. A key passes only when it (a) lies within a configured raw root or
-    ``config.DOCS_DIR`` — lexical containment via :func:`grammar.is_within`, the correct guard here
-    (an absolute mounted-drive key is legal, so ``okf.safe_join`` would wrongly reject it) — AND (b) is
-    a source the wiki tracks: present in the manifest, or under ``docs/`` (docs files are legal
-    provenance but never manifested)."""
+def _resolve_and_gate(source_key: str) -> tuple[Path, str | None]:
+    """The provenance gate: the absolute path a cited ``source_key`` denotes (plus the manifest
+    entry's recorded sha256, see below), or raise :class:`SourceError`. A key passes only when it
+    (a) lies within a configured raw root or ``config.DOCS_DIR`` — lexical containment via
+    :func:`grammar.is_within`, the correct guard here (an absolute mounted-drive key is legal, so
+    ``okf.safe_join`` would wrongly reject it) — AND (b) is a source the wiki tracks: present in
+    the manifest, or under ``docs/`` (docs files are legal provenance but never manifested).
+
+    The returned sha (None for docs/ keys and repo entries) rides along so the ONE manifest read
+    the gate already does also serves the audio transcript-cache lookup in :func:`_read_text` —
+    never a second load per request."""
     path = config.source_path_for_key(source_key)
     roots = [*config.source_roots(), config.DOCS_DIR]
     if not any(grammar.is_within(path, root) for root in roots):
         raise SourceError(f"'{source_key}' is not under a configured raw/ or docs/ source root")
     under_docs = grammar.is_within(path, config.DOCS_DIR)
-    if not under_docs and source_key not in manifest.load():
+    entry = None if under_docs else manifest.load().get(source_key)
+    if not under_docs and entry is None:
         raise SourceError(f"'{source_key}' is not a source the wiki cites (not in the ingest manifest)")
-    return path
+    sha = manifest.entry_sha(entry) if entry is not None and not manifest.is_repo_entry(entry) else None
+    return path, sha
 
 
-def _read_text(source_key: str, path: Path) -> str:
+def _read_text(source_key: str, path: Path, sha: str | None = None) -> str:
     """The source's plain text, or raise :class:`SourceError` for a type with no offline text. Office
-    files go through :func:`extract.extract_text`; PDFs/images have no offline reader (the ingest agent
-    reads them directly), so we name the file rather than dump it; other files are read as UTF-8, with
-    a NUL byte treated as "binary"."""
+    files go through :func:`extract.extract_text`; an audio/video source is served from its cached
+    whisper transcript (keyed by ``sha`` — the manifest-recorded content hash the gate already
+    loaded); PDFs/images have no offline reader (the ingest agent reads them directly), so we name
+    the file rather than dump it; other files are read as UTF-8, with a NUL byte treated as
+    "binary"."""
     if extract.is_office_source(path):
         text = extract.extract_text(path)
         if not text:
@@ -114,13 +122,17 @@ def _read_text(source_key: str, path: Path) -> str:
         return text
     ext = path.suffix.lower()
     if transcribe.is_audio_ext(path):
-        cached = transcribe.cached_transcript(path)
+        # Key the cache lookup by the MANIFEST's recorded sha (threaded from the gate's one
+        # manifest read): it is the content the wiki's citations were built from — exactly what
+        # a verification reader must serve — and it skips re-hashing a multi-GB recording on
+        # every call. An untracked key (docs/) falls back to hashing inside cached_transcript.
+        cached = transcribe.cached_transcript(path, sha=sha)
         if cached is not None:
             return cached
         if transcribe.is_audio_file(path):
             raise SourceError(
-                f"'{source_key}' ({ext}) has no cached transcript on this machine — ingest it with "
-                f"CITADEL_AUDIO_SUPPORT=1 to transcribe it; the file is at {config.rel_or_abs_posix(path)}"
+                f"'{source_key}' ({ext}) has no usable cached transcript on this machine — ingest it "
+                f"with CITADEL_AUDIO_SUPPORT=1 to transcribe it; the file is at {config.rel_or_abs_posix(path)}"
             )
         # A text file merely RENAMED .mp3 (no audio magic — it ingested as ordinary text):
         # fall through to the normal text read below.

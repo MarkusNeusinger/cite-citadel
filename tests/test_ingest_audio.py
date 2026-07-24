@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 
 import pytest
+from conftest import delete_citing_pages
 
 from citadel import config, ingest, lint, manifest, store, transcribe
 
@@ -185,11 +186,13 @@ def test_whisper_failure_is_a_retryable_source_error(tmp_citadel, audio_on, fake
     assert attempts["n"] == 2  # retried next run
 
 
-def test_long_transcript_chunks_with_brief_on_every_segment(
+def test_long_transcript_chunks_as_line_windows_over_one_full_file(
     tmp_citadel, audio_on, fake_whisper, fake_agent, cite_page, monkeypatch
 ):
-    """A long recording's transcript rides the existing multi-pass chunking: every pass keeps the
-    AUDIO kind (so formats/transcripts.md binds per slice) and merges into one promote."""
+    """A long recording is folded in over several passes over the SAME full transcript file —
+    never rebased slices: every pass keeps the AUDIO kind, reads one shared temp whose content is
+    byte-identical to the verification cache (so `lines A-B` locators from ANY pass resolve
+    against the cache), and carries a contiguous line window covering the whole transcript."""
     raw = tmp_citadel.raw
     monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 80)
     fake_whisper["text"] = (
@@ -197,10 +200,18 @@ def test_long_transcript_chunks_with_brief_on_every_segment(
     )
     _make_mp3(raw / "podcast.mp3")
 
-    seen: list[tuple[str, tuple[int, int] | None]] = []
+    seen: list[dict] = []
 
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
-        seen.append((kind, segment))
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
+        seen.append(
+            {
+                "kind": kind,
+                "segment": segment,
+                "line_range": line_range,
+                "read_path": read_path,
+                "content": Path(read_path).read_text(encoding="utf-8"),
+            }
+        )
         cite_page("misc/podcast.md", rel_key, "A podcast fact.")
 
     fake_agent(side_effect=fake)
@@ -208,9 +219,67 @@ def test_long_transcript_chunks_with_brief_on_every_segment(
 
     assert report.processed == ["raw/podcast.mp3"]
     assert len(seen) > 1  # genuinely chunked
-    assert all(kind == "audio" for kind, _seg in seen)
-    assert [seg for _kind, seg in seen] == [(i, len(seen)) for i in range(1, len(seen) + 1)]
-    assert fake_whisper["n"] == 1  # one transcription feeds all segments
+    assert all(s["kind"] == "audio" for s in seen)
+    assert [s["segment"] for s in seen] == [(i, len(seen)) for i in range(1, len(seen) + 1)]
+    assert fake_whisper["n"] == 1  # one transcription feeds all passes
+
+    # ONE shared temp file holding the FULL transcript — content identical to the cache, so the
+    # line numbers the agent cites in any pass are exactly the cache's line numbers.
+    assert len({s["read_path"] for s in seen}) == 1
+    assert all(s["content"] == fake_whisper["text"] for s in seen)
+    assert transcribe.cached_transcript(raw / "podcast.mp3") == fake_whisper["text"]
+
+    # The windows are contiguous, 1-based, and cover every transcript line exactly once.
+    windows = [s["line_range"] for s in seen]
+    total_lines = len(fake_whisper["text"].splitlines())
+    assert windows[0][0] == 1 and windows[-1][1] == total_lines
+    assert all(w2[0] == w1[1] + 1 for w1, w2 in zip(windows, windows[1:], strict=False))
+
+
+def test_deleted_recording_prunes_its_cached_transcript(tmp_citadel, audio_on, fake_whisper, fake_agent, cite_page):
+    """Deleting a recording from raw/ removes its cached transcript too — the cache holds the
+    spoken content in plaintext, so it must not outlive the source it came from."""
+    raw = tmp_citadel.raw
+    _make_mp3(raw / "memo.mp3")
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
+        if kind == "delete":
+            delete_citing_pages(rel_key)
+        else:
+            cite_page("misc/memo.md", rel_key, "A memo fact.")
+
+    fake_agent(side_effect=fake)
+    ingest.ingest()
+    assert transcribe.cached_transcript(raw / "memo.mp3") == TRANSCRIPT
+    cached_file = next(transcribe.cache_dir().glob("*.md"))
+
+    (raw / "memo.mp3").unlink()
+    report = ingest.ingest()
+
+    assert report.sources_deleted == ["raw/memo.mp3"]
+    assert not cached_file.exists()  # pruned with the source
+
+
+def test_rerecorded_audio_prunes_the_old_cache_entry(tmp_citadel, audio_on, fake_whisper, fake_agent, cite_page):
+    """A re-recorded file (new bytes -> new cache key) prunes the OLD bytes' orphaned transcript
+    once the reconcile succeeded — exactly one cache entry per live source."""
+    raw = tmp_citadel.raw
+    _make_mp3(raw / "memo.mp3")
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
+        cite_page("misc/memo.md", rel_key, "A memo fact.")
+
+    fake_agent(side_effect=fake)
+    ingest.ingest()
+    assert len(list(transcribe.cache_dir().glob("*.md"))) == 1
+
+    _make_mp3(raw / "memo.mp3", tail=b"\x00\xff\xfbre-recorded-different-bytes")
+    fake_whisper["text"] = "[00:00:01] A newer take.\n"
+    ingest.ingest()
+
+    entries = list(transcribe.cache_dir().glob("*.md"))
+    assert len(entries) == 1  # the old entry is gone, only the new content's transcript remains
+    assert entries[0].read_text(encoding="utf-8") == "[00:00:01] A newer take.\n"
 
 
 # --- the cache as offline verification text ----------------------------------------------
@@ -264,6 +333,33 @@ def test_lint_skips_audio_locators_without_a_cache(tmp_citadel, audio_on, seed_p
         "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/memo.mp3](../../raw/memo.mp3), lines 999-1000 - memo\n",
     )
     assert lint.check_locators(store.load()) == []
+
+
+def test_lint_hashes_a_cited_recording_once_per_run(tmp_citadel, audio_on, fake_whisper, seed_page, monkeypatch):
+    """check_locators memoizes source text for the WHOLE call: N pages citing the same recording
+    hash its bytes once, not once per page (a multi-GB video would otherwise be re-hashed per
+    citing page)."""
+    raw = tmp_citadel.raw
+    _make_mp3(raw / "memo.mp3")
+    transcribe.transcript_for(raw / "memo.mp3")
+
+    for name in ("misc/a.md", "misc/b.md", "misc/c.md"):
+        seed_page(
+            name,
+            {"type": "Note", "title": name, "description": "d", "tags": ["a"], "resource": "raw/memo.mp3"},
+            "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/memo.mp3](../../raw/memo.mp3), lines 1-2 - memo\n",
+        )
+
+    calls = {"n": 0}
+    real = manifest.file_sha256
+
+    def counting(path):
+        calls["n"] += 1
+        return real(path)
+
+    monkeypatch.setattr(manifest, "file_sha256", counting)
+    assert lint.check_locators(store.load()) == []
+    assert calls["n"] == 1  # one hash for three citing pages
 
 
 def test_viewer_serves_cached_transcript_as_audio_kind(tmp_citadel, audio_on, fake_whisper):

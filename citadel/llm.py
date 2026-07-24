@@ -337,7 +337,11 @@ _RULES_LINE = {
 
 
 def _build_instruction(
-    rel_key: str, kind: str = "ingest", read_path: str | None = None, segment: tuple[int, int] | None = None
+    rel_key: str,
+    kind: str = "ingest",
+    read_path: str | None = None,
+    segment: tuple[int, int] | None = None,
+    line_range: tuple[int, int] | None = None,
 ) -> str:
     """The short, paths-only agent prompt: ONLY the code-invariant frame. Everything the agent
     must KNOW lives in the rules tree (``citadel/rules/``, see its README) and is referenced BY
@@ -422,6 +426,16 @@ def _build_instruction(
                 )
     if segment is not None:
         lines.append(f"- Segment: part {segment[0]} of {segment[1]}")
+        if line_range is not None:
+            # A chunked AUDIO pass: the prepared file is the WHOLE transcript (its line numbers
+            # are the verification cache's), and this bullet bounds the pass — no rebased slice,
+            # so every `lines A-B` locator the agent writes is correct by construction.
+            lines.append(
+                f"- Transcript window for THIS pass: lines {line_range[0]}-{line_range[1]} — the "
+                "prepared file holds the WHOLE transcript; read ONLY this window (use a "
+                "ranged/offset read, the file may be too large to read whole) and fold in its "
+                "facts; the file's own line numbers ARE the locator line numbers"
+            )
     # Fallback date for time-anchored sources: the raw file's own modification date, used only
     # when the source's CONTENT states no date (genres/meeting-minutes.md § Dates). Only for kinds
     # that READ a source (delete/curate have none), and guarded so a missing file (a repo folder,
@@ -886,7 +900,11 @@ def _run_session(
 
 
 def run_ingest_session(
-    rel_key: str, kind: str = "ingest", read_path: str | None = None, segment: tuple[int, int] | None = None
+    rel_key: str,
+    kind: str = "ingest",
+    read_path: str | None = None,
+    segment: tuple[int, int] | None = None,
+    line_range: tuple[int, int] | None = None,
 ) -> SessionUsage | None:
     """Run the configured agentic CLI once to propagate the raw source ``rel_key`` into the wiki.
 
@@ -899,7 +917,9 @@ def run_ingest_session(
     source — or, when ``segment`` is set, this segment's slice of a large source: when set, the
     agent is told to READ it for content while still citing ``rel_key``, and its directory is
     granted to the CLI alongside any out-of-workspace wiki/raw. ``segment`` is ``(part, total)`` for a
-    large source split across passes.
+    large source split across passes. ``line_range`` (chunked AUDIO only) is the 1-based inclusive
+    full-transcript line window this pass processes — the prepared file is the WHOLE transcript,
+    shared by every pass, so locator line numbers never rebase.
 
     The agent's edits under ``config.WIKI_DIR`` are the real result — ``ingest`` discovers what
     changed via a filesystem diff. The return value is only the session's best-effort
@@ -910,7 +930,7 @@ def run_ingest_session(
     by ingest) on a missing/failed CLI or a timeout."""
     cli = (config.LLM_CLI or "claude").strip().lower()
     cli_path = _resolve_cli(cli)
-    prompt = _build_instruction(rel_key, kind, read_path, segment)
+    prompt = _build_instruction(rel_key, kind, read_path, segment, line_range)
     argv, stdin_text = _build_invocation(cli, cli_path, prompt, _external_dirs(rel_key, read_path))
     summary_path = _gemini_summary_file(cli, cli_path)
     if summary_path is not None:

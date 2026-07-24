@@ -1619,19 +1619,45 @@ def _split_text(text: str, max_chars: int) -> list[str]:
     return segments or [text]
 
 
+def _line_windows(text: str, max_chars: int) -> list[tuple[int, int]]:
+    """Split ``text`` into contiguous 1-based inclusive LINE ranges, packing whole lines so each
+    window stays at most ``max_chars`` characters (a single over-long line still gets its own
+    window — lines are the atom here, never split). The windows cover every line in order, so a
+    reader working window k of the SAME file sees the file's true line numbers — the point:
+    unlike :func:`_split_text` slices, nothing ever rebases the numbering."""
+    lines = text.splitlines()
+    windows: list[tuple[int, int]] = []
+    start, size = 1, 0
+    for i, line in enumerate(lines, 1):
+        cost = len(line) + 1
+        if size and size + cost > max_chars:
+            windows.append((start, i - 1))
+            start, size = i, 0
+        size += cost
+    if start <= len(lines):
+        windows.append((start, len(lines)))
+    return windows or [(1, 1)]
+
+
 def _prepare_passes(
     src: Path, office: str | None, is_image: bool, is_audio: bool = False
-) -> tuple[list[tuple[str | None, tuple[int, int] | None]], list[str]]:
+) -> tuple[list[tuple[str | None, tuple[int, int] | None, tuple[int, int] | None]], list[str]]:
     """Plan the agent session(s) for one pending source and return ``(passes, tmpdirs)``.
 
-    Each pass is ``(read_key, segment)``: ``read_key`` is the temp ``.md`` the agent reads (None =
-    read the source file directly), ``segment`` is ``(part, total)`` for a chunked large source
-    (None = single pass). ``tmpdirs`` are temp directories the caller MUST remove afterwards.
+    Each pass is ``(read_key, segment, line_range)``: ``read_key`` is the temp ``.md`` the agent
+    reads (None = read the source file directly), ``segment`` is ``(part, total)`` for a chunked
+    large source (None = single pass), and ``line_range`` — audio only — is the 1-based inclusive
+    line window of the FULL transcript this pass processes. ``tmpdirs`` are temp directories the
+    caller MUST remove afterwards.
 
     - image: one pass, read the file directly (viewed visually).
-    - a source (pre-extracted Office text or an audio transcript arriving via ``office``, or —
-      when chunking is on — a readable non-PDF text file) whose content exceeds
-      ``config.MAX_SOURCE_CHARS`` is SPLIT into segments, one pass each.
+    - a chunked AUDIO transcript is NOT sliced into rebased temp files: every pass reads the SAME
+      full transcript (its line numbers are identical to the verification cache's) and carries
+      the line window to process — so ``lines A-B`` locators stay correct by construction (a
+      sliced temp restarts numbering at 1 and would silently mis-ground every chunked locator).
+    - a source (pre-extracted Office text, or — when chunking is on — a readable non-PDF text
+      file) whose content exceeds ``config.MAX_SOURCE_CHARS`` is SPLIT into segments, one pass
+      each.
     - a small Office file / audio transcript: one pass reading the prepared text.
     - anything else (small plain text, a PDF, an image-less binary the agent reads): one pass
       reading the file directly (unchanged behavior).
@@ -1641,7 +1667,7 @@ def _prepare_passes(
 
     Raises ``OSError`` if a temp segment/extract file can't be written (handled per-source)."""
     if is_image:
-        return [(None, None)], []
+        return [(None, None, None)], []
     max_chars = config.MAX_SOURCE_CHARS
     # Content we could chunk: pre-extracted Office/transcript text, or (chunking on) a readable
     # text source.
@@ -1649,18 +1675,21 @@ def _prepare_passes(
     if content is None and max_chars > 0:
         content = _read_source_text(src)
     if content is not None and max_chars > 0 and len(content) > max_chars:
+        if is_audio:
+            windows = _line_windows(content, max_chars)
+            read_key, tmp = _office_write_temp(content, src.name, None)
+            return [(read_key, (i, len(windows)), w) for i, w in enumerate(windows, 1)], [tmp]
         segments = _split_text(content, max_chars)
         # A chunked Office source keeps its embedded images: attached to the FIRST segment's temp,
         # exactly like the small-Office branch below — without this, a deck whose extracted text
-        # crossed the chunking threshold silently lost its diagrams/charts. (An audio source has
-        # no embeddable media — its bytes are not a ZIP container.)
-        media = extract.extract_media(src) if office is not None and not is_audio and config.IMAGE_SUPPORT else []
-        passes: list[tuple[str | None, tuple[int, int] | None]] = []
+        # crossed the chunking threshold silently lost its diagrams/charts.
+        media = extract.extract_media(src) if office is not None and config.IMAGE_SUPPORT else []
+        passes: list[tuple[str | None, tuple[int, int] | None, tuple[int, int] | None]] = []
         tmpdirs: list[str] = []
         try:
             for i, seg in enumerate(segments, 1):
                 read_key, tmp = _office_write_temp(seg, src.name, media if i == 1 else None)
-                passes.append((read_key, (i, len(segments))))
+                passes.append((read_key, (i, len(segments)), None))
                 tmpdirs.append(tmp)
         except OSError:
             for tmp in tmpdirs:
@@ -1674,21 +1703,28 @@ def _prepare_passes(
         # audio transcript, which has no media to extract.
         media = extract.extract_media(src) if config.IMAGE_SUPPORT and not is_audio else []
         read_key, tmp = _office_write_temp(office, src.name, media)
-        return [(read_key, None)], [tmp]
+        return [(read_key, None, None)], [tmp]
     # Small plain text, a PDF, or any other agent-readable source: read the file directly.
-    return [(None, None)], []
+    return [(None, None, None)], []
 
 
 def _pending_session(
-    rel_key: str, kind: str, read_key: str | None, segment: tuple[int, int] | None = None
+    rel_key: str,
+    kind: str,
+    read_key: str | None,
+    segment: tuple[int, int] | None = None,
+    line_range: tuple[int, int] | None = None,
 ) -> llm.SessionUsage | None:
     """Drive ONE ingest/reconcile agent session, passing through the backend's usage report
     (:class:`llm.SessionUsage` or None) for the outcome's accounting. When ``read_key`` is set
     (an Office source or a large-source segment whose text was extracted), point the agent at it
     via ``read_path``; otherwise call exactly as before so a non-Office source — and every
     existing test's faked session — is byte-for-byte unchanged. ``segment`` carries
-    ``(part, total)`` for a chunked source, and is passed to the backend ONLY when set, so a
-    single-pass Office/text session calls it exactly as before chunking existed."""
+    ``(part, total)`` for a chunked source, ``line_range`` the transcript window of a chunked
+    AUDIO pass (the full-transcript lines this pass processes); each is passed to the backend
+    ONLY when set, so every pre-existing call shape stays byte-for-byte unchanged."""
+    if line_range is not None:
+        return llm.run_ingest_session(rel_key, kind=kind, read_path=read_key, segment=segment, line_range=line_range)
     if read_key and segment is not None:
         return llm.run_ingest_session(rel_key, kind=kind, read_path=read_key, segment=segment)
     if read_key:
@@ -2076,11 +2112,16 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             # cache makes the retry free); a source too large for one context is SPLIT into
             # segments (promote-once per source — see _run_agent_sessions); anything else is a
             # single direct read.
-            prepared = transcribe.transcript_for(src, sha=sha_stat[0]) if is_audio else office
+            prepared = office
+            if is_audio:
+                prepared = transcribe.transcript_for(src, sha=sha_stat[0])
+                # A transcription can take minutes: refresh the run lock afterwards so the
+                # staleness window never has to absorb whisper time AND session time in one gap.
+                runlock.heartbeat()
             passes, tmpdirs = _prepare_passes(src, prepared, is_image, is_audio=is_audio)
             sessions = [
-                (lambda rp=read_key, sg=segment: _pending_session(rel_key, kind, rp, sg))
-                for read_key, segment in passes
+                (lambda rp=read_key, sg=segment, lw=window: _pending_session(rel_key, kind, rp, sg, lw))
+                for read_key, segment, window in passes
             ]
             return sessions, tmpdirs
 
@@ -2090,6 +2131,13 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             # source's combined session usage (cost/tokens, when the backend reported any)
             # is stamped alongside — per-source cost observability.
             done_sha, done_stat = sha_stat
+            if is_audio:
+                # A re-recorded file leaves its OLD bytes' transcript orphaned in the cache —
+                # prune it once the new content is safely in (plaintext spoken content, SECURITY.md).
+                old_entry = manifest_dict.get(rel_key)
+                old_sha = manifest.entry_sha(old_entry) if old_entry is not None else None
+                if old_sha and old_sha != done_sha:
+                    transcribe.prune_cached(old_sha)
             manifest.mark_done(manifest_dict, src, model, rules_ver, sha=done_sha, st=done_stat, **_usage_fields(usage))
             # A source that had failed before (unreadable/errored/duplicate) now succeeded: drop
             # its persisted failure record.
@@ -2103,7 +2151,7 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             key=rel_key,
             build_sessions=build,
             on_success=done,
-            prepare_error="transcribe audio" if is_audio else "write source text",
+            prepare_error="prepare audio transcript" if is_audio else "write source text",
             sha_stat=sha_stat,
         )
 
@@ -2161,6 +2209,11 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
         def done(_usage: llm.SessionUsage | None) -> None:
             # The cleanup session's usage lands only in the RUN total (report.usage) — the
             # source's manifest key is dropped, so there is no entry left to stamp.
+            entry = manifest_dict.get(key)
+            if entry is not None and transcribe.is_audio_ext(Path(key)):
+                # The deleted recording's cached transcript would sit orphaned forever — and it
+                # holds the recording's spoken content in plaintext (SECURITY.md).
+                transcribe.prune_cached(manifest.entry_sha(entry))
             manifest_dict.pop(key, None)
             failures.clear(failures_dict, key)
             manifest.save(manifest_dict)
