@@ -147,10 +147,14 @@ def _read_text(source_key: str, path: Path, sha: str | None = None) -> str:
         if cached is not None:
             return cached
         raise SourceError(
-            f"'{source_key}' is a PDF with no cached text-layer extraction on this machine — the "
-            f"ingest agent read it directly (page locators are agent-verified); install pypdf "
-            f"(`pip install cite-citadel[pdf]`) and re-ingest with `--force` to make its "
-            f"citations offline-verifiable; the file is at {config.rel_or_abs_posix(path)}"
+            f"'{source_key}' is a PDF with no cached text-layer extraction on this machine — its "
+            f"page ('p. N') locators are agent-verified. This happens when the PDF was read "
+            f"agent-natively (pypdf not installed, or CITADEL_PDF_TEXT=0), when the cache was "
+            f"deleted after a text-layer ingest, or when the PDF is scanned/image-only and has no "
+            f"text layer to extract. If it has a text layer, install pypdf "
+            f"(`pip install cite-citadel[pdf]`) and re-ingest with `--force` to make its 'lines' "
+            f"citations offline-verifiable; a scanned PDF stays on page locators. The file is at "
+            f"{config.rel_or_abs_posix(path)}"
         )
     if ext in _NO_TEXT_EXTS:
         raise SourceError(

@@ -251,6 +251,28 @@ def test_changed_pdf_reingests_as_pdf_reconcile_and_prunes_old_cache(tmp_citadel
     assert "Revised content" in entries[0].read_text(encoding="utf-8")
 
 
+def test_pdf_changed_into_plain_text_still_prunes_its_old_extraction(tmp_citadel, fake_agent, cite_page):
+    """A PDF whose bytes are replaced by NON-PDF content (no %PDF- magic) still orphans its old
+    text-layer extraction — the change-path prunes by OLD sha regardless of the new file's type,
+    so the plaintext cache never lingers (mirrors the delete path)."""
+    raw = tmp_citadel.raw
+    _make_pdf(raw / "report.pdf", TWO_PAGES)
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+        cite_page("misc/report.md", rel_key, "A fact.")
+
+    fake_agent(side_effect=fake)
+    ingest.ingest()
+    assert len(list(pdftext.cache_dir().glob("*.md"))) == 1  # extracted + cached
+
+    # Replace the PDF's bytes with plain text under the SAME name (no %PDF- magic anymore).
+    (raw / "report.pdf").write_text("Now I am just plain text, no PDF magic.\n", encoding="utf-8")
+    ingest.ingest()
+
+    # The old extraction is gone even though the new file is not a PDF (change-path prune by sha).
+    assert list(pdftext.cache_dir().glob("*.md")) == []
+
+
 def test_deleted_pdf_prunes_its_cached_extraction(tmp_citadel, fake_agent, cite_page):
     raw = tmp_citadel.raw
     _make_pdf(raw / "report.pdf", TWO_PAGES)

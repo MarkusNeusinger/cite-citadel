@@ -2180,16 +2180,18 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             # source's combined session usage (cost/tokens, when the backend reported any)
             # is stamped alongside — per-source cost observability.
             done_sha, done_stat = sha_stat
-            if is_audio or pdftext.is_pdf_file(src):
-                # A re-recorded/re-exported file leaves its OLD bytes' transcript/extraction
-                # orphaned in the content-addressed cache — prune it once the new content is
-                # safely in (plaintext source content, SECURITY.md). But the cache is shared by
-                # content: only prune when NO other tracked source still has those bytes (else a
-                # byte-identical sibling would lose the cache it still verifies against).
-                old_entry = manifest_dict.get(rel_key)
-                old_sha = manifest.entry_sha(old_entry) if old_entry is not None else None
-                if old_sha and old_sha != done_sha and not _sha_shared_by_other_entry(manifest_dict, old_sha, rel_key):
-                    (transcribe if is_audio else pdftext).prune_cached(old_sha)
+            # A re-recorded/re-exported source leaves its OLD bytes' transcript/extraction orphaned
+            # in the content-addressed cache — plaintext source content (SECURITY.md). Prune it by
+            # the OLD sha once the new content is safely in, regardless of the NEW file's type: a
+            # PDF re-exported as plain text (or an audio file replaced by a document) still orphans
+            # the old entry, and gating on the current type would miss it (mirrors the delete path).
+            # Each prune is a safe no-op when there is no entry for that sha, so a plain-text change
+            # touches nothing. Guarded so a byte-identical sibling keeps the cache it still verifies.
+            old_entry = manifest_dict.get(rel_key)
+            old_sha = manifest.entry_sha(old_entry) if old_entry is not None else None
+            if old_sha and old_sha != done_sha and not _sha_shared_by_other_entry(manifest_dict, old_sha, rel_key):
+                transcribe.prune_cached(old_sha)
+                pdftext.prune_cached(old_sha)
             manifest.mark_done(manifest_dict, src, model, rules_ver, sha=done_sha, st=done_stat, **_usage_fields(usage))
             # A source that had failed before (unreadable/errored/duplicate) now succeeded: drop
             # its persisted failure record.
