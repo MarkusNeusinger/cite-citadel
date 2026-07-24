@@ -8,6 +8,7 @@ spawns a real whisper. The content-addressed cache lands under the ``tmp_citadel
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -103,6 +104,10 @@ def test_resolve_whisper_missing_names_the_fixes(monkeypatch):
         transcribe.resolve_whisper()
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="the executable bit is POSIX-only; on Windows os.access(X_OK) is true for any existing file, so resolve_whisper rightly accepts it",
+)
 def test_resolve_whisper_existing_but_not_executable_says_so(monkeypatch, tmp_path):
     """An absolute CITADEL_WHISPER_CLI that EXISTS but lacks the executable bit gets its own
     message — 'not found on PATH' would send the user hunting in the wrong place."""
