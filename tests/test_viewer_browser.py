@@ -87,6 +87,9 @@ def test_boot_renders_sidebar_and_graph(viewer_page):
     assert any("Espresso" in t for t in titles)
     assert any("Caffeine" in t for t in titles)
     # The map SVG holds one node group per page (source nodes are a toggle, pages always show).
+    # The graph draws inside a requestAnimationFrame settle loop, so the sidebar being rendered
+    # does not imply the nodes exist yet — wait for them instead of counting immediately.
+    viewer_page.wait_for_selector("#graph g.node")
     assert viewer_page.locator("#graph g.node").count() >= 2
 
 
