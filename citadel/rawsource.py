@@ -34,11 +34,12 @@ from . import config, extract, grammar, manifest, pdftext, transcribe
 MAX_CHARS = 20_000
 
 # Paginated / opaque-binary source types with no offline text extraction: the ingest agent reads
-# these directly (PDFs visually per CITADEL_PDF_MODE, images via vision). We name the file, not dump
-# it — Office files are handled separately via extract.extract_text, and a genuine PDF is
-# intercepted BEFORE this list by its cached pypdf text-layer extraction when one exists
-# (citadel/pdftext.py); only a cache-less PDF falls through to the no-offline-text error.
-_NO_TEXT_EXTS = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff", ".heic"}
+# these directly (images via vision). We name the file, not dump it. Office files are handled
+# separately via extract.extract_text. `.pdf` is deliberately ABSENT: a genuine PDF (`%PDF-` magic)
+# is handled entirely by the `pdftext.is_pdf_file` branch below (served from its cached extraction,
+# or an explicit no-extraction error), while a text file merely NAMED `.pdf` (no magic — it ingested
+# as ordinary text with real line numbers) must fall through to the UTF-8 text read and be servable.
+_NO_TEXT_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff", ".heic"}
 
 
 class SourceError(Exception):

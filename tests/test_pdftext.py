@@ -388,6 +388,30 @@ def test_lint_verifies_lines_locators_against_cached_extraction(tmp_citadel, see
     assert lint.check_locators(store.load()) == []
 
 
+def test_text_file_named_pdf_still_verifies_and_serves_its_line_locators(tmp_citadel, seed_page):
+    """A file merely NAMED ``.pdf`` but without ``%PDF-`` magic ingests as ORDINARY TEXT (routing
+    is magic-based), so it carries real ``lines A-B`` locators — and lint must verify them and
+    ``wiki_raw`` must serve them, never bail out purely on the ``.pdf`` extension (the audio
+    ``renamed .mp3`` contract, mirrored for PDFs)."""
+    raw = tmp_citadel.raw
+    (raw / "notes.pdf").write_text("alpha\nbeta\ngamma\n", encoding="utf-8")  # text, no %PDF- magic
+    manifest_dict = manifest.load()
+    manifest_dict["raw/notes.pdf"] = manifest.make_entry(manifest.file_sha256(raw / "notes.pdf"), "m")
+    manifest.save(manifest_dict)
+
+    seed_page(
+        "misc/notes.md",
+        {"type": "Note", "title": "Notes", "description": "d", "tags": ["a"], "resource": "raw/notes.pdf"},
+        "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/notes.pdf](../../raw/notes.pdf), lines 7-9 - notes\n",
+    )
+    issues = lint.check_locators(store.load())
+    assert issues and "out of range" in issues[0][1]  # verified as text (3 lines), 7-9 is out of range
+
+    # wiki_raw serves it as text (never the "no offline text extraction" PDF error).
+    text = rawsource.raw_text("raw/notes.pdf", "lines 1-2")
+    assert "alpha" in text and "beta" in text and "gamma" not in text
+
+
 def test_lint_skips_pdf_locators_without_a_cache(tmp_citadel, seed_page):
     """No cache on this machine (agent-native ingest, pypdf absent, other machine) -> the locator
     is agent-verified (skipped, advisory) — never a false flag from reading the binary itself."""

@@ -100,10 +100,12 @@ _ORDINAL_CONTEXT = frozenset(
 # grammar) as grammar.locator_tail / parse_locator / heading_candidates / source_headings. What
 # stays here is the IO + policy: which source extensions are non-text, and the advisory framing.
 # Paginated / binary source extensions whose locators (`p. 12`) are agent-verified, not read here.
-# A genuine PDF (`%PDF-` magic) is intercepted BEFORE this list by its cached pypdf text-layer
-# extraction (citadel/pdftext.py) when one exists — only cache-less PDFs fall through to the skip.
+# `.pdf` is deliberately ABSENT: a genuine PDF (`%PDF-` magic) is handled entirely by the
+# `pdftext.is_pdf_file` branch above (served from its cached extraction, or skipped when none
+# exists), while a text file merely NAMED `.pdf` (no magic — it ingested as ordinary text, and can
+# carry real `lines A-B` locators) must fall through to the text read below and be verified. This
+# mirrors how the audio extensions are handled purely by the `transcribe.is_audio_ext` branch.
 _NON_TEXT_EXTS = {
-    ".pdf",
     ".doc",
     ".docx",
     ".ppt",
