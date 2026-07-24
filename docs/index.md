@@ -12,6 +12,8 @@ quickstart; come here when you know what you want to do.
 | Keep the wiki's history in git (auto-commit after ingest, push to GitHub/GitLab) | [configuration.md § Wiki history](configuration.md#wiki-history-git) |
 | Hook up an AI client (Claude Desktop, Claude Code, …) over MCP | [mcp.md](mcp.md) |
 | Capture knowledge from conversations (notes + transcripts) | [capture.md](capture.md) |
+| Sync the wiki across devices / read it on my phone | [recipes.md § Sync](recipes.md#sync-across-devices) |
+| Run ingest + refresh on a schedule (cron, systemd, Task Scheduler, a scheduled agent) | [recipes.md § Scheduled runs](recipes.md#scheduled-runs) |
 | Improve/clean up existing pages | [maintenance.md § Curate](maintenance.md#curate) |
 | Re-verify old imports after a model upgrade, on a monthly budget | [maintenance.md § Refresh](maintenance.md#refresh) |
 | Change how the wiki is built | [maintenance.md § Rules](maintenance.md#rules) |
@@ -32,6 +34,7 @@ docs/
 ├── maintenance.md         curate, refresh, status, and customizing the rules (eject / local.md)
 ├── mcp.md                 wire the MCP server into an AI client
 ├── capture.md             the conversation→raw/ bridge: wiki_capture + transcript files
+├── recipes.md             multi-device sync (git, sync services, phone) + scheduled runs (cron/systemd/agent)
 ├── troubleshooting.md     symptom → cause → fix; leads with `citadel doctor`
 ├── okf-reference.md       the Open Knowledge Format the wiki pages use
 ├── karpathy-llm-wiki.md   the LLM-Wiki pattern this implements

@@ -26,6 +26,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Sync & scheduling recipes** (the 2026-07 audit's backlog #13 + #14, docs-only). New
+  `docs/recipes.md`, linked from the docs hub: multi-device sync under the one-writer-many-readers
+  rule (wiki-history git + a private remote as the recommended lane, whole-workspace git with the
+  exact ignore list, sync services scoped to capture-inbox + read-only mirrors, three
+  phone-reading paths incl. the one-file viewer), and scheduled runs (why unattended runs are safe
+  by design; the canonical nightly-`ingest`/weekly-`refresh --min-age-days` pair; concrete cron,
+  systemd-user-timer, and Windows Task Scheduler setups; plus the "smart cron" lane — a scheduled
+  agent session that runs the commands and triages the report). No code changes.
+
 - **Tests for the two riskiest hand-rolled surfaces** (the 2026-07 audit's backlog #8). The
   222-line CFBF (OLE2) binary parser in `citadel/extract_ole.py` — previously exercised for real
   only by the kontor corpus, which needs a live LLM run — now has a spec-shaped CFBF *writer*
