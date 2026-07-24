@@ -219,7 +219,10 @@ def save(plan: Plan, completed: int, staging: Path, live: Path, changed, removed
             if src is None or dst is None:
                 return _abort(staged_new)  # an unsafe path in the delta: record nothing at all
             if not src.is_file():
-                continue
+                # A `changed` path that is no longer a readable file (it vanished under us, or is
+                # somehow a directory): skipping it would bank a delta that is NOT the promote's,
+                # and a partial delta replayed as truth is a silently wrong wiki. Refuse instead.
+                return _abort(staged_new)
             config.robust_mkdir(dst.parent)
             shutil.copyfile(src, dst)
             sha = _sha256_file(dst)
@@ -444,7 +447,10 @@ def pending() -> list[Pending]:
         key, done, total = record.get("key"), record.get("completed"), record.get("total")
         if isinstance(key, str) and isinstance(done, int) and isinstance(total, int):
             out.append(Pending(key, done, total, _clean_usage(record.get("usage")).get("cost_usd")))
-    return sorted(out)
+    # By key explicitly: sorting whole tuples would fall through to comparing `cost_usd` when two
+    # records claim the same key (a hand-copied slot), and None vs float raises TypeError — in a
+    # function two read-only surfaces call on the promise that it never raises.
+    return sorted(out, key=lambda item: item.key)
 
 
 def knob_stamp() -> str:

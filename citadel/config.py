@@ -422,7 +422,13 @@ def robust_rmtree(path: Path | str, attempts: int = 5) -> None:
     for attempt in range(attempts):
         if not os.path.exists(path):
             return
-        shutil.rmtree(path, onexc=_clear_readonly)
+        # "Never raises" has to hold literally: `onexc` covers per-entry failures, but rmtree can
+        # still raise from the call itself (the target vanishing between the exists() check and the
+        # walk, a non-directory, a share error the callback cannot resolve). This runs in `finally`
+        # blocks, where an escaping exception would MASK the original failure — so swallow it and
+        # let the exists() check + retry below decide.
+        with contextlib.suppress(OSError):
+            shutil.rmtree(path, onexc=_clear_readonly)
         if not os.path.exists(path):
             return
         time.sleep(0.2 * (attempt + 1))

@@ -479,6 +479,51 @@ def test_a_deletion_that_did_not_apply_fails_the_replay(tmp_citadel, seed_page, 
         assert resume.replay(cp, staging, live) is None
 
 
+def test_a_changed_path_that_is_not_a_file_refuses_the_checkpoint(tmp_citadel):
+    """Same rule as a failed deletion: a delta the store cannot record in FULL is not the promote's
+    delta, and a partial one replayed as truth is a silently wrong wiki."""
+    live = tmp_citadel.wiki
+    staging = live.parent / "staging"
+    staging.mkdir()
+    (staging / "real.md").write_text("staged\n", encoding="utf-8")
+    plan = resume.Plan(key="raw/a.md", sha="a" * 64, kind="ingest", model="m", rules_version="r", total=2, shape="s")
+    with runlock.hold("test"):
+        # "gone.md" is in the delta but not on disk (it vanished between the walk and the copy).
+        assert resume.save(plan, 1, staging, live, changed=["real.md", "gone.md"], removed=[], usage={}) is False
+        assert resume.pending() == []  # nothing half-recorded is left behind either
+
+
+def test_pending_never_raises_on_duplicate_keys(tmp_citadel):
+    """`pending()` is called by read-only surfaces on the promise that it never raises. Two slots
+    claiming the same key (a hand-copied dotdir) must not make the sort compare a None cost against
+    a float."""
+    live = tmp_citadel.wiki
+    staging = live.parent / "staging"
+    staging.mkdir()
+    (staging / "page.md").write_text("staged\n", encoding="utf-8")
+    with runlock.hold("test"):
+        for key, usage in (("raw/a.md", {"cost_usd": 0.5}), ("raw/b.md", {})):
+            plan = resume.Plan(key=key, sha="a" * 64, kind="ingest", model="m", rules_version="r", total=2, shape="s")
+            assert resume.save(plan, 1, staging, live, changed=["page.md"], removed=[], usage=usage)
+        # Make the second slot claim the FIRST slot's key, so only the later fields can break a tie.
+        second = resume.slot_for("raw/b.md") / resume.RECORD_NAME
+        record = json.loads(second.read_text(encoding="utf-8"))
+        record["key"] = "raw/a.md"
+        second.write_text(json.dumps(record), encoding="utf-8")
+
+        listed = resume.pending()
+        assert [p.key for p in listed] == ["raw/a.md", "raw/a.md"]
+
+
+def test_robust_rmtree_never_raises(tmp_path):
+    """It runs in `finally` blocks, so an escaping exception would mask the failure that got us
+    there. A target rmtree refuses outright (here: a plain file) must still return quietly."""
+    target = tmp_path / "not-a-directory"
+    target.write_text("x\n", encoding="utf-8")
+    config.robust_rmtree(target, attempts=1)  # must not raise
+    config.robust_rmtree(tmp_path / "does-not-exist", attempts=1)
+
+
 def test_clear_needs_the_run_lock(tmp_citadel):
     """Deleting a slot is a mutation like any other: a run that lost its lock owns nothing."""
     live = tmp_citadel.wiki
