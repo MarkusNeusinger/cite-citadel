@@ -52,15 +52,16 @@ image sources: `CITADEL_IMAGE_SUPPORT=1` (the default) reads recognized images v
 
 ### A PDF's citations aren't offline-verifiable (`wiki_raw` says "no cached text-layer extraction")
 
-PDF `lines A-B` locators verify offline only when the PDF was ingested through the optional pypdf
-text-layer pre-pass (see [configuration — `CITADEL_PDF_TEXT`](configuration.md#what-gets-ingested);
-`citadel doctor` shows its state). A PDF ingested **before** pypdf was installed — or on another
-machine — carries agent-verified `p. N` page locators and has no local extraction cache. After
-installing pypdf (`pip install cite-citadel[pdf]`), re-read it deliberately:
-`citadel ingest --force raw/report.pdf`. Like the transcript cache, extractions live
-content-addressed in `.citadel_pdftext/` next to the wiki dir; deleting an entry (or the dir) just
-costs one re-extraction. A scanned PDF has no text layer at all and always falls back to
-agent-native reading — that is expected, not a failure.
+PDF `lines A-B` locators verify offline against a per-machine extraction cache
+(`.citadel_pdftext/` next to the wiki dir). The pypdf text-layer pre-pass runs by default (pypdf
+is a bundled dependency; see [configuration — `CITADEL_PDF_TEXT`](configuration.md#what-gets-ingested);
+`citadel doctor` shows its state), so most PDFs get it automatically. A PDF shows "no cached
+extraction" when it was ingested **on another machine** (the cache is local — re-read it with
+`citadel ingest --force raw/report.pdf` to rebuild it here), when the cache entry was **deleted**,
+when it was ingested with `CITADEL_PDF_TEXT=0`, or in the unusual case that pypdf was
+**force-removed** from the environment (reinstall it, then `--force`). A scanned/image-only PDF has
+no text layer at all and always falls back to agent-verified `p. N` page locators — that is
+expected, not a failure. Deleting a cache entry (or the whole dir) just costs one re-extraction.
 
 ### An audio/video recording isn't in the wiki
 

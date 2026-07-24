@@ -25,9 +25,9 @@ One command answering "is my setup sane?" without touching a byte. Each check em
   once).
 - **PDF mode** — ``CITADEL_PDF_MODE=images`` against a non-``claude`` backend may silently ingest a
   PDF's text only, because a non-vision CLI cannot look at the figures.
-- **PDF text layer** — is the optional pypdf pre-pass active (``CITADEL_PDF_TEXT``)? WARN when
-  forced on (``=1``) without pypdf installed; an advisory OK naming the install command when it is
-  merely unavailable — without it, PDF locators stay agent-verified instead of offline-checkable.
+- **PDF text layer** — is the pypdf pre-pass active (``CITADEL_PDF_TEXT``)? pypdf is a bundled
+  dependency, so this WARNs only in the unusual case that it was force-removed from the environment
+  (PDF locators then stay agent-verified instead of offline-checkable); otherwise a plain on/off echo.
 - **audio** — ``CITADEL_AUDIO_SUPPORT=1`` needs a whisper-class CLI on PATH
   (``CITADEL_WHISPER_CLI``); WARN when the configured binary is missing — every audio/video source
   would fail until it is installed. A plain OK note while the knob is off.

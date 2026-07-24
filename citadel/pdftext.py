@@ -1,12 +1,13 @@
-"""Optional pypdf text-layer pre-pass for PDF sources — the seam behind ``CITADEL_PDF_TEXT``.
+"""pypdf text-layer pre-pass for PDF sources — the seam behind ``CITADEL_PDF_TEXT``.
 
 A PDF used to be the one text-bearing class whose locators were never offline-verifiable: the
 agent read it directly and cited ``p. N`` page locators nobody but another agent could check.
-This module closes that hole the way :mod:`citadel.transcribe` closed it for audio: when the
-**optional** pure-Python ``pypdf`` dependency is installed (``pip install cite-citadel[pdf]``),
-ingest extracts the PDF's embedded text layer ONCE per content and the agent reads that
-extraction — a ``[p. N]``-marked, line-stable text file — while citing the ORIGINAL ``.pdf`` as
-the source of record with ordinary ``lines A-B`` locators. The extraction is cached
+This module closes that hole the way :mod:`citadel.transcribe` closed it for audio. ``pypdf`` is a
+BUNDLED runtime dependency (PDFs are a common ``raw/`` class, so the offline-verifiable path is on
+by default — pure-Python, BSD, no transitive deps; ``pip install cite-citadel[pdf]`` is a no-op
+compat alias): ingest extracts the PDF's embedded text layer ONCE per content and the agent reads
+that extraction — a ``[p. N]``-marked, line-stable text file — while citing the ORIGINAL ``.pdf``
+as the source of record with ordinary ``lines A-B`` locators. The extraction is cached
 CONTENT-ADDRESSED (by the source file's sha256) in a dotdir sibling of the wiki
 (:func:`cache_dir`, next to ``.citadel_transcripts/``), so it doubles as the offline
 verification text: ``lint.check_locators``, ``wiki_raw``, and the viewer resolve a citation's
@@ -14,9 +15,10 @@ verification text: ``lint.check_locators``, ``wiki_raw``, and the viewer resolve
 
 Everything here is BEST-EFFORT by design — the pre-pass is an upgrade, never a gate:
 
-- ``pypdf`` not installed, ``CITADEL_PDF_TEXT=0``, an encrypted/corrupt PDF, or a scanned PDF
-  with no text layer all yield ``None`` from :func:`text_for`, and ingest falls back to the
-  pre-existing behavior (the agent opens the PDF itself; ``p. N`` locators, agent-verified).
+- ``CITADEL_PDF_TEXT=0``, an encrypted/corrupt PDF, a scanned PDF with no text layer, or the
+  unusual case of pypdf force-removed from the environment all yield ``None`` from
+  :func:`text_for`, and ingest falls back to the pre-existing behavior (the agent opens the PDF
+  itself; ``p. N`` locators, agent-verified).
 - ``p. N`` page locators remain legal and agent-verified for the fallback path and for
   figure-only facts in ``CITADEL_PDF_MODE=images`` (a figure lives in pixels, not in the text
   layer).
@@ -66,8 +68,9 @@ def is_pdf_file(path: Path) -> bool:
 
 
 def available() -> bool:
-    """True when the optional ``pypdf`` dependency is importable. Checked lazily and cheaply
-    (``find_spec``, no import) — pypdf must never become a hard runtime dependency."""
+    """True when the (bundled) ``pypdf`` dependency is importable — normally always. Checked
+    lazily and cheaply (``find_spec``, no import) so the seam degrades gracefully in the unusual
+    case that pypdf was force-removed from the environment, rather than crashing on import."""
     try:
         return importlib.util.find_spec("pypdf") is not None
     except (ImportError, ValueError):  # a broken/half-uninstalled package must read as absent
@@ -204,9 +207,9 @@ def text_for(src: Path, sha: str | None = None) -> str | None:
     when the same bytes were extracted before, else by running pypdf once and caching the result.
     THE ingest seam (monkeypatched by tests; the audio analogue is ``transcribe.transcript_for``).
 
-    Returns None whenever there is no usable text layer to hand the agent — pypdf missing, the
-    document unparsable, or the extraction empty (scanned pages) — and ingest then falls back to
-    the agent-native direct read. Unlike the audio seam this NEVER raises: a PDF is always
+    Returns None whenever there is no usable text layer to hand the agent — the document
+    unparsable, the extraction empty (scanned pages), or the unusual case of pypdf force-removed
+    from the environment — and ingest then falls back to the agent-native direct read. Unlike the audio seam this NEVER raises: a PDF is always
     agent-readable without us, so no failure here may cost a session. An empty extraction IS
     cached (so a scanned PDF is not re-parsed every run), but a parse failure is not (a
     transiently unreadable file retries for free next run). The cache write is best-effort: a

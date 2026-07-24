@@ -2146,9 +2146,10 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             # the agent reads; an audio/video source is transcribed HERE through the whisper seam
             # (content-addressed cache; a raise is a retryable per-source prepare_error, and the
             # cache makes the retry free); a PDF's text layer is extracted HERE through the
-            # optional pypdf seam (same content-addressed cache idea; a None — pypdf missing, no
-            # text layer, unparsable — quietly falls back to the direct agent read, so the
-            # pre-pass can never cost a session); a source too large for one context is SPLIT
+            # (bundled) pypdf seam (same content-addressed cache idea; a None — no text layer,
+            # unparsable, CITADEL_PDF_TEXT=0, or pypdf force-removed — quietly falls back to the
+            # direct agent read, so the pre-pass can never cost a session); a source too large for
+            # one context is SPLIT
             # into segments (promote-once per source — see _run_agent_sessions); anything else is
             # a single direct read.
             prepared = office
