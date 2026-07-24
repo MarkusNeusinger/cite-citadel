@@ -709,6 +709,74 @@ def test_build_invocation_gemini_yolo():
     assert "--approval-mode" in argv and "yolo" in argv
 
 
+# --- hermetic sessions: the probe-gated isolation flag (CITADEL_HERMETIC) -------------------
+#
+# The flag is appended only when the installed binary ADVERTISES it in --help (seeded via the
+# _HELP_TEXT_CACHE the probe reads through), so no test ever spawns a binary.
+
+
+def _seed_help(monkeypatch, cli_path: str, text: str) -> dict:
+    cache = {cli_path: text}
+    monkeypatch.setattr(llm, "_HELP_TEXT_CACHE", cache)
+    return cache
+
+
+def test_hermetic_flags_appended_when_claude_advertises_bare(monkeypatch):
+    monkeypatch.setattr(config, "HERMETIC", True, raising=False)
+    _seed_help(monkeypatch, "/bin/claude", "Usage: claude [options]\n  --bare  Skip user config\n")
+    assert llm._hermetic_flags("claude", "/bin/claude") == ["--bare"]
+
+
+def test_hermetic_flags_empty_when_not_advertised(monkeypatch):
+    """An older claude whose --help does not list --bare is never handed the flag — and a longer
+    option (--bare-metal) must not read as it (exact flag-token match, like the gemini probe)."""
+    monkeypatch.setattr(config, "HERMETIC", True, raising=False)
+    _seed_help(monkeypatch, "/bin/claude", "Usage: claude [--model X] [--add-dir D]\n")
+    assert llm._hermetic_flags("claude", "/bin/claude") == []
+    _seed_help(monkeypatch, "/bin/claude", "  --bare-metal  something else entirely\n")
+    assert llm._hermetic_flags("claude", "/bin/claude") == []
+
+
+def test_hermetic_flags_off_by_knob_and_absent_for_other_clis(monkeypatch):
+    """CITADEL_HERMETIC=0 disables the flag even when advertised; copilot/gemini have no isolation
+    flag registered — nothing is probed (the help cache stays untouched) and nothing is passed."""
+    _seed_help(monkeypatch, "/bin/claude", "--bare\n")
+    monkeypatch.setattr(config, "HERMETIC", False, raising=False)
+    assert llm._hermetic_flags("claude", "/bin/claude") == []
+    monkeypatch.setattr(config, "HERMETIC", True, raising=False)
+    cache = _seed_help(monkeypatch, "/bin/claude", "--bare\n")
+    assert llm._hermetic_flags("copilot", "/bin/copilot") == []
+    assert llm._hermetic_flags("gemini", "/bin/gemini") == []
+    assert set(cache) == {"/bin/claude"}  # no probe was attempted for copilot/gemini
+
+
+def test_run_ingest_session_appends_hermetic_flag_probe_gated(monkeypatch):
+    """The wiring: run_ingest_session appends --bare to the claude argv exactly when the knob is on
+    AND the binary advertises the flag — and never otherwise."""
+    monkeypatch.setattr(config, "LLM_CLI", "claude", raising=False)
+    monkeypatch.setattr(llm, "_resolve_cli", lambda cli: "/bin/claude")
+    seen: dict = {}
+
+    def fake_run_session(cli, argv, stdin_text, *, log_label=None):
+        seen["argv"] = argv
+
+    monkeypatch.setattr(llm, "_run_session", fake_run_session)
+
+    monkeypatch.setattr(config, "HERMETIC", True, raising=False)
+    _seed_help(monkeypatch, "/bin/claude", "  --bare  Skip user config\n")
+    llm.run_ingest_session("raw/notes.md")
+    assert "--bare" in seen["argv"]
+
+    _seed_help(monkeypatch, "/bin/claude", "no such flag here\n")
+    llm.run_ingest_session("raw/notes.md")
+    assert "--bare" not in seen["argv"]
+
+    monkeypatch.setattr(config, "HERMETIC", False, raising=False)
+    _seed_help(monkeypatch, "/bin/claude", "  --bare  Skip user config\n")
+    llm.run_ingest_session("raw/notes.md")
+    assert "--bare" not in seen["argv"]
+
+
 def test_run_session_claude_is_error_raises(monkeypatch):
     """A claude result envelope with is_error=true raises (e.g. quota/auth)."""
 

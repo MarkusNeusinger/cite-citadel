@@ -40,7 +40,7 @@ contradictions/fix locators — against a recomputed findings checklist), `statu
 per-source state table: ingested / failed / skipped-duplicate / ignored / pending; MCP twin
 `wiki_status`), `doctor`
 (read-only setup health check — OK/WARN/FAIL lines for workspace / rules / config-parse fallbacks /
-agent CLI / raw roots /
+agent CLI / the inert-`CITADEL_INGEST_MODEL`-on-copilot/gemini advisory / raw roots /
 manifest / billing / wiki-git state / a best-effort PyPI update check / workspace coherence; needs no workspace, exits 1 only on a FAIL), `serve` (MCP
 stdio server), `capture <text> [--from WHO] [--topic T]` (append one attributed note from a
 conversation to the raw/ capture log `raw/captures/YYYY-MM.md`; `-` reads stdin; the next ingest
@@ -394,7 +394,9 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
 - Config knobs live in the workspace-root `.env` (auto-loaded, gitignored; template:
   `citadel/templates/env.example`): `CITADEL_LLM_CLI`,
   `CITADEL_INGEST_MODEL`, `CITADEL_CURATE_MODEL` (model for `citadel curate` sessions; falls back to
-  `CITADEL_INGEST_MODEL`), `CITADEL_LLM_TIMEOUT`, `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,
+  `CITADEL_INGEST_MODEL`), `CITADEL_LLM_TIMEOUT`, `CITADEL_HERMETIC` (session isolation — append claude's `--bare` when the
+  installed binary advertises it, so personal `~/.claude` config never leaks into ingest; default
+  on, probe-gated), `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,
   `CITADEL_REPO_SUPPORT`, `CITADEL_IMAGE_SUPPORT` (read images visually), `CITADEL_AUDIO_SUPPORT`
   (opt-in whisper transcript ingest for audio/video, with `CITADEL_WHISPER_CLI`/
   `CITADEL_WHISPER_MODEL`/`CITADEL_WHISPER_TIMEOUT` tuning the seam), `CITADEL_MAX_SOURCE_CHARS`

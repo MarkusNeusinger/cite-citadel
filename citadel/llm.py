@@ -16,6 +16,10 @@ and the operational invariants (see :func:`_build_instruction`).
   ``GEMINI_CLI_PATH``.
 - The model for the ``claude`` CLI comes from ``config.INGEST_MODEL``. copilot/gemini use
   their own default model.
+- Sessions run **hermetically** by default (``CITADEL_HERMETIC``, default on): when the
+  installed CLI advertises a session-isolation flag (claude ``--bare`` — skip user
+  hooks/CLAUDE.md/MCP discovery), it is appended so the user's personal agent configuration
+  never leaks into ingest. Feature-probed per binary; an older CLI runs exactly as before.
 
 One function does real work: ``run_ingest_session(rel_key)`` runs the chosen CLI once against
 the workspace. The RESULT is whatever the agent wrote under ``wiki/``, which ``ingest``
@@ -596,6 +600,28 @@ def _cli_help_text(cli_path: str) -> str:
     return _HELP_TEXT_CACHE[cli_path]
 
 
+# Per-CLI session-isolation flags: what to pass so the user's PERSONAL agent configuration
+# (~/.claude hooks, CLAUDE.md context, MCP-server discovery) does not leak into citadel's agent
+# sessions — the session then runs on the rules tree alone, reproducibly. Only claude documents
+# such a switch today; copilot/gemini have no equivalent (no entry, so nothing is probed or passed).
+_HERMETIC_FLAGS: dict[str, tuple[str, ...]] = {"claude": ("--bare",)}
+
+
+def _hermetic_flags(cli: str, cli_path: str) -> list[str]:
+    """The session-isolation flags to append for this backend, or ``[]`` when hermetic mode is off
+    (``CITADEL_HERMETIC=0``), the CLI has no registered isolation flag, or the installed binary
+    does not ADVERTISE the flag in ``--help`` — probed once per binary with an exact flag-token
+    match, the same feature-detection discipline as gemini's ``--session-summary``: an older CLI
+    must never be handed an unknown flag that would fail every session over configuration
+    hygiene. A false NEGATIVE is safe (the session merely runs non-hermetic, the pre-knob
+    behavior)."""
+    flags = _HERMETIC_FLAGS.get(cli, ()) if config.HERMETIC else ()
+    if not flags:
+        return []
+    help_text = _cli_help_text(cli_path)
+    return [flag for flag in flags if re.search(re.escape(flag) + r"(?![\w-])", help_text)]
+
+
 def _gemini_summary_file(cli: str, cli_path: str) -> Path | None:
     """A fresh temp file for gemini's ``--session-summary`` stats JSON, or None when the backend
     is not gemini or its binary does not ADVERTISE the flag in ``--help`` (probed once per
@@ -943,6 +969,7 @@ def run_ingest_session(
     cli_path = _resolve_cli(cli)
     prompt = _build_instruction(rel_key, kind, read_path, segment, line_range)
     argv, stdin_text = _build_invocation(cli, cli_path, prompt, _external_dirs(rel_key, read_path))
+    argv += _hermetic_flags(cli, cli_path)  # session isolation (claude --bare), probe-gated
     summary_path = _gemini_summary_file(cli, cli_path)
     if summary_path is not None:
         argv = argv + ["--session-summary", str(summary_path)]

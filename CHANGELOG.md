@@ -26,6 +26,20 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Hermetic agent sessions + an honest model knob** (the 2026-07 audit's backlog #6). Ingest
+  sessions now run **hermetically by default**: when the installed backend CLI advertises a
+  session-isolation flag (claude `--bare` — skip user hooks/`CLAUDE.md`/MCP discovery), it is
+  appended to every agent invocation, so a user's personal `~/.claude` configuration no longer
+  leaks into citadel's sessions — they run on the rules tree alone, reproducibly. The flag is
+  feature-probed per binary against `--help` with an exact flag-token match (the same
+  discipline as gemini's `--session-summary` probe), so an older CLI without the flag runs
+  byte-for-byte as before; `CITADEL_HERMETIC=0` deliberately re-admits the personal config.
+  copilot/gemini document no equivalent flag today, so nothing is passed there. And `citadel
+  doctor` gained the honest-knob advisory: a WARN when `CITADEL_INGEST_MODEL` is explicitly set
+  while the backend is copilot/gemini — only the claude backend is passed `--model`, so the knob
+  selects nothing there; the warning names the backend's own env var (`COPILOT_MODEL` /
+  `GEMINI_MODEL`) as the real selector.
+
 - **MCP prompts + resources** (the 2026-07 audit's backlog #4). Beyond its thirteen tools,
   `citadel serve` now publishes four workflow **prompts** — `wiki_answer` (answer strictly from
   the cited wiki via the orient → search → read → cite ladder), `wiki_verify` (resolve one page's

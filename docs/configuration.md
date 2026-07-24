@@ -26,7 +26,7 @@ lives once in the README:
 | Variable | Default | What it does |
 |----------|---------|--------------|
 | `CITADEL_LLM_CLI` | `claude` | Which CLI ingest shells out to: `claude` \| `copilot` \| `gemini`. Run agentically (claude with acceptEdits + allowlist, copilot `--allow-all-tools`, gemini `--approval-mode yolo`); the CLI must be installed and logged in. If your workspace is a git checkout, run ingest on a clean working tree so any stray edit shows up (git is optional otherwise). |
-| `CITADEL_INGEST_MODEL` | `sonnet` | Model for the `claude` backend — an alias (`sonnet`/`opus`/`haiku`) or full id. copilot/gemini use their own default. |
+| `CITADEL_INGEST_MODEL` | `sonnet` | Model for the `claude` backend — an alias (`sonnet`/`opus`/`haiku`) or full id. copilot/gemini use their own default (`citadel doctor` warns when this knob is set there, where it selects nothing — `COPILOT_MODEL`/`GEMINI_MODEL` are the real selectors). |
 | `CITADEL_CURATE_MODEL` | (reuses ingest model) | Cheaper/faster model for `citadel curate` sessions (claude backend, via `--model`). |
 | `CLAUDE_CODE_PATH` / `COPILOT_CLI_PATH` / `GEMINI_CLI_PATH` | (PATH lookup) | Override the CLI binary path when it isn't on `PATH`. |
 | `COPILOT_MODEL` / `GEMINI_MODEL` | (unset) | Concrete model id recorded per source for those backends (also covers a local/Ollama model). |
@@ -92,6 +92,7 @@ $env:CITADEL_LLM_CLI = "copilot"
 | Variable | Default | What it does |
 |----------|---------|--------------|
 | `CITADEL_LLM_TIMEOUT` | `1200` | Per-call CLI timeout in seconds. Raise it for opus or large raw files. |
+| `CITADEL_HERMETIC` | `1` | Hermetic agent sessions: append the backend's session-isolation flag (claude `--bare` — skips user hooks/`CLAUDE.md`/MCP discovery) so your personal agent config never leaks into ingest. Only passed when the installed binary advertises the flag in `--help` (older CLIs run unchanged); `0` deliberately runs sessions with your personal config. copilot/gemini have no such flag today. |
 | `CITADEL_LLM_LOG_DIR` | (off) | Write one transcript per source (prompt + full CLI stdout/stderr + exit code + duration). Relative paths resolve under the workspace root. **Local-only — keep out of VCS** (transcripts can contain source content). CLI flag: `--log-dir`. |
 | `CITADEL_LLM_VERBOSE` | `0` | `1`/`true` streams each session's output live. CLI flag: `-v`. |
 
