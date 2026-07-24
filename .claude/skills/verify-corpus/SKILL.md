@@ -496,7 +496,8 @@ defect** (which the grep backstop settled), the lane it routes to, and the file+
 
 **Then persist the lanes — the report alone is not the deliverable.** Append the run to the committed
 ledger [`docs/verify-corpus-backlog.md`](../../../docs/verify-corpus-backlog.md) following its
-Protocol section: one `## Runs` block for this run (corpus, mode, model, `rules_version`, verdict),
+Protocol section: one `### <date> <corpus>` sub-block for this run under the file's single `## Runs`
+section (corpus, mode, model, `rules_version`, verdict),
 one ledger row per miss that did not become an immediate fix (new `VCB-` id, or bump `last seen` on a
 reproduced entry), and flip to `fixed (…)` any open entry this run verified as resolved. A clean run
 records `misses: none`. Sandboxes are throwaways — the ledger is the only place a grading insight

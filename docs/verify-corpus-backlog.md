@@ -10,9 +10,9 @@ that did not immediately become a fix is recorded here, so the lanes have durabl
 
 ## Protocol
 
-- **Append per run, never rewrite history.** After the grade report, add one `## Run` block per
-  grading run (newest first) and one ledger row per miss. A clean run still gets a block (with
-  `misses: none`) — a green streak is signal too.
+- **Append per run, never rewrite history.** After the grade report, add one `### <date> <corpus>`
+  sub-block under the single `## Runs` section (newest first) and one ledger row per miss. A clean
+  run still gets a block (with `misses: none`) — a green streak is signal too.
 - **One row per distinct miss.** If a later run reproduces an already-open entry, do not duplicate
   it: bump that entry's `last seen` date instead. A re-observed miss is prioritization signal.
 - **Statuses:** `open` → `fixed (PR #N / commit)` when a shipped change resolves it (verified by a
@@ -54,5 +54,6 @@ so their misses cannot be re-verified.)*
 
 ## Runs
 
-*(Newest first. One block per grading run — corpus, mode, model, `rules_version`, verdict, and the
-`VCB-` ids the run touched, or `misses: none`.)*
+*(Newest first. One `### <date> <corpus>` sub-block per grading run — mode, model, `rules_version`,
+verdict, and the `VCB-` ids the run touched, or `misses: none`. This `## Runs` heading stays
+singular; runs nest under it.)*
