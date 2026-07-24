@@ -217,6 +217,18 @@ def test_audio_source_without_cache_names_the_knob(tmp_citadel):
         rawsource.raw_text(key)
 
 
+def test_audio_source_served_via_manifest_sha_without_rehashing(tmp_citadel, monkeypatch):
+    """The cache lookup keys on the MANIFEST's recorded sha — the content the wiki's citations
+    were built from — so serving a citation never re-hashes a multi-GB recording."""
+    key = _cite_audio(tmp_citadel, "memo.mp3", "[00:00:01] Hello.\n")
+
+    def boom(path):
+        raise AssertionError("wiki_raw must not re-hash the media file")
+
+    monkeypatch.setattr(manifest, "file_sha256", boom)
+    assert "[00:00:01] Hello." in rawsource.raw_text(key)
+
+
 def test_text_file_renamed_mp3_is_served_as_text(tmp_citadel):
     """A UTF-8 text file merely RENAMED .mp3 (no audio magic) ingested as ordinary text — wiki_raw
     must serve it through the normal text path, not demand a transcript cache."""

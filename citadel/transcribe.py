@@ -151,12 +151,30 @@ def resolve_whisper() -> str:
         return path
     if os.path.isabs(binary) and os.access(binary, os.X_OK):
         return binary
+    problem = (
+        f"{binary!r} exists but is not executable"
+        if os.path.isabs(binary) and os.path.exists(binary)
+        else f"{binary!r} was not found on PATH"
+    )
     raise RuntimeError(
-        f"the whisper CLI {binary!r} was not found on PATH. Install one (openai-whisper, "
+        f"the whisper CLI {problem}. Install one (openai-whisper, "
         f"whisper-ctranslate2, mlx_whisper - anything speaking the openai-whisper flags), or "
         f"point CITADEL_WHISPER_CLI at the binary, or set CITADEL_AUDIO_SUPPORT=0 to keep "
         f"audio/video files out of the wiki."
     )
+
+
+def prune_cached(sha: str | None) -> None:
+    """Best-effort removal of the cache entry for ``sha`` — called by ingest when a recording is
+    DELETED from raw/ or its bytes CHANGED (re-recorded): the old transcript would otherwise sit
+    orphaned forever, and it holds the recording's spoken content in plaintext (SECURITY.md).
+    Never raises; a None/empty ``sha`` is a no-op."""
+    if not sha:
+        return
+    try:
+        cache_path(sha).unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _parse_srt(srt: str) -> str:

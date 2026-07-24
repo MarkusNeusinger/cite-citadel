@@ -558,9 +558,11 @@ def check_locators(pages: list[Page]) -> list[tuple[str, str]]:
     reuses the one citation/link/fence grammar (:func:`grammar.source_definitions`), so it agrees
     with the strict gate by construction."""
     issues: list[tuple[str, str]] = []
+    # ONE source-text memo for the whole call: raw files don't change mid-lint, and N pages citing
+    # the same source must read it once — not once per page (for an audio source that read is a
+    # full content hash to find its cached transcript, so per-page misses were O(pages × file size)).
+    cache: dict[str, str | None] = {}
     for page in pages:
-        # One source-text memo per page: many [^sN] locators may cite the same file (read once).
-        cache: dict[str, str | None] = {}
         for _marker_id, rest in grammar.source_definitions(page.body):
             target = grammar.def_link_target(rest)
             if target is None or grammar.is_external(target):

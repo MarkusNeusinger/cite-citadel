@@ -20,6 +20,11 @@ Applies when the run instruction says the source is an **audio or video recordin
   may be mis-heard: prefer spellings and numbers corroborated by other sources, keep the
   speaker's hedges hedged, and when a garbled passage is load-bearing, record the uncertainty
   rather than a guess.
+- A **long recording** is folded in over several passes over the **same full transcript file** —
+  the run instruction names the line window THIS pass processes. Read only that window (use a
+  ranged/offset read; the file may be too large to read whole) and cite the file's own line
+  numbers as usual: they are the transcript's line numbers in every pass, so locators from
+  different passes never conflict.
 - Judge the genre from the content as usual: a multi-voice recording composes with
   `genres/transcript.md`, a single-voice memo or dictation with `genres/first-person.md`.
 - If the transcript holds no usable content, make no edits and stop.

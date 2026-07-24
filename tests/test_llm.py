@@ -312,6 +312,22 @@ def test_audio_segment_keeps_transcripts_brief():
     assert "part 2 of 3" in prompt
 
 
+def test_audio_segment_line_window_bullet_names_global_lines():
+    """A chunked audio pass carries its transcript window: the prompt names the FULL-transcript
+    line range this pass processes and says the file's own line numbers ARE the locator numbers
+    (the prepared file is the whole transcript — locators never rebase across passes)."""
+    prompt = llm._build_instruction("raw/podcast.mp3", "audio", "/tmp/okf_extract_x/podcast.md", (2, 3), (121, 240))
+    assert "Transcript window for THIS pass: lines 121-240" in prompt
+    assert "WHOLE transcript" in prompt
+    assert "line numbers ARE the locator line numbers" in prompt
+    assert "part 2 of 3" in prompt
+    assert len(prompt) < PROMPT_CHAR_BUDGET
+
+    # Without a line_range (every non-audio segment pass), no window bullet appears.
+    plain = llm._build_instruction("raw/big.txt", "ingest", "/tmp/okf_extract_x/big.md", (2, 3))
+    assert "Transcript window" not in plain
+
+
 def test_image_kinds_map_to_image_brief():
     for kind in ("image", "image-reconcile"):
         prompt = llm._build_instruction("raw/diagram.png", kind)

@@ -51,8 +51,14 @@ def lock_path() -> Path:
 def _stale_after_s() -> float:
     """How old (mtime) a lock may get before it is presumed dead. Heartbeats fire per source,
     so a live run's lock is never older than one agent session — two timeouts plus margin is
-    generous, with an hour as the floor."""
-    return max(2.0 * config.LLM_TIMEOUT, 3600.0)
+    generous, with an hour as the floor. With audio support on, a pending recording may spend a
+    whole whisper transcription inside the per-source boundary before its extra heartbeat fires
+    (ingest heartbeats again right after transcribing), so the window must also outlive one
+    transcription — else a long transcription would let a second run reclaim a LIVE lock."""
+    budget = 2.0 * config.LLM_TIMEOUT
+    if config.AUDIO_SUPPORT:
+        budget = max(budget, float(config.WHISPER_TIMEOUT) + config.LLM_TIMEOUT)
+    return max(budget, 3600.0)
 
 
 def _pid_alive(pid: int) -> bool | None:

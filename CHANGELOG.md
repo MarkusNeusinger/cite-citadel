@@ -42,6 +42,15 @@ All notable changes to this project are documented here. The format is based on
   recordings chunk through the existing multi-pass folding; a missing/failing whisper binary is a
   retryable per-source error (never a permanent unreadable mark), and `citadel doctor` gained an
   `audio` line warning when the knob is on but the binary is missing.
+  Follow-up hardening (same unreleased feature): a chunked recording's passes now share ONE
+  full-transcript file with a per-pass line window instead of rebased slices, so `lines A-B`
+  locators from any pass match the verification cache by construction; the run-lock staleness
+  window accounts for whisper time (plus an extra heartbeat after transcription) so a long
+  transcription can never let a second run reclaim a live lock; deleting or re-recording a
+  source prunes its now-orphaned cached transcript (plaintext spoken content); lint hashes a
+  cited recording once per run instead of once per citing page, and `wiki_raw` serves the
+  transcript keyed by the manifest's recorded sha — the content the citations were built from —
+  without re-hashing the media file.
 - **Per-session LLM cost accounting** (the 2026-07 audit's backlog #2). Every agent session's
   cost/usage is now captured from the backend CLI's own report — claude's `--output-format json`
   result envelope (`total_cost_usd` + token counts, cache traffic included) and gemini's

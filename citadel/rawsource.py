@@ -114,13 +114,19 @@ def _read_text(source_key: str, path: Path) -> str:
         return text
     ext = path.suffix.lower()
     if transcribe.is_audio_ext(path):
-        cached = transcribe.cached_transcript(path)
+        # Key the cache lookup by the MANIFEST's recorded sha when the source is tracked: it is
+        # the content the wiki's citations were built from (exactly what a verification reader
+        # must serve), and it skips re-hashing a multi-GB recording on every call. An untracked
+        # key (docs/) falls back to hashing inside cached_transcript.
+        entry = manifest.load().get(source_key)
+        sha = manifest.entry_sha(entry) if entry is not None else None
+        cached = transcribe.cached_transcript(path, sha=sha)
         if cached is not None:
             return cached
         if transcribe.is_audio_file(path):
             raise SourceError(
-                f"'{source_key}' ({ext}) has no cached transcript on this machine — ingest it with "
-                f"CITADEL_AUDIO_SUPPORT=1 to transcribe it; the file is at {config.rel_or_abs_posix(path)}"
+                f"'{source_key}' ({ext}) has no usable cached transcript on this machine — ingest it "
+                f"with CITADEL_AUDIO_SUPPORT=1 to transcribe it; the file is at {config.rel_or_abs_posix(path)}"
             )
         # A text file merely RENAMED .mp3 (no audio magic — it ingested as ordinary text):
         # fall through to the normal text read below.

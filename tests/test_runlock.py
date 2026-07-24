@@ -177,3 +177,21 @@ def test_atomic_write_failure_leaves_the_original_intact(tmp_path, monkeypatch):
         config.atomic_write_text(target, "new", attempts=2)
     assert target.read_text(encoding="utf-8") == "old"
     assert list(tmp_path.glob("*.citadeltmp")) == []
+
+
+def test_stale_window_covers_whisper_transcription_when_audio_on(monkeypatch):
+    """With audio support on, a pending recording may spend a whole whisper transcription inside
+    the per-source boundary — the staleness window must outlive it, or a long transcription would
+    let a second run reclaim a LIVE lock (and destroy the first run's staging)."""
+    monkeypatch.setattr(config, "LLM_TIMEOUT", 1200)
+    monkeypatch.setattr(config, "AUDIO_SUPPORT", False)
+    base = runlock._stale_after_s()
+    assert base == 3600.0  # max(2*1200, 3600) — the pre-audio window
+
+    monkeypatch.setattr(config, "AUDIO_SUPPORT", True)
+    monkeypatch.setattr(config, "WHISPER_TIMEOUT", 7200)
+    assert runlock._stale_after_s() == 7200.0 + 1200.0  # transcription + one session
+
+    # A small whisper timeout never SHRINKS the window below the session-based floor.
+    monkeypatch.setattr(config, "WHISPER_TIMEOUT", 60)
+    assert runlock._stale_after_s() == 3600.0

@@ -99,7 +99,19 @@ def test_resolve_whisper_accepts_absolute_executable(monkeypatch, tmp_path):
 def test_resolve_whisper_missing_names_the_fixes(monkeypatch):
     monkeypatch.setattr(config, "WHISPER_CLI", "whisper")
     monkeypatch.setattr(transcribe.shutil, "which", lambda b: None)
-    with pytest.raises(RuntimeError, match="CITADEL_WHISPER_CLI"):
+    with pytest.raises(RuntimeError, match="was not found on PATH.*CITADEL_WHISPER_CLI"):
+        transcribe.resolve_whisper()
+
+
+def test_resolve_whisper_existing_but_not_executable_says_so(monkeypatch, tmp_path):
+    """An absolute CITADEL_WHISPER_CLI that EXISTS but lacks the executable bit gets its own
+    message — 'not found on PATH' would send the user hunting in the wrong place."""
+    binary = tmp_path / "whisper"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(0o644)
+    monkeypatch.setattr(config, "WHISPER_CLI", str(binary))
+    monkeypatch.setattr(transcribe.shutil, "which", lambda b: None)
+    with pytest.raises(RuntimeError, match="exists but is not executable"):
         transcribe.resolve_whisper()
 
 
@@ -285,6 +297,23 @@ def test_transcript_for_cache_write_failure_is_best_effort(tmp_citadel, monkeypa
     # The session still gets the transcript in hand; only the cache is lost.
     assert transcribe.transcript_for(src) == "[00:00:01] Still delivered.\n"
     assert transcribe.cached_transcript(src) is None
+
+
+def test_prune_cached_removes_entry_and_tolerates_absence(tmp_citadel, monkeypatch):
+    src = tmp_citadel.raw / "memo.mp3"
+    _make_mp3(src)
+    monkeypatch.setattr(transcribe, "_run_whisper", lambda p: "[00:00:01] Hi.\n")
+    from citadel import manifest
+
+    sha = manifest.file_sha256(src)
+    transcribe.transcript_for(src)
+    assert transcribe.cache_path(sha).exists()
+
+    transcribe.prune_cached(sha)
+    assert not transcribe.cache_path(sha).exists()
+    transcribe.prune_cached(sha)  # already gone: no-op, never raises
+    transcribe.prune_cached(None)  # no sha: no-op
+    transcribe.prune_cached("")
 
 
 def test_cached_transcript_none_without_cache_or_file(tmp_citadel):
