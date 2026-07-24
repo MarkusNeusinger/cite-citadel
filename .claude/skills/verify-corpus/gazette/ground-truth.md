@@ -103,7 +103,7 @@ text-layer (present in both modes).
 - `citadel lint` → exit 0; **Fabricated/missing sources: 0** (settles `P2`).
 - **PDF locators** depend on how the PDF was read (`citadel/rules/formats/pdf.md`):
   - With the **pypdf text-layer pre-pass** active (`CITADEL_PDF_TEXT`, default auto — pypdf is a
-    dev dep here), a text-layer PDF is read through its extracted text, so its text-fact citations
+    bundled runtime dep, so this is on by default), a text-layer PDF is read through its extracted text, so its text-fact citations
     carry **`lines A-B` locators into that extraction** — offline-verifiable (`lint` reports **0
     locator issues** against the cached extraction). A **figure-only / scanned** fact (no text
     layer — e.g. the `0.42` chart value, the suspension notice) still carries a **page locator**
