@@ -157,13 +157,16 @@ def prune_cached(sha: str | None) -> None:
 def _extract(src: Path) -> str | None:
     """Extract ``src``'s embedded text layer with pypdf, in citadel's canonical shape — every
     page opens with its ``[p. N]`` marker line, followed by that page's text (lines
-    trailing-stripped, newlines normalized), pages separated by one blank line. A page with no
-    text still gets its marker, so page numbering stays complete and an image-only page is
-    visibly empty in the extraction (the gazette corpus grades exactly this).
+    trailing-stripped, newlines normalized), pages separated by one blank line. As long as ANY
+    page has text, every page keeps its marker even when empty — so page numbering stays complete
+    and an image-only page is visibly blank in the extraction (the gazette corpus grades this).
 
-    Returns the extraction ("" when NO page yielded text — a scanned PDF), or None when pypdf is
-    unavailable or the document cannot be parsed (encrypted without an empty password, corrupt) —
-    None means "fall back to agent-native reading", never an error."""
+    Returns the extraction, or ``""`` when NO page yielded text at all (a fully scanned/image-only
+    PDF — the cached file is then empty, no markers, and ``cached_text`` serves it as "nothing"),
+    or None when pypdf is unavailable or the document cannot be parsed (encrypted without an empty
+    password, corrupt). Both ``""`` and None mean "fall back to agent-native reading" for
+    :func:`text_for`; the distinction is only that ``""`` is cached (a scanned PDF is not
+    re-parsed every run) while None is not (a transient failure retries for free)."""
     if not available():
         return None
     try:

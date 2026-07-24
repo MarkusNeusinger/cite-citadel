@@ -1320,6 +1320,25 @@ def _usage_fields(usage: llm.SessionUsage | None) -> dict:
     return out
 
 
+def _sha_shared_by_other_entry(manifest_dict: dict, sha: str | None, exclude_key: str) -> bool:
+    """True when a manifest entry OTHER than ``exclude_key`` still records content hash ``sha``.
+
+    The transcript/PDF caches are CONTENT-addressed (keyed by sha256), so two byte-identical
+    sources under different keys share ONE cache file. Pruning that file when one of them changes
+    or is deleted would break offline verification (lint/``wiki_raw``/viewer) for the survivors
+    until they re-extract. This guard gates every prune: only the LAST reference to a sha may
+    drop its cache entry. Repo entries carry a commit identity, not a content sha, so they never
+    hold a transcript/PDF cache entry and are skipped."""
+    if not sha:
+        return False
+    for key, entry in manifest_dict.items():
+        if key == exclude_key or manifest.is_repo_entry(entry):
+            continue
+        if manifest.entry_sha(entry) == sha:
+            return True
+    return False
+
+
 def _run_agent_sessions(session_fns, rel_key: str, extra_check=None, allow_emptying: bool = False) -> _SourceOutcome:
     """Run one source's agent session(s) — a single pass, or every segment of a chunked source —
     against ONE staging copy, with full all-or-nothing safety. Shared by every job kind
@@ -2164,10 +2183,12 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             if is_audio or pdftext.is_pdf_file(src):
                 # A re-recorded/re-exported file leaves its OLD bytes' transcript/extraction
                 # orphaned in the content-addressed cache — prune it once the new content is
-                # safely in (plaintext source content, SECURITY.md).
+                # safely in (plaintext source content, SECURITY.md). But the cache is shared by
+                # content: only prune when NO other tracked source still has those bytes (else a
+                # byte-identical sibling would lose the cache it still verifies against).
                 old_entry = manifest_dict.get(rel_key)
                 old_sha = manifest.entry_sha(old_entry) if old_entry is not None else None
-                if old_sha and old_sha != done_sha:
+                if old_sha and old_sha != done_sha and not _sha_shared_by_other_entry(manifest_dict, old_sha, rel_key):
                     (transcribe if is_audio else pdftext).prune_cached(old_sha)
             manifest.mark_done(manifest_dict, src, model, rules_ver, sha=done_sha, st=done_stat, **_usage_fields(usage))
             # A source that had failed before (unreadable/errored/duplicate) now succeeded: drop
@@ -2241,14 +2262,17 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             # The cleanup session's usage lands only in the RUN total (report.usage) — the
             # source's manifest key is dropped, so there is no entry left to stamp.
             entry = manifest_dict.get(key)
-            if entry is not None and transcribe.is_audio_ext(Path(key)):
-                # The deleted recording's cached transcript would sit orphaned forever — and it
-                # holds the recording's spoken content in plaintext (SECURITY.md).
-                transcribe.prune_cached(manifest.entry_sha(entry))
-            elif entry is not None and pdftext.is_pdf_ext(Path(key)):
-                # Same for a deleted PDF's cached text-layer extraction (the file is gone, so
-                # the extension is the best identity check left).
-                pdftext.prune_cached(manifest.entry_sha(entry))
+            # The deleted source's cached transcript/extraction would sit orphaned forever — and
+            # it holds the source's content in plaintext (SECURITY.md) — so prune it, but only
+            # when NO other tracked source still shares those bytes (the cache is content-keyed;
+            # a byte-identical sibling must keep the entry it verifies against). The file is gone,
+            # so the extension is the best identity check left.
+            del_sha = manifest.entry_sha(entry) if entry is not None else None
+            if entry is not None and not _sha_shared_by_other_entry(manifest_dict, del_sha, key):
+                if transcribe.is_audio_ext(Path(key)):
+                    transcribe.prune_cached(del_sha)
+                elif pdftext.is_pdf_ext(Path(key)):
+                    pdftext.prune_cached(del_sha)
             manifest_dict.pop(key, None)
             failures.clear(failures_dict, key)
             manifest.save(manifest_dict)

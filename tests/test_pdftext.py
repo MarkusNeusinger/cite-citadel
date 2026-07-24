@@ -112,7 +112,9 @@ def test_unparsable_pdf_falls_back_without_caching(tmp_citadel):
     raw = tmp_citadel.raw
     (raw / "broken.pdf").write_bytes(b"%PDF-1.4\ngarbage that is not a pdf body")
     assert pdftext.text_for(raw / "broken.pdf") is None
-    assert list(pdftext.cache_dir().glob("*.md")) == [] if pdftext.cache_dir().is_dir() else True
+    # A parse failure writes NO cache entry (only an empty scanned-PDF extraction is cached).
+    if pdftext.cache_dir().is_dir():
+        assert list(pdftext.cache_dir().glob("*.md")) == []
 
 
 def test_knob_and_availability_gate_routing(tmp_citadel, monkeypatch):
@@ -268,6 +270,30 @@ def test_deleted_pdf_prunes_its_cached_extraction(tmp_citadel, fake_agent, cite_
 
     assert report.sources_deleted == ["raw/report.pdf"]
     assert not cached_file.exists()  # pruned with the source
+
+
+def test_prune_guard_spares_a_sha_another_entry_still_holds(tmp_citadel):
+    """The cache is content-addressed, so two byte-identical sources under different keys share ONE
+    cache entry. ``_sha_shared_by_other_entry`` is the guard that keeps a prune from deleting a
+    cache file a sibling still verifies against — it prunes only the LAST reference to a sha. (The
+    ingest partition normally dedups identical bytes into a move, so this is defense in depth; it
+    also hardens the identical-audio case.)"""
+    from citadel import manifest
+
+    sha = "ab" * 32
+    m = {
+        "raw/a.pdf": manifest.make_entry(sha, "m"),
+        "raw/b.pdf": manifest.make_entry(sha, "m"),  # a byte-identical sibling
+        "raw/other.pdf": manifest.make_entry("cd" * 32, "m"),
+    }
+    # a's sha is still held by b -> sparing it; excluding a itself so its own entry never counts.
+    assert ingest._sha_shared_by_other_entry(m, sha, exclude_key="raw/a.pdf") is True
+    # other's sha is unique -> nothing else holds it, safe to prune.
+    assert ingest._sha_shared_by_other_entry(m, "cd" * 32, exclude_key="raw/other.pdf") is False
+    # None/empty sha and a repo entry (commit identity, not a content sha) never spare anything.
+    assert ingest._sha_shared_by_other_entry(m, None, exclude_key="raw/a.pdf") is False
+    m["raw/repo"] = manifest.make_repo_entry("commit123", "m", None, "rv")
+    assert ingest._sha_shared_by_other_entry(m, sha, exclude_key="raw/b.pdf") is True  # a still holds it
 
 
 def test_large_extraction_chunks_as_line_windows_over_one_full_file(tmp_citadel, fake_agent, cite_page, monkeypatch):
