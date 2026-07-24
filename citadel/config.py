@@ -34,6 +34,8 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import os
+import shutil
+import stat
 import time
 from pathlib import Path, PurePosixPath
 
@@ -393,6 +395,37 @@ def robust_mkdir(path: Path | str, attempts: int = 5) -> None:
             if attempt == attempts - 1:
                 raise
             time.sleep(0.2 * (attempt + 1))
+
+
+def robust_rmtree(path: Path | str, attempts: int = 5) -> None:
+    """Best-effort recursive delete that tolerates the Windows read-only bit and the transient
+    locks/latency common on network shares. Retries a few times and never raises — a tree that
+    still will not delete is left for the caller (which overwrites it via ``dirs_exist_ok=True``,
+    or sweeps it next run), which beats aborting the whole run.
+
+    Replaces a bare ``shutil.rmtree(..., ignore_errors=True)``: that swallowed the failure and left
+    the directory in place, which then made a follow-up ``copytree`` crash with ``FileExistsError``.
+    Lives here (beside :func:`robust_mkdir`/:func:`atomic_write_text`) because every module that
+    writes derived state beside the wiki needs the same hardening — ingest's staging copies and
+    resume's checkpoint slots alike."""
+
+    def _clear_readonly(func, p, _exc):
+        # Windows marks some files read-only; add the write bit (OR onto the existing mode so we
+        # don't wipe read/execute — clearing a directory's execute bit on POSIX would block the
+        # traversal the retried delete needs) and retry the one failed operation.
+        try:
+            os.chmod(p, os.stat(p).st_mode | stat.S_IWRITE)
+            func(p)
+        except OSError:
+            pass
+
+    for attempt in range(attempts):
+        if not os.path.exists(path):
+            return
+        shutil.rmtree(path, onexc=_clear_readonly)
+        if not os.path.exists(path):
+            return
+        time.sleep(0.2 * (attempt + 1))
 
 
 def atomic_write_text(path: Path | str, text: str, attempts: int = 4) -> None:

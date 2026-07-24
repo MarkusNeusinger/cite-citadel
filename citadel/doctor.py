@@ -338,7 +338,15 @@ def check_resume() -> Check:
     waiting = resume.pending()
     if not waiting:
         return Check(OK, "resume", "resume checkpoints on - none pending")
-    listed = ", ".join(f"{key} ({done}/{total} segments)" for key, done, total in waiting[:5])
+    from . import llm
+
+    def describe(p) -> str:
+        # The banked spend appears NOWHERE else: an unfinished source has no manifest entry, so
+        # `citadel status` files it under Failed with no cost at all.
+        cost = f", {llm.format_cost(p.cost_usd)} banked" if p.cost_usd is not None else ""
+        return f"{p.key} ({p.completed}/{p.total} segments{cost})"
+
+    listed = ", ".join(describe(p) for p in waiting[:5])
     more = f", +{len(waiting) - 5} more" if len(waiting) > 5 else ""
     return Check(OK, "resume", f"{len(waiting)} checkpoint(s) waiting to continue: {listed}{more}")
 

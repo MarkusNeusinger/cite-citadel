@@ -11,6 +11,7 @@ a failed source, never a wasted session. ``llm.run_ingest_session`` is replaced 
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -63,7 +64,7 @@ def test_failed_segment_is_checkpointed_and_resumed(chunked_source, fake_agent, 
 
     assert "raw/big.txt" not in first.processed
     assert not (wiki / "misc" / "big.md").exists()  # promote-once: nothing partial reaches live
-    assert resume.pending() == [("raw/big.txt", 1, 3)]  # ... but segment 1's work is banked
+    assert resume.pending() == [resume.Pending("raw/big.txt", 1, 3)]  # ... but segment 1's work is banked
 
     calls: list = []
     fake_agent(side_effect=_record_segments(calls))
@@ -159,7 +160,7 @@ def test_promote_failure_after_the_last_segment_resumes_with_no_sessions(
     monkeypatch.setattr(ingest, "_promote", boom)
     fake_agent(side_effect=fake)
     assert ingest.ingest().processed == []
-    assert resume.pending() == [("raw/big.txt", 3, 3)]  # all three segments banked
+    assert resume.pending() == [resume.Pending("raw/big.txt", 3, 3)]  # all three segments banked
 
     failing[0] = False
     calls: list = []
@@ -279,7 +280,7 @@ def test_replay_that_no_longer_validates_discards_the_checkpoint(chunked_source,
 
     fake_agent(side_effect=fake)
     ingest.ingest()
-    assert resume.pending() == [("raw/big.txt", 1, 3)]
+    assert resume.pending() == [resume.Pending("raw/big.txt", 1, 3)]
     (chunked_source.docs / "spec.md").unlink()
 
     calls: list = []
@@ -364,20 +365,148 @@ def test_replay_refuses_a_deletion_whose_page_moved_underneath(tmp_citadel, seed
         assert resume.replay(cp, staging, live) is None  # refused, so the newer page survives
 
 
+def test_a_wipe_the_wiki_delta_is_never_recorded(tmp_citadel, seed_page):
+    """A staging tree with no content page while live has some is what a vanished/rm-tree'd staging
+    looks like — the promote refuses it, so it must never be banked as a replayable delta either
+    (the generated `index.md` a staging copy always carries must not count as content)."""
+    seed_page(
+        "concepts/a.md",
+        {"type": "Concept", "title": "A", "description": "d", "tags": ["t"], "resource": "raw/a.md"},
+        "F.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - a\n",
+    )
+    (tmp_citadel.wiki / "index.md").write_text("# generated\n", encoding="utf-8")
+    empty_staging = tmp_citadel.wiki.parent / "staging"
+    empty_staging.mkdir()
+    (empty_staging / "index.md").write_text("# generated\n", encoding="utf-8")
+
+    assert ingest._checkpoint_delta(empty_staging, tmp_citadel.wiki) is None
+    assert not resume._has_content(empty_staging)  # the generated index is not content
+
+
+def test_an_unreadable_live_page_is_not_treated_as_absent(tmp_citadel, seed_page, monkeypatch):
+    """ "Absent" and "there but unreadable" must never be conflated: a page the guard cannot read is
+    a page the replay cannot prove it may overwrite."""
+    live = tmp_citadel.wiki
+    staging = live.parent / "staging"
+    (staging / "concepts").mkdir(parents=True)
+    (staging / "concepts" / "new.md").write_text("staged\n", encoding="utf-8")
+    plan = resume.Plan(key="raw/a.md", sha="a" * 64, kind="ingest", model="m", rules_version="r", total=2, shape="s")
+
+    with runlock.hold("test"):
+        assert resume.save(plan, 1, staging, live, changed=["concepts/new.md"], removed=[], usage={})
+        cp = resume.load(plan)
+        assert cp is not None and cp.bases["concepts/new.md"] is None  # absent when banked
+
+        # The page now EXISTS in live (another source created it) but cannot be hashed.
+        (live / "concepts").mkdir(parents=True, exist_ok=True)
+        (live / "concepts" / "new.md").write_text("someone else's work\n", encoding="utf-8")
+        monkeypatch.setattr(resume, "_sha256_file", lambda path: None)
+        assert resume.replay(cp, staging, live) is None
+
+        # And such a page can't be banked as a base in the first place.
+        monkeypatch.undo()
+        real_sha = resume._sha256_file
+        monkeypatch.setattr(resume, "_sha256_file", lambda path: None if live in path.parents else real_sha(path))
+        assert resume.save(plan, 1, staging, live, changed=["concepts/new.md"], removed=[], usage={}) is False
+
+
+def test_a_record_missing_a_base_is_refused(tmp_citadel):
+    """replay guards on ``bases``, so a page absent from it would be written unguarded. The record
+    is a file on disk — the invariant is re-checked on READ, never trusted from the write side."""
+    live = tmp_citadel.wiki
+    staging = live.parent / "staging"
+    staging.mkdir()
+    (staging / "page.md").write_text("staged\n", encoding="utf-8")
+    plan = resume.Plan(key="raw/a.md", sha="a" * 64, kind="ingest", model="m", rules_version="r", total=2, shape="s")
+    with runlock.hold("test"):
+        assert resume.save(plan, 1, staging, live, changed=["page.md"], removed=[], usage={})
+        record_path = resume.slot_for("raw/a.md") / resume.RECORD_NAME
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+        record["bases"] = {}
+        record_path.write_text(json.dumps(record), encoding="utf-8")
+        assert resume.load(plan) is None
+
+
+def test_a_foreign_workspace_slot_is_refused_on_load(tmp_citadel, monkeypatch):
+    """The workspace stamp is enforced where it matters — at adoption — not only by the age sweep."""
+    live = tmp_citadel.wiki
+    staging = live.parent / "staging"
+    staging.mkdir()
+    (staging / "page.md").write_text("staged\n", encoding="utf-8")
+    plan = resume.Plan(key="raw/a.md", sha="a" * 64, kind="ingest", model="m", rules_version="r", total=2, shape="s")
+    with runlock.hold("test"):
+        assert resume.save(plan, 1, staging, live, changed=["page.md"], removed=[], usage={})
+        monkeypatch.setattr(config, "WORKSPACE_ROOT", tmp_citadel.root / "elsewhere")
+        assert resume.load(plan) is None
+
+
+def test_a_no_op_delta_is_never_banked(tmp_citadel):
+    """A checkpoint whose delta is empty can only ever SKIP work — at completed == total it would
+    let a later run promote nothing, report the source as processed, and never open a session. So
+    a segment that changed nothing banks nothing."""
+    live = tmp_citadel.wiki
+    staging = live.parent / "staging"
+    staging.mkdir()
+    plan = resume.Plan(key="raw/a.md", sha="a" * 64, kind="ingest", model="m", rules_version="r", total=2, shape="s")
+    with runlock.hold("test"):
+        assert resume.save(plan, 2, staging, live, changed=[], removed=[], usage={}) is False
+        assert resume.pending() == []
+
+
+def test_a_deletion_that_did_not_apply_fails_the_replay(tmp_citadel, seed_page, monkeypatch):
+    """A half-applied delta is worse than none: if a banked deletion cannot be carried out in the
+    staging copy, promoting would resurrect a page the completed segments removed."""
+    for name in ("legacy", "keep"):
+        seed_page(
+            f"concepts/{name}.md",
+            {"type": "Concept", "title": name, "description": "d", "tags": ["t"], "resource": "raw/a.md"},
+            "Old.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - a\n",
+        )
+    live = tmp_citadel.wiki
+    staging = live.parent / "staging"
+    (staging / "concepts").mkdir(parents=True)
+    for name in ("legacy", "keep"):
+        (staging / "concepts" / f"{name}.md").write_text(
+            (live / "concepts" / f"{name}.md").read_text(encoding="utf-8"), encoding="utf-8"
+        )
+    plan = resume.Plan(key="raw/a.md", sha="a" * 64, kind="ingest", model="m", rules_version="r", total=2, shape="s")
+
+    with runlock.hold("test"):
+        assert resume.save(plan, 1, staging, live, changed=[], removed=["concepts/legacy.md"], usage={})
+        cp = resume.load(plan)
+        # The unlink silently fails (a share lock / the Windows read-only bit).
+        monkeypatch.setattr(Path, "unlink", lambda self, missing_ok=False: None)
+        assert resume.replay(cp, staging, live) is None
+
+
+def test_clear_needs_the_run_lock(tmp_citadel):
+    """Deleting a slot is a mutation like any other: a run that lost its lock owns nothing."""
+    live = tmp_citadel.wiki
+    staging = live.parent / "staging"
+    staging.mkdir()
+    (staging / "page.md").write_text("staged\n", encoding="utf-8")
+    plan = resume.Plan(key="raw/a.md", sha="a" * 64, kind="ingest", model="m", rules_version="r", total=2, shape="s")
+    with runlock.hold("test"):
+        assert resume.save(plan, 1, staging, live, changed=["page.md"], removed=[], usage={})
+    resume.clear("raw/a.md")  # no lock held any more
+    assert resume.pending() == [resume.Pending("raw/a.md", 1, 2)]
+
+
 def test_sweep_drops_old_and_foreign_slots(tmp_citadel, monkeypatch):
     """Hygiene at run start: age (a slot nobody came back for) and workspace identity (a slot
     written by a different workspace sharing this parent directory)."""
     staging = tmp_citadel.wiki.parent / "staging"
     staging.mkdir()
+    (staging / "page.md").write_text("staged\n", encoding="utf-8")
     plan = resume.Plan(key="raw/a.md", sha="a" * 64, kind="ingest", model="m", rules_version="r", total=2, shape="s")
     with runlock.hold("test"):
-        assert resume.save(plan, 1, staging, tmp_citadel.wiki, changed=[], removed=[], usage={})
-        assert resume.pending() == [("raw/a.md", 1, 2)]
+        assert resume.save(plan, 1, staging, tmp_citadel.wiki, changed=["page.md"], removed=[], usage={})
+        assert resume.pending() == [resume.Pending("raw/a.md", 1, 2)]
 
         resume.sweep(max_age_days=0)  # everything on disk is "old"
         assert resume.pending() == []
 
-        assert resume.save(plan, 1, staging, tmp_citadel.wiki, changed=[], removed=[], usage={})
+        assert resume.save(plan, 1, staging, tmp_citadel.wiki, changed=["page.md"], removed=[], usage={})
         monkeypatch.setattr(config, "WORKSPACE_ROOT", tmp_citadel.root / "elsewhere")
         resume.sweep()
         assert resume.pending() == []
@@ -388,6 +517,7 @@ def test_usage_is_filtered_like_a_manifest_stamp(tmp_citadel):
     same defensive filter: no bools, no NaN/inf, no negative token counts."""
     staging = tmp_citadel.wiki.parent / "staging"
     staging.mkdir()
+    (staging / "page.md").write_text("staged\n", encoding="utf-8")
     plan = resume.Plan(key="raw/a.md", sha="a" * 64, kind="ingest", model="m", rules_version="r", total=2, shape="s")
     with runlock.hold("test"):
         resume.save(
@@ -395,7 +525,7 @@ def test_usage_is_filtered_like_a_manifest_stamp(tmp_citadel):
             1,
             staging,
             tmp_citadel.wiki,
-            changed=[],
+            changed=["page.md"],
             removed=[],
             usage={"cost_usd": float("inf"), "tokens_in": -5, "tokens_out": 12},
         )

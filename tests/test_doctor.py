@@ -394,10 +394,15 @@ def test_resume_names_the_waiting_checkpoints(tmp_citadel, monkeypatch):
     """A banked half-import is otherwise invisible — this line is why doctor knows about it."""
     from citadel import resume
 
-    monkeypatch.setattr(resume, "pending", lambda: [("raw/book.txt", 3, 7)])
+    monkeypatch.setattr(resume, "pending", lambda: [resume.Pending("raw/book.txt", 3, 7, 1.2)])
     c = doctor.check_resume()
     assert c.status == doctor.OK  # never a WARN: there is no dependency that can be missing
-    assert "raw/book.txt (3/7 segments)" in c.detail
+    # The banked spend is reported here because no other surface can: an unfinished source has no
+    # manifest entry, so `citadel status` shows it as failed with no cost at all.
+    assert "raw/book.txt (3/7 segments, $1.20 banked)" in c.detail
+
+    monkeypatch.setattr(resume, "pending", lambda: [resume.Pending("raw/book.txt", 3, 7)])
+    assert "raw/book.txt (3/7 segments)" in doctor.check_resume().detail  # no price reported: no $
 
 
 def test_resume_ok_when_nothing_pending(tmp_citadel):

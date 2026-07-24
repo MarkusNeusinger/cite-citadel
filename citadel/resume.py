@@ -69,6 +69,7 @@ import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import NamedTuple
 
 from . import config, manifest, okf, runlock
 
@@ -92,6 +93,10 @@ MAX_AGE_DAYS = 14
 # makes a DETERMINISTIC segment failure cheap and quiet (it re-fails at segment K+1 every run);
 # without a cap that is a wedge, and the source would never be re-attempted from a clean slate.
 ATTEMPT_CAP = 3
+# Recorded as a page's base state when it EXISTS in the live wiki but could not be hashed. Never
+# equal to a sha256 and deliberately distinct from None ("absent"), so an unreadable page can never
+# be mistaken for a missing one — see _live_state.
+UNREADABLE = "unreadable"
 
 
 def enabled() -> bool:
@@ -191,6 +196,11 @@ def save(plan: Plan, completed: int, staging: Path, live: Path, changed, removed
     """
     if not enabled() or not plan.sha or not runlock.owned():
         return False
+    if not changed and not removed:
+        # Nothing to replay. Recording it would create a checkpoint whose ONLY effect is to skip
+        # segments — and at completed == total, a later identical run would promote a no-op and
+        # report the source as processed without ever opening a session.
+        return False
     # Never persist a delta computed against a vanished/emptied staging tree: `_content_files` on a
     # missing directory yields {}, which would read as "the segments deleted the whole wiki" — the
     # same catastrophic shape the promote's anti-emptying valve refuses.
@@ -218,8 +228,9 @@ def save(plan: Plan, completed: int, staging: Path, live: Path, changed, removed
             blobs[rel] = sha
         bases = _live_state(Path(live), list(blobs) + list(removed))
         # A recorded deletion whose base is unknown could not be guarded on replay — and an
-        # unguarded deletion is the one operation that can destroy another source's work.
-        if any(bases.get(rel) is None for rel in removed) or any(rel not in bases for rel in blobs):
+        # unguarded deletion is the one operation that can destroy another source's work. The same
+        # goes for any path whose live state could not be read at all: no base, no checkpoint.
+        if any(bases.get(rel) is None for rel in removed) or UNREADABLE in bases.values():
             return _abort(staged_new)
         record = {
             "format": FORMAT,
@@ -263,6 +274,10 @@ def load(plan: Plan) -> Checkpoint | None:
     if record.get("fingerprint") != plan.fingerprint():
         _drop(slot)  # a changed source / model / rules version / segment plan / knob: another job
         return None
+    stamped = str(record.get("workspace") or "")
+    if stamped and stamped != workspace_stamp():
+        _drop(slot)  # another workspace's key space — checked HERE, not only in the age sweep
+        return None
     completed, total = record.get("completed"), record.get("total")
     if not isinstance(completed, int) or not 1 <= completed <= plan.total or total != plan.total:
         _drop(slot)
@@ -284,6 +299,12 @@ def load(plan: Plan) -> Checkpoint | None:
             return None
     if any(not isinstance(rel, str) or not bases.get(rel) for rel in removed):
         _drop(slot)  # an unguardable deletion (see save) — never replay one
+        return None
+    # EVERY touched path must carry a base state, re-checked here rather than trusted from the
+    # write side: replay guards on ``bases``, so a page missing from it would be written into
+    # staging with no guard at all. A record is a file on disk — it can be edited or truncated.
+    if set(pages) - set(bases) or UNREADABLE in bases.values():
+        _drop(slot)
         return None
     return Checkpoint(
         key=plan.key,
@@ -315,7 +336,8 @@ def note_attempt(cp: Checkpoint) -> None:
 
 def replay(cp: Checkpoint, staging: Path, live: Path) -> list[str] | None:
     """Apply ``cp``'s delta into a FRESH ``staging`` copy of ``live`` and return the rel_paths it
-    touched (for the caller to re-validate), or None when the BASE-STATE guard fails and the source
+    WROTE (for the caller to re-validate), or None when the delta must not be used after all —
+    either the BASE-STATE guard failed or some part of it could not be applied, and the source
     must start at segment 1 instead.
 
     The guard: every page the delta created, rewrote or deleted must still hold, in the live wiki,
@@ -327,7 +349,11 @@ def replay(cp: Checkpoint, staging: Path, live: Path) -> list[str] | None:
         target = _safe_rel(Path(live), rel)
         if target is None or _sha256_file(target) != base:
             return None
-    touched: list[str] = []
+        if base is None and target.exists():
+            # The hash read as "absent" for a path that is THERE (unreadable right now): treat it
+            # as a mismatch, never as the "was absent, still absent" case it would otherwise pass.
+            return None
+    written: list[str] = []
     for rel in cp.pages:
         blob = _safe_rel(cp.slot / PAGES_DIR_NAME, rel)
         dst = _safe_rel(Path(staging), rel)
@@ -338,20 +364,26 @@ def replay(cp: Checkpoint, staging: Path, live: Path) -> list[str] | None:
             shutil.copyfile(blob, dst)
         except OSError:
             return None
-        touched.append(rel)
+        written.append(rel)
     for rel in cp.removed:
         gone = _safe_rel(Path(staging), rel)
         if gone is None:
             return None
         with contextlib.suppress(OSError):
             gone.unlink(missing_ok=True)
-        touched.append(rel)
-    return touched
+        # A deletion that did not take (a share lock, the Windows read-only bit) must fail the
+        # whole replay, exactly like a failed copy: a half-applied delta would promote a page the
+        # completed segments deliberately removed, and the caller has no way to notice.
+        if gone.exists():
+            return None
+    return written
 
 
 def clear(key: str) -> None:
     """Drop this source's checkpoint — on success (the work is live now), when the source is
-    deleted or moved, or when a guard refused it. Never raises."""
+    deleted or moved, or when a guard refused it. Lock-gated like every other mutation (see
+    :func:`_drop`): a run that lost its lock must not delete state the run that reclaimed it may
+    already own. Never raises."""
     _drop(slot_for(key))
 
 
@@ -366,34 +398,52 @@ def sweep(max_age_days: int = MAX_AGE_DAYS) -> None:
         return
     cutoff = time.time() - max_age_days * 86400
     stamp = workspace_stamp()
+    entries: list[Path] = []
     with contextlib.suppress(OSError):
-        for slot in cache_dir().iterdir():
-            if not _SLOT_RE.fullmatch(slot.name):
-                _drop(slot)  # a `*.new` build dir, or anything else that is not a slot
-                continue
-            record = _read_record(slot)
-            if record is None:
-                _drop(slot)
-                continue
-            saved_at = record.get("saved_at")
-            stamped = str(record.get("workspace") or "")
-            if not isinstance(saved_at, (int, float)) or saved_at < cutoff or (stamped and stamped != stamp):
-                _drop(slot)
+        # Materialize the listing first: `iterdir` can raise MID-iteration on a share, and a single
+        # suppress around the whole loop would then silently skip every remaining slot.
+        entries = list(cache_dir().iterdir())
+    for slot in entries:
+        if not _SLOT_RE.fullmatch(slot.name):
+            _drop(slot)  # a `*.new` build dir, or anything else that is not a slot
+            continue
+        record = _read_record(slot)
+        if record is None:
+            _drop(slot)
+            continue
+        saved_at = record.get("saved_at")
+        stamped = str(record.get("workspace") or "")
+        if not isinstance(saved_at, (int, float)) or saved_at < cutoff or (stamped and stamped != stamp):
+            _drop(slot)
 
 
-def pending() -> list[tuple[str, int, int]]:
-    """``(source key, completed, total)`` for every readable checkpoint on disk, sorted by key —
-    the read-only view ``citadel doctor`` reports. Identity is NOT re-checked here (that needs a
-    run's model/rules context): a listed checkpoint is a candidate, not a promise. Never raises."""
-    out: list[tuple[str, int, int]] = []
+class Pending(NamedTuple):
+    """One checkpoint waiting on disk, as the read-only consumers see it. ``cost_usd`` is what the
+    banked segments cost (None when the backend prices nothing) — the money currently sitting
+    between runs, which no other surface can report: the source is not in the manifest yet, so
+    ``citadel status`` files it under Failed with no cost at all."""
+
+    key: str
+    completed: int
+    total: int
+    cost_usd: float | None = None
+
+
+def pending() -> list[Pending]:
+    """Every readable checkpoint on disk, sorted by source key — the view ``citadel doctor``
+    reports. Identity is NOT re-checked here (that needs a run's model/rules context): a listed
+    checkpoint is a candidate, not a promise. Never raises."""
+    out: list[Pending] = []
+    entries: list[Path] = []
     with contextlib.suppress(OSError):
-        for slot in cache_dir().iterdir():
-            record = _read_record(slot) if _SLOT_RE.fullmatch(slot.name) else None
-            if record is None:
-                continue
-            key, done, total = record.get("key"), record.get("completed"), record.get("total")
-            if isinstance(key, str) and isinstance(done, int) and isinstance(total, int):
-                out.append((key, done, total))
+        entries = list(cache_dir().iterdir())
+    for slot in entries:
+        record = _read_record(slot) if _SLOT_RE.fullmatch(slot.name) else None
+        if record is None:
+            continue
+        key, done, total = record.get("key"), record.get("completed"), record.get("total")
+        if isinstance(key, str) and isinstance(done, int) and isinstance(total, int):
+            out.append(Pending(key, done, total, _clean_usage(record.get("usage")).get("cost_usd")))
     return sorted(out)
 
 
@@ -447,21 +497,33 @@ def _safe_rel(root: Path, rel: str) -> Path | None:
 
 
 def _live_state(live: Path, rels) -> dict[str, str | None]:
-    """The current sha of each of ``rels`` in ``live`` (None = absent) — the base state a
-    checkpoint records and a replay re-checks. An unsafe path yields None, which the deletion
-    guard in :func:`save` then refuses."""
+    """The current sha of each of ``rels`` in ``live`` — the base state a checkpoint records and a
+    replay re-checks. None means "absent", and ONLY that: a path that exists but cannot be hashed
+    (a share hiccup, a permission problem) records :data:`UNREADABLE` instead, because conflating
+    the two would let a replay overwrite a page it was never able to compare. :func:`save` refuses
+    to record such a checkpoint at all — an unguardable base is not a base."""
     out: dict[str, str | None] = {}
     for rel in rels:
         target = _safe_rel(live, rel)
-        out[str(rel)] = _sha256_file(target) if target is not None else None
+        if target is None:
+            out[str(rel)] = UNREADABLE
+            continue
+        sha = _sha256_file(target)
+        out[str(rel)] = sha if sha is not None else (UNREADABLE if target.exists() else None)
     return out
 
 
 def _has_content(root: Path) -> bool:
-    """True when ``root`` holds at least one ``.md`` file — the same "did the session leave a wiki
-    at all" sanity check the promote's anti-emptying valve makes."""
+    """True when ``root`` holds at least one CONTENT page — mirroring the promote's anti-emptying
+    valve, so it must use the promote's own view of "a page": generated/reserved names
+    (``index.md``, ``log.md``, any ``*/index.md``) and hidden trees do not count. A raw
+    ``rglob("*.md")`` would always find the copied-in ``index.md`` and make the valve inert."""
     with contextlib.suppress(OSError):
-        return any(root.rglob("*.md"))
+        for path in root.rglob("*.md"):
+            rel = path.relative_to(root)
+            if any(part.startswith(".") for part in rel.parts) or rel.name in ("index.md", "log.md"):
+                continue
+            return True
     return False
 
 
@@ -496,12 +558,25 @@ def _read_record(slot: Path) -> dict | None:
 
 
 def _rmtree(path: Path) -> None:
-    """Best-effort recursive delete (a slot is regenerable state; a share that refuses the delete
-    only leaves an inert dotdir for the next sweep)."""
-    shutil.rmtree(path, ignore_errors=True)
+    """Best-effort recursive delete through the share-hardened helper (Windows read-only bit +
+    transient-lock retries): a slot holds wiki page text, so a delete that silently no-ops would
+    leave that text beside the wiki indefinitely. A tree that still refuses is left inert for the
+    next sweep — never an exception."""
+    with contextlib.suppress(OSError):
+        if path.is_file():  # a stray file where a slot dir was expected (see sweep)
+            path.unlink()
+            return
+    config.robust_rmtree(path)
 
 
 def _drop(slot: Path) -> None:
+    """Delete one slot — the SINGLE destructive path for a checkpoint that already exists, and the
+    single place the run-lock gate lives. A refusal in :func:`load` deletes a slot too, so a run
+    that stalled past the staleness window (its heartbeat only fires at source boundaries, and a
+    multi-segment source can outlast it) must not take the run that reclaimed the lock down with
+    it: without the lock it still declines to resume, it just does not delete."""
+    if not runlock.owned():
+        return
     _rmtree(slot)
 
 

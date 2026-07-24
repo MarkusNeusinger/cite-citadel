@@ -1048,31 +1048,10 @@ _RMTREE_ATTEMPTS = 5
 
 
 def _robust_rmtree(path: str | os.PathLike) -> None:
-    """Best-effort recursive delete that tolerates the Windows read-only bit and the transient
-    locks/latency common on network shares. Retries a few times and never raises — a tree that
-    still will not delete is left for the caller (which overwrites it via ``dirs_exist_ok=True``),
-    which beats aborting the whole run.
-
-    Replaces a bare ``shutil.rmtree(..., ignore_errors=True)``: that swallowed the failure and left
-    the directory in place, which then made a follow-up ``copytree`` crash with ``FileExistsError``."""
-
-    def _clear_readonly(func, p, _exc):
-        # Windows marks some files read-only; add the write bit (OR onto the existing mode so we
-        # don't wipe read/execute — clearing a directory's execute bit on POSIX would block the
-        # traversal the retried delete needs) and retry the one failed operation.
-        try:
-            os.chmod(p, os.stat(p).st_mode | stat.S_IWRITE)
-            func(p)
-        except OSError:
-            pass
-
-    for attempt in range(_RMTREE_ATTEMPTS):
-        if not os.path.exists(path):
-            return
-        shutil.rmtree(path, onexc=_clear_readonly)
-        if not os.path.exists(path):
-            return
-        time.sleep(0.2 * (attempt + 1))
+    """Best-effort recursive delete of a staging tree — the share-hardened
+    :func:`config.robust_rmtree` under ingest's own name (it lives in ``config`` because resume's
+    checkpoint slots need exactly the same read-only-bit/retry handling)."""
+    config.robust_rmtree(path, attempts=_RMTREE_ATTEMPTS)
 
 
 def _sha256(path: Path) -> str:
@@ -1310,10 +1289,12 @@ class _SourceOutcome:
     errors: list[str] = field(default_factory=list)
     seconds: float = 0.0
     usage: llm.SessionUsage | None = None
-    # What EARLIER runs already paid for this source (a resume checkpoint's carried usage). Kept
-    # apart from ``usage`` on purpose: the run report must count only what THIS run spent (the
-    # earlier run reported its own spend), while the manifest stamp must record the whole cost of
-    # importing the source — "one combined usage, matching promote-once semantics".
+    # What EARLIER runs already paid for the segments a resume checkpoint restored. Kept apart from
+    # ``usage`` on purpose: the run report must count only what THIS run spent (the earlier run
+    # reported its own), while the manifest stamp must cover every session whose work is in the
+    # wiki — "one combined usage, matching promote-once semantics" — across the runs that produced
+    # it. Like every manifest stamp it is success-only: a FAILED attempt's spend stays on the run
+    # report that paid it, exactly as for a single-session source.
     carried_usage: llm.SessionUsage | None = None
     # Human-readable note when this source continued from a checkpoint ("" when it did not).
     resumed_note: str = ""
@@ -1347,8 +1328,11 @@ def _plan_shape(passes) -> str:
         digest.update(f"\x1e{segment}|{window}|".encode())
         if read_key:
             try:
-                digest.update(_sha256(Path(read_key)).encode("ascii"))
-            except OSError:
+                # A read_key is workspace-RELATIVE when the temp landed inside the workspace and
+                # absolute otherwise (config.rel_or_abs_posix) — resolve it the same way every
+                # other consumer does, never as a bare Path against this process's CWD.
+                digest.update(_sha256(config.source_path_for_key(read_key)).encode("ascii"))
+            except (OSError, okf.OKFError, ValueError):
                 return ""
     return digest.hexdigest()
 
@@ -1364,7 +1348,14 @@ def _resume_context(rel_key: str, kind: str, sha: str | None, passes, model: str
 
     Adopting a checkpoint COUNTS (``resume.note_attempt``): a segment that fails deterministically
     would otherwise re-fail cheaply and quietly forever, so after :data:`resume.ATTEMPT_CAP`
-    fruitless resumes the checkpoint is dropped and the source is retried in full."""
+    fruitless resumes the checkpoint is dropped and the source is retried in full.
+
+    A FORCED re-read (``--force``, and therefore ``citadel refresh``) deliberately still resumes:
+    force means "read this source again now", and an interrupted forced re-read is exactly the
+    expensive job worth continuing — a `refresh` slice that dies at segment 5 of 7 should not have
+    to re-buy segments 1-4 on the next scheduled run. It cannot cross-adopt a normal run's work
+    either way, since forcing changes the session ``kind`` (reconcile, not ingest) and the kind is
+    part of the identity."""
     if not resume.enabled() or len(passes) < 2 or not sha:
         return None
     shape = _plan_shape(passes)
@@ -1431,16 +1422,23 @@ def _sha_shared_by_other_entry(manifest_dict: dict, sha: str | None, exclude_key
     return False
 
 
-def _checkpoint_delta(staging: Path, live: Path) -> tuple[list[str], list[str]]:
-    """``(changed, removed)`` — what promoting ``staging`` onto ``live`` right now would do.
+def _checkpoint_delta(staging: Path, live: Path) -> tuple[list[str], list[str]] | None:
+    """``(changed, removed)`` — what promoting ``staging`` onto ``live`` right now would do — or
+    None when that delta must not be recorded at all.
 
     Computed with the PROMOTE's own file-level view (:func:`_content_files` + :func:`_files_equal`),
     never from the per-segment page diffs: those miss the link repairs ``_repair_renames`` writes
     into pages no session touched (and any non-``.md`` file), and their union across segments can
     even resurrect a page a later segment deliberately deleted. A checkpoint must describe exactly
-    what would have shipped, so it is derived from exactly what ships."""
+    what would have shipped, so it is derived from exactly what ships.
+
+    The refusal mirrors the promote's anti-emptying valve: a staging tree with no content page while
+    live has some is a wipe-the-wiki delta (a vanished/rm-tree'd staging reads exactly like this),
+    and :func:`_promote` would refuse it — so it must never be persisted as a replayable one."""
     staged = _content_files(staging)
     current = _content_files(live)
+    if not [rel for rel in staged if rel.endswith(".md")] and [rel for rel in current if rel.endswith(".md")]:
+        return None
     changed = sorted(rel for rel, src in staged.items() if not _files_equal(src, live / rel))
     removed = sorted(set(current) - set(staged))
     return changed, removed
@@ -1468,28 +1466,39 @@ def _adopt_checkpoint(ctx: _Resume, staging: Path, live: Path, rel_key: str) -> 
         # this is the set of breakages the wiki already lives with (which resume must not be blamed
         # for, and must not repair).
         before_broken = set(store.find_broken_links(store.load()))
-        touched = resume.replay(ctx.checkpoint, staging, live)
-        if touched is None:
+        written = resume.replay(ctx.checkpoint, staging, live)
+        if written is None:
             return None
-        pages = [rel for rel in ctx.checkpoint.pages if rel.endswith(".md")]
-        if _validate_and_restamp(pages, rel_key):
+        # Validate exactly what the replay put on disk (its return value, not the record's own
+        # list): a delta it could not apply in full has already refused above.
+        if _validate_and_restamp([rel for rel in written if rel.endswith(".md")], rel_key):
             return None
         if set(store.find_broken_links(store.load())) - before_broken:
             return None
     # Classify by the recorded base state, so the run report/log/progress counts describe what the
     # promote will actually land — a resumed source that says "2 created" while 22 pages appear is
-    # the exact converse of the report-claims-only-what-is-live rule.
-    created = sorted(rel for rel in ctx.checkpoint.pages if ctx.checkpoint.bases.get(rel) is None)
-    updated = sorted(rel for rel in ctx.checkpoint.pages if ctx.checkpoint.bases.get(rel) is not None)
-    return created, updated, sorted(ctx.checkpoint.removed)
+    # the exact converse of the report-claims-only-what-is-live rule. Only PAGES are reported: the
+    # delta is the promote's file-level set (any non-reserved file), while the report's vocabulary
+    # is the page diff's, so a stray non-`.md` file is replayed but never counted as a page.
+    pages = [rel for rel in ctx.checkpoint.pages if rel.endswith(".md")]
+    created = sorted(rel for rel in pages if ctx.checkpoint.bases.get(rel) is None)
+    updated = sorted(rel for rel in pages if ctx.checkpoint.bases.get(rel) is not None)
+    return created, updated, sorted(rel for rel in ctx.checkpoint.removed if rel.endswith(".md"))
 
 
 def _write_checkpoint(ctx: _Resume, completed: int, staging: Path, live: Path, usage: dict) -> None:
     """Record ``completed`` segments' work for this source. Best-effort by contract — any failure
-    just means the next run starts at segment 1, so nothing here may raise into the session loop."""
+    just means the next run starts at segment 1, so nothing here may raise into the session loop.
+
+    Cost: one staging↔live comparison plus a copy of the (growing) delta per segment, i.e. O(wiki)
+    per segment for a chunked source. Deliberately paid rather than optimized: deriving the delta
+    from the promote's own view is what makes a replay equivalent to an unbroken run, and this is
+    strictly cheaper than the per-source staging COPY the same run already makes — and invisible
+    beside the agent session each segment costs."""
     try:
-        changed, removed = _checkpoint_delta(staging, live)
-        resume.save(ctx.plan, completed, staging, live, changed, removed, usage)
+        delta = _checkpoint_delta(staging, live)
+        if delta is not None:
+            resume.save(ctx.plan, completed, staging, live, delta[0], delta[1], usage)
     except Exception:  # noqa: BLE001 - a checkpoint may never cost a run its source
         pass
 
@@ -1697,7 +1706,7 @@ class _SourceJob:
     """
 
     key: str
-    build_sessions: Callable[[], tuple[list[Callable[[], llm.SessionUsage | None]], list[str]]]
+    build_sessions: Callable[[], tuple[list[Callable[[], llm.SessionUsage | None]], list[str], "_Resume | None"]]
     on_success: Callable[[llm.SessionUsage | None], None]
     prepare_error: str
     extra_check: Callable[[], list[str]] | None = None
@@ -1776,8 +1785,8 @@ def _run_source_jobs(jobs: list[_SourceJob], emit, report: IngestReport, failure
         report.pages_updated.extend(outcome.updated)
         report.pages_written.extend(outcome.created + outcome.updated)
         report.pages_deleted.extend(outcome.deleted)
-        # The manifest stamp gets the WHOLE cost of importing this source — this run's sessions
-        # plus whatever an earlier run already paid for the segments a checkpoint restored — while
+        # The manifest stamp covers every session whose work this promote landed — this run's plus
+        # whatever an earlier run already paid for the segments a checkpoint restored — while
         # ``report.usage`` above stays strictly this run's spend, so nothing is double-counted
         # across runs and `citadel status` never under-reports a resumed source.
         job.on_success(llm.combine_usage([outcome.usage, outcome.carried_usage]))
@@ -2015,7 +2024,11 @@ def ingest(
     UNREADABLE/ERROR failure record is re-evaluated (and cleared on success), and a
     dedup-dropped key is ingested exactly as requested (the report records the divergence).
     On success the manifest is re-stamped with the CURRENT model + rules_version — the point of
-    forcing after a model/rules upgrade. ``force`` without explicit paths is refused HERE with a
+    forcing after a model/rules upgrade. One short-circuit force deliberately does NOT bypass: a
+    chunked source's resume checkpoint (:func:`_resume_context`). Forcing is what ``citadel
+    refresh`` drives, and an interrupted forced re-read is exactly the expensive job worth
+    continuing rather than re-buying; a checkpoint from a NON-forced run can't be adopted anyway,
+    since forcing changes the session kind. ``force`` without explicit paths is refused HERE with a
     ValueError (one agent session per source must never hit the whole corpus by accident; the
     CLI pre-empts it with the same message and a friendly exit 2), and a path-scoped run never
     sweeps deletions (``swept_roots=None`` below).
@@ -2368,7 +2381,7 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             kind = "reconcile" if rel_key in changed_keys else "ingest"
         office = scan.office_text.get(src)
 
-        def build() -> tuple[list, list[str]]:
+        def build() -> tuple[list, list[str], "_Resume | None"]:
             # Plan the pass(es): an Office source materializes its extracted text to a temp .md
             # the agent reads; an audio/video source is transcribed HERE through the whisper seam
             # (content-addressed cache; a raise is a retryable per-source prepare_error, and the
@@ -2445,7 +2458,7 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
     # the stored commit so only the changed files are inlined — except a FORCED re-read (the
     # run-level ``force``), which re-digests in FULL (see _partition_repos).
     def _repo_job(rjob: _RepoJob) -> _SourceJob:
-        def build() -> tuple[list, list[str]]:
+        def build() -> tuple[list, list[str], "_Resume | None"]:
             only: list[str] | None = None
             change_summary: str | None = None
             if rjob.kind == "repo-reconcile" and rjob.old_commit and not force:
@@ -2486,7 +2499,7 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
     # and retried next full run — the manifest key is dropped only on success). A deletion that
     # nothing cites plans NO session and just loses its manifest key.
     def _delete_job(key: str) -> _SourceJob:
-        def build() -> tuple[list, list[str]]:
+        def build() -> tuple[list, list[str], "_Resume | None"]:
             if not store.find_raw_references(key):
                 return [], [], None  # nothing cites it: no cleanup session, just forget it below
             return [lambda: llm.run_ingest_session(key, kind="delete")], [], None
