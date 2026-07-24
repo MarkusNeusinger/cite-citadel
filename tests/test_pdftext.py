@@ -1,5 +1,5 @@
-"""PDF text-layer pre-pass (offline): with the optional pypdf installed (a dev dep here, so the
-REAL extraction runs — no fake), a genuine PDF ingests via its extracted, content-addressed cached
+"""PDF text-layer pre-pass (offline): pypdf is a bundled runtime dep, so the REAL extraction runs
+here — no fake. A genuine PDF ingests via its extracted, content-addressed cached
 text layer under the ``pdf``/``pdf-reconcile`` kinds while the wiki cites the original ``.pdf``;
 the cache doubles as the offline verification text for lint, ``wiki_raw``, and the viewer —
 exactly the audio pattern (test_ingest_audio is the blueprint). A PDF with no usable text layer
