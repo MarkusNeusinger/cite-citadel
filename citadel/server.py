@@ -483,7 +483,8 @@ def wiki_answer(question: str) -> str:
         "2. Find: call wiki_search with the question's content words; refine the query (or page "
         "with offset) if the first hits miss.\n"
         "3. Read: call wiki_read on every promising rel_path and answer strictly from the page "
-        "text — every fact there carries a [^sN] citation into an immutable raw source.\n"
+        "text — facts there carry [^sN] citations into immutable raw sources, while [^llmN] "
+        "marks model-supplied knowledge with no raw source behind it (weigh it accordingly).\n"
         "4. Cite: name the wiki pages (rel_paths) the answer draws on. Spot-check any "
         "load-bearing claim with wiki_raw (source key + locator from the page's ## Sources) "
         "before asserting it.\n"
@@ -500,14 +501,17 @@ def wiki_verify(rel_path: str) -> str:
     return (
         f"Verify the wiki page {rel_path} against its cited sources.\n\n"
         "1. Call wiki_read with rel_path=" + repr(rel_path) + " and max_chars=0 for the full "
-        "text, and note each fact's [^sN] footnote and the ## Sources entry it points to.\n"
-        "2. For every citation, call wiki_raw with that entry's source key and its locator tail "
-        "verbatim (e.g. 'lines 12-18' or '§ Heading') and check the returned lines actually "
-        "support the fact as stated.\n"
+        "text, and note each fact's footnote and the ## Sources entry it points to. Only [^sN] "
+        "entries cite a raw source; [^llmN] entries are model-supplied (source: LLM) with "
+        "nothing offline to verify — tally them, but skip wiki_raw for them.\n"
+        "2. For every [^sN] citation, call wiki_raw with that entry's source key and its "
+        "locator tail verbatim (e.g. 'lines 12-18' or '§ Heading') and check the returned "
+        "lines actually support the fact as stated.\n"
         "3. Also run wiki_validate on the page for the structural gate.\n"
-        "Report one line per citation — supported / unsupported / source unreadable, with the "
-        "mismatch quoted — and finish with an overall verdict. Do not try to fix anything: the "
-        "wiki is only ever written by staged ingest/curate sessions."
+        "Report one line per [^sN] citation — supported / unsupported / source unreadable, with "
+        "the mismatch quoted — plus the [^llmN] tally, and finish with an overall verdict. Do "
+        "not try to fix anything: the wiki is only ever written by staged ingest/curate "
+        "sessions."
     )
 
 
@@ -515,15 +519,21 @@ def wiki_verify(rel_path: str) -> str:
 def wiki_capture_note(statement: str, source: str = "") -> str:
     """Record ONE durable statement from the conversation through wiki_capture — attributed,
     append-only, into the raw/ capture log the next ingest folds in."""
-    attribution = source.strip() or "the user in this conversation (add today's date)"
+    if source.strip():
+        attribution = f"source={source.strip()!r} as the attribution"
+    else:
+        attribution = (
+            "a source you compose attributing it to the user in this conversation with "
+            "today's actual date (in the shape 'the user, chat 2026-07-24')"
+        )
     return (
         "Capture this durable statement into the citadel raw/ capture log:\n\n"
         f"{statement}\n\n"
-        f"Call wiki_capture with that text, source={attribution!r} as the attribution, and a "
-        "short topic hint. Keep it to ONE statement — a whole transcript belongs in raw/ as its "
-        "own file — and leave out secrets or credentials. Then report the returned source key "
-        "and line range (the future [^sN] locator) and remind the user that the next "
-        "wiki_ingest folds the note into the wiki as an attributed claim."
+        f"Call wiki_capture with that text, {attribution}, and a short topic hint. Keep it to "
+        "ONE statement — a whole transcript belongs in raw/ as its own file — and leave out "
+        "secrets or credentials. Then report the returned source key and line range (the "
+        "future [^sN] locator) and remind the user that the next wiki_ingest folds the note "
+        "into the wiki as an attributed claim."
     )
 
 
