@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import config, extract, grammar, manifest, transcribe
+from . import config, extract, grammar, manifest, pdftext, transcribe
 
 
 # Hard cap on returned characters. A whole-file read of a large source (pemberley's raw is ~730k
@@ -35,7 +35,9 @@ MAX_CHARS = 20_000
 
 # Paginated / opaque-binary source types with no offline text extraction: the ingest agent reads
 # these directly (PDFs visually per CITADEL_PDF_MODE, images via vision). We name the file, not dump
-# it — Office files are handled separately via extract.extract_text.
+# it — Office files are handled separately via extract.extract_text, and a genuine PDF is
+# intercepted BEFORE this list by its cached pypdf text-layer extraction when one exists
+# (citadel/pdftext.py); only a cache-less PDF falls through to the no-offline-text error.
 _NO_TEXT_EXTS = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff", ".heic"}
 
 
@@ -111,10 +113,10 @@ def _resolve_and_gate(source_key: str) -> tuple[Path, str | None]:
 def _read_text(source_key: str, path: Path, sha: str | None = None) -> str:
     """The source's plain text, or raise :class:`SourceError` for a type with no offline text. Office
     files go through :func:`extract.extract_text`; an audio/video source is served from its cached
-    whisper transcript (keyed by ``sha`` — the manifest-recorded content hash the gate already
-    loaded); PDFs/images have no offline reader (the ingest agent reads them directly), so we name
-    the file rather than dump it; other files are read as UTF-8, with a NUL byte treated as
-    "binary"."""
+    whisper transcript, and a PDF from its cached pypdf text-layer extraction (each keyed by
+    ``sha`` — the manifest-recorded content hash the gate already loaded); a cache-less PDF and
+    images have no offline reader (the ingest agent reads them directly), so we name the file
+    rather than dump it; other files are read as UTF-8, with a NUL byte treated as "binary"."""
     if extract.is_office_source(path):
         text = extract.extract_text(path)
         if not text:
@@ -136,6 +138,19 @@ def _read_text(source_key: str, path: Path, sha: str | None = None) -> str:
             )
         # A text file merely RENAMED .mp3 (no audio magic — it ingested as ordinary text):
         # fall through to the normal text read below.
+    if pdftext.is_pdf_file(path):
+        # A genuine PDF: serve its cached pypdf text-layer extraction — the very text a
+        # pdf-kind session read and cited, so `lines A-B` locators resolve against it (same
+        # sha-threading as the audio branch above). No cache → the explicit error below.
+        cached = pdftext.cached_text(path, sha=sha)
+        if cached is not None:
+            return cached
+        raise SourceError(
+            f"'{source_key}' is a PDF with no cached text-layer extraction on this machine — the "
+            f"ingest agent read it directly (page locators are agent-verified); install pypdf "
+            f"(`pip install cite-citadel[pdf]`) and re-ingest with `--force` to make its "
+            f"citations offline-verifiable; the file is at {config.rel_or_abs_posix(path)}"
+        )
     if ext in _NO_TEXT_EXTS:
         raise SourceError(
             f"'{source_key}' ({ext}) has no offline text extraction — the ingest agent reads it "

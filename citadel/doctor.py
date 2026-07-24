@@ -25,6 +25,9 @@ One command answering "is my setup sane?" without touching a byte. Each check em
   once).
 - **PDF mode** — ``CITADEL_PDF_MODE=images`` against a non-``claude`` backend may silently ingest a
   PDF's text only, because a non-vision CLI cannot look at the figures.
+- **PDF text layer** — is the optional pypdf pre-pass active (``CITADEL_PDF_TEXT``)? WARN when
+  forced on (``=1``) without pypdf installed; an advisory OK naming the install command when it is
+  merely unavailable — without it, PDF locators stay agent-verified instead of offline-checkable.
 - **audio** — ``CITADEL_AUDIO_SUPPORT=1`` needs a whisper-class CLI on PATH
   (``CITADEL_WHISPER_CLI``); WARN when the configured binary is missing — every audio/video source
   would fail until it is installed. A plain OK note while the knob is off.
@@ -273,6 +276,36 @@ def check_pdf_mode() -> Check:
     return Check(OK, "PDF mode", f"PDF mode {config.PDF_MODE}")
 
 
+def check_pdf_text() -> Check:
+    """Advisory line for the optional pypdf text-layer pre-pass (:mod:`citadel.pdftext`): WARN
+    only when the user forced it on (``CITADEL_PDF_TEXT=1``) but pypdf is not installed — every
+    PDF then silently falls back to agent-native reading. Otherwise a plain state echo: on (with
+    what it buys), or off with the one-line install pointer."""
+    from . import pdftext
+
+    have = pdftext.available()
+    mode = config.PDF_TEXT
+    if mode == "off":
+        return Check(OK, "PDF text", "text-layer pre-pass off (CITADEL_PDF_TEXT=0) - PDF locators stay agent-verified")
+    if mode == "on" and not have:
+        return Check(
+            WARN,
+            "PDF text",
+            "CITADEL_PDF_TEXT=1 but pypdf is not installed - every PDF falls back to agent-native "
+            "reading; install it (`pip install cite-citadel[pdf]`, or `pip install pypdf` into the "
+            "same environment)",
+        )
+    if not have:
+        return Check(
+            OK,
+            "PDF text",
+            "pypdf not installed - PDFs are read agent-natively and their locators stay agent-verified; "
+            "install cite-citadel[pdf] to extract text layers and make `lines A-B` PDF citations "
+            "offline-verifiable",
+        )
+    return Check(OK, "PDF text", "text-layer pre-pass on (pypdf) - PDF `lines A-B` locators verify offline")
+
+
 def check_audio_support() -> Check:
     """WARN when ``CITADEL_AUDIO_SUPPORT=1`` but the whisper-class CLI it needs is not on PATH —
     every audio/video source would fail (and retry) until it is installed. A plain status echo
@@ -491,6 +524,7 @@ def run() -> DoctorReport:
             check_failures(),
             check_billing_shadow(),
             check_pdf_mode(),
+            check_pdf_text(),
             check_audio_support(),
             check_wiki_git(),
             check_update(),

@@ -50,6 +50,18 @@ By default (`CITADEL_PDF_MODE=text`) ingest reads a PDF's body text only. Set
 an agent CLI whose reader actually renders PDF pages (a vision-capable backend). The same applies to
 image sources: `CITADEL_IMAGE_SUPPORT=1` (the default) reads recognized images visually.
 
+### A PDF's citations aren't offline-verifiable (`wiki_raw` says "no cached text-layer extraction")
+
+PDF `lines A-B` locators verify offline only when the PDF was ingested through the optional pypdf
+text-layer pre-pass (see [configuration — `CITADEL_PDF_TEXT`](configuration.md#what-gets-ingested);
+`citadel doctor` shows its state). A PDF ingested **before** pypdf was installed — or on another
+machine — carries agent-verified `p. N` page locators and has no local extraction cache. After
+installing pypdf (`pip install cite-citadel[pdf]`), re-read it deliberately:
+`citadel ingest --force raw/report.pdf`. Like the transcript cache, extractions live
+content-addressed in `.citadel_pdftext/` next to the wiki dir; deleting an entry (or the dir) just
+costs one re-extraction. A scanned PDF has no text layer at all and always falls back to
+agent-native reading — that is expected, not a failure.
+
 ### An audio/video recording isn't in the wiki
 
 Audio transcript ingest is **opt-in**: set `CITADEL_AUDIO_SUPPORT=1` and install a whisper-class

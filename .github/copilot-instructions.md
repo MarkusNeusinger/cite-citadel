@@ -178,7 +178,10 @@ it is itself a workspace.
   source is extracted to text first; a pending image is read visually; a pending audio/video
   recording (`CITADEL_AUDIO_SUPPORT`, opt-in) is transcribed through the whisper seam
   (`transcribe.py`, cached in `.citadel_transcripts/` beside the wiki) and the agent reads the
-  `[HH:MM:SS]`-stamped transcript; a pending source larger than
+  `[HH:MM:SS]`-stamped transcript; a pending PDF (optional pypdf installed — `CITADEL_PDF_TEXT`,
+  default auto) gets its text layer extracted (`pdftext.py`, cached in `.citadel_pdftext/`) and
+  the agent reads the `[p. N]`-marked extraction, falling back to the direct agent read when
+  there is no usable text layer; a pending source larger than
   `CITADEL_MAX_SOURCE_CHARS` is folded in over several passes (all against one staging copy — see
   the promote bullet below). `ingest --force <paths>` bypasses the sha short-circuit: the named
   sources land in pending as reconciles (a repo re-digests in full), and the manifest is re-stamped
@@ -225,7 +228,8 @@ file, whether it reads a source, and its format policy; an unknown kind fails lo
 the propagation: `ingest` (new), `reconcile` (changed source — update/remove stale facts, don't
 just append), `delete` (source removed — strip its provenance), `repo`/`repo-reconcile` (a whole
 git repo folded as one digest), `image`/`image-reconcile` (an image read visually),
-`audio`/`audio-reconcile` (an audio/video source read via its whisper transcript), and `curate`
+`audio`/`audio-reconcile` (an audio/video source read via its whisper transcript),
+`pdf`/`pdf-reconcile` (a PDF read via its pypdf text-layer extraction), and `curate`
 (improve an existing page cluster against a findings file read by path, not a raw source).
 `run_ingest_session` is the single seam tests monkeypatch; it returns the session's best-effort `SessionUsage` (the backend's OWN cost/usage report: claude's result envelope, gemini's `--session-summary` behind a cached `--help` feature probe; None when nothing was reported — accounting is strictly passive and can never fail a session), which ingest sums per source into the manifest stamp and per run onto the reports.
 
@@ -279,7 +283,10 @@ is dispatched. `transcribe.py` is the whisper-CLI seam for audio/video sources
 (`CITADEL_AUDIO_SUPPORT`, opt-in): one shell-out per content, the `[HH:MM:SS]`-per-line transcript
 cached content-addressed in `.citadel_transcripts/` beside the wiki — the same cached text
 `lint`/`wiki_raw`/the viewer verify and serve audio citations against; `transcript_for` is the
-ingest seam tests monkeypatch. `curate.py` is the second lifecycle and `status.py` the read-only per-source state
+ingest seam tests monkeypatch. `pdftext.py` is the same idea for PDFs (optional pypdf,
+`CITADEL_PDF_TEXT`): the extracted `[p. N]`-marked text layer, cached in `.citadel_pdftext/`,
+read under the `pdf`/`pdf-reconcile` kinds and verified/served by `lint`/`wiki_raw`/the viewer;
+`text_for` is its (never-raising, best-effort) ingest seam. `curate.py` is the second lifecycle and `status.py` the read-only per-source state
 view (both above); `doctor.py` (`citadel doctor`) is the read-only setup health check (OK/WARN/FAIL
 lines over workspace resolution, the rules tree, the agent CLI on PATH, raw-root reachability,
 manifest parse + stamp, failures summary, the API-key/PDF/audio advisories, the wiki-git state, a
@@ -334,6 +341,7 @@ CLI-only, `wiki_lint`/`wiki_status` close the `lint`/`status` gaps from the MCP 
   `desktop.ini`, `~$` locks, …; a `+` prefix extends the built-in defaults), `CITADEL_WIKI_LANG`
   (target language of all wiki prose, default `en`; verbatim quotes stay original),
   `CITADEL_PDF_MODE` (`text` | `images` — whether the agent also reads a PDF's figures),
+  `CITADEL_PDF_TEXT` (`auto` | `1` | `0` — the optional pypdf text-layer pre-pass),
   `CITADEL_STYLE_PROFILES` (opt-in persona/style capture on `persons/` pages, default `0`),
   `CITADEL_WIKI_GIT` (wiki-history auto-commit after ingest/curate: `auto` acts only when the wiki
   dir is its own git repo, `1` also `git init`s it, `0` off) + `CITADEL_WIKI_GIT_REMOTE` (optional

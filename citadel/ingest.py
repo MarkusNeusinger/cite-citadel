@@ -40,7 +40,21 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from . import config, extract, failures, llm, manifest, okf, repo, runlock, store, transcribe, validate, wikigit
+from . import (
+    config,
+    extract,
+    failures,
+    llm,
+    manifest,
+    okf,
+    pdftext,
+    repo,
+    runlock,
+    store,
+    transcribe,
+    validate,
+    wikigit,
+)
 from .okf import Page
 
 
@@ -1640,42 +1654,44 @@ def _line_windows(text: str, max_chars: int) -> list[tuple[int, int]]:
 
 
 def _prepare_passes(
-    src: Path, office: str | None, is_image: bool, is_audio: bool = False
+    src: Path, office: str | None, is_image: bool, is_audio: bool = False, is_pdf: bool = False
 ) -> tuple[list[tuple[str | None, tuple[int, int] | None, tuple[int, int] | None]], list[str]]:
     """Plan the agent session(s) for one pending source and return ``(passes, tmpdirs)``.
 
     Each pass is ``(read_key, segment, line_range)``: ``read_key`` is the temp ``.md`` the agent
     reads (None = read the source file directly), ``segment`` is ``(part, total)`` for a chunked
-    large source (None = single pass), and ``line_range`` — audio only — is the 1-based inclusive
-    line window of the FULL transcript this pass processes. ``tmpdirs`` are temp directories the
-    caller MUST remove afterwards.
+    large source (None = single pass), and ``line_range`` — audio/PDF-extract only — is the
+    1-based inclusive line window of the FULL prepared text this pass processes. ``tmpdirs`` are
+    temp directories the caller MUST remove afterwards.
 
     - image: one pass, read the file directly (viewed visually).
-    - a chunked AUDIO transcript is NOT sliced into rebased temp files: every pass reads the SAME
-      full transcript (its line numbers are identical to the verification cache's) and carries
-      the line window to process — so ``lines A-B`` locators stay correct by construction (a
-      sliced temp restarts numbering at 1 and would silently mis-ground every chunked locator).
+    - a chunked AUDIO transcript or PDF text-layer extraction is NOT sliced into rebased temp
+      files: every pass reads the SAME full prepared text (its line numbers are identical to the
+      verification cache's) and carries the line window to process — so ``lines A-B`` locators
+      stay correct by construction (a sliced temp restarts numbering at 1 and would silently
+      mis-ground every chunked locator).
     - a source (pre-extracted Office text, or — when chunking is on — a readable non-PDF text
       file) whose content exceeds ``config.MAX_SOURCE_CHARS`` is SPLIT into segments, one pass
       each.
-    - a small Office file / audio transcript: one pass reading the prepared text.
-    - anything else (small plain text, a PDF, an image-less binary the agent reads): one pass
-      reading the file directly (unchanged behavior).
+    - a small Office file / audio transcript / PDF extraction: one pass reading the prepared text.
+    - anything else (small plain text, a PDF without a usable text layer, an image-less binary
+      the agent reads): one pass reading the file directly (unchanged behavior).
 
-    ``is_audio`` marks the ``office`` text as a whisper transcript: same temp-file plumbing, but
-    the media extraction below must not try to unzip an ``.mp3``.
+    ``is_audio`` marks the ``office`` text as a whisper transcript, ``is_pdf`` as a pypdf
+    text-layer extraction: same temp-file plumbing, but line-window chunking (above) and no media
+    extraction (an ``.mp3``/``.pdf`` is not a ZIP to unzip).
 
     Raises ``OSError`` if a temp segment/extract file can't be written (handled per-source)."""
     if is_image:
         return [(None, None, None)], []
     max_chars = config.MAX_SOURCE_CHARS
-    # Content we could chunk: pre-extracted Office/transcript text, or (chunking on) a readable
-    # text source.
+    # Content we could chunk: pre-extracted Office/transcript/PDF text, or (chunking on) a
+    # readable text source.
     content = office
     if content is None and max_chars > 0:
         content = _read_source_text(src)
     if content is not None and max_chars > 0 and len(content) > max_chars:
-        if is_audio:
+        if is_audio or is_pdf:
             windows = _line_windows(content, max_chars)
             read_key, tmp = _office_write_temp(content, src.name, None)
             return [(read_key, (i, len(windows)), w) for i, w in enumerate(windows, 1)], [tmp]
@@ -1700,11 +1716,12 @@ def _prepare_passes(
         # Small Office file: one pass reading the extracted text — plus its embedded images (decks
         # and docs often carry diagrams/charts/screenshots the text extractor can't see), written
         # beside the text for the agent to VIEW. Skipped when image support is off — and for an
-        # audio transcript, which has no media to extract.
-        media = extract.extract_media(src) if config.IMAGE_SUPPORT and not is_audio else []
+        # audio transcript or PDF extraction, which have no OOXML media to extract.
+        media = extract.extract_media(src) if config.IMAGE_SUPPORT and not (is_audio or is_pdf) else []
         read_key, tmp = _office_write_temp(office, src.name, media)
         return [(read_key, None, None)], [tmp]
-    # Small plain text, a PDF, or any other agent-readable source: read the file directly.
+    # Small plain text, a PDF without a usable text layer, or any other agent-readable source:
+    # read the file directly.
     return [(None, None, None)], []
 
 
@@ -2109,18 +2126,31 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             # Plan the pass(es): an Office source materializes its extracted text to a temp .md
             # the agent reads; an audio/video source is transcribed HERE through the whisper seam
             # (content-addressed cache; a raise is a retryable per-source prepare_error, and the
-            # cache makes the retry free); a source too large for one context is SPLIT into
-            # segments (promote-once per source — see _run_agent_sessions); anything else is a
-            # single direct read.
+            # cache makes the retry free); a PDF's text layer is extracted HERE through the
+            # optional pypdf seam (same content-addressed cache idea; a None — pypdf missing, no
+            # text layer, unparsable — quietly falls back to the direct agent read, so the
+            # pre-pass can never cost a session); a source too large for one context is SPLIT
+            # into segments (promote-once per source — see _run_agent_sessions); anything else is
+            # a single direct read.
             prepared = office
+            run_kind = kind
+            is_pdf = False
             if is_audio:
                 prepared = transcribe.transcript_for(src, sha=sha_stat[0])
                 # A transcription can take minutes: refresh the run lock afterwards so the
                 # staleness window never has to absorb whisper time AND session time in one gap.
                 runlock.heartbeat()
-            passes, tmpdirs = _prepare_passes(src, prepared, is_image, is_audio=is_audio)
+            elif prepared is None and pdftext.is_pdf_text_source(src):
+                prepared = pdftext.text_for(src, sha=sha_stat[0])
+                if prepared is not None:
+                    # Only a source that ACTUALLY got an extraction takes the pdf propagation —
+                    # the kind selects formats/pdf.md's prepared-extract rules (lines locators
+                    # into the cached text); the fallback stays plain ingest/reconcile.
+                    is_pdf = True
+                    run_kind = "pdf-reconcile" if rel_key in changed_keys else "pdf"
+            passes, tmpdirs = _prepare_passes(src, prepared, is_image, is_audio=is_audio, is_pdf=is_pdf)
             sessions = [
-                (lambda rp=read_key, sg=segment, lw=window: _pending_session(rel_key, kind, rp, sg, lw))
+                (lambda rp=read_key, sg=segment, lw=window, k=run_kind: _pending_session(rel_key, k, rp, sg, lw))
                 for read_key, segment, window in passes
             ]
             return sessions, tmpdirs
@@ -2131,13 +2161,14 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             # source's combined session usage (cost/tokens, when the backend reported any)
             # is stamped alongside — per-source cost observability.
             done_sha, done_stat = sha_stat
-            if is_audio:
-                # A re-recorded file leaves its OLD bytes' transcript orphaned in the cache —
-                # prune it once the new content is safely in (plaintext spoken content, SECURITY.md).
+            if is_audio or pdftext.is_pdf_file(src):
+                # A re-recorded/re-exported file leaves its OLD bytes' transcript/extraction
+                # orphaned in the content-addressed cache — prune it once the new content is
+                # safely in (plaintext source content, SECURITY.md).
                 old_entry = manifest_dict.get(rel_key)
                 old_sha = manifest.entry_sha(old_entry) if old_entry is not None else None
                 if old_sha and old_sha != done_sha:
-                    transcribe.prune_cached(old_sha)
+                    (transcribe if is_audio else pdftext).prune_cached(old_sha)
             manifest.mark_done(manifest_dict, src, model, rules_ver, sha=done_sha, st=done_stat, **_usage_fields(usage))
             # A source that had failed before (unreadable/errored/duplicate) now succeeded: drop
             # its persisted failure record.
@@ -2214,6 +2245,10 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
                 # The deleted recording's cached transcript would sit orphaned forever — and it
                 # holds the recording's spoken content in plaintext (SECURITY.md).
                 transcribe.prune_cached(manifest.entry_sha(entry))
+            elif entry is not None and pdftext.is_pdf_ext(Path(key)):
+                # Same for a deleted PDF's cached text-layer extraction (the file is gone, so
+                # the extension is the best identity check left).
+                pdftext.prune_cached(manifest.entry_sha(entry))
             manifest_dict.pop(key, None)
             failures.clear(failures_dict, key)
             manifest.save(manifest_dict)

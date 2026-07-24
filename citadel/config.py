@@ -637,6 +637,29 @@ WIKI_LANG: str = os.environ.get("CITADEL_WIKI_LANG", "").strip() or "en"
 # instruction names — the behavior itself lives in the rules file.
 PDF_MODE: str = "images" if os.environ.get("CITADEL_PDF_MODE", "").strip().lower() == "images" else "text"
 
+
+def _pdf_text_mode() -> str:
+    """Resolve ``CITADEL_PDF_TEXT`` to one of ``auto``/``on``/``off``. Blank/unset and anything
+    unrecognized mean ``auto``."""
+    raw = os.environ.get("CITADEL_PDF_TEXT", "").strip().lower()
+    if raw in ("1", "true", "yes", "on"):
+        return "on"
+    if raw in ("0", "false", "no", "off"):
+        return "off"
+    return "auto"
+
+
+# PDF text-layer pre-pass (citadel/pdftext.py): when the OPTIONAL pure-Python pypdf dependency is
+# installed (`pip install cite-citadel[pdf]`), a PDF's embedded text layer is extracted once per
+# content and the agent reads the extraction — giving real, offline-verifiable `lines A-B`
+# locators (lint/wiki_raw/viewer check them against the same cached text) and correct large-PDF
+# chunking. Modes: "auto" (default) — on exactly when pypdf is importable; "1" — force on (a
+# missing pypdf then falls back per source, with a doctor warning); "0" — force off (the agent
+# opens the PDF itself; `p. N` page locators, agent-verified — the pre-pre-pass behavior).
+# Orthogonal to CITADEL_PDF_MODE: "images" still has the agent open the ORIGINAL PDF for its
+# figures on top of the extraction.
+PDF_TEXT: str = _pdf_text_mode()
+
 # Persona/style capture (genres/first-person.md) — OPT-IN, default OFF. When on, first-person
 # sources (interviews, memos, letters, diaries) additionally yield the person's opinions/
 # preferences as attributed, dated, cited statements and a per-person style profile backed by

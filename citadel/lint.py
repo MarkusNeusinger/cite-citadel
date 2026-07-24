@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import config, grammar, okf, store, transcribe, validate
+from . import config, grammar, okf, pdftext, store, transcribe, validate
 from .okf import Page
 
 
@@ -100,6 +100,8 @@ _ORDINAL_CONTEXT = frozenset(
 # grammar) as grammar.locator_tail / parse_locator / heading_candidates / source_headings. What
 # stays here is the IO + policy: which source extensions are non-text, and the advisory framing.
 # Paginated / binary source extensions whose locators (`p. 12`) are agent-verified, not read here.
+# A genuine PDF (`%PDF-` magic) is intercepted BEFORE this list by its cached pypdf text-layer
+# extraction (citadel/pdftext.py) when one exists — only cache-less PDFs fall through to the skip.
 _NON_TEXT_EXTS = {
     ".pdf",
     ".doc",
@@ -504,12 +506,17 @@ def _load_source_text(abs_path: str) -> str | None:
     An audio/video source is checkable through its CACHED whisper transcript — the very text the
     ingest agent read and cited — and skipped (None) when no cache exists on this machine. A text
     file merely RENAMED ``.mp3`` (no audio magic — it ingested as ordinary text) falls through to
-    the normal decode below, so its line locators keep being verified."""
+    the normal decode below, so its line locators keep being verified. A genuine PDF (``%PDF-``
+    magic) is checkable the same way through its CACHED pypdf text-layer extraction — the text a
+    ``pdf``-kind session read and cited — and skipped when none exists (agent-native ingest,
+    a different machine, or pypdf absent): its ``p. N`` page locators stay agent-verified."""
     path = Path(abs_path)
     if transcribe.is_audio_ext(path):
         cached = transcribe.cached_transcript(path)
         if cached is not None or transcribe.is_audio_file(path):
             return cached
+    if pdftext.is_pdf_file(path):
+        return pdftext.cached_text(path)
     if path.suffix.lower() in _NON_TEXT_EXTS:
         return None
     try:
@@ -553,8 +560,10 @@ def _locator_problem(page_rel: str, target: str, tail: str, cache: dict[str, str
 
 def check_locators(pages: list[Page]) -> list[tuple[str, str]]:
     """Deterministically verify every ``[^sN]`` citation locator against its text-bearing raw source: a ``lines A-B`` range past the file's end, or a ``§ Heading`` naming
-    a heading the source lacks, is a ``(rel_path, detail)`` warning. PDF/Office page locators stay
-    agent-verified (no Python PDF reader by design). Shared by :func:`lint` and ``citadel curate``;
+    a heading the source lacks, is a ``(rel_path, detail)`` warning. Office ``p. N`` page
+    locators stay agent-verified; a PDF's ``lines A-B`` locators verify against its cached pypdf
+    text-layer extraction when one exists (:mod:`citadel.pdftext`), its page locators stay
+    agent-verified. Shared by :func:`lint` and ``citadel curate``;
     reuses the one citation/link/fence grammar (:func:`grammar.source_definitions`), so it agrees
     with the strict gate by construction."""
     issues: list[tuple[str, str]] = []

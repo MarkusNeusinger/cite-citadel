@@ -1436,7 +1436,9 @@
       body = (s.kind === "office"
         ? "<p class='desc'>Text extracted from the original document.</p>"
         : s.kind === "audio"
-          ? "<p class='desc'>Machine transcript of the original audio/video recording.</p>" : "") +
+          ? "<p class='desc'>Machine transcript of the original audio/video recording.</p>"
+          : s.kind === "pdf"
+            ? "<p class='desc'>Text layer extracted from the original PDF.</p>" : "") +
         (s.segments ? renderSegments(s, sid) : mdToHtml(s.body, sid, {}));
       if (s.truncated) {
         body += "<div class='callout'><div class='callout-title'>TRUNCATED</div>" +

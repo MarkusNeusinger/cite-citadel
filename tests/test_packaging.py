@@ -38,10 +38,14 @@ def test_dunder_version_in_the_configured_file_matches_the_package():
 
 
 def test_dev_deps_live_only_in_the_pep735_dependency_group():
-    """The duplicated [project.optional-dependencies].dev table is gone — [dependency-groups]
-    (PEP 735, what `uv sync` installs by default) is the ONE place dev deps live."""
+    """No duplicated [project.optional-dependencies].dev table — [dependency-groups] (PEP 735,
+    what `uv sync` installs by default) is the ONE place dev deps live. Runtime extras are a
+    different thing and stay allowed (the `pdf` extra ships the optional pypdf pre-pass)."""
     data = _pyproject()
-    assert "optional-dependencies" not in data["project"]
+    extras = data["project"].get("optional-dependencies", {})
+    assert "dev" not in extras
+    assert set(extras) <= {"pdf"}, f"unexpected extras: {sorted(extras)}"
+    assert any(dep.startswith("pypdf") for dep in extras.get("pdf", []))
     assert any(dep.startswith("pytest") for dep in data["dependency-groups"]["dev"])
     assert any(dep.startswith("ruff") for dep in data["dependency-groups"]["dev"])
 

@@ -140,7 +140,7 @@ def test_large_source_is_capped_with_a_narrowing_hint(tmp_citadel):
 def test_pdf_source_has_no_offline_text(tmp_citadel):
     key = _cite(tmp_citadel, "report.pdf", "%PDF-1.4 not really\n")
 
-    with pytest.raises(rawsource.SourceError, match="no offline text"):
+    with pytest.raises(rawsource.SourceError, match="no cached text-layer extraction"):
         rawsource.raw_text(key)
 
 

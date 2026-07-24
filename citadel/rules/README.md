@@ -10,13 +10,13 @@ files changes how the wiki is built — **with no code change**; treat them as p
 | ---- | ------- | ----------- |
 | `schema.md` | The format contract: OKF frontmatter, folder routing, citation grammar + locators, grounding/quality contract, contradictions, links, tags, abbreviations, wiki language, opinions & style | every session |
 | `core.md` | Generic behavior: paths-verbatim, workflow, path-as-context, code essence, genre selection, restructuring, off-limits, self-check | every session |
-| `tasks/ingest.md` | Fold a NEW source in; segmented large-source passes | kinds `ingest`, `image`, `audio`, `repo` |
-| `tasks/reconcile.md` | Re-fold a CHANGED (or force-re-read) source: update/remove stale facts, re-check locators, keep genre treatment | kinds `reconcile`, `image-reconcile`, `audio-reconcile`, `repo-reconcile` |
+| `tasks/ingest.md` | Fold a NEW source in; segmented large-source passes | kinds `ingest`, `image`, `audio`, `pdf`, `repo` |
+| `tasks/reconcile.md` | Re-fold a CHANGED (or force-re-read) source: update/remove stale facts, re-check locators, keep genre treatment | kinds `reconcile`, `image-reconcile`, `audio-reconcile`, `pdf-reconcile`, `repo-reconcile` |
 | `tasks/delete.md` | Strip a REMOVED source's provenance | kind `delete` |
 | `tasks/curate.md` | Improve EXISTING pages against a run's findings checklist: re-sort, split, merge, re-verify — improve-or-NOOP, never invent, never break provenance | kind `curate` (`citadel curate`) |
 | `formats/repo.md` | A git repo as one source: the digest, capture-by-use, System pages, repo-reconcile | repo sources |
 | `formats/image.md` | View an image source and transcribe its facts | image sources |
-| `formats/pdf.md` | PDFs read whole; `text` vs `images` mode; page locators | PDF sources |
+| `formats/pdf.md` | PDFs via the extracted text layer (`lines A-B` locators) or read whole (page locators); `text` vs `images` mode | PDF sources |
 | `formats/office.md` | Pre-extracted Office text + embedded `media/`; cite the original file | Office sources |
 | `formats/transcripts.md` | Machine-transcribed audio/video: read the `[HH:MM:SS]` transcript, cite the original recording, `lines A-B` locators | audio sources |
 | `genres/prose.md` | Extraction restraint for essays/articles; author claims vs reported facts | agent judgment |
