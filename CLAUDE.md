@@ -110,7 +110,8 @@ the wiki: `citadel check` + `lint` exit 0 (structural eligibility), then a **ret
 grade — driving citadel's own read tools (`search`/`read`/`index`/`tags`) to prove each answer-key
 guarantee is both correct+cited and easily findable, dropping to a file-level grep only to separate a
 wiki-creation defect from a retrieval one (its misses feed two optimization lanes: the ingest/rules
-generator and the search tools). Corpora live
+generator and the search tools — persisted per run in the committed ledger
+`docs/verify-corpus-backlog.md`). Corpora live
 **outside** `citadel/`, so they never ship in the wheel. The repo-root `raw/` + `wiki/` are a
 gitignored developer workspace (the checkout's `citadel.toml` marker still makes it a workspace).
 

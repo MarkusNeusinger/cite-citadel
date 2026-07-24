@@ -19,6 +19,7 @@ quickstart; come here when you know what you want to do.
 | Understand the OKF page format | [okf-reference.md](okf-reference.md) |
 | Read the founding idea | [karpathy-llm-wiki.md](karpathy-llm-wiki.md) |
 | See where citadel stands vs. the landscape, and what's still missing | [audit-2026-07.md](audit-2026-07.md) |
+| See which corpus-grading misses are still open (the two optimization lanes) | [verify-corpus-backlog.md](verify-corpus-backlog.md) |
 | Contribute | [CONTRIBUTING.md](../CONTRIBUTING.md) |
 | Understand how it works inside (the contributor/agent bible) | [CLAUDE.md](../CLAUDE.md) |
 
@@ -34,7 +35,8 @@ docs/
 ├── troubleshooting.md     symptom → cause → fix; leads with `citadel doctor`
 ├── okf-reference.md       the Open Knowledge Format the wiki pages use
 ├── karpathy-llm-wiki.md   the LLM-Wiki pattern this implements
-└── audit-2026-07.md       point-in-time audit: internal gaps + landscape comparison + backlog
+├── audit-2026-07.md       point-in-time audit: internal gaps + landscape comparison + backlog
+└── verify-corpus-backlog.md  durable ledger of corpus-grading misses (the two optimization lanes)
 ```
 
 The rules the ingest agent actually follows live in

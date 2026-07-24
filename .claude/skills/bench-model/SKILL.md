@@ -93,7 +93,9 @@ ground-truth passed/total + `stretch N/M` (+ wiki-defect list), locator precisio
 redundancy, orphans — followed by a verdict: is the cheaper model's wiki acceptable for real use,
 where does it degrade first, what is the cost/quality trade, and which `citadel/rules/` changes
 would close the gap (cite the specific failures). Route every defect into the two verify-corpus
-lanes (wiki-generation vs retrieval-tooling).
+lanes (wiki-generation vs retrieval-tooling), and persist them into the committed ledger
+`docs/verify-corpus-backlog.md` per its Protocol section (a weaker-model-only miss is a rules-gap
+finding — note the model in the row so it is not confused with a reference-model defect).
 
 ## Results export (feeds the README model-results matrix)
 
