@@ -449,11 +449,30 @@ def test_http_serve_warns_on_a_short_token(tmp_citadel, monkeypatch):
 
 def test_http_serve_warns_on_a_public_bind(tmp_citadel, monkeypatch):
     monkeypatch.setattr(config, "HTTP_TOKEN", "x" * 32)
-    monkeypatch.setattr(config, "HTTP_HOST", "0.0.0.0")
+    monkeypatch.setattr(config, "HTTP_HOST", "192.168.1.10")
+    monkeypatch.setattr(config, "HTTP_ALLOWED_HOSTS", [])
     monkeypatch.setattr(config, "HTTP_READ_ONLY", True)
     c = doctor.check_http_serve()
     assert c.status == doctor.WARN
     assert "PLAIN HTTP" in c.detail and "read-only" in c.detail
+
+
+def test_http_serve_warns_when_a_wildcard_bind_has_no_allowlist(tmp_citadel, monkeypatch):
+    """`serve --http` would refuse to start on 0.0.0.0 without CITADEL_HTTP_ALLOWED_HOSTS — doctor
+    is where that is meant to be discovered, not at start-up."""
+    monkeypatch.setattr(config, "HTTP_TOKEN", "x" * 32)
+    monkeypatch.setattr(config, "HTTP_HOST", "0.0.0.0")
+    monkeypatch.setattr(config, "HTTP_ALLOWED_HOSTS", [])
+    c = doctor.check_http_serve()
+    assert c.status == doctor.WARN and "CITADEL_HTTP_ALLOWED_HOSTS" in c.detail
+
+
+def test_http_serve_reports_the_accepted_hosts(tmp_citadel, monkeypatch):
+    monkeypatch.setattr(config, "HTTP_TOKEN", "x" * 32)
+    monkeypatch.setattr(config, "HTTP_HOST", "127.0.0.1")
+    monkeypatch.setattr(config, "HTTP_PATH", "/mcp")
+    monkeypatch.setattr(config, "HTTP_ALLOWED_HOSTS", ["wiki.example.com"])
+    assert "accepts Host: wiki.example.com" in doctor.check_http_serve().detail
 
 
 def _raise_runtime():

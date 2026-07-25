@@ -356,14 +356,24 @@ def check_http_serve() -> Check:
             f"refuses anything under {httpserve.MIN_TOKEN_CHARS}; generate one with "
             'python -c "import secrets; print(secrets.token_urlsafe(32))"',
         )
+    try:
+        hosts = httpserve.check_hosts(config.HTTP_HOST)
+    except httpserve.HttpServeError as e:
+        # A wildcard bind with no allowlist: `serve --http` would refuse to start. Surfacing it here
+        # is the whole point of the check — the alternative is discovering it at start-up.
+        return Check(WARN, "HTTP serve", str(e))
+    accepts = "any Host" if hosts is None else f"Host: {', '.join(hosts)}"
     if not httpserve.is_loopback(config.HTTP_HOST):
         return Check(
             WARN,
             "HTTP serve",
             f"CITADEL_HTTP_HOST={config.HTTP_HOST} binds beyond this machine over PLAIN HTTP ({where}, "
-            f"{mode}) - prefer a loopback bind behind a TLS-terminating tunnel (cloudflared, tailscale, ssh -R)",
+            f"{mode}, accepts {accepts}) - prefer a loopback bind behind a TLS-terminating tunnel "
+            "(cloudflared, tailscale, ssh -R)",
         )
-    return Check(OK, "HTTP serve", f"token set - `citadel serve --http` would listen on {where}, {mode}")
+    return Check(
+        OK, "HTTP serve", f"token set - `citadel serve --http` would listen on {where}, {mode}, accepts {accepts}"
+    )
 
 
 def check_resume() -> Check:

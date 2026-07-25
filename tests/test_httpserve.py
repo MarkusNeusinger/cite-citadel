@@ -180,13 +180,16 @@ def test_non_loopback_hosts_are_recognized(host):
 
 
 def test_serve_warns_on_a_non_loopback_bind(tmp_citadel, monkeypatch, capsys):
+    """A concrete LAN address binds (its own name is a usable Host allowlist) but warns — the
+    wildcard bind is the one that additionally needs an explicit allowlist."""
     monkeypatch.setattr(config, "HTTP_TOKEN", TOKEN)
+    monkeypatch.setattr(config, "HTTP_ALLOWED_HOSTS", [])
     calls = {}
     monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: calls.update(kwargs))
-    httpserve.serve(host="0.0.0.0", port=9001)
+    httpserve.serve(host="192.168.1.10", port=9001)
     err = capsys.readouterr().err
-    assert "WARNING" in err and "0.0.0.0" in err
-    assert calls["host"] == "0.0.0.0" and calls["port"] == 9001
+    assert "WARNING" in err and "192.168.1.10" in err
+    assert calls["host"] == "192.168.1.10" and calls["port"] == 9001
 
 
 def test_serve_does_not_warn_on_loopback(tmp_citadel, monkeypatch, capsys):
@@ -224,29 +227,25 @@ def test_serve_hands_uvicorn_the_bind_spelling_of_an_ipv6_host(tmp_citadel, monk
     assert "http://[::1]:9003/mcp" in capsys.readouterr().err
 
 
-def test_allowed_hosts_of_an_ipv6_bind_are_bracketed():
-    """The Host header a client sends for an IPv6 server is bracketed — the allowlist must match
-    that spelling or every request would fail the rebinding check."""
-    allowed = httpserve._allowed_hosts("::1", 8765)
-    assert "[::1]:8765" in allowed
-    assert "::1:8765" not in allowed
+def test_an_ipv6_host_header_matches_its_bind():
+    """A client addressing an IPv6 server sends a bracketed, ported Host — host_name() reduces both
+    sides to the bare name so the allowlist matches what is actually on the wire."""
+    assert httpserve.host_name("[::1]:8765") == "::1"
+    assert "::1" in httpserve.allowed_host_names("::1", [])
 
 
 def test_allowed_hosts_cover_the_loopback_aliases():
-    allowed = httpserve._allowed_hosts("127.0.0.1", 8765)
-    assert "127.0.0.1:8765" in allowed
-    assert "localhost:8765" in allowed
-    assert "127.0.0.1:*" in allowed
+    allowed = httpserve.allowed_host_names("127.0.0.1", [])
+    assert allowed == ["127.0.0.1", "localhost", "::1"]
 
 
-def test_allowed_hosts_of_a_public_bind_stay_that_host():
-    allowed = httpserve._allowed_hosts("0.0.0.0", 8765)
-    assert allowed == ["0.0.0.0", "0.0.0.0:8765", "0.0.0.0:*"]
+def test_allowed_hosts_of_a_concrete_public_bind_are_that_host():
+    assert httpserve.allowed_host_names("192.168.1.10", []) == ["192.168.1.10"]
 
 
 def test_dns_rebinding_protection_is_enabled(app):
-    """A request whose Host header is not the bound address is refused by the SDK's transport
-    security — a browser on some other page cannot drive this server."""
+    """A request whose Host header is not an accepted name is refused — a page in the user's
+    browser can force a request at this port, but not the Host name it carries."""
     with TestClient(app, base_url=BASE_URL) as client:
         response = client.post(
             "/mcp",
@@ -254,6 +253,131 @@ def test_dns_rebinding_protection_is_enabled(app):
             headers={"Authorization": f"Bearer {TOKEN}", "Host": "evil.example.com"},
         )
     assert response.status_code == 421
+
+
+def test_the_host_check_runs_before_the_token_check(app):
+    """An unauthenticated request with a bad Host is refused as a bad Host — the rebinding guard
+    never depends on the caller having a token."""
+    with TestClient(app, base_url=BASE_URL) as client:
+        response = client.post(
+            "/mcp", json={"jsonrpc": "2.0", "method": "ping", "id": 1}, headers={"Host": "evil.example.com"}
+        )
+    assert response.status_code == 421
+
+
+def test_a_named_host_is_accepted_whatever_the_bind(tmp_citadel):
+    """The tunnel/reverse-proxy case: the client addresses a NAME, the server binds loopback. The
+    allowlist knob is what makes that work — without it the forwarded Host would 421."""
+    named = httpserve.build_app(TOKEN, host="127.0.0.1", port=8765, hosts=["wiki.example.com"])
+    with TestClient(named, base_url="http://wiki.example.com") as client:
+        ok = client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "method": "ping", "id": 1},
+            headers={"Authorization": f"Bearer {TOKEN}", "Accept": "application/json, text/event-stream"},
+        )
+        rejected = client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "method": "ping", "id": 1},
+            headers={"Authorization": f"Bearer {TOKEN}", "Host": "127.0.0.1:8765"},
+        )
+    assert ok.status_code != 421
+    assert rejected.status_code == 421
+
+
+def test_star_accepts_any_host(tmp_citadel):
+    any_host = httpserve.build_app(TOKEN, host="0.0.0.0", port=8765, hosts=httpserve.check_hosts("0.0.0.0", ["*"]))
+    with TestClient(any_host, base_url="http://whatever.example.org") as client:
+        response = client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "method": "ping", "id": 1},
+            headers={"Authorization": f"Bearer {TOKEN}", "Accept": "application/json, text/event-stream"},
+        )
+    assert response.status_code != 421
+
+
+# --- Origin policy ----------------------------------------------------------------------------
+
+
+def test_a_browser_origin_is_refused_by_default(app):
+    """No Origin is the normal case (MCP clients are not browsers); one that IS present means a web
+    page is driving the server, which is exactly the request this transport should not serve."""
+    with TestClient(app, base_url=BASE_URL) as client:
+        response = client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "method": "ping", "id": 1},
+            headers={"Authorization": f"Bearer {TOKEN}", "Origin": "https://evil.example.com"},
+        )
+    assert response.status_code == 403
+
+
+def test_a_named_origin_is_admitted(tmp_citadel):
+    browser = httpserve.build_app(TOKEN, host="127.0.0.1", port=8765, origins=["https://claude.ai"])
+    with TestClient(browser, base_url=BASE_URL) as client:
+        response = client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "method": "ping", "id": 1},
+            headers={
+                "Authorization": f"Bearer {TOKEN}",
+                "Origin": "https://claude.ai",
+                "Accept": "application/json, text/event-stream",
+            },
+        )
+    assert response.status_code != 403
+
+
+def test_allowed_origins_resolve_from_the_knob(monkeypatch):
+    monkeypatch.setattr(config, "HTTP_ALLOWED_ORIGINS", ["https://Claude.ai/"])
+    assert httpserve.allowed_origins() == ["https://claude.ai"]
+    monkeypatch.setattr(config, "HTTP_ALLOWED_ORIGINS", ["*"])
+    assert httpserve.allowed_origins() is None
+    monkeypatch.setattr(config, "HTTP_ALLOWED_ORIGINS", [])
+    assert httpserve.allowed_origins() == []
+
+
+# --- the wildcard-bind refusal ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "::", "[::]"])
+def test_wildcard_binds_are_recognized(host):
+    assert httpserve.is_wildcard_bind(host)
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "192.168.1.10", "wiki.example.com"])
+def test_concrete_binds_are_not_wildcards(host):
+    assert not httpserve.is_wildcard_bind(host)
+
+
+def test_check_hosts_refuses_a_wildcard_bind_without_an_allowlist():
+    """Nothing can be derived from 0.0.0.0 — refusing at start-up beats binding happily and then
+    421-ing every request that arrives."""
+    with pytest.raises(httpserve.HttpServeError) as excinfo:
+        httpserve.check_hosts("0.0.0.0", [])
+    assert "CITADEL_HTTP_ALLOWED_HOSTS" in str(excinfo.value)
+
+
+def test_check_hosts_accepts_a_wildcard_bind_with_an_allowlist():
+    assert httpserve.check_hosts("0.0.0.0", ["wiki.example.com"]) == ["wiki.example.com"]
+    assert httpserve.check_hosts("0.0.0.0", ["*"]) is None
+
+
+def test_serve_refuses_a_wildcard_bind_without_an_allowlist(tmp_citadel, monkeypatch):
+    monkeypatch.setattr(config, "HTTP_TOKEN", TOKEN)
+    monkeypatch.setattr(config, "HTTP_ALLOWED_HOSTS", [])
+    ran = []
+    monkeypatch.setattr("uvicorn.run", lambda *a, **k: ran.append(k))
+    with pytest.raises(httpserve.HttpServeError):
+        httpserve.serve(host="0.0.0.0")
+    assert ran == []
+
+
+def test_serve_binds_a_wildcard_with_an_allowlist(tmp_citadel, monkeypatch, capsys):
+    monkeypatch.setattr(config, "HTTP_TOKEN", TOKEN)
+    monkeypatch.setattr(config, "HTTP_ALLOWED_HOSTS", ["wiki.example.com"])
+    calls = {}
+    monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: calls.update(kwargs))
+    httpserve.serve(host="0.0.0.0", port=9005)
+    assert calls["host"] == "0.0.0.0"
+    assert "accepts Host: wiki.example.com" in capsys.readouterr().err
 
 
 def test_build_app_normalizes_a_pathless_endpoint(tmp_citadel):

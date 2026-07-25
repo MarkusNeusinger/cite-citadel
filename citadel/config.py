@@ -787,11 +787,25 @@ PAGE_CACHE: str = _page_cache_mode()
 #   CITADEL_HTTP_READ_ONLY — when 1, the two mutating tools (wiki_capture, wiki_ingest) refuse over
 #                        this server and only the eleven readers work. Off by default (a token
 #                        holder is you), on for a share-the-read-surface setup.
+#   CITADEL_HTTP_ALLOWED_HOSTS — the `Host` header values accepted (anti-DNS-rebinding). Unset =
+#                        derived from the bind address, which is right for a DIRECT loopback or
+#                        single-address bind and WRONG the moment a name is in front of it: a
+#                        tunnel forwards `Host: your-tunnel.example.com`, and a wildcard bind
+#                        (0.0.0.0 / ::) is a name no client ever sends. Name those hosts here (a
+#                        wildcard bind refuses to start without it, instead of rejecting every
+#                        request); `*` disables Host checking entirely, for when a proxy in front
+#                        already filters it.
+#   CITADEL_HTTP_ALLOWED_ORIGINS — the browser `Origin` values accepted. Unset = NONE: a request
+#                        carrying any Origin is refused, which is exactly right for the non-browser
+#                        MCP clients this serves. Name an origin (or `*`) only to admit a
+#                        browser-based client.
 HTTP_TOKEN: str = os.environ.get("CITADEL_HTTP_TOKEN", "").strip()
 HTTP_HOST: str = os.environ.get("CITADEL_HTTP_HOST", "").strip() or "127.0.0.1"
 HTTP_PORT: int = _int_env("CITADEL_HTTP_PORT", 8765)
 HTTP_PATH: str = os.environ.get("CITADEL_HTTP_PATH", "").strip() or "/mcp"
 HTTP_READ_ONLY: bool = _bool_env("CITADEL_HTTP_READ_ONLY", False)
+HTTP_ALLOWED_HOSTS: list[str] = _split_list_env(os.environ.get("CITADEL_HTTP_ALLOWED_HOSTS", ""))
+HTTP_ALLOWED_ORIGINS: list[str] = _split_list_env(os.environ.get("CITADEL_HTTP_ALLOWED_ORIGINS", ""))
 
 # Wiki history (git). After every run that CHANGED the wiki (ingest or curate), citadel can commit
 # the whole wiki directory so every change is a reviewable diff — the long-term audit trail

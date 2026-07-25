@@ -21,7 +21,12 @@ All notable changes to this project are documented here. The format is based on
   loopback (`CITADEL_HTTP_HOST`, a public bind warns — this transport is plain HTTP and belongs
   behind a TLS-terminating tunnel: cloudflared, tailscale, `ssh -R`), and the SDK's DNS-rebinding
   protection is enabled against the bound host so a web page cannot drive the server through your
-  browser. `--read-only` (`CITADEL_HTTP_READ_ONLY=1`) disables the two writers — `wiki_capture` and
+  browser: a request's `Host` must be a name the server accepts — derived from the bind address, or
+  named in `CITADEL_HTTP_ALLOWED_HOSTS` for the deployments where the client addresses something
+  else (a tunnel forwards its own hostname; a wildcard `0.0.0.0` bind is a name nobody sends, so it
+  refuses to start until the knob is set rather than rejecting every request it gets) — and a
+  request carrying a browser `Origin` is refused unless `CITADEL_HTTP_ALLOWED_ORIGINS` admits it,
+  since the MCP clients this serves are not browsers. `--read-only` (`CITADEL_HTTP_READ_ONLY=1`) disables the two writers — `wiki_capture` and
   `wiki_ingest`, the latter of which spawns your coding-agent CLI on the serving host — while
   leaving the eleven readers and the *advertised* tool list untouched, so a client's tool list never
   silently changes shape. `--host`/`--port`/`--path` mirror the env knobs; the same flags on a stdio

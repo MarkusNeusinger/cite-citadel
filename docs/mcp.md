@@ -161,8 +161,16 @@ posture is deliberately strict, because binding a port turns a local tool into a
   reach it from elsewhere, put a tunnel that terminates TLS in front of the loopback port —
   `cloudflared tunnel --url http://127.0.0.1:8765`, tailscale, or `ssh -R`. Binding `0.0.0.0`
   works but warns, and puts an unencrypted endpoint on your network.
-- **DNS-rebinding protection is on** — a web page you happen to visit can't drive the server
-  through your browser (its `Host`/`Origin` must match the bound address).
+- **DNS-rebinding protection is on** — a request's `Host` must be a name the server accepts, so a
+  web page you happen to visit can't drive it through your browser. The accepted names are derived
+  from the bind address (a loopback bind also answers to `localhost` and `[::1]`), which is right
+  for a direct local connection and **not** for anything with a name in front of it: a tunnel
+  forwards `Host: your-tunnel.example.com`, so name it in `CITADEL_HTTP_ALLOWED_HOSTS` or every
+  request comes back `421`. A wildcard bind (`0.0.0.0`) has no derivable name at all, so the server
+  refuses to start until that knob is set (`*` accepts any `Host`, for when a proxy already filters
+  it). Separately, a request carrying a browser `Origin` is refused with `403` unless
+  `CITADEL_HTTP_ALLOWED_ORIGINS` names it — MCP clients aren't browsers, so an `Origin` means a web
+  page is calling.
 - **`--read-only` disables the writers.** `wiki_capture` and `wiki_ingest` stay listed — the
   advertised tool list never changes shape — but answer with a refusal string. Worth it for any
   server reachable beyond your own machine: `wiki_ingest` spawns your coding-agent CLI on the host.
@@ -175,8 +183,21 @@ posture is deliberately strict, because binding a port turns a local tool into a
 | `--port` | `CITADEL_HTTP_PORT` | `8765` | Bind port. |
 | `--path` | `CITADEL_HTTP_PATH` | `/mcp` | Endpoint path. |
 | `--read-only` | `CITADEL_HTTP_READ_ONLY` | `0` | Disable `wiki_capture` + `wiki_ingest` for this server. |
+| — | `CITADEL_HTTP_ALLOWED_HOSTS` | (derived) | Extra `Host` names to accept — your tunnel/proxy hostname. `*` accepts any. Required for a `0.0.0.0` bind. |
+| — | `CITADEL_HTTP_ALLOWED_ORIGINS` | (none) | Browser `Origin` values to admit, e.g. `https://claude.ai`. Unset refuses every request that carries one. |
 
-A client is configured with the URL and the header, e.g.:
+The full tunnel recipe — loopback bind, TLS terminated by the tunnel, its hostname allowed:
+
+```bash
+# .env
+CITADEL_HTTP_TOKEN=<generated>
+CITADEL_HTTP_ALLOWED_HOSTS=your-tunnel.example.com
+
+citadel serve --http --read-only          # 127.0.0.1:8765, readers only
+cloudflared tunnel --url http://127.0.0.1:8765
+```
+
+A client is then configured with the URL and the header, e.g.:
 
 ```json
 {
@@ -190,9 +211,10 @@ A client is configured with the URL and the header, e.g.:
 }
 ```
 
-`citadel doctor` reports what the HTTP transport *would* do (where it would listen, whether the
-writers are exposed) and warns about a too-short token or a public bind before you start it. Note
-that one server serves one workspace: `CITADEL_WORKSPACE` is resolved once at start-up.
+`citadel doctor` reports what the HTTP transport *would* do — where it would listen, which `Host`
+names it would accept, whether the writers are exposed — and warns about a too-short token, a
+public bind, or a wildcard bind with no allowlist before you ever start it. Note that one server
+serves one workspace: `CITADEL_WORKSPACE` is resolved once at start-up.
 
 ## If the server won't start
 

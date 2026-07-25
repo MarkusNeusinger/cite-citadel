@@ -385,8 +385,12 @@ surface citadel has, so it is strict by construction: a mandatory bearer token
 (`CITADEL_HTTP_TOKEN`, ≥16 chars — `serve` refuses to start without one) checked in a ~30-line ASGI
 wrapper BEFORE the MCP session layer (constant-time compare, 401 + `WWW-Authenticate`, no
 "unauthenticated for a minute" mode), a loopback bind by default (a public bind warns — the
-transport is plain HTTP, the intended remote path is a TLS-terminating tunnel), the SDK's
-DNS-rebinding protection enabled against the bound host, and an optional read-only mode
+transport is plain HTTP, the intended remote path is a TLS-terminating tunnel), a Host/Origin
+admission policy owned by that same wrapper (the SDK's own middleware couples the two checks to
+one flag and can express neither "any host" nor "one browser origin") — `Host` derived from the
+bind address or named in `CITADEL_HTTP_ALLOWED_HOSTS` (a tunnel forwards its own hostname; a
+wildcard `0.0.0.0` bind derives nothing, so it REFUSES to start instead of 421-ing every request),
+browser `Origin`s refused unless `CITADEL_HTTP_ALLOWED_ORIGINS` admits them — and an optional read-only mode
 (`--read-only`/`CITADEL_HTTP_READ_ONLY`) that has the two mutating tools refuse while leaving the
 11 readers and the advertised tool list untouched (`server.set_read_only`). No new dependency —
 starlette/uvicorn already ship with `mcp`. The `viewer/` subpackage builds the self-contained offline HTML

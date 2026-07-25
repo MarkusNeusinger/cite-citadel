@@ -49,14 +49,17 @@ cite-citadel has a small, honest data-flow surface — understanding it is the b
   without `CITADEL_HTTP_TOKEN` (≥16 characters); every request must carry
   `Authorization: Bearer <token>`, compared in constant time (both sides are hashed first, so not
   even the presented token's length shows up in the timing), and an unauthenticated request is
-  answered 401 before it reaches a tool or a session. The bind defaults to loopback and DNS-rebinding
-  protection is on. The transport itself is **plain HTTP**: put a TLS-terminating tunnel
-  (cloudflared / tailscale / `ssh -R`) in front of it rather than binding a public interface, and
-  prefer `--read-only` (`CITADEL_HTTP_READ_ONLY=1`) for anything reachable beyond your own machine —
-  it disables `wiki_capture` and `wiki_ingest` (they stay listed but answer with a refusal), the
-  latter of which spawns your coding-agent CLI on the
-  serving host. Treat the token like a password to the whole workspace: it is the only credential,
-  and rotating it is just editing `.env` and restarting.
+  answered 401 before it reaches a tool or a session. The bind defaults to loopback, and
+  DNS-rebinding protection is on: a request's `Host` must be a name the server accepts — derived
+  from the bind address, or named in `CITADEL_HTTP_ALLOWED_HOSTS` for a tunnel/proxy (a `0.0.0.0`
+  bind refuses to start without it, rather than accepting any name) — and a request carrying a
+  browser `Origin` is refused unless `CITADEL_HTTP_ALLOWED_ORIGINS` admits it. The transport itself
+  is **plain HTTP**: put a TLS-terminating tunnel (cloudflared / tailscale / `ssh -R`) in front of
+  it rather than binding a public interface, and prefer `--read-only`
+  (`CITADEL_HTTP_READ_ONLY=1`) for anything reachable beyond your own machine — it disables
+  `wiki_capture` and `wiki_ingest` (they stay listed but answer with a refusal), the latter of which
+  spawns your coding-agent CLI on the serving host. Treat the token like a password to the whole
+  workspace: it is the only credential, and rotating it is just editing `.env` and restarting.
 - **Billing shadow.** If a provider API key sits in your environment while `CITADEL_LLM_CLI=claude`,
   the CLI may bill the metered API instead of your subscription. `citadel doctor` warns about this;
   the same subscription-vs-API story is covered in the terms note above.
