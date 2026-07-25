@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-25
+
 ### Added
 
 - **Bounded parallel ingest — `citadel ingest --jobs N`** (the 2026-07 audit's backlog #11, and
@@ -64,45 +66,6 @@ All notable changes to this project are documented here. The format is based on
   user), and `citadel doctor` gained an "HTTP serve" line that reports where the server *would*
   listen, whether the writers are exposed, and warns about a too-short token or a public bind before
   you ever start it.
-
-### Changed
-
-- **`citadel serve` stops re-reading the whole wiki on every call** (the 2026-07 audit's backlog
-  #15, closing its finding 1.2.6 and the remainder of the § 1.3 retrieval assessment). An MCP
-  server lives for a whole client session, but every read tool re-walked and re-parsed the entire
-  corpus per call — at 1000 pages that is ~0.7 s before a single result is scored, and a
-  `wiki_search` cost ~1.4 s. A new `citadel/pagecache.py` keeps the last load in memory and
-  re-validates it on **every** consult with a stat-only `os.scandir` walk (~4 ms at 1000 pages)
-  over exactly the files `load()` parses; search additionally memoizes that snapshot's per-page
-  term-frequency tables. Measured at 1000 pages: `load()` ~700 ms → ~9 ms, `wiki_search` ~1.4 s →
-  ~50 ms, `tag:`/`type:` queries ~630 ms → ~11 ms. **Nothing is persisted** — the wiki stays the
-  database, there is no index file to go stale, and the filesystem still answers "did anything
-  change?" on every call. Staleness is designed out rather than hoped away: the fingerprint is
-  taken before AND after the load and must match (a page rewritten mid-load is never cached), a
-  snapshot whose newest stamp is younger than a 2 s settle window is not stored at all (a
-  coarse-timestamp filesystem could hide a same-length same-tick rewrite), the single slot is keyed
-  by wiki directory (ingest's staging redirect can never be served the live wiki, and the endless
-  stream of staging dirs cannot accumulate), `write_page`/`delete_page` invalidate directly, and
-  `ingest()`/`curate()` wear `@pagecache.bypass` so the staged diff-by-hash always reads the truth
-  from disk. Off by default: `citadel serve` opts in (`CITADEL_PAGE_CACHE=auto`), `1` enables it
-  wherever citadel reads the wiki, `0` restores the pre-cache behavior everywhere.
-- **Ranked BM25 search behind the unchanged `search()` seam** (the 2026-07 audit's backlog #1).
-  Queries now share the offline viewer's grammar — bare terms are AND-matched (English stopwords
-  exempt, so "how do you brew coffee" matches on *brew coffee*; a query no page fully matches is
-  retried once as OR so the closest pages still surface), and `tag:x` / `type:y` tokens filter
-  instead of match (tag by prefix, type exactly; an operator-only query like `type:person` lists
-  the filtered pages) — closing the audit's "two divergent search implementations" finding.
-  Ranking is real BM25 (term-frequency saturation, prose-field length normalization,
-  Lucene-smoothed IDF) over the title 3.0 / aliases 2.5 / tags 2.0 / description 1.5 / body 1.0
-  field ladder, plus the exact-phrase bonus, computed in memory per call — no persisted index,
-  the wiki stays the database, zero new dependencies. The audit-scoped SQLite FTS5 route was
-  built first and rejected on measurement: FTS5's `bm25()` clamps the IDF of any term appearing
-  in more than half the corpus to ~0, so in a topical wiki the topic word ("coffee" in a coffee
-  wiki) degenerated every score to noise; the Python scorer keeps IDF strictly positive, and
-  "how do you brew coffee" now ranks the brewing page first instead of losing it entirely.
-  Signature, MCP surface, and the `pages=` tag-filter seam are unchanged.
-
-### Added
 
 - **Resumable chunked ingest** (the 2026-07 audit's backlog #9): a large source folded in over
   several segments no longer throws away the earlier segments' paid agent work when a run dies at
@@ -293,6 +256,43 @@ All notable changes to this project are documented here. The format is based on
   changing size or mtime, so a placeholder stays visibly stuck across runs and ingests
   automatically once made available offline (previously the stat quick check could skip the
   hydrated file forever).
+
+### Changed
+
+- **`citadel serve` stops re-reading the whole wiki on every call** (the 2026-07 audit's backlog
+  #15, closing its finding 1.2.6 and the remainder of the § 1.3 retrieval assessment). An MCP
+  server lives for a whole client session, but every read tool re-walked and re-parsed the entire
+  corpus per call — at 1000 pages that is ~0.7 s before a single result is scored, and a
+  `wiki_search` cost ~1.4 s. A new `citadel/pagecache.py` keeps the last load in memory and
+  re-validates it on **every** consult with a stat-only `os.scandir` walk (~4 ms at 1000 pages)
+  over exactly the files `load()` parses; search additionally memoizes that snapshot's per-page
+  term-frequency tables. Measured at 1000 pages: `load()` ~700 ms → ~9 ms, `wiki_search` ~1.4 s →
+  ~50 ms, `tag:`/`type:` queries ~630 ms → ~11 ms. **Nothing is persisted** — the wiki stays the
+  database, there is no index file to go stale, and the filesystem still answers "did anything
+  change?" on every call. Staleness is designed out rather than hoped away: the fingerprint is
+  taken before AND after the load and must match (a page rewritten mid-load is never cached), a
+  snapshot whose newest stamp is younger than a 2 s settle window is not stored at all (a
+  coarse-timestamp filesystem could hide a same-length same-tick rewrite), the single slot is keyed
+  by wiki directory (ingest's staging redirect can never be served the live wiki, and the endless
+  stream of staging dirs cannot accumulate), `write_page`/`delete_page` invalidate directly, and
+  `ingest()`/`curate()` wear `@pagecache.bypass` so the staged diff-by-hash always reads the truth
+  from disk. Off by default: `citadel serve` opts in (`CITADEL_PAGE_CACHE=auto`), `1` enables it
+  wherever citadel reads the wiki, `0` restores the pre-cache behavior everywhere.
+- **Ranked BM25 search behind the unchanged `search()` seam** (the 2026-07 audit's backlog #1).
+  Queries now share the offline viewer's grammar — bare terms are AND-matched (English stopwords
+  exempt, so "how do you brew coffee" matches on *brew coffee*; a query no page fully matches is
+  retried once as OR so the closest pages still surface), and `tag:x` / `type:y` tokens filter
+  instead of match (tag by prefix, type exactly; an operator-only query like `type:person` lists
+  the filtered pages) — closing the audit's "two divergent search implementations" finding.
+  Ranking is real BM25 (term-frequency saturation, prose-field length normalization,
+  Lucene-smoothed IDF) over the title 3.0 / aliases 2.5 / tags 2.0 / description 1.5 / body 1.0
+  field ladder, plus the exact-phrase bonus, computed in memory per call — no persisted index,
+  the wiki stays the database, zero new dependencies. The audit-scoped SQLite FTS5 route was
+  built first and rejected on measurement: FTS5's `bm25()` clamps the IDF of any term appearing
+  in more than half the corpus to ~0, so in a topical wiki the topic word ("coffee" in a coffee
+  wiki) degenerated every score to noise; the Python scorer keeps IDF strictly positive, and
+  "how do you brew coffee" now ranks the brewing page first instead of losing it entirely.
+  Signature, MCP surface, and the `pages=` tag-filter seam are unchanged.
 
 ## [0.4.0] - 2026-07-16
 
@@ -833,7 +833,8 @@ First public, pip-installable release (`pip install cite-citadel`), and the PyPI
 - Shared citation/link/fence parsing consolidated into `grammar.py`; viewer moved to a subpackage
   with a golden bundle test; Office/OLE extraction isolated.
 
-[Unreleased]: https://github.com/MarkusNeusinger/cite-citadel/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/MarkusNeusinger/cite-citadel/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/MarkusNeusinger/cite-citadel/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/MarkusNeusinger/cite-citadel/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/MarkusNeusinger/cite-citadel/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/MarkusNeusinger/cite-citadel/compare/v0.1.0...v0.2.0
