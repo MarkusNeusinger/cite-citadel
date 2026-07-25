@@ -622,6 +622,30 @@ def _hermetic_flags(cli: str, cli_path: str) -> list[str]:
     return [flag for flag in flags if re.search(re.escape(flag) + r"(?![\w-])", help_text)]
 
 
+# Auth-shaped failure signatures in a backend's own error text.
+_AUTH_ERROR_RE = re.compile(r"authenticat|unauthorized|not logged in|credential|api[ _-]?key|\b401\b", re.I)
+
+
+def _hermetic_auth_hint(cli: str, argv: list[str], message: str) -> str:
+    """The one hint that explains an auth-shaped session failure while hermetic mode is on, or ``""``.
+
+    ``--bare`` deliberately skips the user's own agent configuration — and on a machine whose CLI
+    credentials live in exactly that configuration (a managed container, an ``apiKeyHelper`` setup),
+    EVERY citadel session then fails on authentication while the same CLI works fine interactively.
+    The backend blames the network for it (*"This may be a temporary network issue, please try
+    again"*), which sends you looking in the wrong place, so name the knob that actually explains
+    it. Derived from ``argv`` rather than the config, so the hint appears only when a flag really
+    was passed (hermetic mode is probe-gated: an older binary is handed nothing)."""
+    flags = [flag for flag in _HERMETIC_FLAGS.get(cli, ()) if flag in argv]
+    if not flags or not _AUTH_ERROR_RE.search(message):
+        return ""
+    return (
+        f" [hermetic session isolation is on, so {' '.join(flags)} was passed: it skips your personal"
+        f" {cli} configuration, which on some machines is where the CLI keeps its credentials."
+        " If that CLI works interactively but every session fails here, set CITADEL_HERMETIC=0.]"
+    )
+
+
 def _gemini_summary_file(cli: str, cli_path: str) -> Path | None:
     """A fresh temp file for gemini's ``--session-summary`` stats JSON, or None when the backend
     is not gemini or its binary does not ADVERTISE the flag in ``--help`` (probed once per
@@ -922,11 +946,12 @@ def _run_session(
                 env = _last_result_envelope(out)
         if isinstance(env, dict) and env.get("is_error"):
             status = env.get("api_error_status")
-            error = RuntimeError(
+            message = (
                 "claude CLI error"
                 + (f" ({status})" if status else "")
                 + f": {env.get('result') or err or 'unknown error'}"
             )
+            error = RuntimeError(message + _hermetic_auth_hint(cli, argv, message))
             # A failure envelope still reports what the session COST (error_max_turns, API
             # errors) — carry it on the exception so the run total counts the failed spend
             # (the documented "failed sessions included" contract; the manifest stamp stays
@@ -934,14 +959,16 @@ def _run_session(
             error.session_usage = _usage_from_claude_envelope(env)
             raise error
         if returncode != 0:
-            error = RuntimeError(f"the claude CLI failed (exit {returncode}): {(err or out)[:500]}")
+            message = f"the claude CLI failed (exit {returncode}): {(err or out)[:500]}"
+            error = RuntimeError(message + _hermetic_auth_hint(cli, argv, message))
             error.session_usage = _usage_from_claude_envelope(env)
             raise error
         return _usage_from_claude_envelope(env)
 
     # copilot / gemini (and any unknown CLI): the exit code is the success signal.
     if returncode != 0:
-        raise RuntimeError(f"the {cli!r} CLI failed (exit {returncode}): {(err or out)[:500]}")
+        message = f"the {cli!r} CLI failed (exit {returncode}): {(err or out)[:500]}"
+        raise RuntimeError(message + _hermetic_auth_hint(cli, argv, message))
     return None
 
 

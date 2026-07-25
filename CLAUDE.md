@@ -434,7 +434,11 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   tests offline.
 - **Never hand-edit generated files** — `index.md`, `log.md`, any `*/index.md`, `sources/index.md`,
   `.citadel_viewer.html`, and `.citadel_ingested.json` are regenerated. The ingest agent prompt and
-  `store.delete_page` both refuse to touch them.
+  `store.delete_page` both refuse to touch them. In the REPO, `.github/copilot-instructions.md` is
+  generated too: it is THIS file with a swapped header (both agents get one instruction set, so a
+  feature can't be documented for one and not the other). Edit `CLAUDE.md`, then regenerate with
+  `CITADEL_WRITE_COPILOT_DOC=1 uv run pytest tests/test_packaging.py -k copilot -q`; the drift guard
+  in `tests/test_packaging.py` fails the suite when the two disagree.
 - **Provenance grammar is load-bearing:** raw facts cite `[^sN]` → a real `raw/` file; model-supplied
   facts use `[^llmN]` (source: `LLM`) and must never be disguised as raw citations. A `[^sN]` to a
   missing file fails lint/check.

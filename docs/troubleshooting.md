@@ -22,6 +22,25 @@ log in (each CLI's own auth flow), then set `CITADEL_LLM_CLI` in the workspace `
 the binary isn't on `PATH`, point at it with `CLAUDE_CODE_PATH` / `COPILOT_CLI_PATH` /
 `GEMINI_CLI_PATH`.
 
+### Every session fails with an authentication error, but the CLI works when I run it myself
+
+Hermetic sessions (`CITADEL_HERMETIC=1`, the default) append the backend's session-isolation flag —
+claude's `--bare` — so your personal agent configuration never leaks into ingest. On some machines
+that same configuration is where the CLI keeps its **credentials** (a managed container, a
+devcontainer, an `apiKeyHelper` in `~/.claude/settings.json`), and skipping it leaves the session
+unauthenticated. The backend reports this as *"Authentication error · This may be a temporary network
+issue, please try again"*, which points at the network rather than the cause — so citadel appends the
+hint naming this knob whenever an auth-shaped failure happens on a hermetic run.
+
+The fix is one line in the workspace `.env`:
+
+```bash
+CITADEL_HERMETIC=0        # run sessions with your personal agent config (and its credentials)
+```
+
+You lose only the isolation (your hooks / `CLAUDE.md` / MCP servers are visible to ingest sessions
+again). If instead the CLI fails interactively too, it is a plain login problem — see above.
+
 ### Rate limits, or a session that runs too long and times out
 
 Each source gets one agent session, capped by `CITADEL_LLM_TIMEOUT` (default 1200s) — raise it for

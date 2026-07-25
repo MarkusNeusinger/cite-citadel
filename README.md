@@ -62,6 +62,13 @@ doctor` warns when a newer release is on PyPI and prints the update command matc
 use `uv run python -m citadel` — the `uv run citadel` shorthand can be antivirus-blocked (see the
 contributor note below).
 
+**A large backlog?** `citadel ingest --jobs N` folds N sources in at once, each on its own staging
+copy, with every guarantee unmoved (one promote per source, all-or-nothing, nothing partial in the
+wiki). The default is **1** because the cost of concurrency here is not safety but cross-linking —
+concurrent sessions cannot see each other's new pages, so they link less richly, and `citadel
+curate` is the designed cleanup. See
+[docs/recipes.md](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/recipes.md).
+
 **Local models.** For a fully private wiki, point the same agent CLI at a local model (Ollama) so
 nothing you ingest ever leaves your machine or LAN — see
 [Local models (Ollama)](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/configuration.md#local-models-ollama).
