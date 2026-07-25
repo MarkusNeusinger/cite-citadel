@@ -28,7 +28,15 @@ All notable changes to this project are documented here. The format is based on
   cancels queued sources while still recording work already promoted. The default stays **1** —
   serial, line for line as before — because the real cost is not safety but **cross-linking**:
   concurrent sessions cannot see each other's new pages. Best on a large backlog of unrelated
-  sources (see docs/recipes.md); `curate` remains serial by design.
+  sources (see docs/recipes.md); `curate` remains serial by design. Chunked sources needed one more
+  rule, found by an adversarial cross-review and reproduced offline before it was fixed: a resume
+  checkpoint's delta is measured against the wiki its source was **cloned from**, never against a
+  live wiki that has since moved on. Measured against live, a page a concurrent source *created*
+  read as a deletion this source had made, and one it *rewrote* read as this source's change
+  carrying stale bytes — and because a checkpoint is durable, that delta outlived the parallel run
+  and could prune a fully-ingested source's page in a later, even strictly serial, run. The base
+  state a replay is guarded against now comes from that same snapshot, so a page another source
+  touched fails the guard instead of passing it.
 - **`citadel serve --http` — the opt-in Streamable HTTP transport** (the 2026-07 audit's backlog
   #12, closing the last open item of its § 3.1 MCP-surface gap). Stdio remains the default and is
   unchanged; `--http` serves the SAME thirteen tools, four prompts, and `wiki://` resources over
