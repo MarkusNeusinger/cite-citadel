@@ -607,12 +607,19 @@ FAILURES_PATH: Path = WIKI_DIR / ".citadel_failures.json"
 # could only ever be inside one redirect, and two sources could never be in flight at once — the
 # blocker the 2026-07 audit named (finding 1.2.5) under `--jobs N`.
 #
-# It is a ContextVar instead. A ContextVar is per-thread by construction (each thread starts from
-# an empty context), so N worker threads can each hold their OWN staging redirect while the main
-# thread still sees the live wiki — and a redirect can never leak out of the `with` block that set
-# it, not even on an exception. Unset (the overwhelmingly common case: every read path, every CLI
-# command, the MCP server) the accessors return the module attributes verbatim, so the process-wide
-# layout — and every test that monkeypatches it — behaves exactly as before.
+# It is a ContextVar instead: the override is CONTEXT-local rather than process-global, so N worker
+# threads can each hold their OWN staging redirect while the main thread still sees the live wiki.
+# Two properties of CPython make that work, and they pull in opposite directions:
+#   * a thread does NOT inherit the context of the thread that started or submitted to it — neither
+#     a plain `threading.Thread` nor a `ThreadPoolExecutor` worker (unlike an asyncio task, which
+#     copies its context), so a worker starts out seeing the live wiki, which is correct;
+#   * but a POOLED thread is REUSED across work items, and a value left set by one item is still
+#     there for the next one on that thread.
+# So the `finally` reset in :func:`wiki_redirect` is load-bearing, not tidiness: it is what keeps a
+# finished source's staging path from being handed to the next source that lands on the same worker.
+# Unset (the overwhelmingly common case: every read path, every CLI command, the MCP server) the
+# accessors return the module attributes verbatim, so the process-wide layout — and every test that
+# monkeypatches it — behaves exactly as before.
 _WIKI_OVERRIDE: contextvars.ContextVar["Path | None"] = contextvars.ContextVar("citadel_wiki_dir", default=None)
 
 

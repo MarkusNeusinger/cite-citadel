@@ -63,14 +63,21 @@ def _page_writer(cite_page, barrier: threading.Barrier | None = None, page_for=N
 
 def test_wiki_redirect_is_per_thread(tmp_citadel):
     """The staging redirect must be invisible to every OTHER thread — that is the whole reason
-    parallel sources can each stage their own copy of the wiki."""
+    parallel sources can each stage their own copy of the wiki.
+
+    Both other-thread shapes are checked while the redirect is held: a SIBLING worker (neither
+    thread started the other — the actual ``--jobs`` shape, two sources in flight) and the MAIN
+    thread that started the holder, which is where the run's own bookkeeping reads the live wiki."""
     staging = tmp_citadel.root / "staging"
     seen: dict[str, Path] = {}
     inside = threading.Event()
     release = threading.Event()
 
     def other() -> None:
-        seen["other"] = config.wiki_dir()
+        sibling = threading.Thread(target=lambda: seen.__setitem__("sibling", config.wiki_dir()))
+        sibling.start()
+        sibling.join(timeout=BARRIER_TIMEOUT)
+        seen["main"] = config.wiki_dir()
         release.set()
 
     def holder() -> None:
@@ -91,7 +98,8 @@ def test_wiki_redirect_is_per_thread(tmp_citadel):
     assert seen["holder"] == staging
     assert seen["holder_manifest"] == staging / ".citadel_ingested.json"
     assert seen["holder_env"] == staging  # the child process sees the redirect through its own env
-    assert seen["other"] == tmp_citadel.wiki  # a sibling thread keeps the live wiki
+    assert seen["sibling"] == tmp_citadel.wiki  # a sibling worker keeps the live wiki
+    assert seen["main"] == tmp_citadel.wiki  # and so does the thread that started the holder
     assert seen["holder_after"] == tmp_citadel.wiki  # and the redirect is restored on exit
     assert config.WIKI_DIR == tmp_citadel.wiki  # the module attribute is never assigned at all
 
