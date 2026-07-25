@@ -304,7 +304,10 @@ clients that surface them), and the catalogs plus every page are addressable as 
 
 Wire it into any stdio MCP client (Claude Desktop, Claude Code, a generic stdio client) by launching
 `citadel serve` (portably: `uv run python -m citadel serve`) with `CITADEL_WORKSPACE` set to your
-workspace. An AI then `wiki_index()`s to orient,
+workspace. For a client that is **not** on this machine (claude.ai, a phone), `citadel serve --http`
+serves the same surface over MCP's Streamable HTTP transport — loopback-bound, mandatory bearer
+token (`CITADEL_HTTP_TOKEN`), meant to sit behind a TLS-terminating tunnel, with `--read-only` to
+drop the two writers. An AI then `wiki_index()`s to orient,
 `wiki_search(...)`es to find pages, and `wiki_read(...)`s for full cited context — answering from
 your synthesized wiki instead of re-retrieving documents. Copy-paste config and "if the server won't
 start": [**docs/mcp.md**](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/mcp.md).

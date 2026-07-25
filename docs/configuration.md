@@ -100,6 +100,11 @@ $env:CITADEL_LLM_CLI = "copilot"
 
 | Variable | Default | What it does |
 |----------|---------|--------------|
+| `CITADEL_HTTP_TOKEN` | (none) | The bearer token `citadel serve --http` requires. It refuses to start without one (or with fewer than 16 characters), and every request must send `Authorization: Bearer <token>` — there is no unauthenticated HTTP mode. Generate one: `python -c "import secrets; print(secrets.token_urlsafe(32))"`. Unused by the stdio server. |
+| `CITADEL_HTTP_HOST` | `127.0.0.1` | Bind address for `--http`. A non-loopback bind warns: the transport is plain HTTP, so prefer a loopback bind behind a TLS-terminating tunnel (cloudflared / tailscale / `ssh -R`). CLI flag: `--host`. |
+| `CITADEL_HTTP_PORT` | `8765` | Bind port for `--http`. CLI flag: `--port`. |
+| `CITADEL_HTTP_PATH` | `/mcp` | MCP endpoint path for `--http`. CLI flag: `--path`. |
+| `CITADEL_HTTP_READ_ONLY` | `0` | `1` disables the two mutating tools (`wiki_capture`, `wiki_ingest`) on the HTTP server — the eleven readers stay, and the writers answer with a refusal string. CLI flag: `--read-only`. |
 | `CITADEL_PAGE_CACHE` | `auto` | In-memory page cache for the long-lived reader. `citadel serve` otherwise re-walks and re-parses the whole wiki on **every** MCP call; with the cache it keeps the last load and re-checks it with a stat-only walk (~4 ms vs ~700 ms at 1000 pages), and search reuses that snapshot's term-frequency tables (a 1000-page `wiki_search` drops from ~1.4 s to ~50 ms). Nothing is persisted — the wiki stays the database, the filesystem is consulted on every call, and any change (edit, add, delete, rename, or a same-length rewrite) re-reads. `auto` = on in `citadel serve` only; `1` = on wherever citadel reads the wiki; `0` = never. Ingest and curate always read from disk, whatever this says. |
 
 ## What gets ingested

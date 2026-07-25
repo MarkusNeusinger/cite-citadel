@@ -8,7 +8,7 @@
     citadel refresh [--limit N] [--min-age-days D] [--dry-run]  # re-verify the least-recently-checked sources
     citadel status               # per-source corpus state (ingested/failed/skipped/ignored/pending; mirrors wiki_status)
     citadel doctor               # read-only environment/setup health check (OK/WARN/FAIL lines)
-    citadel serve                # run the MCP stdio server
+    citadel serve [--http [--host H] [--port P] [--path /mcp] [--read-only]]  # run the MCP server (stdio, or Streamable HTTP)
     citadel capture <text> [--from WHO] [--topic T]  # append a note to the raw/ capture log (mirrors wiki_capture)
     citadel search <query> [--limit N] [--tag T]
     citadel define <term>        # glossary lookup: what a term / abbreviation stands for (mirrors wiki_define)
@@ -216,7 +216,33 @@ def build_parser() -> argparse.ArgumentParser:
     p_doctor.set_defaults(func=cmd_doctor, needs_workspace=False)
 
     p_serve = sub.add_parser(
-        "serve", help="Run the MCP stdio server (13 tools: 11 read-only + the mutating wiki_capture/wiki_ingest)."
+        "serve", help="Run the MCP server (13 tools: 11 read-only + the mutating wiki_capture/wiki_ingest)."
+    )
+    p_serve.add_argument(
+        "--http",
+        action="store_true",
+        help="Serve over MCP's Streamable HTTP transport instead of stdio, so a client that is not "
+        "on this machine (claude.ai, a phone via a tunnel) can reach the wiki. Requires "
+        "CITADEL_HTTP_TOKEN; every request must send 'Authorization: Bearer <token>'.",
+    )
+    p_serve.add_argument(
+        "--host",
+        default=None,
+        help="Bind address for --http (default CITADEL_HTTP_HOST, else 127.0.0.1). A non-loopback "
+        "bind warns: this transport is plain HTTP, so put a TLS-terminating tunnel in front.",
+    )
+    p_serve.add_argument(
+        "--port", type=int, default=None, help="Bind port for --http (default CITADEL_HTTP_PORT, else 8765)."
+    )
+    p_serve.add_argument(
+        "--path", default=None, help="MCP endpoint path for --http (default CITADEL_HTTP_PATH, else /mcp)."
+    )
+    p_serve.add_argument(
+        "--read-only",
+        action="store_true",
+        default=None,
+        help="Disable the two mutating tools (wiki_capture, wiki_ingest) for this server — the "
+        "eleven readers stay. --http only; also CITADEL_HTTP_READ_ONLY=1.",
     )
     p_serve.set_defaults(func=cmd_serve)
 
@@ -549,10 +575,41 @@ def cmd_sources(args: argparse.Namespace) -> int:
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
-    """Launch the MCP stdio server (lazy import so importing cli needs no mcp)."""
-    from .server import main as serve_main
+    """Launch the MCP server — stdio by default, Streamable HTTP with ``--http`` (lazy imports so
+    importing cli needs no mcp).
 
-    serve_main()
+    The HTTP transport refuses to start without a usable ``CITADEL_HTTP_TOKEN``; that refusal is a
+    usage error (exit 2, matching the argparse convention), never a traceback. The stdio-only flags
+    are rejected the same way rather than silently ignored — a ``--port`` that did nothing would be
+    a security surprise waiting to happen."""
+    if not getattr(args, "http", False):
+        stdio_only = [
+            flag
+            for flag, value in (
+                ("--host", args.host),
+                ("--port", args.port),
+                ("--path", args.path),
+                ("--read-only", args.read_only),
+            )
+            if value is not None
+        ]
+        if stdio_only:
+            print(
+                f"error: {', '.join(stdio_only)} apply to --http only (stdio has no network surface).", file=sys.stderr
+            )
+            return 2
+        from .server import main as serve_main
+
+        serve_main()
+        return 0
+
+    from . import httpserve
+
+    try:
+        httpserve.serve(host=args.host, port=args.port, path=args.path, read_only=args.read_only)
+    except httpserve.HttpServeError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
     return 0
 
 

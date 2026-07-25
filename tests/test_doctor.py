@@ -410,6 +410,42 @@ def test_resume_ok_when_nothing_pending(tmp_citadel):
     assert c.status == doctor.OK and "none pending" in c.detail
 
 
+# --- HTTP serve check ---------------------------------------------------------------------
+
+
+def test_http_serve_ok_when_no_token_is_configured(tmp_citadel, monkeypatch):
+    monkeypatch.setattr(config, "HTTP_TOKEN", "")
+    c = doctor.check_http_serve()
+    assert c.status == doctor.OK and "stdio only" in c.detail and "CITADEL_HTTP_TOKEN" in c.detail
+
+
+def test_http_serve_ok_with_a_loopback_bind(tmp_citadel, monkeypatch):
+    monkeypatch.setattr(config, "HTTP_TOKEN", "x" * 32)
+    monkeypatch.setattr(config, "HTTP_HOST", "127.0.0.1")
+    monkeypatch.setattr(config, "HTTP_PORT", 8765)
+    monkeypatch.setattr(config, "HTTP_PATH", "/mcp")
+    monkeypatch.setattr(config, "HTTP_READ_ONLY", False)
+    c = doctor.check_http_serve()
+    assert c.status == doctor.OK
+    assert "127.0.0.1:8765/mcp" in c.detail and "read+write" in c.detail
+
+
+def test_http_serve_warns_on_a_short_token(tmp_citadel, monkeypatch):
+    """The refusal is `serve --http`'s, so doctor is where you learn about it BEFORE starting."""
+    monkeypatch.setattr(config, "HTTP_TOKEN", "hunter2")
+    c = doctor.check_http_serve()
+    assert c.status == doctor.WARN and "secrets.token_urlsafe" in c.detail
+
+
+def test_http_serve_warns_on_a_public_bind(tmp_citadel, monkeypatch):
+    monkeypatch.setattr(config, "HTTP_TOKEN", "x" * 32)
+    monkeypatch.setattr(config, "HTTP_HOST", "0.0.0.0")
+    monkeypatch.setattr(config, "HTTP_READ_ONLY", True)
+    c = doctor.check_http_serve()
+    assert c.status == doctor.WARN
+    assert "PLAIN HTTP" in c.detail and "read-only" in c.detail
+
+
 def _raise_runtime():
     raise RuntimeError("not found")
 
@@ -661,6 +697,7 @@ def test_run_emits_the_full_check_inventory(tmp_citadel, monkeypatch):
         "PDF text",
         "audio",
         "resume",
+        "HTTP serve",
         "wiki git",
         "update",
         "workspace coherence",

@@ -49,6 +49,36 @@ def _annotations(**hints):
 _READ_ONLY = {"readOnlyHint": True, "openWorldHint": False}
 
 
+# --- read-only mode ---------------------------------------------------------------------------
+# The two mutating tools can be switched OFF for a server instance, leaving the eleven readers
+# untouched. Only the HTTP transport (citadel/httpserve.py, `citadel serve --http --read-only`)
+# turns this on today: a stdio server is spawned by the client that already owns the machine,
+# while an HTTP endpoint may be reached from somewhere else entirely, and there wiki_ingest
+# spawning the local coding-agent CLI is a bigger promise than "read my wiki". The refusal is a
+# plain ``error: …`` string like every other refusal — the tools stay REGISTERED (a client's tool
+# list is identical either way, so nothing about the surface silently changes shape), they just
+# decline to act.
+_MUTATIONS_ENABLED = True
+_READ_ONLY_REFUSAL = (
+    "error: this citadel server is running read-only ({tool} is disabled). Its writers are "
+    "available over the stdio transport, or restart the HTTP server without --read-only "
+    "(CITADEL_HTTP_READ_ONLY=0)."
+)
+
+
+def set_read_only(read_only: bool) -> None:
+    """Enable/disable the two mutating tools (wiki_capture, wiki_ingest) for this process. Called
+    by the HTTP transport before serving; the stdio server never calls it, so stdio keeps full
+    parity by default."""
+    global _MUTATIONS_ENABLED
+    _MUTATIONS_ENABLED = not read_only
+
+
+def read_only() -> bool:
+    """True when this process's mutating tools are disabled (see :func:`set_read_only`)."""
+    return not _MUTATIONS_ENABLED
+
+
 # Handed to clients in the ``initialize`` result (``instructions``) — the orientation an AI needs
 # before its first tool call, kept to the flow the module docstring describes.
 _INSTRUCTIONS = (
@@ -393,6 +423,8 @@ def wiki_capture(text: str, source: str = "", topic: str = "") -> str:
     """
     from . import capture as capture_mod
 
+    if not _MUTATIONS_ENABLED:
+        return _READ_ONLY_REFUSAL.format(tool="wiki_capture")
     try:
         return capture_mod.capture(text, source=source, topic=topic).render()
     except ValueError as e:  # empty / oversized text — the refusal is the answer
@@ -414,6 +446,8 @@ def wiki_ingest(paths: list[str] | None = None) -> str:
     """
     from . import ingest
 
+    if not _MUTATIONS_ENABLED:
+        return _READ_ONLY_REFUSAL.format(tool="wiki_ingest")
     try:
         report = ingest.ingest(paths)
     except RuntimeError as e:  # e.g. missing API key

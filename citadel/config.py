@@ -768,6 +768,31 @@ def _page_cache_mode() -> str:
 #   0/off          — never cache; every load() re-walks and re-parses, as before this existed.
 PAGE_CACHE: str = _page_cache_mode()
 
+# --- Serving over HTTP (the opt-in Streamable HTTP transport, citadel/httpserve.py) -----------
+# `citadel serve` speaks stdio by default — one client, one process, no network surface at all.
+# `citadel serve --http` additionally binds a local HTTP port speaking MCP's Streamable HTTP
+# transport, which is what a hosted client (claude.ai, a phone) can reach through a tunnel. That
+# turns a local-only tool into a network service, so the knobs below are deliberately strict:
+#
+#   CITADEL_HTTP_TOKEN — the shared bearer token EVERY request must present. There is NO default
+#                        and no "unauthenticated" mode: serving without it is refused, because the
+#                        surface includes wiki_ingest (which spawns your coding-agent CLI) and your
+#                        whole wiki. Generate one with:
+#                            python -c "import secrets; print(secrets.token_urlsafe(32))"
+#   CITADEL_HTTP_HOST  — bind address, default loopback. A non-loopback bind (0.0.0.0) is allowed
+#                        but warns loudly: prefer a tunnel (cloudflared/tailscale/ssh -R) that
+#                        terminates TLS, since this transport is plain HTTP.
+#   CITADEL_HTTP_PORT  — bind port, default 8765.
+#   CITADEL_HTTP_PATH  — the MCP endpoint path, default /mcp.
+#   CITADEL_HTTP_READ_ONLY — when 1, the two mutating tools (wiki_capture, wiki_ingest) refuse over
+#                        this server and only the eleven readers work. Off by default (a token
+#                        holder is you), on for a share-the-read-surface setup.
+HTTP_TOKEN: str = os.environ.get("CITADEL_HTTP_TOKEN", "").strip()
+HTTP_HOST: str = os.environ.get("CITADEL_HTTP_HOST", "").strip() or "127.0.0.1"
+HTTP_PORT: int = _int_env("CITADEL_HTTP_PORT", 8765)
+HTTP_PATH: str = os.environ.get("CITADEL_HTTP_PATH", "").strip() or "/mcp"
+HTTP_READ_ONLY: bool = _bool_env("CITADEL_HTTP_READ_ONLY", False)
+
 # Wiki history (git). After every run that CHANGED the wiki (ingest or curate), citadel can commit
 # the whole wiki directory so every change is a reviewable diff — the long-term audit trail
 # log.md cannot give you. Modes (CITADEL_WIKI_GIT):

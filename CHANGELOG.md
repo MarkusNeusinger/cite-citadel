@@ -6,6 +6,31 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **`citadel serve --http` — the opt-in Streamable HTTP transport** (the 2026-07 audit's backlog
+  #12, closing the last open item of its § 3.1 MCP-surface gap). Stdio remains the default and is
+  unchanged; `--http` serves the SAME thirteen tools, four prompts, and `wiki://` resources over
+  MCP's Streamable HTTP transport, so a client that does not run on your machine — claude.ai, a
+  phone through a tunnel — can reach the wiki. Binding a port is the only network surface citadel
+  has, so the posture is strict rather than convenient: a **bearer token is mandatory**
+  (`CITADEL_HTTP_TOKEN`, at least 16 characters — the server refuses to start without one, and
+  there is no unauthenticated mode), it is checked in a small ASGI wrapper *before* the MCP session
+  layer (constant-time compare, 401 + `WWW-Authenticate`, identical answer for a missing and a
+  wrong token, so an unauthenticated caller cannot even open a session), the bind defaults to
+  loopback (`CITADEL_HTTP_HOST`, a public bind warns — this transport is plain HTTP and belongs
+  behind a TLS-terminating tunnel: cloudflared, tailscale, `ssh -R`), and the SDK's DNS-rebinding
+  protection is enabled against the bound host so a web page cannot drive the server through your
+  browser. `--read-only` (`CITADEL_HTTP_READ_ONLY=1`) drops the two writers — `wiki_capture` and
+  `wiki_ingest`, the latter of which spawns your coding-agent CLI on the serving host — while
+  leaving the eleven readers and the *advertised* tool list untouched, so a client's tool list never
+  silently changes shape. `--host`/`--port`/`--path` mirror the env knobs; the same flags on a stdio
+  run are a usage error rather than a silently ignored setting. No new dependency (starlette and
+  uvicorn already ship with `mcp`), no OAuth machinery (citadel has no user model — the token is the
+  user), and `citadel doctor` gained an "HTTP serve" line that reports where the server *would*
+  listen, whether the writers are exposed, and warns about a too-short token or a public bind before
+  you ever start it.
+
 ### Changed
 
 - **`citadel serve` stops re-reading the whole wiki on every call** (the 2026-07 audit's backlog

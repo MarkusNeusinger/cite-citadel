@@ -41,8 +41,10 @@ per-source state table: ingested / failed / skipped-duplicate / ignored / pendin
 `wiki_status`), `doctor`
 (read-only setup health check — OK/WARN/FAIL lines for workspace / rules / config-parse fallbacks /
 agent CLI / the inert-`CITADEL_INGEST_MODEL`-on-copilot/gemini advisory / raw roots /
-manifest / billing / wiki-git state / a best-effort PyPI update check / workspace coherence; needs no workspace, exits 1 only on a FAIL), `serve` (MCP
-stdio server), `capture <text> [--from WHO] [--topic T]` (append one attributed note from a
+manifest / billing / the HTTP-serve posture / wiki-git state / a best-effort PyPI update check / workspace coherence; needs no workspace, exits 1 only on a FAIL),
+`serve [--http [--host H] [--port P] [--path /mcp] [--read-only]]` (the MCP server — stdio by
+default; `--http` serves the SAME surface over MCP's Streamable HTTP transport for a client that is
+not on this machine, mandatory bearer token, loopback default, optional read-only), `capture <text> [--from WHO] [--topic T]` (append one attributed note from a
 conversation to the raw/ capture log `raw/captures/YYYY-MM.md`; `-` reads stdin; the next ingest
 folds it in — the conversational-capture bridge, MCP twin `wiki_capture`),
 `search <query> [--tag T] [--limit N]`, `define <term>` / `read <rel_path>` /
@@ -377,7 +379,17 @@ returning error strings instead, and hands the recommended tool flow up through
 `wiki_answer`/`wiki_verify`/`wiki_capture_note`/`wiki_health`, slash-command-like packaged flows
 — and the wiki's documents as `wiki://` **resources** (`wiki://index`/`wiki://sources`/
 `wiki://tags` + the `wiki://page/{folder}/{name}` per-page template), byte-identical to their
-tool twins and sharing the tools' never-raise contract). The `viewer/` subpackage builds the self-contained offline HTML
+tool twins and sharing the tools' never-raise contract). `httpserve.py` is the OPT-IN
+**Streamable HTTP** transport for that same surface (`citadel serve --http`) — the only network
+surface citadel has, so it is strict by construction: a mandatory bearer token
+(`CITADEL_HTTP_TOKEN`, ≥16 chars — `serve` refuses to start without one) checked in a ~30-line ASGI
+wrapper BEFORE the MCP session layer (constant-time compare, 401 + `WWW-Authenticate`, no
+"unauthenticated for a minute" mode), a loopback bind by default (a public bind warns — the
+transport is plain HTTP, the intended remote path is a TLS-terminating tunnel), the SDK's
+DNS-rebinding protection enabled against the bound host, and an optional read-only mode
+(`--read-only`/`CITADEL_HTTP_READ_ONLY`) that has the two mutating tools refuse while leaving the
+11 readers and the advertised tool list untouched (`server.set_read_only`). No new dependency —
+starlette/uvicorn already ship with `mcp`. The `viewer/` subpackage builds the self-contained offline HTML
 viewer (build logic in `__init__.py`; `template.html`/`app.css`/`app.js` are real package-data
 assets loaded via `importlib.resources`). `config.py` resolves all paths/settings. `cli.py` mirrors
 the MCP tools as subcommands (full parity: `define`/`read`/`raw`/`neighbors`/`index`/`sources`/`capture` twin their tools;
@@ -416,7 +428,9 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   `CITADEL_INGEST_MODEL`), `CITADEL_LLM_TIMEOUT`, `CITADEL_HERMETIC` (session isolation — append claude's `--bare` when the
   installed binary advertises it, so personal `~/.claude` config never leaks into ingest; default
   on, probe-gated), `CITADEL_PAGE_CACHE` (the serve-side page snapshot cache: `auto` = on in
-  `citadel serve` only, `1` = everywhere, `0` = never), `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,
+  `citadel serve` only, `1` = everywhere, `0` = never), the `CITADEL_HTTP_*` serving knobs
+  (`TOKEN` — mandatory for `serve --http`, no default; `HOST`/`PORT`/`PATH` — loopback:8765/mcp;
+  `READ_ONLY`), `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,
   `CITADEL_REPO_SUPPORT`, `CITADEL_IMAGE_SUPPORT` (read images visually), `CITADEL_AUDIO_SUPPORT`
   (opt-in whisper transcript ingest for audio/video, with `CITADEL_WHISPER_CLI`/
   `CITADEL_WHISPER_MODEL`/`CITADEL_WHISPER_TIMEOUT` tuning the seam), `CITADEL_MAX_SOURCE_CHARS`
