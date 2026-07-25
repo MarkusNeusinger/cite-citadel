@@ -430,6 +430,16 @@ def test_http_serve_ok_with_a_loopback_bind(tmp_citadel, monkeypatch):
     assert "127.0.0.1:8765/mcp" in c.detail and "read+write" in c.detail
 
 
+def test_http_serve_reports_the_endpoint_as_it_would_be_served(tmp_citadel, monkeypatch):
+    """A slashless path and an IPv6 host must be reported the way the server actually serves them —
+    `127.0.0.1:8765mcp` (or an unbracketed `::1`) is not an address anyone can paste."""
+    monkeypatch.setattr(config, "HTTP_TOKEN", "x" * 32)
+    monkeypatch.setattr(config, "HTTP_HOST", "::1")
+    monkeypatch.setattr(config, "HTTP_PORT", 8765)
+    monkeypatch.setattr(config, "HTTP_PATH", "mcp")
+    assert "[::1]:8765/mcp" in doctor.check_http_serve().detail
+
+
 def test_http_serve_warns_on_a_short_token(tmp_citadel, monkeypatch):
     """The refusal is `serve --http`'s, so doctor is where you learn about it BEFORE starting."""
     monkeypatch.setattr(config, "HTTP_TOKEN", "hunter2")

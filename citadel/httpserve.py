@@ -167,9 +167,7 @@ def build_app(token: str, *, host: str | None = None, port: int | None = None, p
 
     host = normalize_host(config.HTTP_HOST if host is None else host)
     port = config.HTTP_PORT if port is None else port
-    path = config.HTTP_PATH if path is None else path
-    if not path.startswith("/"):
-        path = "/" + path
+    path = normalize_path(config.HTTP_PATH if path is None else path)
 
     server.mcp.settings.host = host
     server.mcp.settings.port = port
@@ -249,13 +247,15 @@ def serve(
 
     mode = "read-only" if read_only else "read+write"
     print(
-        f"citadel MCP (Streamable HTTP, {mode}) on http://{format_host(host)}:{port}{build_path(path)} "
+        f"citadel MCP (Streamable HTTP, {mode}) on http://{format_host(host)}:{port}{normalize_path(path)} "
         "- clients must send: Authorization: Bearer <CITADEL_HTTP_TOKEN>",
         file=sys.stderr,
     )
     uvicorn.run(app, host=host, port=port, log_level="warning")
 
 
-def build_path(path: str) -> str:
-    """The endpoint path as advertised in the startup banner (leading slash guaranteed)."""
+def normalize_path(path: str) -> str:
+    """The endpoint path as SERVED (leading slash guaranteed) — `CITADEL_HTTP_PATH=mcp` and
+    `=/mcp` mean the same endpoint. The one place that rule lives, so the banner, ``doctor``, and
+    the app itself can never disagree about where the server answers."""
     return path if path.startswith("/") else "/" + path

@@ -261,6 +261,18 @@ def test_build_app_normalizes_a_pathless_endpoint(tmp_citadel):
     assert server.mcp.settings.streamable_http_path == "/mcp"
 
 
+@pytest.mark.parametrize("given", ["/mcp", "mcp"])
+def test_normalize_path_guarantees_the_leading_slash(given):
+    assert httpserve.normalize_path(given) == "/mcp"
+
+
+def test_serve_banner_normalizes_a_pathless_endpoint(tmp_citadel, monkeypatch, capsys):
+    monkeypatch.setattr(config, "HTTP_TOKEN", TOKEN)
+    monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: None)
+    httpserve.serve(host="127.0.0.1", port=9004, path="mcp")
+    assert "http://127.0.0.1:9004/mcp" in capsys.readouterr().err
+
+
 # --- read-only mode ---------------------------------------------------------------------------
 
 

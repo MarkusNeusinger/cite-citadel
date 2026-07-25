@@ -343,7 +343,10 @@ def check_http_serve() -> Check:
             "HTTP serve",
             "stdio only - `citadel serve --http` needs CITADEL_HTTP_TOKEN (it refuses to serve unauthenticated)",
         )
-    where = f"{config.HTTP_HOST}:{config.HTTP_PORT}{config.HTTP_PATH}"
+    # Rendered exactly as the server would serve it: the host in URL spelling (an IPv6 bind needs
+    # brackets to be copy-pasteable) and the path through the same normalizer the app uses, so a
+    # `CITADEL_HTTP_PATH=mcp` cannot be reported as `127.0.0.1:8765mcp`.
+    where = f"{httpserve.format_host(config.HTTP_HOST)}:{config.HTTP_PORT}{httpserve.normalize_path(config.HTTP_PATH)}"
     mode = "read-only" if config.HTTP_READ_ONLY else "read+write (wiki_capture/wiki_ingest exposed)"
     if len(config.HTTP_TOKEN) < httpserve.MIN_TOKEN_CHARS:
         return Check(
