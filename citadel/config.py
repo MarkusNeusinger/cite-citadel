@@ -744,6 +744,30 @@ MAX_SOURCE_CHARS: int = _int_env("CITADEL_MAX_SOURCE_CHARS", 300000)
 # sidecar is unwanted. Only chunked sources ever create one.
 RESUME: bool = _bool_env("CITADEL_RESUME", True)
 
+
+def _page_cache_mode() -> str:
+    """Resolve ``CITADEL_PAGE_CACHE`` to one of ``auto``/``on``/``off``, mirroring
+    :func:`_pdf_text_mode`. Blank/unset and anything unrecognized mean ``auto``."""
+    raw = os.environ.get("CITADEL_PAGE_CACHE", "").strip().lower()
+    if raw in ("1", "true", "yes", "on"):
+        return "on"
+    if raw in ("0", "false", "no", "off"):
+        return "off"
+    return "auto"
+
+
+# In-memory page-snapshot cache (citadel/pagecache.py). A long-lived reader — `citadel serve` —
+# otherwise re-walks and re-parses the entire wiki on EVERY MCP call; the cache serves the previous
+# load while a stat-only walk proves nothing changed (~4 ms vs ~700 ms at 1000 pages), and search
+# additionally reuses that snapshot's per-page term-frequency tables. Nothing is persisted: the
+# wiki stays the database, and the filesystem is re-consulted on every single call.
+#   auto (default) — on only where a process opts in, which today means `citadel serve`. One-shot
+#                    CLI commands load once anyway; the mutating lifecycles (ingest, curate) run
+#                    with the cache paused, so their diff-by-hash always reads truth from disk.
+#   1/on           — additionally cache in any process that consults it (a scripted read loop).
+#   0/off          — never cache; every load() re-walks and re-parses, as before this existed.
+PAGE_CACHE: str = _page_cache_mode()
+
 # Wiki history (git). After every run that CHANGED the wiki (ingest or curate), citadel can commit
 # the whole wiki directory so every change is a reviewable diff — the long-term audit trail
 # log.md cannot give you. Modes (CITADEL_WIKI_GIT):

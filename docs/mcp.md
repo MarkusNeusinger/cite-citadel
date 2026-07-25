@@ -85,6 +85,16 @@ as a clear `error: …` body, never a crashed server. Subscribe/`listChanged` no
 not offered — the wiki only changes through staged ingest/curate runs, so re-reading after a
 `wiki_ingest` is the refresh model.
 
+## Answer latency
+
+A server lives for a whole client session, so it keeps the last wiki load in memory and re-checks
+it with a **stat-only** walk on every call rather than re-parsing the corpus per tool call. At 1000
+pages that turns a `wiki_search` from ~1.4 s into ~50 ms and a `wiki_read`/`wiki_index` from ~0.7 s
+into ~10 ms. Nothing is persisted and nothing goes stale: any edit, addition, deletion, rename, or
+same-length rewrite — by you, by another citadel process, or by `wiki_ingest` itself — is caught by
+that walk and re-read, and the mutating lifecycles always work from disk. Set
+`CITADEL_PAGE_CACHE=0` to opt out (see [configuration.md](configuration.md#serving-mcp)).
+
 ## Claude Desktop
 
 Add citadel to `claude_desktop_config.json` (Settings → Developer → Edit Config):

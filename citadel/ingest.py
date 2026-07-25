@@ -47,6 +47,7 @@ from . import (
     llm,
     manifest,
     okf,
+    pagecache,
     pdftext,
     repo,
     resume,
@@ -1999,6 +2000,7 @@ def _pending_session(
     return llm.run_ingest_session(rel_key, kind=kind)
 
 
+@pagecache.bypass
 def ingest(
     paths: list[str] | None = None, progress=None, full_rescan: bool = False, force: bool = False
 ) -> IngestReport:

@@ -96,6 +96,12 @@ $env:CITADEL_LLM_CLI = "copilot"
 | `CITADEL_LLM_LOG_DIR` | (off) | Write one transcript per source (prompt + full CLI stdout/stderr + exit code + duration). Relative paths resolve under the workspace root. **Local-only — keep out of VCS** (transcripts can contain source content). CLI flag: `--log-dir`. |
 | `CITADEL_LLM_VERBOSE` | `0` | `1`/`true` streams each session's output live. CLI flag: `-v`. |
 
+## Serving (MCP)
+
+| Variable | Default | What it does |
+|----------|---------|--------------|
+| `CITADEL_PAGE_CACHE` | `auto` | In-memory page cache for the long-lived reader. `citadel serve` otherwise re-walks and re-parses the whole wiki on **every** MCP call; with the cache it keeps the last load and re-checks it with a stat-only walk (~4 ms vs ~700 ms at 1000 pages), and search reuses that snapshot's term-frequency tables (a 1000-page `wiki_search` drops from ~1.4 s to ~50 ms). Nothing is persisted — the wiki stays the database, the filesystem is consulted on every call, and any change (edit, add, delete, rename, or a same-length rewrite) re-reads. `auto` = on in `citadel serve` only; `1` = on wherever citadel reads the wiki; `0` = never. Ingest and curate always read from disk, whatever this says. |
+
 ## What gets ingested
 
 | Variable | Default | What it does |

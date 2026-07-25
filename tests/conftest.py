@@ -15,7 +15,7 @@ from typing import Any, Callable
 
 import pytest
 
-from citadel import config, llm, manifest, okf, repo, store
+from citadel import config, llm, manifest, okf, pagecache, repo, store
 
 
 # --- layout wiring -----------------------------------------------------------------------
@@ -41,6 +41,17 @@ def _stable_workspace_found(monkeypatch):
     exercising the guard overrides this with ``monkeypatch.setattr(config, "WORKSPACE_FOUND",
     False)``."""
     monkeypatch.setattr(config, "WORKSPACE_FOUND", True)
+
+
+@pytest.fixture(autouse=True)
+def _reset_page_cache():
+    """Drop :mod:`citadel.pagecache`'s process-global state around EVERY test. The cache is off by
+    default, but it is module-level state keyed by wiki directory — one test enabling it (or one
+    ``citadel serve`` main() call) must never leak a snapshot into the next test's fresh
+    ``tmp_path`` wiki."""
+    pagecache.reset()
+    yield
+    pagecache.reset()
 
 
 @dataclass(frozen=True)
