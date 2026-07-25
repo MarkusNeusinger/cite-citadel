@@ -16,11 +16,12 @@ the failure it prevents:
 from __future__ import annotations
 
 import threading
+import time
 from pathlib import Path
 
 import pytest
 
-from citadel import cli, config, ingest, manifest
+from citadel import cli, config, ingest, llm, manifest
 
 
 BARRIER_TIMEOUT = 10  # generous: a loaded CI box must never flake, a serial run still fails fast
@@ -316,6 +317,59 @@ def test_promote_leaves_in_flight_state_temps_alone(tmp_citadel):
 
     assert in_flight.is_file()  # another writer owns it
     assert not leftover.exists()  # a hard-killed promote's own leftover is still swept
+
+
+def test_progress_callback_is_never_invoked_concurrently(tmp_citadel, fake_agent, cite_page):
+    """Progress events now fire from worker threads, so the callback — anything a caller passed —
+    must still be handed one event at a time. A callback that is not itself thread-safe (the common
+    case: a counter, a file handle, an accumulating list) would otherwise corrupt silently, since
+    ingest swallows callback exceptions by design."""
+    _sources(tmp_citadel, ["a", "b", "c"])
+    overlaps: list[str] = []
+    inside = 0
+    barrier = threading.Barrier(3)
+
+    def progress(event: str, data: dict) -> None:
+        nonlocal inside
+        inside += 1  # deliberately unguarded: this is the caller's naive callback
+        if inside != 1:
+            overlaps.append(event)
+        time.sleep(0.001)  # widen the window a racing thread would slip into
+        inside -= 1
+
+    fake_agent(side_effect=_page_writer(cite_page, barrier))
+    ingest.ingest(jobs=3, progress=progress)
+
+    assert overlaps == []
+
+
+def test_a_raced_source_still_reports_what_it_spent_and_reused(tmp_citadel, fake_agent, monkeypatch):
+    """A conflict is not recorded as a source outcome — it is re-run serially — but the session it
+    already paid for and any checkpoint it already replayed are facts of the run either way. The
+    session runner is faked here: the point is the DRIVER's bookkeeping, not another real race."""
+    _sources(tmp_citadel, ["a", "b"])
+    fake_agent()
+    attempts: dict[str, int] = {}
+
+    def fake_sessions(session_fns, rel_key, *, concurrent=False, **_kw):
+        attempts[rel_key] = attempts.get(rel_key, 0) + 1
+        if rel_key == "raw/a.md" and attempts[rel_key] == 1:
+            return ingest._SourceOutcome(
+                False,
+                conflict=True,
+                usage=llm.SessionUsage(cost_usd=0.25),
+                resumed_note="raw/a.md (segments 1-2 of 4 restored from checkpoint)",
+            )
+        return ingest._SourceOutcome(True, usage=llm.SessionUsage(cost_usd=0.25))
+
+    monkeypatch.setattr(ingest, "_run_agent_sessions", fake_sessions)
+    report = ingest.ingest(jobs=2)
+
+    assert report.raced == ["raw/a.md"]
+    assert attempts["raw/a.md"] == 2  # the conflict really was re-run
+    assert report.resumed == ["raw/a.md (segments 1-2 of 4 restored from checkpoint)"]
+    # Three sessions were paid for: b, a's raced attempt, and a's serial re-run.
+    assert report.usage is not None and report.usage.cost_usd == pytest.approx(0.75)
 
 
 # --- the knob ---------------------------------------------------------------------------------

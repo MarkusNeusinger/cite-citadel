@@ -1959,6 +1959,26 @@ def _attempt_source(job: _SourceJob, index: int, total: int, emit, concurrent: b
     return run
 
 
+def _record_spend(outcome: _SourceOutcome, report: IngestReport) -> None:
+    """Book what one attempt COST and what it REUSED — the two facts that hold whatever its verdict
+    was, so they have exactly one owner instead of one per branch.
+
+    The run's usage total counts every outcome: a failed (or raced) source's sessions were paid for
+    too; only the per-source manifest stamp is success-only. A restored checkpoint is recorded the
+    same way — the earlier segments were reused whether or not this attempt went on to promote.
+
+    Called from :func:`_record_source_run` and, separately, from the ``--jobs N`` conflict path,
+    whose source is re-run serially instead of being recorded: it still spent a session and may
+    still have replayed a checkpoint, and a report that hid that would be understating the run.
+    Deliberately NOT wired through the interrupt path: an interrupted run re-raises and its report
+    is never rendered (_ingest_run's capture-finalize-reraise), so the in-flight source's partial
+    usage has no surface to appear on — the completed sources' manifest stamps were already saved
+    per-source with their usage intact."""
+    report.usage = llm.combine_usage([report.usage, outcome.usage])
+    if outcome.resumed_note:
+        report.resumed.append(outcome.resumed_note)
+
+
 def _record_source_run(run: _JobRun, emit, report: IngestReport, failures_dict, model) -> None:
     """Book ONE finished attempt into the run's shared state — report lists, the persistent
     failures catalog, the job's success hook (manifest stamp + save), and the closing progress
@@ -1979,16 +1999,7 @@ def _record_source_run(run: _JobRun, emit, report: IngestReport, failures_dict, 
     outcome = run.outcome
     if outcome is None:  # an interrupted attempt: the caller re-raises, nothing to book
         return
-    # The run's usage total counts every outcome — a failed source's sessions were paid for
-    # too; only the per-source manifest stamp below is success-only. Deliberately NOT wired
-    # through the interrupt path: an interrupted run re-raises and its report is never rendered
-    # (_ingest_run's capture-finalize-reraise), so the in-flight source's partial usage has no
-    # surface to appear on — the completed sources' manifest stamps were already saved per-source
-    # with their usage intact.
-    report.usage = llm.combine_usage([report.usage, outcome.usage])
-    if outcome.resumed_note:
-        # Recorded before the ok/failed branch: the earlier segments were reused either way.
-        report.resumed.append(outcome.resumed_note)
+    _record_spend(outcome, report)  # cost + any restored checkpoint, before the ok/failed branch
     if not outcome.ok:
         # Nothing was promoted (the live wiki is untouched) and the source is NOT marked
         # done, so it is retried next run. Persist the failure for triage.
@@ -2115,9 +2126,11 @@ def _run_source_jobs_parallel(
                         pending.cancel()
                     continue
                 if run.outcome is not None and run.outcome.conflict:
-                    # Nothing was promoted; the session's spend still counts, and the source goes
-                    # into the serial tail below (where it can no longer race anybody).
-                    report.usage = llm.combine_usage([report.usage, run.outcome.usage])
+                    # Nothing was promoted, so this attempt is NOT recorded as a source outcome —
+                    # but what it spent and what it replayed are facts of this run either way, and
+                    # the source goes into the serial tail below (where it can no longer race
+                    # anybody).
+                    _record_spend(run.outcome, report)
                     report.raced.append(run.job.key)
                     conflicted.append((run.index, run.job))
                     emit("source_retry", index=run.index, total=total, source=run.job.key, seconds=run.outcome.seconds)
@@ -2451,8 +2464,19 @@ def ingest(
 def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: bool, jobs: int = 1) -> IngestReport:
     """The body of :func:`ingest`, running under the exclusive workspace run lock."""
 
+    # `--jobs N` emits from WORKER threads (a source's start/done event fires where the work
+    # happens), so the callback — which is whatever the caller passed — is serialized here. That
+    # keeps "your progress callback is never invoked concurrently" a property of the API rather than
+    # something each caller has to discover, and it costs nothing: emit fires a handful of times per
+    # source, around sessions that take minutes. The console reporter is safe under it either way
+    # (its writes are locked and the spinner is off when jobs > 1), but the contract must not depend
+    # on that reasoning holding for every future callback.
+    emit_lock = threading.Lock()
+
     def emit(event: str, **data) -> None:
-        if progress is not None:
+        if progress is None:
+            return
+        with emit_lock:
             try:
                 progress(event, data)
             except Exception:  # noqa: BLE001 - progress must never break ingest
