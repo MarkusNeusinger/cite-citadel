@@ -34,6 +34,11 @@ One command answering "is my setup sane?" without touching a byte. Each check em
 - **audio** — ``CITADEL_AUDIO_SUPPORT=1`` needs a whisper-class CLI on PATH
   (``CITADEL_WHISPER_CLI``); WARN when the configured binary is missing — every audio/video source
   would fail until it is installed. A plain OK note while the knob is off.
+- **HTTP serve** — the opt-in Streamable HTTP transport (``citadel serve --http``): a plain "stdio
+  only" note while no ``CITADEL_HTTP_TOKEN`` is set, otherwise where it would listen and whether the
+  mutating tools are exposed — WARNing on a token too short for ``serve --http`` to accept (a
+  refusal you would otherwise meet only at start-up) and on a non-loopback bind, which puts an
+  unencrypted MCP endpoint on the network.
 - **update** — is a newer ``cite-citadel`` published on PyPI than the installed version? WARN with the
   exact upgrade command for the *detected* install method (dev checkout / uv tool / uvx / pipx / pip)
   when behind; OK when current. The PyPI lookup is best-effort over a 2s timeout — any network absence
@@ -324,6 +329,53 @@ def check_pdf_text() -> Check:
     return Check(OK, "PDF text", "text-layer pre-pass on (pypdf) - PDF `lines A-B` locators verify offline")
 
 
+def check_http_serve() -> Check:
+    """State echo for the opt-in HTTP transport (:mod:`citadel.httpserve`), WARNing on the two
+    configurations that would surprise their operator: a token too short for ``serve --http`` to
+    accept (which you would otherwise discover only when the server refuses to start), and a
+    non-loopback bind, which puts an unencrypted MCP endpoint on the network. Nothing here is a
+    FAIL — the transport is opt-in per invocation, and stdio serving is unaffected."""
+    from . import httpserve
+
+    if not config.HTTP_TOKEN:
+        return Check(
+            OK,
+            "HTTP serve",
+            "stdio only - `citadel serve --http` needs CITADEL_HTTP_TOKEN (it refuses to serve unauthenticated)",
+        )
+    # Rendered exactly as the server would serve it: the host in URL spelling (an IPv6 bind needs
+    # brackets to be copy-pasteable) and the path through the same normalizer the app uses, so a
+    # `CITADEL_HTTP_PATH=mcp` cannot be reported as `127.0.0.1:8765mcp`.
+    where = f"{httpserve.format_host(config.HTTP_HOST)}:{config.HTTP_PORT}{httpserve.normalize_path(config.HTTP_PATH)}"
+    mode = "read-only" if config.HTTP_READ_ONLY else "read+write (wiki_capture/wiki_ingest exposed)"
+    if len(config.HTTP_TOKEN) < httpserve.MIN_TOKEN_CHARS:
+        return Check(
+            WARN,
+            "HTTP serve",
+            f"CITADEL_HTTP_TOKEN is only {len(config.HTTP_TOKEN)} characters - `citadel serve --http` "
+            f"refuses anything under {httpserve.MIN_TOKEN_CHARS}; generate one with "
+            'python -c "import secrets; print(secrets.token_urlsafe(32))"',
+        )
+    try:
+        hosts = httpserve.check_hosts(config.HTTP_HOST)
+    except httpserve.HttpServeError as e:
+        # A wildcard bind with no allowlist: `serve --http` would refuse to start. Surfacing it here
+        # is the whole point of the check — the alternative is discovering it at start-up.
+        return Check(WARN, "HTTP serve", str(e))
+    accepts = "any Host" if hosts is None else f"Host: {', '.join(hosts)}"
+    if not httpserve.is_loopback(config.HTTP_HOST):
+        return Check(
+            WARN,
+            "HTTP serve",
+            f"CITADEL_HTTP_HOST={config.HTTP_HOST} binds beyond this machine over PLAIN HTTP ({where}, "
+            f"{mode}, accepts {accepts}) - prefer a loopback bind behind a TLS-terminating tunnel "
+            "(cloudflared, tailscale, ssh -R)",
+        )
+    return Check(
+        OK, "HTTP serve", f"token set - `citadel serve --http` would listen on {where}, {mode}, accepts {accepts}"
+    )
+
+
 def check_resume() -> Check:
     """State echo for resume checkpoints (:mod:`citadel.resume`), naming any that are waiting.
 
@@ -573,6 +625,7 @@ def run() -> DoctorReport:
             check_pdf_text(),
             check_audio_support(),
             check_resume(),
+            check_http_serve(),
             check_wiki_git(),
             check_update(),
             check_workspace_coherence(),

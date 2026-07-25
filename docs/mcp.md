@@ -1,7 +1,8 @@
 # MCP server
 
 `citadel serve` runs a FastMCP **stdio** server that exposes your synthesized wiki to any AI
-client. The AI queries the cited wiki instead of re-reading your raw notes — and because every MCP
+client (`--http` swaps in the [Streamable HTTP transport](#remote-access-streamable-http) for a
+client that is not on this machine). The AI queries the cited wiki instead of re-reading your raw notes — and because every MCP
 tool has a CLI twin (`citadel read`, `citadel search`, …), an AI without MCP access can do the same
 work through shell commands.
 
@@ -137,6 +138,83 @@ Any MCP client that speaks stdio launches the same command:
 - **args:** `["serve"]`
 - **env:** at minimum `CITADEL_WORKSPACE` pointing at your workspace; add `CITADEL_LLM_CLI` /
   `CITADEL_INGEST_MODEL` if the client should be able to ingest.
+
+## Remote access (Streamable HTTP)
+
+Everything above is **stdio**: the client spawns the server, and nothing listens on a socket. That
+covers every client running on your machine. A client that *doesn't* — claude.ai, a phone — needs
+MCP's **Streamable HTTP** transport instead:
+
+```bash
+# in your workspace .env (generate a real token, don't invent one):
+#   CITADEL_HTTP_TOKEN=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
+citadel serve --http                 # -> http://127.0.0.1:8765/mcp
+```
+
+Same thirteen tools, same prompts and resources, same wiki — only the transport differs. The
+posture is deliberately strict, because binding a port turns a local tool into a network service:
+
+- **A token is mandatory.** No `CITADEL_HTTP_TOKEN` (or one under 16 characters) → the server
+  refuses to start. Every request must send `Authorization: Bearer <token>`; anything else gets a
+  401 before the MCP layer sees it. There is no unauthenticated mode.
+- **Loopback by default** (`CITADEL_HTTP_HOST=127.0.0.1`). This transport is **plain HTTP**: to
+  reach it from elsewhere, put a tunnel that terminates TLS in front of the loopback port —
+  `cloudflared tunnel --url http://127.0.0.1:8765`, tailscale, or `ssh -R`. Binding `0.0.0.0`
+  works but warns, and puts an unencrypted endpoint on your network.
+- **DNS-rebinding protection is on** — a request's `Host` must be a name the server accepts, so a
+  web page you happen to visit can't drive it through your browser. The accepted names are derived
+  from the bind address (a loopback bind also answers to `localhost` and `[::1]`), which is right
+  for a direct local connection and **not** for anything with a name in front of it: a tunnel
+  forwards `Host: your-tunnel.example.com`, so name it in `CITADEL_HTTP_ALLOWED_HOSTS` or every
+  request comes back `421`. A wildcard bind (`0.0.0.0`) has no derivable name at all, so the server
+  refuses to start until that knob is set (`*` accepts any `Host`, for when a proxy already filters
+  it). Separately, a request carrying a browser `Origin` is refused with `403` unless
+  `CITADEL_HTTP_ALLOWED_ORIGINS` names it — MCP clients aren't browsers, so an `Origin` means a web
+  page is calling.
+- **`--read-only` disables the writers.** `wiki_capture` and `wiki_ingest` stay listed — the
+  advertised tool list never changes shape — but answer with a refusal string. Worth it for any
+  server reachable beyond your own machine: `wiki_ingest` spawns your coding-agent CLI on the host.
+
+| Flag | Env | Default | What it does |
+|------|-----|---------|--------------|
+| `--http` | — | (off) | Serve Streamable HTTP instead of stdio. |
+| — | `CITADEL_HTTP_TOKEN` | (none) | The shared bearer token. **Required**; ≥16 characters. |
+| `--host` | `CITADEL_HTTP_HOST` | `127.0.0.1` | Bind address. Non-loopback warns. |
+| `--port` | `CITADEL_HTTP_PORT` | `8765` | Bind port. |
+| `--path` | `CITADEL_HTTP_PATH` | `/mcp` | Endpoint path. |
+| `--read-only` | `CITADEL_HTTP_READ_ONLY` | `0` | Disable `wiki_capture` + `wiki_ingest` for this server. |
+| — | `CITADEL_HTTP_ALLOWED_HOSTS` | (derived) | Extra `Host` names to accept — your tunnel/proxy hostname. `*` accepts any. Required for a `0.0.0.0` bind. |
+| — | `CITADEL_HTTP_ALLOWED_ORIGINS` | (none) | Browser `Origin` values to admit, e.g. `https://claude.ai`. Unset refuses every request that carries one. |
+
+The full tunnel recipe — loopback bind, TLS terminated by the tunnel, its hostname allowed:
+
+```bash
+# .env
+CITADEL_HTTP_TOKEN=<generated>
+CITADEL_HTTP_ALLOWED_HOSTS=your-tunnel.example.com
+
+citadel serve --http --read-only          # 127.0.0.1:8765, readers only
+cloudflared tunnel --url http://127.0.0.1:8765
+```
+
+A client is then configured with the URL and the header, e.g.:
+
+```json
+{
+  "mcpServers": {
+    "citadel": {
+      "type": "http",
+      "url": "https://your-tunnel.example.com/mcp",
+      "headers": { "Authorization": "Bearer <CITADEL_HTTP_TOKEN>" }
+    }
+  }
+}
+```
+
+`citadel doctor` reports what the HTTP transport *would* do — where it would listen, which `Host`
+names it would accept, whether the writers are exposed — and warns about a too-short token, a
+public bind, or a wildcard bind with no allowlist before you ever start it. Note that one server
+serves one workspace: `CITADEL_WORKSPACE` is resolved once at start-up.
 
 ## If the server won't start
 
