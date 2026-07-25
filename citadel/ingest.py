@@ -1233,11 +1233,11 @@ def _sha256_or_none(path: Path) -> str | None:
 
 def _content_hashes(root: Path) -> dict[str, str]:
     """``{relposix: sha256}`` over :func:`_content_files` — a wiki's content state as bytes, not as
-    timestamps. Taken of the LIVE wiki at the moment a source is cloned into staging (`--jobs N`
-    only) so its promote can tell "this page is exactly what I started from" from "another source
-    changed it while I was working". A file that vanishes or cannot be read mid-walk is simply
-    omitted, which reads as "absent" — the conservative answer, since it makes the promote treat it
-    as changed rather than silently overwriting it."""
+    timestamps. Taken (`--jobs N` only) of the fresh STAGING clone, which is byte-for-byte the live
+    wiki this source started from, so its promote can tell "this page is exactly what I started
+    from" from "another source changed it while I was working". A file that vanishes or cannot be
+    read mid-walk is simply omitted, which reads as "absent" — the conservative answer, since it
+    makes the promote treat it as changed rather than silently overwriting it."""
     out: dict[str, str] = {}
     for rel, path in _content_files(root).items():
         with contextlib.suppress(OSError):
@@ -1294,8 +1294,8 @@ def _promote(staging: Path, live: Path, allow_emptying: bool = False, base: dict
     ``allow_emptying`` lifts that guard for a ``delete`` cleanup, where removing the last source's
     only page legitimately leaves the wiki empty.
 
-    ``base`` — the live wiki's content hashes when this source was CLONED (:func:`_content_hashes`,
-    recorded only under ``--jobs N``) — makes the promote base-aware, which is what lets two sources
+    ``base`` — the content hashes of the wiki this source was CLONED from (:func:`_content_hashes`
+    over its staging copy, recorded only under ``--jobs N``) — makes the promote base-aware, which is what lets two sources
     promote onto one wiki without eating each other's work:
 
     * WHAT IS WRITTEN is this source's own delta — the staging files that differ from the BASE, not
@@ -1696,10 +1696,17 @@ def _run_agent_sessions(
     resumed_note = ""
 
     def clone() -> tuple[Path, dict[str, str] | None]:
-        """A staging copy of the live wiki plus (concurrent runs only) the base state it copied —
-        both taken under the one lock, so the pair always describes the same instant."""
+        """A staging copy of the live wiki plus (concurrent runs only) the base state it copied.
+
+        The lock covers the COPY alone; the base is then hashed off the fresh staging tree, which
+        is a byte-exact copy of exactly what was cloned — same hashes, half the disk I/O (the wiki
+        is read once, not twice), and every other worker's clone/promote is unblocked that much
+        sooner. It must still happen HERE, before anything mutates staging: a resume replay writes
+        into it a few lines below, and those pages are not part of the wiki this source started
+        from."""
         with _LIVE_WIKI_LOCK:
-            return _make_staging(live), (_content_hashes(live) if concurrent else None)
+            staging = _make_staging(live)
+        return staging, (_content_hashes(staging) if concurrent else None)
 
     try:
         staging, base = clone()

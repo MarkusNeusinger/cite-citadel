@@ -277,6 +277,24 @@ def test_interrupt_keeps_the_work_already_promoted(tmp_citadel, fake_agent, cite
     assert (tmp_citadel.wiki / "misc" / "a-md.md").is_file()
 
 
+def test_a_clone_hashes_identically_to_what_it_copied(tmp_citadel, seed_page):
+    """The base is hashed off the fresh staging clone rather than off the live wiki, so the lock
+    covers the copy alone and the wiki is read once instead of twice. That is only sound while a
+    clone is byte-for-byte what it copied — for exactly the file set `_content_files` considers,
+    including the non-`.md` files and the nested folders a promote also syncs."""
+    seed_page("concepts/a.md", {"type": "Concept", "title": "A", "description": "d", "tags": ["t"]}, "Body.\n")
+    seed_page("persons/b.md", {"type": "Person", "title": "B", "description": "d", "tags": ["t"]}, "Body.\n")
+    (tmp_citadel.wiki / "concepts" / "attachment.txt").write_text("not markdown\n", encoding="utf-8")
+    (tmp_citadel.wiki / ".citadel_ingested.json").write_text("{}", encoding="utf-8")  # excluded either way
+
+    staging = ingest._make_staging(tmp_citadel.wiki)
+    try:
+        assert ingest._content_hashes(staging) == ingest._content_hashes(tmp_citadel.wiki)
+        assert set(ingest._content_hashes(staging)) == {"concepts/a.md", "concepts/attachment.txt", "persons/b.md"}
+    finally:
+        ingest._robust_rmtree(staging)
+
+
 def test_promote_leaves_in_flight_state_temps_alone(tmp_citadel):
     """The promote's leftover-temp sweep must not touch a HIDDEN ``*.citadeltmp``: that is an
     in-flight ``config.atomic_write_text`` of the manifest or the failures catalog. Under
