@@ -1544,9 +1544,11 @@ def _sha_shared_by_other_entry(manifest_dict: dict, sha: str | None, exclude_key
     return False
 
 
-def _checkpoint_delta(staging: Path, live: Path) -> tuple[list[str], list[str]] | None:
-    """``(changed, removed)`` — what promoting ``staging`` onto ``live`` right now would do — or
-    None when that delta must not be recorded at all.
+def _checkpoint_delta(
+    staging: Path, live: Path, base: dict[str, str] | None = None
+) -> tuple[list[str], list[str]] | None:
+    """``(changed, removed)`` — this source's own delta, exactly as :func:`_promote` computes it —
+    or None when it must not be recorded at all.
 
     Computed with the PROMOTE's own file-level view (:func:`_content_files` + :func:`_files_equal`),
     never from the per-segment page diffs: those miss the link repairs ``_repair_renames`` writes
@@ -1554,15 +1556,28 @@ def _checkpoint_delta(staging: Path, live: Path) -> tuple[list[str], list[str]] 
     even resurrect a page a later segment deliberately deleted. A checkpoint must describe exactly
     what would have shipped, so it is derived from exactly what ships.
 
+    ``base`` — the clone snapshot, present only under ``--jobs N`` — is what keeps that true when
+    the wiki is moving. Measured against the CURRENT live wiki, a page a CONCURRENT source created
+    between this source's clone and this checkpoint reads as "in live, not in my staging", i.e. as a
+    deletion THIS source made, and one it rewrote reads as a change of this source's with the clone's
+    stale bytes. A checkpoint is durable, so such a delta outlives the parallel run: replayed by a
+    later — even strictly serial — run, it deletes a fully-ingested source's page off the live wiki
+    with no conflict, no error and no delete session. Measured against the base, the delta is this
+    source's alone (the promote's exact rule), and the concurrent work is simply not in it.
+
     The refusal mirrors the promote's anti-emptying valve: a staging tree with no content page while
-    live has some is a wipe-the-wiki delta (a vanished/rm-tree'd staging reads exactly like this),
-    and :func:`_promote` would refuse it — so it must never be persisted as a replayable one."""
+    the wiki this source started from had some is a wipe-the-wiki delta (a vanished/rm-tree'd staging
+    reads exactly like this), and :func:`_promote` would refuse it — so it must never be persisted as
+    a replayable one."""
     staged = _content_files(staging)
-    current = _content_files(live)
-    if not [rel for rel in staged if rel.endswith(".md")] and [rel for rel in current if rel.endswith(".md")]:
+    started_from = _content_files(live) if base is None else base
+    if not [rel for rel in staged if rel.endswith(".md")] and [rel for rel in started_from if rel.endswith(".md")]:
         return None
-    changed = sorted(rel for rel, src in staged.items() if not _files_equal(src, live / rel))
-    removed = sorted(set(current) - set(staged))
+    if base is None:
+        changed = sorted(rel for rel, src in staged.items() if not _files_equal(src, live / rel))
+    else:
+        changed = sorted(rel for rel, src in staged.items() if _sha256_or_none(src) != base.get(rel))
+    removed = sorted(set(started_from) - set(staged))
     return changed, removed
 
 
@@ -1608,7 +1623,9 @@ def _adopt_checkpoint(ctx: _Resume, staging: Path, live: Path, rel_key: str) -> 
     return created, updated, sorted(rel for rel in ctx.checkpoint.removed if rel.endswith(".md"))
 
 
-def _write_checkpoint(ctx: _Resume, completed: int, staging: Path, live: Path, usage: dict) -> None:
+def _write_checkpoint(
+    ctx: _Resume, completed: int, staging: Path, live: Path, usage: dict, base: dict[str, str] | None = None
+) -> None:
     """Record ``completed`` segments' work for this source. Best-effort by contract — any failure
     just means the next run starts at segment 1, so nothing here may raise into the session loop.
 
@@ -1618,9 +1635,14 @@ def _write_checkpoint(ctx: _Resume, completed: int, staging: Path, live: Path, u
     strictly cheaper than the per-source staging COPY the same run already makes — and invisible
     beside the agent session each segment costs."""
     try:
-        delta = _checkpoint_delta(staging, live)
+        delta = _checkpoint_delta(staging, live, base)
         if delta is not None:
-            resume.save(ctx.plan, completed, staging, live, delta[0], delta[1], usage)
+            # `base` travels on to resume.save as the state the delta must be guarded against: the
+            # wiki this source was CLONED from, not the (possibly moved-on) live wiki at save time.
+            # Recording the latter would have the replay guard verify "live unchanged since I
+            # saved" while the delta means "live as of my clone" — the wrong invariant, and one a
+            # concurrent promote slips straight through.
+            resume.save(ctx.plan, completed, staging, live, delta[0], delta[1], usage, bases=base)
     except Exception:  # noqa: BLE001 - a checkpoint may never cost a run its source
         pass
 
@@ -1762,6 +1784,7 @@ def _run_agent_sessions(
                         staging,
                         live,
                         _usage_fields(llm.combine_usage([*usage_parts, _usage_from_fields(carried)])),
+                        base,
                     )
                 if i + 1 < len(session_fns):
                     # Re-baseline on the validated/re-stamped state, so the next segment's diff

@@ -701,8 +701,12 @@ def _last_result_envelope(text: str) -> dict | None:
     return found
 
 
-# Monotonic per-process counter so concurrent/same-second transcript files never collide.
+# Monotonic per-process counter so concurrent/same-second transcript files never collide. Under
+# `citadel ingest --jobs N` "concurrent" is literal — several worker threads write transcripts at
+# once — and `_LOG_SEQ += 1` is a read-modify-write, so without the lock two sessions can be handed
+# the same number and the guarantee this counter exists for quietly stops holding.
 _LOG_SEQ = 0
+_LOG_SEQ_LOCK = threading.Lock()
 
 
 def _decode_partial(data) -> str:
@@ -805,14 +809,16 @@ def _write_transcript(
         return
     try:
         global _LOG_SEQ
-        _LOG_SEQ += 1
+        with _LOG_SEQ_LOCK:
+            _LOG_SEQ += 1
+            seq = _LOG_SEQ
         directory = Path(log_dir)
         if not directory.is_absolute():
             directory = config.WORKSPACE_ROOT / directory
         config.robust_mkdir(directory)
         stamp = time.strftime("%Y%m%d-%H%M%S")
         safe = "".join(c if (c.isalnum() or c in "-._") else "_" for c in (label or "session"))[:80]
-        path = directory / f"{stamp}.{os.getpid()}.{_LOG_SEQ}.{safe}.log"
+        path = directory / f"{stamp}.{os.getpid()}.{seq}.{safe}.log"
         body = [
             "# citadel ingest — LLM agent session transcript",
             f"time:        {stamp}",
