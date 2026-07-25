@@ -63,6 +63,12 @@ class CitadelTmp:
     never by re-deriving paths from ``tmp_path`` or by assuming which ``config.*`` attributes
     were patched: a later PR swaps the root-resolution internals (workspace discovery), and
     only this interface is guaranteed to survive that swap.
+
+    The fixture WIRES the process-wide ``config`` attributes (``config.WIKI_DIR`` and friends);
+    the wiki-derived fields below are annotated with their ACCESSOR (``config.wiki_dir()``)
+    because that is how code READS them — and the distinction matters inside a fake session:
+    ingest redirects the wiki per source through a ContextVar, so only the accessor sees the
+    staging copy the session is supposed to edit, while the attribute keeps naming the live wiki.
     """
 
     root: Path  # the (fake) workspace root -> config.WORKSPACE_ROOT
@@ -70,7 +76,7 @@ class CitadelTmp:
     raw: Path  # config.RAW_DIR
     docs: Path  # config.DOCS_DIR
     index_path: Path  # config.index_path()
-    sources_index_path: Path  # config.SOURCES_INDEX_PATH
+    sources_index_path: Path  # config.sources_index_path()
     log_path: Path  # config.log_path()
     manifest_path: Path  # config.manifest_path()
     failures_path: Path  # config.failures_path()
