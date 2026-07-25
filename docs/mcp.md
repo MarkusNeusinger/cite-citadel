@@ -163,9 +163,9 @@ posture is deliberately strict, because binding a port turns a local tool into a
   works but warns, and puts an unencrypted endpoint on your network.
 - **DNS-rebinding protection is on** — a web page you happen to visit can't drive the server
   through your browser (its `Host`/`Origin` must match the bound address).
-- **`--read-only` drops the writers.** The eleven readers stay; `wiki_capture` and `wiki_ingest`
-  answer with a refusal string. Worth it for any server reachable beyond your own machine —
-  `wiki_ingest` spawns your coding-agent CLI on the host.
+- **`--read-only` disables the writers.** `wiki_capture` and `wiki_ingest` stay listed — the
+  advertised tool list never changes shape — but answer with a refusal string. Worth it for any
+  server reachable beyond your own machine: `wiki_ingest` spawns your coding-agent CLI on the host.
 
 | Flag | Env | Default | What it does |
 |------|-----|---------|--------------|

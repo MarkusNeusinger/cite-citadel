@@ -114,6 +114,20 @@ def test_a_valid_token_can_initialize_a_session_and_list_tools(app):
     assert "wiki_search" in listed.text and "wiki_ingest" in listed.text
 
 
+def test_the_compare_is_length_blind(app):
+    """Both sides are hashed before hmac.compare_digest, which is only constant-time for
+    equal-length inputs — so a token of a DIFFERENT length is refused by the same code path as a
+    same-length wrong one, with nothing about the length in the comparison."""
+    with TestClient(app, base_url=BASE_URL) as client:
+        for candidate in ("x", TOKEN * 3, TOKEN[:4]):
+            response = client.post(
+                "/mcp",
+                json={"jsonrpc": "2.0", "method": "ping", "id": 1},
+                headers={"Authorization": f"Bearer {candidate}"},
+            )
+            assert response.status_code == 401
+
+
 def test_lifespan_scope_is_not_token_guarded():
     """Only HTTP scopes are checked — the lifespan startup that boots the MCP session manager must
     pass through, or the server could never start."""
@@ -182,6 +196,40 @@ def test_serve_does_not_warn_on_loopback(tmp_citadel, monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "WARNING" not in err
     assert "Bearer" in err  # the startup banner still tells the operator how to connect
+
+
+@pytest.mark.parametrize(
+    "given,bind,url",
+    [
+        ("127.0.0.1", "127.0.0.1", "127.0.0.1"),
+        ("  localhost  ", "localhost", "localhost"),
+        ("::1", "::1", "[::1]"),
+        ("[::1]", "::1", "[::1]"),  # the URL spelling must not reach the socket layer
+        ("0.0.0.0", "0.0.0.0", "0.0.0.0"),
+    ],
+)
+def test_host_spellings_round_trip(given, bind, url):
+    assert httpserve.normalize_host(given) == bind
+    assert httpserve.format_host(given) == url
+
+
+def test_serve_hands_uvicorn_the_bind_spelling_of_an_ipv6_host(tmp_citadel, monkeypatch, capsys):
+    """A bracketed IPv6 literal is a URL spelling — uvicorn rejects it as a bind address, so serve
+    normalizes before binding while still printing a copy-pasteable bracketed URL."""
+    monkeypatch.setattr(config, "HTTP_TOKEN", TOKEN)
+    calls = {}
+    monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: calls.update(kwargs))
+    httpserve.serve(host="[::1]", port=9003)
+    assert calls["host"] == "::1"
+    assert "http://[::1]:9003/mcp" in capsys.readouterr().err
+
+
+def test_allowed_hosts_of_an_ipv6_bind_are_bracketed():
+    """The Host header a client sends for an IPv6 server is bracketed — the allowlist must match
+    that spelling or every request would fail the rebinding check."""
+    allowed = httpserve._allowed_hosts("::1", 8765)
+    assert "[::1]:8765" in allowed
+    assert "::1:8765" not in allowed
 
 
 def test_allowed_hosts_cover_the_loopback_aliases():

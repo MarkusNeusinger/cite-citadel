@@ -33,6 +33,7 @@ IS the user). :func:`build_app` returns the wrapped ASGI app for tests to drive 
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 import sys
@@ -47,7 +48,8 @@ from . import config, server
 MIN_TOKEN_CHARS = 16
 
 # Hostnames that mean "this machine" — used for the bind warning and for the Host/Origin allowlist.
-_LOOPBACK_NAMES = ("localhost", "127.0.0.1", "::1", "[::1]")
+# Stored in BIND form (bare, no URL brackets); format_host renders the URL/Host-header spelling.
+_LOOPBACK_NAMES = ("localhost", "127.0.0.1", "::1")
 
 
 class HttpServeError(RuntimeError):
@@ -55,11 +57,29 @@ class HttpServeError(RuntimeError):
     explanation; the CLI prints it and exits non-zero."""
 
 
+def normalize_host(host: str) -> str:
+    """The BIND spelling of a host. An IPv6 literal written the way a URL wants it (``[::1]``) is a
+    URL spelling, not a bind address — uvicorn (and the socket layer under it) wants the bare
+    ``::1`` and refuses the bracketed form, so an operator who copies the address out of the banner
+    back into ``CITADEL_HTTP_HOST`` must not meet a confusing start-up failure."""
+    value = host.strip()
+    if value.startswith("[") and value.endswith("]"):
+        return value[1:-1]
+    return value
+
+
+def format_host(host: str) -> str:
+    """The URL / ``Host``-header spelling of a host: an IPv6 literal needs brackets
+    (``http://[::1]:8765/mcp``), everything else is itself. The inverse of :func:`normalize_host`."""
+    value = normalize_host(host)
+    return f"[{value}]" if ":" in value else value
+
+
 def is_loopback(host: str) -> bool:
     """True when ``host`` binds only this machine. Names are matched literally (no DNS lookup —
     resolving at config time would be a surprising network call); anything that parses as an IP is
-    judged by the stdlib."""
-    value = host.strip().strip("[]").lower()
+    judged by the stdlib. Both host spellings are accepted (``::1`` and ``[::1]``)."""
+    value = normalize_host(host).lower()
     if value in ("localhost", ""):
         return True
     try:
@@ -73,12 +93,14 @@ def _allowed_hosts(host: str, port: int) -> list[str]:
     bind address plus, for a loopback bind, its usual aliases — a client may say ``localhost``
     where uvicorn bound ``127.0.0.1``. Each is listed both with the concrete port and with the
     ``:*`` wildcard the SDK's matcher understands, so a tunnel that rewrites the port still
-    reaches the server."""
-    names = [host]
-    if is_loopback(host):
-        names.extend(name for name in _LOOPBACK_NAMES if name != host)
+    reaches the server. Names are rendered in HEADER form, so an IPv6 bind is matched as the
+    bracketed ``[::1]:8765`` a client actually sends."""
+    names = [format_host(host)]
+    names.extend(format_host(name) for name in _LOOPBACK_NAMES if is_loopback(host))
     allowed: list[str] = []
     for name in names:
+        if name in allowed:
+            continue
         allowed.extend((name, f"{name}:{port}", f"{name}:*"))
     return allowed
 
@@ -103,11 +125,13 @@ def bearer_guard(app, token: str):
     """Wrap an ASGI ``app`` so every HTTP request must present ``Authorization: Bearer <token>``.
 
     Runs BEFORE the MCP session layer: an unauthenticated request is answered with 401 and never
-    reaches a tool, a session, or the wiki. The comparison is
-    :func:`hmac.compare_digest` (constant-time — a timing oracle on a shared secret is a real, if
-    slow, attack), and the reply never distinguishes "no header" from "wrong token".
-    Non-HTTP scopes (``lifespan``, which starts the MCP session manager) pass straight through."""
-    expected = token.encode("utf-8")
+    reaches a tool, a session, or the wiki. Both sides are SHA-256'd before
+    :func:`hmac.compare_digest` — that function is only constant-time for equal-length inputs, so
+    hashing to a fixed 32 bytes keeps the presented token's LENGTH out of the timing too (a timing
+    oracle on a shared secret is a real, if slow, attack). The reply never distinguishes "no header"
+    from "wrong token". Non-HTTP scopes (``lifespan``, which starts the MCP session manager) pass
+    straight through."""
+    expected = hashlib.sha256(token.encode("utf-8")).digest()
 
     async def guarded(scope, receive, send):
         if scope.get("type") != "http":
@@ -119,7 +143,9 @@ def bearer_guard(app, token: str):
                 presented = value.strip()
                 break
         prefix = b"bearer "
-        ok = presented[: len(prefix)].lower() == prefix and hmac.compare_digest(presented[len(prefix) :], expected)
+        ok = presented[: len(prefix)].lower() == prefix and hmac.compare_digest(
+            hashlib.sha256(presented[len(prefix) :]).digest(), expected
+        )
         if not ok:
             body, headers = _unauthorized("a valid bearer token is required")
             await send({"type": "http.response.start", "status": 401, "headers": headers})
@@ -139,7 +165,7 @@ def build_app(token: str, *, host: str | None = None, port: int | None = None, p
     can drive the whole stack in-process without binding a port."""
     from mcp.server.transport_security import TransportSecuritySettings
 
-    host = config.HTTP_HOST if host is None else host
+    host = normalize_host(config.HTTP_HOST if host is None else host)
     port = config.HTTP_PORT if port is None else port
     path = config.HTTP_PATH if path is None else path
     if not path.startswith("/"):
@@ -198,7 +224,10 @@ def serve(
     argument defaults to its ``CITADEL_HTTP_*`` config value, read at call time."""
     from . import pagecache
 
-    host = config.HTTP_HOST if host is None else host
+    # Normalized to the BIND spelling up front: everything downstream (the warning, the app, the
+    # banner, uvicorn) works from one form, so a bracketed IPv6 literal cannot reach the socket
+    # layer that rejects it.
+    host = normalize_host(config.HTTP_HOST if host is None else host)
     port = config.HTTP_PORT if port is None else port
     path = config.HTTP_PATH if path is None else path
     read_only = config.HTTP_READ_ONLY if read_only is None else read_only
@@ -206,7 +235,7 @@ def serve(
 
     if not is_loopback(host):
         print(
-            f"WARNING: binding {host}:{port} exposes citadel beyond this machine over PLAIN HTTP. "
+            f"WARNING: binding {format_host(host)}:{port} exposes citadel beyond this machine over PLAIN HTTP. "
             "Prefer a loopback bind behind a tunnel that terminates TLS (cloudflared, tailscale, "
             "ssh -R); the bearer token is the only thing between the network and your wiki.",
             file=sys.stderr,
@@ -220,7 +249,7 @@ def serve(
 
     mode = "read-only" if read_only else "read+write"
     print(
-        f"citadel MCP (Streamable HTTP, {mode}) on http://{host}:{port}{build_path(path)} "
+        f"citadel MCP (Streamable HTTP, {mode}) on http://{format_host(host)}:{port}{build_path(path)} "
         "- clients must send: Authorization: Bearer <CITADEL_HTTP_TOKEN>",
         file=sys.stderr,
     )

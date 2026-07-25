@@ -47,12 +47,14 @@ cite-citadel has a small, honest data-flow surface — understanding it is the b
   the client spawns it, nothing listens on a socket. `citadel serve --http` additionally binds a
   port (MCP Streamable HTTP) and is the one network surface citadel has. It refuses to start
   without `CITADEL_HTTP_TOKEN` (≥16 characters); every request must carry
-  `Authorization: Bearer <token>`, compared in constant time, and an unauthenticated request is
+  `Authorization: Bearer <token>`, compared in constant time (both sides are hashed first, so not
+  even the presented token's length shows up in the timing), and an unauthenticated request is
   answered 401 before it reaches a tool or a session. The bind defaults to loopback and DNS-rebinding
   protection is on. The transport itself is **plain HTTP**: put a TLS-terminating tunnel
   (cloudflared / tailscale / `ssh -R`) in front of it rather than binding a public interface, and
   prefer `--read-only` (`CITADEL_HTTP_READ_ONLY=1`) for anything reachable beyond your own machine —
-  it drops `wiki_capture` and `wiki_ingest`, the latter of which spawns your coding-agent CLI on the
+  it disables `wiki_capture` and `wiki_ingest` (they stay listed but answer with a refusal), the
+  latter of which spawns your coding-agent CLI on the
   serving host. Treat the token like a password to the whole workspace: it is the only credential,
   and rotating it is just editing `.env` and restarting.
 - **Billing shadow.** If a provider API key sits in your environment while `CITADEL_LLM_CLI=claude`,
