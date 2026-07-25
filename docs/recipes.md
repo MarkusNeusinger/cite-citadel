@@ -111,6 +111,25 @@ Together they keep the wiki current in both directions: new knowledge lands with
 imports are re-verified round-robin under the current model + rules (~20 sources/month at these
 numbers — size the budget against `citadel status`'s recorded cost).
 
+### Working off a big backlog: `--jobs N`
+
+A nightly run has hours, so it can afford to be serial — and serial is what gives the richest
+cross-linking, because every session sees the pages the previous one wrote. When you are folding in
+a *backlog* of largely unrelated sources (a first import, a newly mounted archive), the run is
+dominated by per-session latency instead, and `--jobs` trades some of that linking for wall-clock:
+
+```bash
+citadel ingest --jobs 4     # or set CITADEL_JOBS=4 for every run in this workspace
+```
+
+Each source keeps its own staging copy and its own all-or-nothing promote — nothing about the
+safety model changes — but concurrent sessions cannot see each other's new pages, so they link less
+richly and can create two pages for one topic. Two things absorb that: a source whose promote raced
+another one over the same page is automatically re-run serially (the report lists it under *Re-run
+serially*), and a later `citadel curate` pass merges and re-grounds what parallel sessions left
+apart. Lots of races in the report means the corpus is more connected than the run assumed — lower
+`--jobs`. Rate limits on your agent CLI are the practical ceiling; citadel imposes none.
+
 ### cron (Linux, macOS)
 
 ```cron

@@ -171,6 +171,35 @@ def test_seeded_pages_survive_a_parallel_run(tmp_citadel, fake_agent, cite_page,
     assert (tmp_citadel.wiki / "concepts" / "existing.md").is_file()
 
 
+def test_a_promote_applies_only_its_own_delta(tmp_citadel, fake_agent, cite_page, seed_page):
+    """A source's staging copy also holds untouched copies of every page it did NOT write. Judging
+    "what changed" against the LIVE wiki instead of against the clone would make a page a concurrent
+    source just rewrote look like this source's change — and copying the untouched staging copy over
+    it would silently revert that work. Here source ``b`` touches only its own page while ``a``
+    rewrites a pre-existing one: ``a``'s rewrite must survive, and nothing may count as a race."""
+    seed_page(
+        "concepts/shared.md",
+        {"type": "Concept", "title": "Shared", "description": "d", "tags": ["t"]},
+        "Original text.[^llm1]\n\n## Sources\n\n[^llm1]: LLM - model knowledge\n",
+    )
+    _sources(tmp_citadel, ["a", "b"])
+    barrier = threading.Barrier(2)
+
+    def session(rel_key: str, kind: str = "ingest", *_args, **_kwargs) -> None:
+        barrier.wait(timeout=BARRIER_TIMEOUT)  # both clones are taken before either promote
+        slug = rel_key.rsplit("/", 1)[-1].replace(".", "-")
+        cite_page(f"misc/{slug}.md", rel_key, "A fact.")
+        if rel_key == "raw/a.md":
+            cite_page("concepts/shared.md", rel_key, "Rewritten by a.")
+
+    fake_agent(side_effect=session)
+    report = ingest.ingest(jobs=2)
+
+    assert report.raced == []  # b never touched shared.md, so there is nothing to race over
+    assert report.errors == []
+    assert "Rewritten by a." in (tmp_citadel.wiki / "concepts" / "shared.md").read_text(encoding="utf-8")
+
+
 def test_racing_sources_are_re_run_serially(tmp_citadel, fake_agent, cite_page):
     """Two sessions that both write the SAME page cannot both be right: the second promote is
     refused (its base no longer matches), and that source is re-run serially afterwards — where it

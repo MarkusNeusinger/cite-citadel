@@ -28,6 +28,7 @@ uv run python -m citadel <subcommand>
 Subcommands: `init [DIR]` (scaffold a workspace: `citadel.toml` marker, `.env`, `raw/`, `wiki/`;
 idempotent), `ingest [paths…]` (fold raw/ into the wiki; `--verbose`/`-v` streams the agent
 session, `--log-dir DIR` writes a transcript per source, `--quiet` drops the progress spinner,
+`--jobs N`/`-j` folds N sources in CONCURRENTLY (default 1 = serial; `CITADEL_JOBS`),
 `--full-rescan` distrusts the manifest's stat cache and re-hashes every tracked source,
 `--force <paths>` deliberately re-reads already-ingested sources as a reconcile — it requires
 explicit paths and is refused without them), `refresh [--limit N] [--min-age-days D] [--dry-run]`
@@ -229,7 +230,20 @@ it is itself a workspace.
   vanished source's stale provenance before any pending session touches a page that still cites it
   (else that pre-existing bad citation would fail the pending session's validation and roll it
   back). This all-or-nothing + network-share-hardened machinery (`_robust_*`, `robust_mkdir`) is
-  load-bearing — don't simplify it away. **One mutating run per workspace**: ingest and curate take
+  load-bearing — don't simplify it away. **Bounded parallelism** (`--jobs N` / `CITADEL_JOBS`, default 1 = serial): the per-source staging
+  copy IS the isolation primitive, so N sources run at once through the same `_SourceJob` loop —
+  worker threads only plan/stage/run/promote, while every SHARED write (report, manifest, failures)
+  stays on the main thread. One lock (`_LIVE_WIKI_LOCK`) guards the only two moments that touch the
+  live wiki: the clone (taken together with a hash snapshot of what was cloned) and the promote.
+  Under it the promote is **base-aware** — it prunes only what its own clone had and its staging
+  lacks (else it would delete a concurrent source's new pages), and it REFUSES, before writing a
+  byte, if a path it would touch has moved since the clone; that source is then re-run SERIALLY at
+  the end of its group, where it merges into the winner's page (reported as `raced`). What
+  parallelism costs is cross-linking, not safety — concurrent sessions cannot see each other's new
+  pages — which is why the default is 1. The redirect this rides on is context-local
+  (`config.wiki_redirect` → a ContextVar behind `config.wiki_dir()`; children get their wiki via
+  `config.child_env()`), never a `config.WIKI_DIR`/`os.environ` assignment.
+  **One mutating run per workspace**: ingest and curate take
   an exclusive run lock (`runlock.py`, a dotfile sibling of the wiki; stale locks reclaimed via
   dead-pid/mtime, refreshed per source) so a second concurrent run fails loud instead of silently
   destroying the first one's staging/promotes; manifest + failures saves are atomic
@@ -408,8 +422,12 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
 
 ## Conventions specific to this codebase
 
-- **`config.*` is read at call time** (`from . import config` then `config.WIKI_DIR`), never imported
+- **`config.*` is read at call time** (`from . import config` then `config.RAW_DIR`), never imported
   by value — so tests can monkeypatch the whole filesystem layout. Honor this when adding code.
+  The WIKI path is read through the ACCESSORS (`config.wiki_dir()`, `index_path()`,
+  `sources_index_path()`, `log_path()`, `manifest_path()`, `failures_path()`), never as
+  `config.WIKI_DIR`: ingest redirects it per source through a ContextVar, so only the accessors see
+  the staging copy. The module attributes stay the process-wide base tests monkeypatch.
 - **Tests redirect everything to `tmp_path`** by monkeypatching `config.*` (including
   `WORKSPACE_ROOT`, which the agent's `cwd` reads) and replace `llm.run_ingest_session` with a fake
   that writes files into the temp wiki. No test spawns a real LLM CLI. Follow that pattern; keep
@@ -437,7 +455,8 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   `READ_ONLY`), `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,
   `CITADEL_REPO_SUPPORT`, `CITADEL_IMAGE_SUPPORT` (read images visually), `CITADEL_AUDIO_SUPPORT`
   (opt-in whisper transcript ingest for audio/video, with `CITADEL_WHISPER_CLI`/
-  `CITADEL_WHISPER_MODEL`/`CITADEL_WHISPER_TIMEOUT` tuning the seam), `CITADEL_MAX_SOURCE_CHARS`
+  `CITADEL_WHISPER_MODEL`/`CITADEL_WHISPER_TIMEOUT` tuning the seam), `CITADEL_JOBS` (how many sources ingest folds in
+  concurrently; 1 = serial), `CITADEL_MAX_SOURCE_CHARS`
   (large-source chunking threshold), `CITADEL_RESUME` (resume checkpoints for those chunked
   sources: continue at the segment an interrupted run died on instead of re-paying for the earlier
   ones; default on), `CITADEL_DEDUP_BY_BASENAME` (skip same-basename document

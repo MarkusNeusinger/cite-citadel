@@ -8,6 +8,27 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Bounded parallel ingest — `citadel ingest --jobs N`** (the 2026-07 audit's backlog #11, and
+  with it its finding 1.2.5). Ingest was strictly serial because the per-source staging redirect
+  *assigned* `config.WIKI_DIR` and `os.environ` in place: one process could only ever be inside one
+  redirect. That redirect is now context-local (a `ContextVar` behind `config.wiki_dir()` and
+  friends; child processes get their wiki through an explicit per-spawn env), which is what lets N
+  sources stage at once — the isolation primitive, a per-source staging copy, was already there.
+  `--jobs N` (or `CITADEL_JOBS`) folds in that many sources concurrently. **Every guarantee is
+  unmoved**: one promote per source, all-or-nothing, nothing partial on the live wiki, the manifest
+  still saved per completed source. What is shared is serialized rather than raced — one lock guards
+  the two moments that touch the live wiki (cloning it, promoting onto it), while the minutes-long
+  sessions run fully in parallel; the promote is *base-aware*, pruning only what its own clone had
+  and its staging lacks, so a concurrent source's new page is never deleted as "the agent removed
+  it"; and a promote whose pages have moved since the clone is refused **before** it writes
+  anything, with that source re-run serially at the end of the run, where it sees the winner's page
+  and merges into it (the report lists these under *Re-run serially* — the one place parallelism
+  costs a session a serial run would not have). Report, manifest, and failures bookkeeping stay on
+  the main thread, so those writes are as single-threaded as they ever were, and an interrupt
+  cancels queued sources while still recording work already promoted. The default stays **1** —
+  serial, line for line as before — because the real cost is not safety but **cross-linking**:
+  concurrent sessions cannot see each other's new pages. Best on a large backlog of unrelated
+  sources (see docs/recipes.md); `curate` remains serial by design.
 - **`citadel serve --http` — the opt-in Streamable HTTP transport** (the 2026-07 audit's backlog
   #12, closing the last open item of its § 3.1 MCP-surface gap). Stdio remains the default and is
   unchanged; `--http` serves the SAME thirteen tools, four prompts, and `wiki://` resources over

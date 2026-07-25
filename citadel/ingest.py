@@ -1221,6 +1221,16 @@ def _content_files(root: Path) -> dict[str, Path]:
     return out
 
 
+def _sha256_or_none(path: Path) -> str | None:
+    """:func:`_sha256` that answers None instead of raising on an unreadable/vanished file — so a
+    comparison against a recorded base hash treats it as "not what the base had" (the conservative
+    answer) rather than blowing up a promote."""
+    try:
+        return _sha256(path)
+    except OSError:
+        return None
+
+
 def _content_hashes(root: Path) -> dict[str, str]:
     """``{relposix: sha256}`` over :func:`_content_files` — a wiki's content state as bytes, not as
     timestamps. Taken of the LIVE wiki at the moment a source is cloned into staging (`--jobs N`
@@ -1288,9 +1298,13 @@ def _promote(staging: Path, live: Path, allow_emptying: bool = False, base: dict
     recorded only under ``--jobs N``) — makes the promote base-aware, which is what lets two sources
     promote onto one wiki without eating each other's work:
 
-    * the PRUNE is derived from the base, not from the current live tree, so a page a concurrent
-      source created (absent from this source's base AND from its staging copy) is left alone
-      instead of being deleted as "the agent removed it";
+    * WHAT IS WRITTEN is this source's own delta — the staging files that differ from the BASE, not
+      from the current live wiki. Staging also holds untouched copies of every page the source did
+      not write, and judging those by "differs from live" would let this promote revert a page a
+      concurrent source had just rewritten;
+    * the PRUNE is likewise derived from the base, so a page a concurrent source created (absent
+      from this source's base AND from its staging copy) is left alone instead of being deleted as
+      "the agent removed it";
     * every path this promote would write or prune must still match the base, else
       :class:`_ConcurrentChange` is raised BEFORE anything is written and the source is re-run
       serially — the two sessions disagreed about one page, and a stale session must never win.
@@ -1315,11 +1329,23 @@ def _promote(staging: Path, live: Path, allow_emptying: bool = False, base: dict
             "(treated as a failed source so the live wiki is not emptied)"
         )
 
-    changed = {rel: src for rel, src in staging_content.items() if not _files_equal(src, live / rel)}
-    pruned = (set(live_content) if base is None else set(base) & set(live_content)) - set(staging_content)
-    if base is not None:
+    if base is None:
+        changed = {rel: src for rel, src in staging_content.items() if not _files_equal(src, live / rel)}
+        pruned = set(live_content) - set(staging_content)
+    else:
+        # With a base, a promote applies THIS source's own delta and nothing else. Which pages the
+        # source touched is decided against its base — not against the current live wiki — because
+        # its staging copy also holds untouched copies of every page it did NOT write: judging by
+        # "differs from live" would make a page a CONCURRENT source just rewrote look like this
+        # source's change, and copying the staging copy over it would silently revert that work.
+        changed = {rel: src for rel, src in staging_content.items() if _sha256_or_none(src) != base.get(rel)}
+        pruned = (set(base) & set(live_content)) - set(staging_content)
+        # NOTE for the reader: this is a per-FILE merge, not a per-line one. Two sources that wrote
+        # the same page do not get merged here — that is what the conflict below is for.
         # Before the first byte is written: refuse a promote built on a wiki that has moved on.
         _assert_base_unchanged(live, base, set(changed) | pruned)
+        # A page whose bytes already match live needs no write (a re-run that reproduced it exactly).
+        changed = {rel: src for rel, src in changed.items() if not _files_equal(src, live / rel)}
 
     # 1. Copy-over FIRST (atomic per page, only when the bytes differ).
     for rel, src in changed.items():
