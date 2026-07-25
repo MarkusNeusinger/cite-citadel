@@ -9,6 +9,7 @@ verification of the installed distribution stays in CI's wheel-smoke job.
 
 from __future__ import annotations
 
+import os
 import re
 import tomllib
 from pathlib import Path
@@ -18,9 +19,34 @@ import citadel
 
 ROOT = Path(__file__).resolve().parents[1]
 
+CLAUDE_MD = ROOT / "CLAUDE.md"
+COPILOT_MD = ROOT / ".github" / "copilot-instructions.md"
+
+# The one hand-written part of the generated Copilot file: its own title + provenance note. Everything
+# below it is CLAUDE.md verbatim, so the two can never say different things about the same code.
+COPILOT_HEADER = """# GitHub Copilot instructions — cite-citadel
+
+Repository guidance for GitHub Copilot. **Generated from [`CLAUDE.md`](../CLAUDE.md)** — do not edit
+this file by hand: change `CLAUDE.md` and regenerate with
+`CITADEL_WRITE_COPILOT_DOC=1 uv run pytest tests/test_packaging.py -k copilot -q`. The drift guard in
+`tests/test_packaging.py` fails whenever the two disagree.
+
+"""
+
 
 def _pyproject() -> dict:
     return tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+
+def _copilot_from_claude(claude_text: str) -> str:
+    """Derive `.github/copilot-instructions.md` from CLAUDE.md: swap the title/intro for the
+    generated-file header, and re-root repo-relative links one directory deeper (the Copilot file
+    lives in `.github/`)."""
+    first_section = re.search(r"^## ", claude_text, re.MULTILINE)
+    assert first_section, "CLAUDE.md has no `## ` section heading to generate from"
+    body = claude_text[first_section.start() :]
+    body = re.sub(r"\]\((?!https?://|#|\.\./|/)([^)]+)\)", r"](../\1)", body)
+    return COPILOT_HEADER + body
 
 
 def test_version_is_dynamic_and_hatch_reads_it_from_the_package_init():
@@ -97,6 +123,23 @@ def test_configuration_doc_covers_every_env_knob():
         "documented but missing from env.example": sorted(doc_knobs - DOC_ONLY - env_knobs),
         "in env.example but undocumented": sorted(env_knobs - doc_knobs),
     }
+
+
+def test_copilot_instructions_mirror_claude_md():
+    """Mechanical drift guard replacing the prose-only 'keep the two in sync' promise: the Copilot
+    instruction file is a pure derivation of CLAUDE.md (header swap + relative-link re-rooting), so a
+    feature documented in one is documented in both. Drift was real — the file shipped 105 lines
+    behind CLAUDE.md, still claiming 12 MCP tools and knowing nothing of `refresh`, `capture`,
+    `--jobs`, or `serve --http`. Set `CITADEL_WRITE_COPILOT_DOC=1` to regenerate instead of compare."""
+    expected = _copilot_from_claude(CLAUDE_MD.read_text(encoding="utf-8"))
+    if os.environ.get("CITADEL_WRITE_COPILOT_DOC") == "1":
+        COPILOT_MD.write_text(expected, encoding="utf-8")
+    actual = COPILOT_MD.read_text(encoding="utf-8")
+    assert actual == expected, (
+        "`.github/copilot-instructions.md` has drifted from CLAUDE.md — regenerate it with "
+        "`CITADEL_WRITE_COPILOT_DOC=1 uv run pytest tests/test_packaging.py -k copilot -q` "
+        "(edit CLAUDE.md, never the generated file)."
+    )
 
 
 def test_readme_links_are_absolute_for_pypi():
