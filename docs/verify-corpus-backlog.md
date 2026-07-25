@@ -42,10 +42,10 @@ Row format:
 
 | id | first seen | last seen | corpus | guarantee | lane | defect + route | status |
 |----|------------|-----------|--------|-----------|------|----------------|--------|
-
-*(No open entries yet — this ledger starts empty on 2026-07-24; the next grading run seeds it.
-Historical per-run reports predating this file were not retro-imported: their sandboxes are gone,
-so their misses cannot be re-verified.)*
+| VCB-001 | 2026-07-25 | 2026-07-25 | beverages | offline-verifiable locators (schema.md § Sources) | wiki-generation | **haiku-only.** Haiku cites whole sections (`§ Caffeine — …`) where sonnet cites `line 9`, and it appends its own gloss to the heading, so 5 locators name a heading the source does not contain and `lint.check_locators` cannot verify any of them (`concepts/caffeine.md` ×2, `concepts/coffee.md`, `objects/aurora-midnight.md`, `organizations/caffe-aurora.md`; one concatenates two headings: `§ It Started With Lina, What We Actually Mean By "Sourcing" — company history…`). Route: `citadel/rules/schema.md`'s locator grammar — state that `§` takes the heading text VERBATIM and nothing else, and that `lines A-B` is preferred for a text source; the reference model needs no such spelling-out, a weaker one does. | open |
+| VCB-002 | 2026-07-25 | 2026-07-25 | beverages | every factual sentence carries a footnote | wiki-generation | **haiku-only.** One uncited sentence survived the agent's own `citadel check` because it is inside a sentence the parser reads as cited: `concepts/coffee.md` — "The plant and its cultivation are dominated by two species: [Arabica and Robusta…". Lint's advisory `missing citations` caught it; `check` did not. Route: the `tasks/ingest.md` self-check step (re-read every paragraph for a trailing footnote), and worth asking whether this shape should be a `check` error rather than a lint advisory. | open |
+| VCB-003 | 2026-07-25 | 2026-07-25 | beverages | `[^llmN]` is for model-supplied facts only, never a shortcut | wiki-generation | **haiku-only.** 4 pages carry model-supplied facts (`concepts/caffeine.md`, `concepts/tea.md`, `objects/aurora-midnight.md`, `organizations/thornbury-lin.md`) where the sonnet showcase of the same corpus has none — the corpus is fully covered by its raw sources, so an `[^llmN]` here is a weaker model reaching for the LLM lane instead of the source. Not a provenance violation (the lane is honest and lint surfaces it), so a soft miss. Route: `citadel/rules/core.md`'s `[^llmN]` section — make "prefer dropping the claim over sourcing it to yourself" explicit. | open |
+| VCB-004 | 2026-07-25 | 2026-07-25 | beverages | dense cross-linking between related pages | wiki-generation | **Unattributed between model and `--jobs`.** 36 un-linked mentions where the committed sonnet showcase lints 0 (e.g. `concepts/tea.md → concepts/coffee.md`, `organizations/caffe-aurora.md → concepts/cold-brew.md`). Two candidate causes and this run cannot separate them: haiku links less densely, and `--jobs 4` means concurrent sessions cannot see each other's new pages (the documented, accepted cost of parallelism — `curate` is its designed cleanup). Route: re-run beverages on haiku with `--jobs 1` and diff this counter; only if serial haiku is also high is this a rules-lane miss rather than a parallelism trade-off. | open |
 
 ## Resolved
 
@@ -57,3 +57,31 @@ so their misses cannot be re-verified.)*
 *(Newest first. One `### <date> <corpus>` sub-block per grading run — mode, model, `rules_version`,
 verdict, and the `VCB-` ids the run touched, or `misses: none`. This `## Runs` heading stays
 singular; runs nest under it.)*
+
+### 2026-07-25 beverages + a purpose-built overlap corpus
+
+- **Mode:** Mode A, but scoped as a **parallelism + model** test rather than a full answer-key grade:
+  the question was whether `citadel ingest --jobs N` (shipped in 0.5.0) holds its guarantees under
+  real page contention, and how a weaker model behaves on the same corpus. Structural gates ran in
+  full; content grading was a comparison against the committed sonnet showcase of the same corpus
+  plus per-fact checks on the overlap corpus, not a walk of `beverages/ground-truth.md`. A full
+  answer-key grade is still owed.
+- **Model:** `claude:haiku` · **rules_version:** `c99fc290864f` · `--jobs 4` · `CITADEL_HERMETIC=0`
+  (the container authenticates the CLI through user-level settings that `--bare` skips — the
+  hermetic-auth hint shipped in the same release came out of this).
+- **Overlap corpus** (4 sources all describing one object, written for this run): forced **3 of 4
+  sources to race** the same page. `check` and `lint` both exit 0 with every counter zero, the one
+  merged page cites all four sources, and every source's unique facts survived three consecutive
+  serial re-runs. Promote-once, all-or-nothing, and merge-into-the-winner hold under a 3-way
+  collision. 7 sessions / 277 s / $0.93.
+- **beverages** (14 sources): 14/14 ingested, 0 failed, **3 raced**, 35 pages vs the showcase's 36,
+  `check` exit 0, `lint` exit 0 (0 broken links, 0 orphans, 0 fabricated sources, 0 wikilinks),
+  $3.55 recorded. The runner was killed mid-run by the harness, which incidentally verified the
+  crash contract: the live wiki stayed valid, 7 sources were durably recorded and 7 returned to
+  `pending`, and the resumed run re-ran exactly those 7 — nothing half-ingested, nothing paid for
+  twice.
+- **Verdict:** parallel ingest PASSES on structure and provenance integrity. The deltas are model
+  quality, not concurrency: **VCB-001** (unverifiable `§` locators — the sharpest haiku-vs-sonnet
+  gap), **VCB-002** (one uncited sentence), **VCB-003** (unnecessary `[^llmN]` pages), and
+  **VCB-004** (cross-linking, unattributed between haiku and `--jobs` until a serial-haiku baseline
+  runs).
