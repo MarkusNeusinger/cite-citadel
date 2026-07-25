@@ -2116,6 +2116,13 @@ def _run_source_jobs_parallel(
         submitted = [pool.submit(attempt, index, job) for index, job in enumerate(jobs, 1)]
         try:
             for future in futures.as_completed(submitted):
+                if future.cancelled():
+                    # A cancelled future is only ever produced by the abort below, so its
+                    # `CancelledError` would be caught there and discarded in favour of the
+                    # interrupt that caused it — correct, but only by that reasoning. Skipping it
+                    # here (as the drain loop already does) keeps the property local: `result()` is
+                    # called on completed work only.
+                    continue
                 run = future.result()
                 if run is None:
                     continue

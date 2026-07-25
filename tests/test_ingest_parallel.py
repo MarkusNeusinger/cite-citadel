@@ -15,6 +15,7 @@ the failure it prevents:
 
 from __future__ import annotations
 
+import io
 import threading
 import time
 from pathlib import Path
@@ -406,8 +407,10 @@ def test_config_clamps_a_bad_jobs_value(monkeypatch):
 
 
 def test_progress_drops_the_spinner_when_running_parallel():
+    """With several sources in flight there is no single "current source" for the spinner to name,
+    so the console falls back to a start line per source."""
     from citadel.progress import ConsoleProgress
 
-    progress = ConsoleProgress(stream=open(Path(__file__).parent / "conftest.py", encoding="utf-8"))
+    progress = ConsoleProgress(stream=io.StringIO())
     progress("start", {"pending": 3, "skipped": 0, "jobs": 3})
     assert progress.spinner is False

@@ -122,7 +122,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         metavar="N",
-        help="Fold up to N sources in CONCURRENTLY (default 1 = serial, or CITADEL_JOBS). Each "
+        help="Fold up to N sources CONCURRENTLY (default 1 = serial, or CITADEL_JOBS). Each "
         "source keeps its own staging copy and its own all-or-nothing promote; promotes are "
         "serialized, and a source that raced another over the same page is re-run serially. "
         "Faster on a large backlog of unrelated sources; the trade-off is cross-linking, since "
