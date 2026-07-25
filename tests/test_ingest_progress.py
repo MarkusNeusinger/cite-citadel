@@ -23,7 +23,7 @@ def test_ingest_emits_progress_events(tmp_citadel, fake_agent, transformer_page)
     for expected in ("source_start", "source_done", "finalize", "done"):
         assert expected in names, f"missing event: {expected}"
     start = next(d for e, d in events if e == "start")
-    assert start == {"pending": 1, "skipped": 0, "moved": 0, "unreadable": 0, "deleted": 0, "repos": 0}
+    assert start == {"pending": 1, "skipped": 0, "moved": 0, "unreadable": 0, "deleted": 0, "repos": 0, "jobs": 1}
     done = next(d for e, d in events if e == "source_done")
     assert done["source"] == "raw/notes.md"
     assert done["index"] == 1 and done["total"] == 1
@@ -73,7 +73,17 @@ def test_mixed_run_progress_vocabulary_and_order_are_pinned(
         "finalize",
         "done",
     ]
-    assert events[0][1] == {"pending": 1, "skipped": 0, "moved": 0, "unreadable": 0, "deleted": 1, "repos": 1}
+    assert events[0][1] == {
+        "pending": 1,
+        "skipped": 0,
+        "moved": 0,
+        "unreadable": 0,
+        "deleted": 1,
+        "repos": 1,
+        # `--jobs N`: the worker count the run was given, so the console can drop the spinner when
+        # several sources are in flight at once. 1 is the serial default.
+        "jobs": 1,
+    }
     # Deletions first, then files, then repos — and per-GROUP counters restarting at 1/1.
     assert [d["source"] for e, d in events if e == "source_start"] == ["raw/gone.md", "raw/note.md", "raw/svc"]
     for event, data in events:

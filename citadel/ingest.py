@@ -35,8 +35,10 @@ import shutil
 import stat
 import sys
 import tempfile
+import threading
 import time
 from collections.abc import Callable
+from concurrent import futures
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
@@ -107,6 +109,11 @@ class IngestReport:
     # rel-keys of tracked sources that VANISHED from disk (a full run only): their provenance is
     # reconciled out of the wiki by a cleanup agent session, then the manifest key is dropped.
     sources_deleted: list[str] = field(default_factory=list)
+    # `--jobs N` only: sources whose session raced a CONCURRENT source's promote over the same page
+    # and were therefore re-run serially afterwards (the re-run's own success/failure is reported
+    # like any other source's). Surfaced because it is the one place parallel ingest costs money a
+    # serial run would not have spent — a corpus that races often wants a lower --jobs.
+    raced: list[str] = field(default_factory=list)
     # Chunked sources that CONTINUED from an earlier run's checkpoint instead of restarting at
     # segment 1 ("raw/book.txt (segments 1-3 of 7 restored)") — see citadel/resume.py. Recorded
     # whether or not the resumed source then succeeded: the earlier work was reused either way.
@@ -160,6 +167,9 @@ class IngestReport:
         if self.resumed:
             lines.append("Resumed (continued from an earlier run's checkpoint):")
             lines.extend(f"  - {r}" for r in self.resumed)
+        if self.raced:
+            lines.append("Re-run serially (raced another source's promote over the same page):")
+            lines.extend(f"  - {r}" for r in self.raced)
         if self.unreadable:
             lines.append("Unreadable (no extractable text; not ingested):")
             for p in self.unreadable:
@@ -1100,6 +1110,20 @@ def _robust_copy_file(src: Path, dst: Path, attempts: int = _RMTREE_ATTEMPTS) ->
 
 # Monotonic per-process counter so each staging dir gets a UNIQUE name — see _make_staging.
 _STAGING_SEQ = 0
+# Guards the counter itself: with `--jobs N` several workers mint staging names at once, and two
+# sources sharing a staging directory is exactly the merge-into-leftover-content failure the unique
+# name exists to prevent.
+_STAGING_SEQ_LOCK = threading.Lock()
+
+# THE serialization point for every touch of the LIVE wiki: cloning it into a staging copy (plus
+# recording that clone's base state) and promoting a finished source back onto it. Sessions — the
+# minutes-long part — run fully in parallel OUTSIDE this lock; what it serializes is milliseconds of
+# file copying, so it costs throughput nothing and buys the two properties `--jobs N` needs:
+#   * a staging copy is a point-in-time image of the live wiki, never a half-promoted mixture;
+#   * two promotes can never interleave their copy-over and prune phases.
+# It is a plain lock, not the workspace run lock (:mod:`runlock`): that one keeps two PROCESSES off
+# one workspace, this one keeps two threads of ONE run off one live wiki.
+_LIVE_WIKI_LOCK = threading.Lock()
 
 
 def _staging_prefix(live: Path) -> str:
@@ -1138,8 +1162,10 @@ def _make_staging(live: Path) -> Path:
     global _STAGING_SEQ
     parent = live.parent
     prefix = _staging_prefix(live)
-    _STAGING_SEQ += 1
-    staging = parent / f"{prefix}{os.getpid()}.{_STAGING_SEQ}"
+    with _STAGING_SEQ_LOCK:
+        _STAGING_SEQ += 1
+        seq = _STAGING_SEQ
+    staging = parent / f"{prefix}{os.getpid()}.{seq}"
     _robust_rmtree(staging)  # paranoia: clear an identical-named leftover before a clean copy
     try:
         if live.is_dir():
@@ -1195,7 +1221,50 @@ def _content_files(root: Path) -> dict[str, Path]:
     return out
 
 
-def _promote(staging: Path, live: Path, allow_emptying: bool = False) -> None:
+def _content_hashes(root: Path) -> dict[str, str]:
+    """``{relposix: sha256}`` over :func:`_content_files` — a wiki's content state as bytes, not as
+    timestamps. Taken of the LIVE wiki at the moment a source is cloned into staging (`--jobs N`
+    only) so its promote can tell "this page is exactly what I started from" from "another source
+    changed it while I was working". A file that vanishes or cannot be read mid-walk is simply
+    omitted, which reads as "absent" — the conservative answer, since it makes the promote treat it
+    as changed rather than silently overwriting it."""
+    out: dict[str, str] = {}
+    for rel, path in _content_files(root).items():
+        with contextlib.suppress(OSError):
+            out[rel] = _sha256(path)
+    return out
+
+
+class _ConcurrentChange(Exception):
+    """The live wiki moved under a staged source: a page this promote would write or prune is no
+    longer what it was when the source was cloned, because a CONCURRENT source's promote (only
+    possible under ``--jobs N``) landed there first.
+
+    Never a data-loss path — it is raised BEFORE the promote writes anything, so the live wiki keeps
+    the other source's work untouched. The caller re-runs this source SERIALLY, at the end of its
+    group: the fresh session then sees the page the other source wrote and merges into it, which is
+    exactly what a serial run would have done in the first place."""
+
+
+def _assert_base_unchanged(live: Path, base: dict[str, str], rels: set[str]) -> None:
+    """Raise :class:`_ConcurrentChange` if any of ``rels`` no longer matches ``base`` in the live
+    wiki. Only the paths a promote is about to TOUCH are checked: a concurrent source that created
+    or rewrote some unrelated page is no conflict at all — that is the whole point of running
+    sources in parallel."""
+    for rel in sorted(rels):
+        target = live / rel
+        current: str | None = None
+        with contextlib.suppress(OSError):
+            if target.is_file():
+                current = _sha256(target)
+        if current != base.get(rel):
+            raise _ConcurrentChange(
+                f"another source changed {rel} while this one was being folded in "
+                "(re-running it serially so it merges into the current wiki)"
+            )
+
+
+def _promote(staging: Path, live: Path, allow_emptying: bool = False, base: dict[str, str] | None = None) -> None:
     """Copy a validated STAGING wiki's CONTENT onto the LIVE wiki WITHOUT ever emptying or
     half-writing it.
 
@@ -1213,7 +1282,22 @@ def _promote(staging: Path, live: Path, allow_emptying: bool = False) -> None:
     while the live wiki has some, the promote is REFUSED — raising so the caller fails the source and
     retries it next run, with the live wiki left exactly as it was rather than emptied.
     ``allow_emptying`` lifts that guard for a ``delete`` cleanup, where removing the last source's
-    only page legitimately leaves the wiki empty."""
+    only page legitimately leaves the wiki empty.
+
+    ``base`` — the live wiki's content hashes when this source was CLONED (:func:`_content_hashes`,
+    recorded only under ``--jobs N``) — makes the promote base-aware, which is what lets two sources
+    promote onto one wiki without eating each other's work:
+
+    * the PRUNE is derived from the base, not from the current live tree, so a page a concurrent
+      source created (absent from this source's base AND from its staging copy) is left alone
+      instead of being deleted as "the agent removed it";
+    * every path this promote would write or prune must still match the base, else
+      :class:`_ConcurrentChange` is raised BEFORE anything is written and the source is re-run
+      serially — the two sessions disagreed about one page, and a stale session must never win.
+
+    ``base=None`` (the default, and the whole of the serial path) keeps the original semantics
+    byte-for-byte: prune whatever live has and staging does not, no conflict check, no extra
+    hashing."""
     staging, live = Path(staging), Path(live)
     config.robust_mkdir(live)
 
@@ -1221,32 +1305,49 @@ def _promote(staging: Path, live: Path, allow_emptying: bool = False) -> None:
     live_content = _content_files(live)
 
     staging_pages = [r for r in staging_content if r.endswith(".md")]
-    live_pages = [r for r in live_content if r.endswith(".md")]
-    if not allow_emptying and not staging_pages and live_pages:
+    # What "the wiki had pages" means for the anti-emptying valve: with a base, the wiki AS THIS
+    # SOURCE FOUND IT — a page a concurrent source added in the meantime is not this session's to
+    # answer for, in either direction.
+    had_pages = [r for r in (live_content if base is None else base) if r.endswith(".md")]
+    if not allow_emptying and not staging_pages and had_pages:
         raise okf.OKFError(
             "refusing to promote: the session left the wiki with no content pages "
             "(treated as a failed source so the live wiki is not emptied)"
         )
 
+    changed = {rel: src for rel, src in staging_content.items() if not _files_equal(src, live / rel)}
+    pruned = (set(live_content) if base is None else set(base) & set(live_content)) - set(staging_content)
+    if base is not None:
+        # Before the first byte is written: refuse a promote built on a wiki that has moved on.
+        _assert_base_unchanged(live, base, set(changed) | pruned)
+
     # 1. Copy-over FIRST (atomic per page, only when the bytes differ).
-    for rel, src in staging_content.items():
+    for rel, src in changed.items():
         dst = live / rel
-        if not _files_equal(src, dst):
-            config.robust_mkdir(dst.parent)
-            _robust_copy_file(src, dst)
+        config.robust_mkdir(dst.parent)
+        _robust_copy_file(src, dst)
 
     # 2. Prune the content pages the agent deleted (reserved/generated files are left untouched).
-    for rel in set(live_content) - set(staging_content):
+    for rel in pruned:
         with contextlib.suppress(OSError):
             (live / rel).unlink()
 
     # 3. Best-effort sweep of any leftover *.citadeltmp from an earlier promote that was hard-killed
     #    between copyfile and os.replace. They are excluded from sync AND prune (reserved), so
     #    without this they could linger on the live wiki indefinitely.
+    #    Only the CONTENT temps this step can actually have created are swept: a HIDDEN temp
+    #    (`.citadel_ingested.json.<pid>.citadeltmp`) belongs to an in-flight atomic_write_text of the
+    #    manifest/failures catalog — under `--jobs N` the main thread is saving one of those while a
+    #    worker promotes, and deleting it out from under the writer turned a routine manifest save
+    #    into a FileNotFoundError. Those temps are the writer's own to clean up.
     with contextlib.suppress(OSError):
-        for tmp in live.rglob("*.citadeltmp"):
-            with contextlib.suppress(OSError):
-                tmp.unlink()
+        for dirpath, dirnames, filenames in os.walk(live):
+            dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+            for name in filenames:
+                if name.startswith(".") or not name.endswith(".citadeltmp"):
+                    continue
+                with contextlib.suppress(OSError):
+                    (Path(dirpath) / name).unlink()
 
     # 4. Drop directories left empty by the prune (bottom-up), but keep the live root itself.
     #    Hidden trees are exempt, exactly like the sync/prune above (_content_files skips them):
@@ -1288,6 +1389,11 @@ class _SourceOutcome:
     carried_usage: llm.SessionUsage | None = None
     # Human-readable note when this source continued from a checkpoint ("" when it did not).
     resumed_note: str = ""
+    # `--jobs N` only: the session was clean, but a CONCURRENT source's promote had changed a page
+    # this one would have written (:class:`_ConcurrentChange`), so nothing was promoted. Not a
+    # failure — the caller re-runs the source serially before the run ends, and only if THAT fails
+    # does it become one.
+    conflict: bool = False
 
 
 @dataclass
@@ -1494,7 +1600,12 @@ def _write_checkpoint(ctx: _Resume, completed: int, staging: Path, live: Path, u
 
 
 def _run_agent_sessions(
-    session_fns, rel_key: str, extra_check=None, allow_emptying: bool = False, resume_ctx: _Resume | None = None
+    session_fns,
+    rel_key: str,
+    extra_check=None,
+    allow_emptying: bool = False,
+    resume_ctx: _Resume | None = None,
+    concurrent: bool = False,
 ) -> _SourceOutcome:
     """Run one source's agent session(s) — a single pass, or every segment of a chunked source —
     against ONE staging copy, with full all-or-nothing safety. Shared by every job kind
@@ -1532,12 +1643,21 @@ def _run_agent_sessions(
     loop to capture. Staging is always discarded in ``finally``. The caller owns the manifest +
     report bookkeeping (different for a completed source vs. a removed one).
 
+    ``concurrent`` (set only by the ``--jobs N`` driver) says another source may be staging or
+    promoting at the same time. It changes nothing about a session — it makes the two moments that
+    touch the LIVE wiki safe under that: the clone is taken under :data:`_LIVE_WIKI_LOCK` together
+    with a hash snapshot of what was cloned, and the promote runs under the same lock against that
+    base (see :func:`_promote`). A promote refused because a concurrent source got to one of these
+    pages first comes back as ``conflict`` rather than an error — the driver re-runs the source
+    serially, and the live wiki is untouched either way.
+
     An EMPTY ``session_fns`` (a deleted source nothing cites) succeeds immediately with zero page
     changes — before a staging copy is even made."""
     started = time.monotonic()
     if not session_fns:
         return _SourceOutcome(True)
     live = config.wiki_dir()
+    base: dict[str, str] | None = None
     staging: Path | None = None
     created: list[str] = []
     updated: list[str] = []
@@ -1548,8 +1668,15 @@ def _run_agent_sessions(
     # What earlier runs already paid for the segments a checkpoint restores (see _SourceOutcome).
     carried: dict = {}
     resumed_note = ""
+
+    def clone() -> tuple[Path, dict[str, str] | None]:
+        """A staging copy of the live wiki plus (concurrent runs only) the base state it copied —
+        both taken under the one lock, so the pair always describes the same instant."""
+        with _LIVE_WIKI_LOCK:
+            return _make_staging(live), (_content_hashes(live) if concurrent else None)
+
     try:
-        staging = _make_staging(live)
+        staging, base = clone()
         # RESUME: replay an earlier run's completed segments into this fresh staging copy, so only
         # the remaining ones have to be paid for again. Every guard failure falls back to a full
         # start on a clean staging copy IN THIS RUN — never a failed source, never a wasted session.
@@ -1560,7 +1687,7 @@ def _run_agent_sessions(
                 resume.clear(rel_key)
                 resume_ctx.checkpoint = None
                 _robust_rmtree(staging)
-                staging = _make_staging(live)
+                staging, base = clone()
             else:
                 created, updated, deleted = list(seeded[0]), list(seeded[1]), list(seeded[2])
                 start_at = resume_ctx.checkpoint.completed
@@ -1627,8 +1754,11 @@ def _run_agent_sessions(
 
         # Every session was clean: commit the source onto the live wiki (config now points back
         # at live). This is the ONLY step that touches the live wiki, it happens ONCE per source,
-        # and it is non-destructive — so an interrupt here still cannot empty it.
-        _promote(staging, live, allow_emptying=allow_emptying)
+        # and it is non-destructive — so an interrupt here still cannot empty it. Under `--jobs N`
+        # it is also the only step that has to exclude its siblings (one promote at a time, checked
+        # against the state this source was cloned from).
+        with _LIVE_WIKI_LOCK:
+            _promote(staging, live, allow_emptying=allow_emptying, base=base)
         if resume_ctx is not None:
             resume.clear(rel_key)  # the work is live now: the checkpoint has nothing left to save
         return _SourceOutcome(
@@ -1641,6 +1771,20 @@ def _run_agent_sessions(
             usage=llm.combine_usage(usage_parts),
             carried_usage=_usage_from_fields(carried),
             resumed_note=resumed_note,
+        )
+    except _ConcurrentChange as exc:
+        # Not a failure: the work was fine, the wiki simply moved under it (only reachable with
+        # `--jobs N`). Nothing was promoted, so the live wiki still holds the OTHER source's
+        # version; the driver re-runs this source serially against it. The spend is reported like
+        # any other — that session was paid for.
+        return _SourceOutcome(
+            False,
+            errors=[f"{rel_key}: {exc}"],
+            seconds=time.monotonic() - started,
+            usage=llm.combine_usage(usage_parts),
+            carried_usage=_usage_from_fields(carried),
+            resumed_note=resumed_note,
+            conflict=True,
         )
     except Exception as exc:  # noqa: BLE001 - collect per-source, keep going; live wiki untouched
         # A raising session never returned its usage, but the backend may still have reported
@@ -1704,7 +1848,130 @@ class _SourceJob:
     sha_stat: tuple[str | None, os.stat_result | None] = (None, None)
 
 
-def _run_source_jobs(jobs: list[_SourceJob], emit, report: IngestReport, failures_dict, model) -> BaseException | None:
+@dataclass
+class _JobRun:
+    """One ATTEMPT at one source, as the driver sees it — the value a worker hands back.
+
+    Exactly one of the three outcome fields is set: ``prepare_exc`` (planning raised — a per-source
+    failure, never a run-aborting one), ``interrupt`` (a ``BaseException`` such as Ctrl+C escaped the
+    session runner, which already rolled the source back), or ``outcome`` (the session runner's
+    verdict, including a ``conflict`` that asks for a serial re-run). ``index``/``total`` are the
+    source's position in its group — carried on the run so a re-run keeps the number the progress
+    output already showed."""
+
+    job: _SourceJob
+    index: int
+    total: int
+    outcome: _SourceOutcome | None = None
+    prepare_exc: Exception | None = None
+    interrupt: BaseException | None = None
+
+
+def _attempt_source(job: _SourceJob, index: int, total: int, emit, concurrent: bool) -> _JobRun:
+    """Plan and run ONE source's session(s) — the whole minutes-long part — and return what
+    happened, touching NO shared bookkeeping. That is what makes it safe to call from a worker
+    thread under ``--jobs N``: the report, the manifest and the failures catalog are the main
+    thread's alone (:func:`_record_source_run`), so nothing here needs a lock beyond the live-wiki
+    one the session runner takes around its clone and promote."""
+    # Keep the run lock's mtime fresh at every source boundary, so a long multi-source run never
+    # crosses the staleness window another process could reclaim the lock through.
+    runlock.heartbeat()
+    emit("source_start", index=index, total=total, source=job.key)
+    run = _JobRun(job=job, index=index, total=total)
+    # Plan the session(s). A prepare failure (a temp write, a digest build) is a per-source error,
+    # NOT a run-aborting one.
+    try:
+        sessions, tmpdirs, resume_ctx = job.build_sessions()
+    except Exception as exc:  # noqa: BLE001 - per-source, keep going
+        run.prepare_exc = exc
+        return run
+    try:
+        run.outcome = _run_agent_sessions(
+            sessions,
+            job.key,
+            extra_check=job.extra_check,
+            allow_emptying=job.allow_emptying,
+            resume_ctx=resume_ctx,
+            concurrent=concurrent,
+        )
+    except BaseException as exc:  # noqa: BLE001 - Ctrl+C etc.: runner rolled back; captured
+        run.interrupt = exc
+    finally:
+        # Always remove every temp dir the plan produced (success, error, or interrupt).
+        for tmp in tmpdirs:
+            shutil.rmtree(tmp, ignore_errors=True)
+    return run
+
+
+def _record_source_run(run: _JobRun, emit, report: IngestReport, failures_dict, model) -> None:
+    """Book ONE finished attempt into the run's shared state — report lists, the persistent
+    failures catalog, the job's success hook (manifest stamp + save), and the closing progress
+    event. MAIN THREAD ONLY, so the manifest/failures/report writes stay single-threaded exactly as
+    they were before ``--jobs N``; the concurrency lives entirely in :func:`_attempt_source`.
+
+    Page changes reach the report only on success — a failed or interrupted source promotes
+    nothing, so the report claims nothing for it. A ``conflict`` outcome never reaches here: the
+    driver re-runs that source serially first."""
+    job, index, total = run.job, run.index, run.total
+    sha, st = job.sha_stat
+    if run.prepare_exc is not None:
+        detail = f"{job.key}: {job.prepare_error}: {run.prepare_exc}"
+        report.errors.append(detail)
+        failures.record(failures_dict, job.key, failures.ERROR, detail, model, sha=sha, st=st)
+        emit("source_error", index=index, total=total, source=job.key, error=str(run.prepare_exc), seconds=0.0)
+        return
+    outcome = run.outcome
+    if outcome is None:  # an interrupted attempt: the caller re-raises, nothing to book
+        return
+    # The run's usage total counts every outcome — a failed source's sessions were paid for
+    # too; only the per-source manifest stamp below is success-only. Deliberately NOT wired
+    # through the interrupt path: an interrupted run re-raises and its report is never rendered
+    # (_ingest_run's capture-finalize-reraise), so the in-flight source's partial usage has no
+    # surface to appear on — the completed sources' manifest stamps were already saved per-source
+    # with their usage intact.
+    report.usage = llm.combine_usage([report.usage, outcome.usage])
+    if outcome.resumed_note:
+        # Recorded before the ok/failed branch: the earlier segments were reused either way.
+        report.resumed.append(outcome.resumed_note)
+    if not outcome.ok:
+        # Nothing was promoted (the live wiki is untouched) and the source is NOT marked
+        # done, so it is retried next run. Persist the failure for triage.
+        report.errors.extend(outcome.errors)
+        detail = outcome.errors[0] if outcome.errors else f"{job.key}: agent session failed"
+        failures.record(failures_dict, job.key, failures.reason_for(detail), detail, model, sha=sha, st=st)
+        emit(
+            "source_error",
+            index=index,
+            total=total,
+            source=job.key,
+            error=outcome.errors[0] if outcome.errors else "",
+            seconds=outcome.seconds,
+        )
+        return
+    report.pages_created.extend(outcome.created)
+    report.pages_updated.extend(outcome.updated)
+    report.pages_written.extend(outcome.created + outcome.updated)
+    report.pages_deleted.extend(outcome.deleted)
+    # The manifest stamp covers every session whose work this promote landed — this run's plus
+    # whatever an earlier run already paid for the segments a checkpoint restored — while
+    # ``report.usage`` above stays strictly this run's spend, so nothing is double-counted
+    # across runs and `citadel status` never under-reports a resumed source.
+    job.on_success(llm.combine_usage([outcome.usage, outcome.carried_usage]))
+    emit(
+        "source_done",
+        index=index,
+        total=total,
+        source=job.key,
+        created=len(outcome.created),
+        updated=len(outcome.updated),
+        deleted=len(outcome.deleted),
+        seconds=outcome.seconds,
+    )
+
+
+def _run_source_jobs(
+    jobs: list[_SourceJob], emit, report: IngestReport, failures_dict, model, workers: int = 1
+) -> BaseException | None:
     """Drive one GROUP of :class:`_SourceJob`s (deletion cleanups, files, or repos) through the
     ONE shared per-source loop: emit ``source_start``, plan the session(s), run them all-or-nothing
     against a single staging copy, then either record the failure (report + persistent failures
@@ -1715,81 +1982,115 @@ def _run_source_jobs(jobs: list[_SourceJob], emit, report: IngestReport, failure
     former loops emitted. Page changes reach the report only on success — a failed or interrupted
     source promotes nothing, so the report claims nothing for it.
 
+    ``workers`` > 1 (``citadel ingest --jobs N``) runs that many sources CONCURRENTLY — see
+    :func:`_run_source_jobs_parallel`. ``workers`` of 1, and any group of a single source, take the
+    serial path, which is the original loop line for line.
+
     A ``BaseException`` (Ctrl+C) is RETURNED, not raised — the caller captures it, skips the
     remaining groups, finalizes the completed sources, and re-raises (the frozen
     capture-finalize-reraise pattern). The in-flight source was already rolled back by the
     session runner's ``finally``."""
+    if workers <= 1 or len(jobs) <= 1:
+        return _run_serially(list(enumerate(jobs, 1)), len(jobs), emit, report, failures_dict, model)
+    return _run_source_jobs_parallel(jobs, emit, report, failures_dict, model, workers)
+
+
+def _run_serially(
+    numbered: list[tuple[int, _SourceJob]], total: int, emit, report: IngestReport, failures_dict, model
+) -> BaseException | None:
+    """Run ``(index, job)`` pairs one after another — the whole serial path, and the tail of the
+    parallel one (a source whose promote raced another is re-run here, keeping its original
+    index/total so the progress numbering stays honest)."""
+    for index, job in numbered:
+        run = _attempt_source(job, index, total, emit, concurrent=False)
+        if run.interrupt is not None:
+            return run.interrupt
+        _record_source_run(run, emit, report, failures_dict, model)
+    return None
+
+
+def _run_source_jobs_parallel(
+    jobs: list[_SourceJob], emit, report: IngestReport, failures_dict, model, workers: int
+) -> BaseException | None:
+    """Run one group's sources through a bounded thread pool, then re-run serially whichever of
+    them raced another source's promote.
+
+    What each worker does is exactly what the serial loop does — plan, stage, run the session(s),
+    validate, promote — with two differences, both inside :func:`_run_agent_sessions`: the clone and
+    the promote take :data:`_LIVE_WIKI_LOCK`, and the promote is checked against the state its clone
+    was taken from. Everything a run SHARES (report lists, the manifest, the failures catalog) is
+    written here on the main thread as results arrive, so those writes stay serial and the manifest
+    is still saved per completed source.
+
+    Sources are folded in in COMPLETION order, which is not submission order — the wiki is a set of
+    pages, not a log, so nothing depends on it; the report's lists simply read in the order sources
+    finished.
+
+    Interrupts: a Ctrl+C reaches the main thread (and, being in the same process group, the agent
+    subprocesses too). The first ``BaseException`` from either side wins — queued sources are
+    cancelled and their workers told to stop before starting anything new, in-flight ones roll
+    themselves back — and it is returned for the caller's capture-finalize-reraise. Sources that had
+    already finished cleanly are still recorded, so an interrupt never throws away work the run
+    already paid for and promoted."""
     total = len(jobs)
-    for index, job in enumerate(jobs, 1):
-        # Keep the run lock's mtime fresh at every source boundary, so a long multi-source run
-        # never crosses the staleness window another process could reclaim the lock through.
-        runlock.heartbeat()
-        emit("source_start", index=index, total=total, source=job.key)
-        sha, st = job.sha_stat
-        # Plan the session(s). A prepare failure (a temp write, a digest build) is a per-source
-        # error, NOT a run-aborting one.
+    abort = threading.Event()
+    interrupt: BaseException | None = None
+    conflicted: list[tuple[int, _SourceJob]] = []
+    recorded: set[int] = set()
+
+    def attempt(index: int, job: _SourceJob) -> _JobRun | None:
+        # A cancelled-too-late worker must not start a session: once the run is aborting, the only
+        # correct thing a queued source can do is nothing at all.
+        if abort.is_set():
+            return None
+        return _attempt_source(job, index, total, emit, concurrent=True)
+
+    with futures.ThreadPoolExecutor(max_workers=min(workers, total), thread_name_prefix="citadel-ingest") as pool:
+        submitted = [pool.submit(attempt, index, job) for index, job in enumerate(jobs, 1)]
         try:
-            sessions, tmpdirs, resume_ctx = job.build_sessions()
-        except Exception as exc:  # noqa: BLE001 - per-source, keep going
-            detail = f"{job.key}: {job.prepare_error}: {exc}"
-            report.errors.append(detail)
-            failures.record(failures_dict, job.key, failures.ERROR, detail, model, sha=sha, st=st)
-            emit("source_error", index=index, total=total, source=job.key, error=str(exc), seconds=0.0)
-            continue
-        try:
-            outcome = _run_agent_sessions(
-                sessions, job.key, extra_check=job.extra_check, allow_emptying=job.allow_emptying, resume_ctx=resume_ctx
-            )
-        except BaseException as exc:  # noqa: BLE001 - Ctrl+C etc.: runner rolled back; captured
-            return exc
-        finally:
-            # Always remove every temp dir the plan produced (success, error, or interrupt).
-            for tmp in tmpdirs:
-                shutil.rmtree(tmp, ignore_errors=True)
-        # The run's usage total counts every outcome — a failed source's sessions were paid for
-        # too; only the per-source manifest stamp below is success-only. Deliberately NOT wired
-        # through the BaseException path (the return above): an interrupted run re-raises and
-        # its report is never rendered (_ingest_run's capture-finalize-reraise), so the in-flight
-        # source's partial usage has no surface to appear on — the completed sources' manifest
-        # stamps were already saved per-source with their usage intact.
-        report.usage = llm.combine_usage([report.usage, outcome.usage])
-        if outcome.resumed_note:
-            # Recorded before the ok/failed branch: the earlier segments were reused either way.
-            report.resumed.append(outcome.resumed_note)
-        if not outcome.ok:
-            # Nothing was promoted (the live wiki is untouched) and the source is NOT marked
-            # done, so it is retried next run. Persist the failure for triage.
-            report.errors.extend(outcome.errors)
-            detail = outcome.errors[0] if outcome.errors else f"{job.key}: agent session failed"
-            failures.record(failures_dict, job.key, failures.reason_for(detail), detail, model, sha=sha, st=st)
-            emit(
-                "source_error",
-                index=index,
-                total=total,
-                source=job.key,
-                error=outcome.errors[0] if outcome.errors else "",
-                seconds=outcome.seconds,
-            )
-            continue
-        report.pages_created.extend(outcome.created)
-        report.pages_updated.extend(outcome.updated)
-        report.pages_written.extend(outcome.created + outcome.updated)
-        report.pages_deleted.extend(outcome.deleted)
-        # The manifest stamp covers every session whose work this promote landed — this run's plus
-        # whatever an earlier run already paid for the segments a checkpoint restored — while
-        # ``report.usage`` above stays strictly this run's spend, so nothing is double-counted
-        # across runs and `citadel status` never under-reports a resumed source.
-        job.on_success(llm.combine_usage([outcome.usage, outcome.carried_usage]))
-        emit(
-            "source_done",
-            index=index,
-            total=total,
-            source=job.key,
-            created=len(outcome.created),
-            updated=len(outcome.updated),
-            deleted=len(outcome.deleted),
-            seconds=outcome.seconds,
-        )
+            for future in futures.as_completed(submitted):
+                run = future.result()
+                if run is None:
+                    continue
+                if run.interrupt is not None:
+                    interrupt = interrupt if interrupt is not None else run.interrupt
+                    abort.set()
+                    for pending in submitted:
+                        pending.cancel()
+                    continue
+                if run.outcome is not None and run.outcome.conflict:
+                    # Nothing was promoted; the session's spend still counts, and the source goes
+                    # into the serial tail below (where it can no longer race anybody).
+                    report.usage = llm.combine_usage([report.usage, run.outcome.usage])
+                    report.raced.append(run.job.key)
+                    conflicted.append((run.index, run.job))
+                    emit("source_retry", index=run.index, total=total, source=run.job.key, seconds=run.outcome.seconds)
+                    continue
+                _record_source_run(run, emit, report, failures_dict, model)
+                recorded.add(run.index)
+        except BaseException as exc:  # noqa: BLE001 - Ctrl+C while waiting: stop dispatching
+            interrupt = interrupt if interrupt is not None else exc
+            abort.set()
+            for pending in submitted:
+                pending.cancel()
+        # Leaving the `with` joins whatever is still running (their sessions roll back on the same
+        # interrupt); their results are drained below rather than dropped.
+    if interrupt is not None:
+        for future in submitted:
+            if not future.done() or future.cancelled():
+                continue
+            with contextlib.suppress(Exception):
+                run = future.result()
+                # Only completed, PROMOTED work is booked during an abort: it is already on the live
+                # wiki, so leaving it out of the manifest would just make the next run pay again.
+                if run is not None and run.outcome is not None and run.outcome.ok and run.index not in recorded:
+                    _record_source_run(run, emit, report, failures_dict, model)
+                    recorded.add(run.index)
+        return interrupt
+    if conflicted:
+        # The serial tail: no other source can be promoting now, so these re-runs see the wiki the
+        # winner left behind and merge into it — the result a serial run would have produced.
+        return _run_serially(sorted(conflicted, key=lambda pair: pair[0]), total, emit, report, failures_dict, model)
     return None
 
 
@@ -1991,7 +2292,11 @@ def _pending_session(
 
 @pagecache.bypass
 def ingest(
-    paths: list[str] | None = None, progress=None, full_rescan: bool = False, force: bool = False
+    paths: list[str] | None = None,
+    progress=None,
+    full_rescan: bool = False,
+    force: bool = False,
+    jobs: int | None = None,
 ) -> IngestReport:
     """Run one ingest. Exactly one source = one all-or-nothing agent job (a chunked source runs
     several ``llm.run_ingest_session`` passes inside that one job).
@@ -2050,10 +2355,23 @@ def ingest(
     :func:`_run_source_jobs`): deletion cleanups, files, and repos differ only in how their
     sessions are planned and in their post-success bookkeeping.
 
+    ``jobs`` (``citadel ingest --jobs N``; None takes :data:`config.JOBS`, default 1) is how many
+    sources may be folded in CONCURRENTLY. 1 is the strictly serial behavior citadel has always
+    had. Above 1, each source still gets its own staging copy and its own all-or-nothing promote —
+    what changes is that N of them are in flight at once, promoting one at a time against the wiki
+    state they were cloned from; a source whose promote raced another one over the same page is
+    re-run serially before the run ends (``report.raced``). Every guarantee is unmoved: one promote
+    per source, nothing partial on the live wiki, the manifest still saved per completed source. The
+    real cost is cross-linking — concurrent sessions cannot see each other's new pages — which is
+    why the default stays 1 and the knob is documented as a throughput trade, not a free win.
+
     ``progress`` is an optional ``progress(event, data)`` callback (run start, before/after
     each source, before finalization); None for non-interactive callers. A failing callback
     never breaks ingest.
     """
+    workers = config.JOBS if jobs is None else jobs
+    if workers < 1:
+        raise ValueError(f"--jobs must be at least 1 (got {workers}); 1 means the serial default.")
     if force and not paths:
         # The API-layer twin of the CLI's exit-2 refusal (which pre-empts this with the same
         # message), so a programmatic caller cannot force the whole corpus by accident either.
@@ -2071,10 +2389,10 @@ def ingest(
         # Same place, same reason: under the exclusive lock, leftovers on disk belong to dead runs.
         # Age-based only — a checkpoint's own guards decide whether it is USABLE (see resume.sweep).
         resume.sweep()
-        return _ingest_run(paths, progress, full_rescan=full_rescan, force=force)
+        return _ingest_run(paths, progress, full_rescan=full_rescan, force=force, jobs=workers)
 
 
-def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: bool) -> IngestReport:
+def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: bool, jobs: int = 1) -> IngestReport:
     """The body of :func:`ingest`, running under the exclusive workspace run lock."""
 
     def emit(event: str, **data) -> None:
@@ -2339,6 +2657,7 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
         unreadable=len(report.unreadable),
         deleted=len(deleted_sources),
         repos=len(repo_pending),
+        jobs=jobs,
     )
 
     # --- The per-source jobs (the SourceJob loop): DELETION cleanups first, then files, then repos,
@@ -2544,7 +2863,7 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
     )
     for group in groups:
         if pending_interrupt is None:
-            pending_interrupt = _run_source_jobs(group, emit, report, failures_dict, model)
+            pending_interrupt = _run_source_jobs(group, emit, report, failures_dict, model, workers=jobs)
 
     if workspace_shifted and full_rescan:
         # The guard's advertised remedy must not loop: --full-rescan keeps the sweep refused

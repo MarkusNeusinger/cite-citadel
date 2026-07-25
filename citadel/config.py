@@ -40,6 +40,7 @@ import hashlib
 import os
 import shutil
 import stat
+import threading
 import time
 from pathlib import Path, PurePosixPath
 
@@ -446,7 +447,10 @@ def atomic_write_text(path: Path | str, text: str, attempts: int = 4) -> None:
     staging copy already skips, and the replace retries briefly to ride out the transient sharing
     violations SMB shares and AV scanners cause on Windows (the ``_robust_*`` pattern)."""
     p = Path(path)
-    tmp = p.with_name(f"{p.name}.{os.getpid()}.citadeltmp")
+    # pid AND thread id: `citadel ingest --jobs N` runs several sources in one process, so a
+    # pid-only temp name is no longer unique — two writers would share one temp file and the loser's
+    # os.replace would fail on a file the winner already moved.
+    tmp = p.with_name(f"{p.name}.{os.getpid()}.{threading.get_ident()}.citadeltmp")
     tmp.write_text(text, encoding="utf-8")
     try:
         for attempt in range(attempts):
@@ -830,6 +834,34 @@ MAX_SOURCE_CHARS: int = _int_env("CITADEL_MAX_SOURCE_CHARS", 300000)
 # only stops paying twice; 0 turns it off (nothing is written or read) if the plaintext page
 # sidecar is unwanted. Only chunked sources ever create one.
 RESUME: bool = _bool_env("CITADEL_RESUME", True)
+
+
+def _jobs_setting() -> int:
+    """Resolve ``CITADEL_JOBS`` to a worker count >= 1. A value below 1 is a misconfiguration, not
+    an "unlimited" request: it clamps to 1 (strictly serial — the default) and records a
+    :data:`CONFIG_WARNINGS` entry, so ``citadel doctor`` names it instead of silently ingesting
+    serially while the user believes otherwise."""
+    value = _int_env("CITADEL_JOBS", 1)
+    if value < 1:
+        CONFIG_WARNINGS.append(f"CITADEL_JOBS={value} is not a worker count (>= 1) - using 1 (serial)")
+        return 1
+    return value
+
+
+# How many raw sources ingest may fold in CONCURRENTLY (`citadel ingest --jobs N` overrides it per
+# run). 1 — the default — is the strictly serial behavior citadel has always had. Higher values run
+# that many agent sessions at once, each against its OWN staging copy of the wiki (the isolation
+# primitive was already there); promotion onto the live wiki stays serialized and base-aware, and a
+# source whose session raced another one's promote is re-run serially before the run ends, so the
+# wiki is never the sum of two sessions that could not see each other.
+#
+# The trade-off is cross-linking, not safety: concurrent sessions each read the wiki as it was when
+# they started, so a page one of them creates is invisible to the others (a later `citadel curate`
+# pass is the designed cleanup for that, and the serial re-run resolves the collisions). Keep it at
+# 1 for the richest cross-linking; raise it for a large backlog of unrelated sources, where the run
+# is dominated by per-session latency. Sensible ceiling: your agent CLI's own rate limits, which is
+# what you will hit first — citadel imposes no maximum.
+JOBS: int = _jobs_setting()
 
 
 def _page_cache_mode() -> str:
