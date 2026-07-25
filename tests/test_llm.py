@@ -777,6 +777,54 @@ def test_run_ingest_session_appends_hermetic_flag_probe_gated(monkeypatch):
     assert "--bare" not in seen["argv"]
 
 
+def test_hermetic_auth_hint_only_when_the_flag_was_passed_and_the_failure_is_auth_shaped():
+    """The diagnosis shortcut for the one failure hermetic mode can CAUSE: `--bare` skips the user's
+    own agent config, which on some machines (a managed container, an `apiKeyHelper` setup) is where
+    the CLI's credentials live — so every session fails on auth while the CLI works interactively,
+    and the backend blames the network for it. The hint names CITADEL_HERMETIC=0, and appears only
+    when the flag really was in the argv AND the message is auth-shaped (never on quota, timeouts,
+    or a non-hermetic run — a run whose argv lacks the flag must read exactly as before)."""
+    auth = "claude CLI error: Authentication error - This may be a temporary network issue"
+    hinted = llm._hermetic_auth_hint("claude", ["claude", "-p", "--bare"], auth)
+    assert "CITADEL_HERMETIC=0" in hinted and "--bare" in hinted
+    # Same failure, but hermetic mode was off (or the binary did not advertise the flag): no hint.
+    assert llm._hermetic_auth_hint("claude", ["claude", "-p"], auth) == ""
+    # Hermetic run, but the failure has nothing to do with credentials: no hint.
+    assert llm._hermetic_auth_hint("claude", ["claude", "-p", "--bare"], "claude CLI error (429): quota") == ""
+    # A CLI with no isolation flag registered can never trip it.
+    assert llm._hermetic_auth_hint("copilot", ["copilot", "-p", "--bare"], auth) == ""
+
+
+def test_run_session_appends_the_hermetic_auth_hint_to_the_raised_error(monkeypatch):
+    """The wiring, on the envelope path AND the exit-code path: the hint reaches the message the run
+    report and the failures catalog show, so the operator sees it without reading a transcript."""
+
+    def fake_run(*a, **k):
+        return _FakeProc(
+            returncode=0,
+            stdout='{"type":"result","is_error":true,"result":"Authentication error - This may be a temporary network issue"}',
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(RuntimeError) as exc:
+        llm._run_session("claude", ["claude", "-p", "--bare"], "PROMPT")
+    assert "CITADEL_HERMETIC=0" in str(exc.value)
+
+    def fake_run_exit(*a, **k):
+        return _FakeProc(returncode=1, stdout="", stderr="Invalid API key")
+
+    monkeypatch.setattr(subprocess, "run", fake_run_exit)
+    with pytest.raises(RuntimeError) as exc:
+        llm._run_session("claude", ["claude", "-p", "--bare"], "PROMPT")
+    assert "CITADEL_HERMETIC=0" in str(exc.value)
+
+    # And the same auth failure WITHOUT the flag keeps the bare backend message.
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(RuntimeError) as exc:
+        llm._run_session("claude", ["claude", "-p"], "PROMPT")
+    assert "CITADEL_HERMETIC" not in str(exc.value)
+
+
 def test_run_session_claude_is_error_raises(monkeypatch):
     """A claude result envelope with is_error=true raises (e.g. quota/auth)."""
 

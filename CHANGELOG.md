@@ -294,6 +294,22 @@ All notable changes to this project are documented here. The format is based on
   "how do you brew coffee" now ranks the brewing page first instead of losing it entirely.
   Signature, MCP surface, and the `pages=` tag-filter seam are unchanged.
 
+### Fixed
+
+- **An auth-shaped session failure on a hermetic run now names the knob that caused it.** Hermetic
+  sessions (`CITADEL_HERMETIC=1`, the default) append claude's `--bare`, which deliberately skips
+  the user's personal agent configuration — and on machines where that configuration is also where
+  the CLI keeps its **credentials** (a managed container, a devcontainer, an `apiKeyHelper` in
+  `~/.claude/settings.json`), every session then failed on authentication while the same CLI worked
+  perfectly when run by hand. The backend reports that as *"Authentication error · This may be a
+  temporary network issue, please try again"*, which sends you hunting a network problem that does
+  not exist; nothing in the error, the report, or the failures catalog mentioned hermetic mode.
+  Auth-shaped failures raised from a run that really passed an isolation flag (read off the argv, so
+  the probe-gated case where nothing was passed is untouched) now carry a one-line hint naming
+  `CITADEL_HERMETIC=0`, and `docs/troubleshooting.md` gained the symptom with the fix. Found while
+  live-testing parallel ingest on this release: all four sources failed identically, and the
+  message pointed at the wrong layer.
+
 ## [0.4.0] - 2026-07-16
 
 ### Changed

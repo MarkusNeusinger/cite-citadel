@@ -92,7 +92,7 @@ $env:CITADEL_LLM_CLI = "copilot"
 | Variable | Default | What it does |
 |----------|---------|--------------|
 | `CITADEL_LLM_TIMEOUT` | `1200` | Per-call CLI timeout in seconds. Raise it for opus or large raw files. |
-| `CITADEL_HERMETIC` | `1` | Hermetic agent sessions: append the backend's session-isolation flag (claude `--bare` — skips user hooks/`CLAUDE.md`/MCP discovery) so your personal agent config never leaks into ingest. Only passed when the installed binary advertises the flag in `--help` (older CLIs run unchanged); `0` deliberately runs sessions with your personal config. copilot/gemini have no such flag today. |
+| `CITADEL_HERMETIC` | `1` | Hermetic agent sessions: append the backend's session-isolation flag (claude `--bare` — skips user hooks/`CLAUDE.md`/MCP discovery) so your personal agent config never leaks into ingest. Only passed when the installed binary advertises the flag in `--help` (older CLIs run unchanged); `0` deliberately runs sessions with your personal config. copilot/gemini have no such flag today. **Set it to `0` if every session fails on authentication while the CLI works interactively** — on some setups (managed containers, an `apiKeyHelper`) the skipped personal config is where the credentials live; see [troubleshooting](troubleshooting.md#every-session-fails-with-an-authentication-error-but-the-cli-works-when-i-run-it-myself). |
 | `CITADEL_LLM_LOG_DIR` | (off) | Write one transcript per source (prompt + full CLI stdout/stderr + exit code + duration). Relative paths resolve under the workspace root. **Local-only — keep out of VCS** (transcripts can contain source content). CLI flag: `--log-dir`. |
 | `CITADEL_LLM_VERBOSE` | `0` | `1`/`true` streams each session's output live. CLI flag: `-v`. |
 
