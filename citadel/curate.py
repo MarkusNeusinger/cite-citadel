@@ -563,7 +563,7 @@ def _page_text(rel_path: str) -> str | None:
     """The on-disk text of one wiki page, or None when it cannot be read — the raw bytes the
     ``--diff`` snapshots compare (no okf parse)."""
     try:
-        return okf.safe_join(config.WIKI_DIR, rel_path).read_text(encoding="utf-8")
+        return okf.safe_join(config.wiki_dir(), rel_path).read_text(encoding="utf-8")
     except (OSError, okf.OKFError):
         return None
 
@@ -580,12 +580,12 @@ def _texts_on_disk() -> dict[str, str]:
     ``store``'s 'what is a page' rule (index/log/sources-catalog/dotfiles skipped) so the diff
     ignores generated files."""
     out: dict[str, str] = {}
-    for dirpath, dirnames, filenames in os.walk(config.WIKI_DIR):
+    for dirpath, dirnames, filenames in os.walk(config.wiki_dir()):
         dirnames[:] = [d for d in dirnames if not d.startswith(".")]
         for name in filenames:
             if not name.endswith(".md") or store.is_skipped_name(name):
                 continue
-            rel_path = os.path.relpath(os.path.join(dirpath, name), config.WIKI_DIR).replace(os.sep, "/")
+            rel_path = os.path.relpath(os.path.join(dirpath, name), config.wiki_dir()).replace(os.sep, "/")
             text = _page_text(rel_path)
             if text is not None:
                 out[rel_path] = text
@@ -625,7 +625,7 @@ def _select_pages(pages: list[Page], paths: list[str] | None) -> set[str] | None
     whole wiki. A path may be a rel_path (``concepts/x.md``) or an absolute/OS path under the wiki."""
     if not paths:
         return None
-    wiki_root = config.WIKI_DIR.resolve()
+    wiki_root = config.wiki_dir().resolve()
     known = {p.rel_path for p in pages}
     wanted: set[str] = set()
     for arg in paths:
@@ -696,7 +696,7 @@ def curate(
     # failures save are all destructive under concurrency (see runlock's module docstring). The
     # dry-run path above stays lock-free — it is read-only by contract.
     with runlock.hold("curate"):
-        ingest._sweep_stale_staging(config.WIKI_DIR)
+        ingest._sweep_stale_staging(config.wiki_dir())
         pages_by_path = {p.rel_path: p for p in pages}
         # One backlink-graph pass for the whole run; every cluster's findings slice it.
         inbound = store.inbound_map(pages)

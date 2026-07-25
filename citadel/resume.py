@@ -109,9 +109,9 @@ def enabled() -> bool:
 def cache_dir() -> Path:
     """The checkpoint store: a dotdir sibling of the wiki dir. Read at call time — and deliberately
     derived from the wiki's PARENT, so it resolves to the same directory while ingest has
-    ``config.WIKI_DIR`` redirected at a per-source staging copy (staging is a SIBLING of the live
+    ``config.wiki_dir()`` redirected at a per-source staging copy (staging is a SIBLING of the live
     wiki — the same reason ``transcribe``/``pdftext``/``runlock`` resolve their siblings this way)."""
-    return Path(config.WIKI_DIR).parent / CACHE_DIR_NAME
+    return Path(config.wiki_dir()).parent / CACHE_DIR_NAME
 
 
 @dataclass(frozen=True)
@@ -182,14 +182,30 @@ def slot_for(key: str) -> Path:
     return cache_dir() / hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
 
 
-def save(plan: Plan, completed: int, staging: Path, live: Path, changed, removed, usage: dict) -> bool:
+def save(
+    plan: Plan,
+    completed: int,
+    staging: Path,
+    live: Path,
+    changed,
+    removed,
+    usage: dict,
+    bases: dict[str, str] | None = None,
+) -> bool:
     """Record ``completed`` segments' work as this source's checkpoint; True when one is on disk
     afterwards.
 
-    ``changed`` are the rel_paths whose staged bytes differ from live (new or rewritten) and
-    ``removed`` the ones the segments took away — i.e. exactly the promote that WOULD happen right
-    now. The blobs are copied out of ``staging`` and the live wiki's current hash for every touched
-    path is recorded as the base state a later replay must still find.
+    ``changed`` are the rel_paths whose staged bytes differ from the state this source started from
+    (new or rewritten) and ``removed`` the ones the segments took away — i.e. exactly the promote
+    that WOULD happen. The blobs are copied out of ``staging``, and for every touched path the state
+    the delta was measured against is recorded as the base a later replay must still find.
+
+    ``bases`` IS that state, when the caller knows it: the clone snapshot ``citadel ingest --jobs N``
+    takes of the live wiki per source. Without it the base is read from ``live`` right now, which is
+    the same thing on a serial run (nothing else promotes) and WRONG on a concurrent one — the
+    delta would then be guarded against a wiki that had already moved on since it was computed, so
+    the guard would confirm "nobody touched these since I saved" while the delta itself embodies a
+    stale view. A page a concurrent source has changed must fail the guard, not pass it.
 
     Best-effort by contract: any problem returns False and leaves the source to restart at segment
     1. A checkpoint can never fail a run — the money is already spent either way.
@@ -229,11 +245,16 @@ def save(plan: Plan, completed: int, staging: Path, live: Path, changed, removed
             if sha is None:  # unreadable right after writing it: refuse rather than record a lie
                 return _abort(staged_new)
             blobs[rel] = sha
-        bases = _live_state(Path(live), list(blobs) + list(removed))
+        touched = list(blobs) + list(removed)
+        # A caller-supplied base is a snapshot mapping (present -> sha, absent -> no key), so a
+        # missing key means "absent", exactly what _live_state records as None.
+        base_state: dict[str, str | None] = (
+            _live_state(Path(live), touched) if bases is None else {rel: bases.get(rel) for rel in touched}
+        )
         # A recorded deletion whose base is unknown could not be guarded on replay — and an
         # unguarded deletion is the one operation that can destroy another source's work. The same
         # goes for any path whose live state could not be read at all: no base, no checkpoint.
-        if any(bases.get(rel) is None for rel in removed) or UNREADABLE in bases.values():
+        if any(base_state.get(rel) is None for rel in removed) or UNREADABLE in base_state.values():
             return _abort(staged_new)
         record = {
             "format": FORMAT,
@@ -247,7 +268,7 @@ def save(plan: Plan, completed: int, staging: Path, live: Path, changed, removed
             "workspace": workspace_stamp(),
             "pages": blobs,
             "removed": list(removed),
-            "bases": bases,
+            "bases": base_state,
             "usage": _clean_usage(usage),
         }
         config.atomic_write_text(staged_new / RECORD_NAME, json.dumps(record, indent=2, sort_keys=True) + "\n")

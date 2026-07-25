@@ -137,13 +137,20 @@ def plan(min_age_days: int = 0) -> list[RefreshCandidate]:
     return _age_floor(out, min_age_days)
 
 
-def refresh(limit: int = 1, min_age_days: int = 0, dry_run: bool = False, progress=None) -> RefreshReport:
+def refresh(
+    limit: int = 1, min_age_days: int = 0, dry_run: bool = False, progress=None, jobs: int | None = None
+) -> RefreshReport:
     """Run one refresh: take the ``limit`` least-recently-checked sources off the queue and
     re-verify each through a forced ingest run (``kind="reconcile"`` per source, all-or-nothing
     staging, manifest re-stamped on success). ``limit`` must be >= 1 — the budget is always
     explicit, an unbounded refresh (one agent session per source, corpus-wide) can never happen
     by accident, mirroring ``--force``'s refusal without paths. ``dry_run`` computes and returns
-    the plan with zero sessions. ``progress`` is threaded through to ingest untouched."""
+    the plan with zero sessions. ``progress`` is threaded through to ingest untouched.
+
+    ``jobs`` (None = :data:`config.JOBS`, default 1 = serial) is handed to ingest as-is: a refresh
+    slice is ordered by LAST-CHECKED time, not by topic, so its sources are typically unrelated —
+    the case ``--jobs`` exists for. Everything the knob costs and guarantees is ingest's
+    (:func:`citadel.ingest.ingest`); refresh only chooses which sources to hand it."""
     if limit < 1:
         raise ValueError("refresh limit must be >= 1 (each refreshed source runs one agent session).")
     eligible = plan()
@@ -157,5 +164,5 @@ def refresh(limit: int = 1, min_age_days: int = 0, dry_run: bool = False, progre
     # Hand ingest ABSOLUTE paths: manifest keys are workspace-relative, but ingest resolves
     # requested path strings against the CWD — which need not be the workspace root.
     paths = [str(config.source_path_for_key(c.key)) for c in selected]
-    report.ingest_report = ingest.ingest(paths, progress=progress, force=True)
+    report.ingest_report = ingest.ingest(paths, progress=progress, force=True, jobs=jobs)
     return report

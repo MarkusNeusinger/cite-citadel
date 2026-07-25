@@ -64,8 +64,22 @@ class ConsoleProgress:
         pass
 
     def on_start(
-        self, pending: int, skipped: int, moved: int = 0, unreadable: int = 0, deleted: int = 0, repos: int = 0
+        self,
+        pending: int,
+        skipped: int,
+        moved: int = 0,
+        unreadable: int = 0,
+        deleted: int = 0,
+        repos: int = 0,
+        jobs: int = 1,
     ) -> None:
+        # `--jobs N`: several sources are in flight at once, so there is no single "current source"
+        # for the spinner to name — it would be restarted and relabelled by whichever worker last
+        # began, and its rewritten line would swallow the others' completion lines. Fall back to the
+        # same START-line-per-source mode the non-TTY/--verbose paths already use, which reads
+        # correctly when the lines interleave.
+        if jobs > 1:
+            self.spinner = False
         bits = []
         if skipped:
             bits.append(f"{skipped} already up to date")
@@ -119,6 +133,17 @@ class ConsoleProgress:
             bits.append(f"{deleted} deleted")
         summary = ", ".join(bits) if bits else "no changes"
         self._finishln(f"[{index}/{total}] OK  {config.display_key(source)}  -  {summary}  ({seconds:.1f}s)")
+
+    def on_source_retry(self, index: int, total: int, source: str, seconds: float) -> None:
+        """``--jobs N`` only: this source's session was clean but a CONCURRENT source promoted a
+        page it also wrote, so nothing was promoted and it is re-run serially at the end of its
+        group (where it merges into what the other source left). Neither an OK nor an ERR — the
+        source's real verdict is the re-run's."""
+        self._stop_spinner()
+        self._finishln(
+            f"[{index}/{total}] RE-RUN {config.display_key(source)}  -  "
+            f"raced another source; re-running serially  ({seconds:.1f}s)"
+        )
 
     def on_source_error(self, index: int, total: int, source: str, error: str, seconds: float) -> None:
         self._stop_spinner()

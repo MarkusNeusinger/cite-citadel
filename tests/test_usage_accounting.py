@@ -608,7 +608,7 @@ def test_delete_cleanup_usage_counts_in_run_total(tmp_citadel, fake_agent):
     ingest.ingest()
 
     def delete_citing_page(*args, **kwargs):
-        (Path(config.WIKI_DIR) / "concepts/topic.md").unlink()
+        (Path(config.wiki_dir()) / "concepts/topic.md").unlink()
 
     agent = fake_agent(side_effect=delete_citing_page, usage=llm.SessionUsage(cost_usd=0.02))
     src.unlink()

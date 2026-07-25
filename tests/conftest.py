@@ -63,17 +63,23 @@ class CitadelTmp:
     never by re-deriving paths from ``tmp_path`` or by assuming which ``config.*`` attributes
     were patched: a later PR swaps the root-resolution internals (workspace discovery), and
     only this interface is guaranteed to survive that swap.
+
+    The fixture WIRES the process-wide ``config`` attributes (``config.WIKI_DIR`` and friends);
+    the wiki-derived fields below are annotated with their ACCESSOR (``config.wiki_dir()``)
+    because that is how code READS them — and the distinction matters inside a fake session:
+    ingest redirects the wiki per source through a ContextVar, so only the accessor sees the
+    staging copy the session is supposed to edit, while the attribute keeps naming the live wiki.
     """
 
     root: Path  # the (fake) workspace root -> config.WORKSPACE_ROOT
-    wiki: Path  # config.WIKI_DIR
+    wiki: Path  # config.wiki_dir()
     raw: Path  # config.RAW_DIR
     docs: Path  # config.DOCS_DIR
-    index_path: Path  # config.INDEX_PATH
-    sources_index_path: Path  # config.SOURCES_INDEX_PATH
-    log_path: Path  # config.LOG_PATH
-    manifest_path: Path  # config.MANIFEST_PATH
-    failures_path: Path  # config.FAILURES_PATH
+    index_path: Path  # config.index_path()
+    sources_index_path: Path  # config.sources_index_path()
+    log_path: Path  # config.log_path()
+    manifest_path: Path  # config.manifest_path()
+    failures_path: Path  # config.failures_path()
     packaged_rules: Path  # config.PACKAGED_RULES_DIR (a stub tree at <root>/citadel/rules)
 
     def read_manifest(self) -> dict:
@@ -217,12 +223,12 @@ def tmp_citadel_external(make_citadel, tmp_path: Path) -> CitadelTmp:
 def seed_page() -> Callable[..., Path]:
     """Write a canonical OKF page directly under the CONFIGURED wiki (bypassing ingest).
 
-    Reads ``config.WIKI_DIR`` at call time, so it composes with any layout fixture
+    Reads ``config.wiki_dir()`` at call time, so it composes with any layout fixture
     (``tmp_citadel``, ``tmp_citadel_external``, or a custom ``make_citadel`` layout).
     """
 
     def _seed(rel_path: str, frontmatter: dict, body: str = "Body.\n") -> Path:
-        target = Path(config.WIKI_DIR) / rel_path
+        target = Path(config.wiki_dir()) / rel_path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(okf.dump(frontmatter, body), encoding="utf-8")
         return target
@@ -242,7 +248,7 @@ def _cite_page(rel_path: str, rel_key: str, body_fact: str) -> None:
     which would emit a broken ``../../C:/...`` link and fail every fake session for an
     out-of-workspace source on Windows."""
     link = rel_key if Path(rel_key).is_absolute() else f"../../{rel_key}"
-    target = config.WIKI_DIR / rel_path
+    target = config.wiki_dir() / rel_path
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
         okf.dump(
@@ -256,7 +262,7 @@ def _cite_page(rel_path: str, rel_key: str, body_fact: str) -> None:
 @pytest.fixture
 def cite_page() -> Callable[[str, str, str], None]:
     """``seed_page``'s little sibling for fake-session bodies: ``cite_page(rel_path, rel_key,
-    fact)`` writes one valid page whose single fact cites ``rel_key``. Reads ``config.WIKI_DIR``
+    fact)`` writes one valid page whose single fact cites ``rel_key``. Reads ``config.wiki_dir()``
     at call time, so inside a session it lands in ingest's per-source staging copy."""
     return _cite_page
 
@@ -286,7 +292,7 @@ def delete_citing_pages(rel_key: str) -> None:
     ``rel_key`` from the CONFIGURED wiki — ingest's per-source staging copy at call time, exactly
     like the real agent's file edits — enough to satisfy the delete post-condition."""
     for rel in store.find_raw_references(rel_key):
-        (Path(config.WIKI_DIR) / rel).unlink(missing_ok=True)
+        (Path(config.wiki_dir()) / rel).unlink(missing_ok=True)
 
 
 def _make_pptx(path: Path, slides: list[list[str]]) -> None:
@@ -344,7 +350,7 @@ class FakeAgent:
       1. records ``(rel_key, kind)`` in ``self.calls`` (assert on ``calls``/``count``);
       2. raises ``error`` if given (a failed/timed-out session);
       3. writes ``pages`` into the configured wiki — ingest's per-source STAGING copy, since
-         ``config.WIKI_DIR`` is read at call time (``{rel_path: (frontmatter, body)}`` dumped
+         ``config.wiki_dir()`` is read at call time (``{rel_path: (frontmatter, body)}`` dumped
          via ``okf.dump``, or ``{rel_path: str}`` written verbatim);
       4. passes the original args through to ``side_effect`` for bespoke per-call behavior
          (e.g. deleting the pages that cite a removed source);
@@ -380,7 +386,7 @@ class FakeAgent:
         if self.error is not None:
             raise self.error
         for rel_path, content in self.pages.items():
-            target = Path(config.WIKI_DIR) / rel_path
+            target = Path(config.wiki_dir()) / rel_path
             target.parent.mkdir(parents=True, exist_ok=True)
             text = content if isinstance(content, str) else okf.dump(*content)
             target.write_text(text, encoding="utf-8")

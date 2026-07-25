@@ -134,7 +134,7 @@ def test_segment_failure_discards_all_segments_nothing_live(tmp_citadel, fake_ag
     def fake_retry(rel_key, kind="ingest", read_path=None, segment=None):
         segments.append(segment)
         # Segment 1's page is already in the staging copy when the resumed segment opens.
-        assert (Path(config.WIKI_DIR) / "misc" / "big.md").exists()
+        assert (Path(config.wiki_dir()) / "misc" / "big.md").exists()
 
     fake_agent(side_effect=fake_retry)
     second = ingest.ingest()
@@ -175,7 +175,7 @@ def test_segments_fold_into_single_staging_and_promote_once(tmp_citadel, fake_ag
                 # Mid-source, the LIVE wiki must never hold this source's page yet.
                 "live_clean": not (wiki / "misc" / "big.md").exists(),
                 # Segments > 1 MERGE into what the earlier segments wrote in the shared staging.
-                "staging_has_earlier": (config.WIKI_DIR / "misc" / "big.md").exists(),
+                "staging_has_earlier": (config.wiki_dir() / "misc" / "big.md").exists(),
             }
         )
         if segment[0] == 1:
@@ -208,7 +208,7 @@ def test_invalid_segment_fails_fast_and_discards_whole_source(tmp_citadel, fake_
         if segment[0] == 1:
             cite_page("misc/big.md", rel_key, "A fact from segment one.")
         elif segment[0] == 2:
-            (Path(config.WIKI_DIR) / "misc" / "invalid.md").write_text("no frontmatter at all\n", encoding="utf-8")
+            (Path(config.wiki_dir()) / "misc" / "invalid.md").write_text("no frontmatter at all\n", encoding="utf-8")
 
     fake_agent(side_effect=fake)
     report = ingest.ingest()

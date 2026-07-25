@@ -192,7 +192,7 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
     # separate O(sources × pages) scans the two consumers used to run independently.
     refs_by_key = citing_pages_map(manifest_dict, pages)
     sources_body = _render_sources_catalog(manifest_dict, pages, failures_dict, refs_by_key)
-    sources_path = config.SOURCES_INDEX_PATH
+    sources_path = config.sources_index_path()
     if sources_body is not None:
         config.robust_mkdir(sources_path.parent)
         sources_path.write_text(sources_body, encoding="utf-8")
@@ -204,7 +204,7 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
     # sources catalog it is written when there is at least one point and removed when there are none.
     open_points = collect_open_points(pages)
     open_points_body = _render_open_points_catalog(open_points, title_by_path)
-    open_points_path = config.WIKI_DIR / OPEN_POINTS_INDEX_REL
+    open_points_path = config.wiki_dir() / OPEN_POINTS_INDEX_REL
     if open_points_body is not None:
         config.robust_mkdir(open_points_path.parent)
         open_points_path.write_text(open_points_body, encoding="utf-8")
@@ -303,8 +303,8 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
         lines.append("")
 
     body = "\n".join(lines).rstrip("\n") + "\n"
-    config.robust_mkdir(config.WIKI_DIR)
-    (config.WIKI_DIR / "index.md").write_text(body, encoding="utf-8")
+    config.robust_mkdir(config.wiki_dir())
+    (config.wiki_dir() / "index.md").write_text(body, encoding="utf-8")
 
     # ----- per-directory index.md (also frontmatter-free) -----
     for folder in sorted(folders):
@@ -315,6 +315,6 @@ def rebuild_indexes(pages: list[Page] | None = None) -> None:
             flines.append(f"- [{page.title}]({rel_in_folder}) — {page.description}")
         flines.append("")
         fbody = "\n".join(flines).rstrip("\n") + "\n"
-        folder_dir = config.WIKI_DIR / folder
+        folder_dir = config.wiki_dir() / folder
         config.robust_mkdir(folder_dir)
         (folder_dir / "index.md").write_text(fbody, encoding="utf-8")

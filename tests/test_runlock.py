@@ -125,7 +125,7 @@ def test_ingest_fails_loud_while_another_run_holds_the_lock(tmp_citadel, fake_ag
 
 
 def test_make_staging_no_longer_sweeps_siblings_but_run_start_does(tmp_citadel):
-    live = config.WIKI_DIR
+    live = config.wiki_dir()
     config.robust_mkdir(live)
     stale = live.parent / f"{ingest._staging_prefix(live)}999.1"
     stale.mkdir()

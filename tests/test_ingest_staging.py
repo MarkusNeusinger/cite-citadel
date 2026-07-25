@@ -363,7 +363,7 @@ def test_agent_edits_staging_sibling_not_live(tmp_citadel, fake_agent, seed_page
     seen = {}
 
     def fake(rel_key, kind="ingest"):
-        staging = config.WIKI_DIR
+        staging = config.wiki_dir()
         seen["staging"] = staging
         seen["is_sibling"] = staging != wiki and staging.parent == wiki.parent
         # The live wiki must not yet hold this page while the agent is mid-session.
@@ -381,7 +381,7 @@ def test_agent_edits_staging_sibling_not_live(tmp_citadel, fake_agent, seed_page
     assert seen["is_sibling"]  # staging is a sibling of live, not a temp dir
     assert seen["live_clean_midsession"]  # live untouched while the agent worked
     assert (wiki / "concepts" / "transformer.md").exists()  # promoted after a clean session
-    assert config.WIKI_DIR == wiki  # redirect restored
+    assert config.wiki_dir() == wiki  # redirect restored
     import os as _os
 
     assert "CITADEL_WIKI_DIR" not in _os.environ  # env restored (was unset)
@@ -498,7 +498,7 @@ def test_session_that_deletes_all_pages_is_refused_not_promoted(tmp_citadel, fak
 
     def fake(rel_key, kind="ingest"):
         # The agent wipes every content page from its staging copy (adds nothing back).
-        for p in config.WIKI_DIR.rglob("*.md"):
+        for p in config.wiki_dir().rglob("*.md"):
             if p.name not in ("index.md", "log.md"):
                 p.unlink()
 

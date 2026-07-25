@@ -183,7 +183,7 @@ def _external_dirs(rel_key: str, read_path: str | None = None) -> list[str]:
     Empty for the all-under-workspace dev-checkout layout (cwd already covers the rules), so that
     invocation is byte-for-byte unchanged."""
     candidates = [
-        config.WIKI_DIR,
+        config.wiki_dir(),
         *config.source_roots(),  # every raw source root (multi-root: an out-of-workspace root needs a grant)
         config.DOCS_DIR,
         config.PACKAGED_RULES_DIR,
@@ -389,7 +389,7 @@ def _build_instruction(
     Office source, one segment's slice of a large source (with ``segment=(part, total)``), or a
     repo digest — the agent reads it for content while citing ``rel_key`` as the source of
     record (per the task/format briefs)."""
-    wiki_rel = _agent_path(config.WIKI_DIR)
+    wiki_rel = _agent_path(config.wiki_dir())
     # The raw-dir bullet names the root that COVERS this source (in a multi-root corpus a
     # second-root source must not be pointed at the primary); an out-of-root explicit path
     # falls back to the primary RAW_DIR. Lexical lookup — no disk access, delete-safe.
@@ -701,8 +701,12 @@ def _last_result_envelope(text: str) -> dict | None:
     return found
 
 
-# Monotonic per-process counter so concurrent/same-second transcript files never collide.
+# Monotonic per-process counter so concurrent/same-second transcript files never collide. Under
+# `citadel ingest --jobs N` "concurrent" is literal — several worker threads write transcripts at
+# once — and `_LOG_SEQ += 1` is a read-modify-write, so without the lock two sessions can be handed
+# the same number and the guarantee this counter exists for quietly stops holding.
 _LOG_SEQ = 0
+_LOG_SEQ_LOCK = threading.Lock()
 
 
 def _decode_partial(data) -> str:
@@ -746,6 +750,7 @@ def _stream_subprocess(cli: str, argv: list[str], stdin_text: str | None) -> tup
         errors="replace",
         bufsize=1,
         cwd=str(config.WORKSPACE_ROOT),
+        env=config.child_env(),
     )
     if stdin_text is not None and proc.stdin is not None:
         try:
@@ -804,14 +809,16 @@ def _write_transcript(
         return
     try:
         global _LOG_SEQ
-        _LOG_SEQ += 1
+        with _LOG_SEQ_LOCK:
+            _LOG_SEQ += 1
+            seq = _LOG_SEQ
         directory = Path(log_dir)
         if not directory.is_absolute():
             directory = config.WORKSPACE_ROOT / directory
         config.robust_mkdir(directory)
         stamp = time.strftime("%Y%m%d-%H%M%S")
         safe = "".join(c if (c.isalnum() or c in "-._") else "_" for c in (label or "session"))[:80]
-        path = directory / f"{stamp}.{os.getpid()}.{_LOG_SEQ}.{safe}.log"
+        path = directory / f"{stamp}.{os.getpid()}.{seq}.{safe}.log"
         body = [
             "# citadel ingest — LLM agent session transcript",
             f"time:        {stamp}",
@@ -869,6 +876,10 @@ def _run_session(
                 errors="replace",
                 timeout=config.LLM_TIMEOUT,
                 cwd=str(config.WORKSPACE_ROOT),
+                # The wiki this session must edit is passed EXPLICITLY (ingest's per-source staging
+                # copy, via config.wiki_redirect) rather than through a process-global
+                # os.environ assignment — two concurrent sessions each get their own.
+                env=config.child_env(),
             )
             returncode, out_raw, err_raw = proc.returncode, proc.stdout, proc.stderr
     except subprocess.TimeoutExpired as exc:
@@ -958,7 +969,7 @@ def run_ingest_session(
     file is the WHOLE transcript/extraction, shared by every pass, so locator line numbers never
     rebase.
 
-    The agent's edits under ``config.WIKI_DIR`` are the real result — ``ingest`` discovers what
+    The agent's edits under ``config.wiki_dir()`` are the real result — ``ingest`` discovers what
     changed via a filesystem diff. The return value is only the session's best-effort
     :class:`SessionUsage` (the backend's own cost/usage report: claude's result envelope,
     gemini's ``--session-summary`` stats file when its binary advertises the flag; None when

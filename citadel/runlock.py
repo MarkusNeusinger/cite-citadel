@@ -45,7 +45,7 @@ class RunLockError(RuntimeError):
 def lock_path() -> Path:
     """The lockfile's location: a dotfile sibling of the wiki dir (read at call time so tests
     can monkeypatch the config layout)."""
-    return config.WIKI_DIR.parent / LOCK_NAME
+    return config.wiki_dir().parent / LOCK_NAME
 
 
 def _stale_after_s() -> float:

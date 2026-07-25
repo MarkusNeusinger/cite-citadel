@@ -24,18 +24,23 @@ API key to manage — the CLI uses whatever subscription it is logged into.
 No logic beyond path/setting/rules resolution (plus the tiny content hash over the effective
 rules tree, :func:`rules_version`, which is pure derivation over that resolution).
 
-NOTE: other modules reference ``config.WIKI_DIR`` / ``config.INGEST_MODEL`` /
-``config.LLM_CLI`` / etc. at call-time (``from . import config`` then
-``config.WIKI_DIR``) so tests can monkeypatch these attributes.
+NOTE: other modules reference ``config.INGEST_MODEL`` / ``config.LLM_CLI`` / ``config.RAW_DIR`` /
+etc. at call-time (``from . import config`` then ``config.RAW_DIR``) so tests can monkeypatch
+these attributes. The WIKI path is the one exception: it is read through the
+:func:`wiki_dir`/:func:`index_path`/… ACCESSORS, because ingest redirects it per source (see
+:func:`wiki_redirect`) — the module attributes stay the process-wide base those accessors fall
+back to, so monkeypatching them still configures the whole layout.
 """
 
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import hashlib
 import os
 import shutil
 import stat
+import threading
 import time
 from pathlib import Path, PurePosixPath
 
@@ -442,7 +447,10 @@ def atomic_write_text(path: Path | str, text: str, attempts: int = 4) -> None:
     staging copy already skips, and the replace retries briefly to ride out the transient sharing
     violations SMB shares and AV scanners cause on Windows (the ``_robust_*`` pattern)."""
     p = Path(path)
-    tmp = p.with_name(f"{p.name}.{os.getpid()}.citadeltmp")
+    # pid AND thread id: `citadel ingest --jobs N` runs several sources in one process, so a
+    # pid-only temp name is no longer unique — two writers would share one temp file and the loser's
+    # os.replace would fail on a file the winner already moved.
+    tmp = p.with_name(f"{p.name}.{os.getpid()}.{threading.get_ident()}.citadeltmp")
     tmp.write_text(text, encoding="utf-8")
     try:
         for attempt in range(attempts):
@@ -590,6 +598,96 @@ MANIFEST_PATH: Path = WIKI_DIR / ".citadel_ingested.json"
 # instead of scrolling past in the console. Regenerated each run (a source that later succeeds is
 # dropped) and surfaced in wiki/sources/index.md.
 FAILURES_PATH: Path = WIKI_DIR / ".citadel_failures.json"
+
+
+# --- The wiki in effect right HERE (per-context, never process-global) ------------------------
+# Ingest runs every source's agent session against a per-source STAGING copy of the wiki, so for
+# the duration of that session "the wiki" is the staging dir, not WIKI_DIR. That redirect used to
+# ASSIGN the module attributes below (and os.environ), which made it process-global: one process
+# could only ever be inside one redirect, and two sources could never be in flight at once — the
+# blocker the 2026-07 audit named (finding 1.2.5) under `--jobs N`.
+#
+# It is a ContextVar instead: the override is CONTEXT-local rather than process-global, so N worker
+# threads can each hold their OWN staging redirect while the main thread still sees the live wiki.
+# Two properties of CPython make that work, and they pull in opposite directions:
+#   * a thread does NOT inherit the context of the thread that started or submitted to it — neither
+#     a plain `threading.Thread` nor a `ThreadPoolExecutor` worker (unlike an asyncio task, which
+#     copies its context), so a worker starts out seeing the live wiki, which is correct;
+#   * but a POOLED thread is REUSED across work items, and a value left set by one item is still
+#     there for the next one on that thread.
+# So the `finally` reset in :func:`wiki_redirect` is load-bearing, not tidiness: it is what keeps a
+# finished source's staging path from being handed to the next source that lands on the same worker.
+# Unset (the overwhelmingly common case: every read path, every CLI command, the MCP server) the
+# accessors return the module attributes verbatim, so the process-wide layout — and every test that
+# monkeypatches it — behaves exactly as before.
+_WIKI_OVERRIDE: contextvars.ContextVar["Path | None"] = contextvars.ContextVar("citadel_wiki_dir", default=None)
+
+
+def wiki_dir() -> Path:
+    """The wiki directory THIS context reads and writes: the active :func:`wiki_redirect` target
+    (ingest's per-source staging copy) when one is in effect, else the process-wide
+    :data:`WIKI_DIR`. Every in-package consumer goes through this accessor rather than reading
+    ``config.WIKI_DIR`` directly — that is what lets two sources stage concurrently."""
+    override = _WIKI_OVERRIDE.get()
+    return override if override is not None else WIKI_DIR
+
+
+def index_path() -> Path:
+    """:data:`INDEX_PATH` (``<wiki>/index.md``), redirect-aware — see :func:`wiki_dir`."""
+    override = _WIKI_OVERRIDE.get()
+    return override / "index.md" if override is not None else INDEX_PATH
+
+
+def sources_index_path() -> Path:
+    """:data:`SOURCES_INDEX_PATH` (``<wiki>/sources/index.md``), redirect-aware."""
+    override = _WIKI_OVERRIDE.get()
+    return override / "sources" / "index.md" if override is not None else SOURCES_INDEX_PATH
+
+
+def log_path() -> Path:
+    """:data:`LOG_PATH` (``<wiki>/log.md``), redirect-aware."""
+    override = _WIKI_OVERRIDE.get()
+    return override / "log.md" if override is not None else LOG_PATH
+
+
+def manifest_path() -> Path:
+    """:data:`MANIFEST_PATH` (``<wiki>/.citadel_ingested.json``), redirect-aware."""
+    override = _WIKI_OVERRIDE.get()
+    return override / ".citadel_ingested.json" if override is not None else MANIFEST_PATH
+
+
+def failures_path() -> Path:
+    """:data:`FAILURES_PATH` (``<wiki>/.citadel_failures.json``), redirect-aware."""
+    override = _WIKI_OVERRIDE.get()
+    return override / ".citadel_failures.json" if override is not None else FAILURES_PATH
+
+
+@contextlib.contextmanager
+def wiki_redirect(target: Path | str):
+    """Point :func:`wiki_dir` (and every path derived from it) at ``target`` for the duration of
+    the block, in THIS context only — a sibling thread's redirect, and the main thread's live
+    wiki, are unaffected. Restored on every exit path, including an exception.
+
+    The raw/docs dirs are deliberately untouched: staging is a SIBLING of the live wiki, so every
+    relative citation the agent writes (``../../raw/x.md``) resolves identically before and after
+    the promote."""
+    token = _WIKI_OVERRIDE.set(Path(target))
+    try:
+        yield
+    finally:
+        _WIKI_OVERRIDE.reset(token)
+
+
+def child_env() -> dict[str, str]:
+    """The environment to hand a CHILD process that must see THIS context's wiki: ``os.environ``
+    plus an explicit ``CITADEL_WIKI_DIR``. The agentic CLI (and the ``citadel check`` it shells
+    out to) resolves its own config at import, so the redirect has to reach it through the
+    environment — passed per spawn rather than assigned into ``os.environ``, which is
+    process-global and would make two concurrent sessions overwrite each other's wiki."""
+    env = dict(os.environ)
+    env["CITADEL_WIKI_DIR"] = str(wiki_dir())
+    return env
+
 
 # Ingest backend: which coding-agent CLI to shell out to, and (for the claude
 # CLI) which model alias/id to pass. No API key is used.
@@ -743,6 +841,34 @@ MAX_SOURCE_CHARS: int = _int_env("CITADEL_MAX_SOURCE_CHARS", 300000)
 # only stops paying twice; 0 turns it off (nothing is written or read) if the plaintext page
 # sidecar is unwanted. Only chunked sources ever create one.
 RESUME: bool = _bool_env("CITADEL_RESUME", True)
+
+
+def _jobs_setting() -> int:
+    """Resolve ``CITADEL_JOBS`` to a worker count >= 1. A value below 1 is a misconfiguration, not
+    an "unlimited" request: it clamps to 1 (strictly serial — the default) and records a
+    :data:`CONFIG_WARNINGS` entry, so ``citadel doctor`` names it instead of silently ingesting
+    serially while the user believes otherwise."""
+    value = _int_env("CITADEL_JOBS", 1)
+    if value < 1:
+        CONFIG_WARNINGS.append(f"CITADEL_JOBS={value} is not a worker count (>= 1) - using 1 (serial)")
+        return 1
+    return value
+
+
+# How many raw sources ingest may fold in CONCURRENTLY (`citadel ingest --jobs N` overrides it per
+# run). 1 — the default — is the strictly serial behavior citadel has always had. Higher values run
+# that many agent sessions at once, each against its OWN staging copy of the wiki (the isolation
+# primitive was already there); promotion onto the live wiki stays serialized and base-aware, and a
+# source whose session raced another one's promote is re-run serially before the run ends, so the
+# wiki is never the sum of two sessions that could not see each other.
+#
+# The trade-off is cross-linking, not safety: concurrent sessions each read the wiki as it was when
+# they started, so a page one of them creates is invisible to the others (a later `citadel curate`
+# pass is the designed cleanup for that, and the serial re-run resolves the collisions). Keep it at
+# 1 for the richest cross-linking; raise it for a large backlog of unrelated sources, where the run
+# is dominated by per-session latency. Sensible ceiling: your agent CLI's own rate limits, which is
+# what you will hit first — citadel imposes no maximum.
+JOBS: int = _jobs_setting()
 
 
 def _page_cache_mode() -> str:

@@ -375,7 +375,7 @@ def test_applied_cluster_appends_edit_summary_to_log(tmp_citadel, seed_page, fak
     )
 
     curate.curate()
-    log_text = config.LOG_PATH.read_text(encoding="utf-8")
+    log_text = config.log_path().read_text(encoding="utf-8")
     assert "curate" in log_text.lower()
     assert "concepts/alice.md" in log_text
 

@@ -40,7 +40,7 @@ CURATE = "curate"  # a `citadel curate` cluster session failed its gate; keyed b
 
 def load() -> dict[str, dict]:
     """json.loads(FAILURES_PATH) or {} if missing/empty/corrupt (mirrors :func:`manifest.load`)."""
-    path = config.FAILURES_PATH
+    path = config.failures_path()
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, FileNotFoundError):
@@ -57,7 +57,7 @@ def load() -> dict[str, dict]:
 def save(failures: dict[str, dict]) -> None:
     """Write ``failures`` to FAILURES_PATH (sorted, indented, trailing newline), or REMOVE the file
     when empty so a wiki with nothing stuck carries no stale failures sidecar."""
-    path = config.FAILURES_PATH
+    path = config.failures_path()
     if not failures:
         try:
             path.unlink()

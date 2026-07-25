@@ -148,7 +148,7 @@ def build_bundle(pages=None) -> dict:
 
     tags = {tag: [p.rel_path for p in tagged] for tag, tagged in store.tag_catalog(pages).items()}
     return {
-        "wiki_name": config.WIKI_DIR.name,
+        "wiki_name": config.wiki_dir().name,
         "pages": pages_json,
         "tags": tags,
         "types": {k: sorted(v) for k, v in types.items()},
@@ -188,7 +188,7 @@ def _source_view_id(abs_path: str | os.PathLike) -> str:
     citation maps to it: the source's posix path relative to ``WIKI_DIR``'s parent (the repo root,
     or the shared root on a mounted drive). For an in-repo source this is just ``raw/x.md`` — which
     is exactly what the JS ``resolveLink`` returns for a citation that climbs out of ``wiki/``."""
-    parent = config.WIKI_DIR.parent
+    parent = config.wiki_dir().parent
     try:
         return os.path.relpath(str(abs_path), str(parent)).replace(os.sep, "/")
     except ValueError:  # different drive — no relative path exists
@@ -239,7 +239,7 @@ def _source_href(abs_path: str | os.PathLike) -> str | None:
     binary natively. None when no relative path exists (a different drive). The link assumes the
     viewer was written to its default ``wiki/`` location; the embedded text always works regardless."""
     try:
-        return os.path.relpath(str(abs_path), str(config.WIKI_DIR)).replace(os.sep, "/")
+        return os.path.relpath(str(abs_path), str(config.wiki_dir())).replace(os.sep, "/")
     except ValueError:  # different drive — no relative path exists
         return None
 
@@ -514,10 +514,10 @@ def build_html(pages=None) -> str:
 
 
 def write_viewer(out_path=None, pages=None) -> Path:
-    """Write the viewer document; default ``config.WIKI_DIR/.citadel_viewer.html``. Returns the
+    """Write the viewer document; default ``config.wiki_dir()/.citadel_viewer.html``. Returns the
     absolute path written."""
     if out_path is None:
-        out_path = config.WIKI_DIR / VIEWER_FILENAME
+        out_path = config.wiki_dir() / VIEWER_FILENAME
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(build_html(pages), encoding="utf-8")
@@ -596,7 +596,7 @@ def _open_obsidian() -> int:
     """Best-effort: deep-link the wiki folder into Obsidian and always print the path."""
     import urllib.parse
 
-    folder = config.WIKI_DIR.resolve()
+    folder = config.wiki_dir().resolve()
     deep = "obsidian://open?path=" + urllib.parse.quote(str(folder))
     print(f"Open this folder as an Obsidian vault: {folder}")
     print("  tip: open the repository root instead to resolve raw/ citation links.")

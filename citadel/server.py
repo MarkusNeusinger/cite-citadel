@@ -390,7 +390,7 @@ def wiki_validate(rel_path: str = "") -> str:
             # with zero issues and a typo'd path would otherwise be indistinguishable.
             if want not in {p.rel_path for p in pages}:
                 try:
-                    on_disk = okf.safe_join(config.WIKI_DIR, want).is_file()
+                    on_disk = okf.safe_join(config.wiki_dir(), want).is_file()
                 except okf.OKFError:
                     on_disk = False
                 if on_disk:

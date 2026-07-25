@@ -116,6 +116,18 @@ def build_parser() -> argparse.ArgumentParser:
         "without them, so a whole-corpus re-read (one agent session per source) can never "
         "happen by accident.",
     )
+    p_ingest.add_argument(
+        "--jobs",
+        "-j",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Fold up to N sources CONCURRENTLY (default 1 = serial, or CITADEL_JOBS). Each "
+        "source keeps its own staging copy and its own all-or-nothing promote; promotes are "
+        "serialized, and a source that raced another over the same page is re-run serially. "
+        "Faster on a large backlog of unrelated sources; the trade-off is cross-linking, since "
+        "concurrent sessions cannot see each other's new pages.",
+    )
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_curate = sub.add_parser(
@@ -187,6 +199,17 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="DIR",
         help="Write a transcript file per source to DIR (see `citadel ingest --log-dir`). "
         "Overrides CITADEL_LLM_LOG_DIR.",
+    )
+    p_refresh.add_argument(
+        "--jobs",
+        "-j",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Re-verify up to N sources CONCURRENTLY (default 1 = serial, or CITADEL_JOBS) — the "
+        "same knob, and the same trade-off, as `citadel ingest --jobs`. A refresh slice is ordered "
+        "by last-checked time rather than by topic, so its sources are usually unrelated and "
+        "parallelism costs little cross-linking here.",
     )
     p_refresh.set_defaults(func=cmd_refresh)
 
@@ -388,8 +411,15 @@ def cmd_ingest(args: argparse.Namespace) -> int:
 
     ``--force`` requires explicit paths: a forced re-read runs one
     agent session per source, so forcing the ENTIRE corpus must never happen by accident — the
-    flag alone is refused with exit 2, before ``ingest.ingest`` is ever called."""
+    flag alone is refused with exit 2, before ``ingest.ingest`` is ever called.
+
+    ``--jobs N`` is a usage error below 1 (exit 2, like ``--force`` without paths) rather than an
+    exception out of the API layer; omitted, the run takes ``CITADEL_JOBS`` (default 1, serial)."""
     from . import config, ingest
+
+    if args.jobs is not None and args.jobs < 1:
+        print(f"error: --jobs must be at least 1 (got {args.jobs}); 1 means the serial default.", file=sys.stderr)
+        return 2
 
     if args.force and not args.paths:
         print(
@@ -414,7 +444,9 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         # CITADEL_LLM_VERBOSE — not just the --verbose flag — also drops the spinner that would
         # otherwise clobber the streamed transcript.
         progress = ConsoleProgress(spinner=not config.LLM_VERBOSE)
-    report = ingest.ingest(args.paths or None, progress=progress, full_rescan=args.full_rescan, force=args.force)
+    report = ingest.ingest(
+        args.paths or None, progress=progress, full_rescan=args.full_rescan, force=args.force, jobs=args.jobs
+    )
     print(report.render())
     # Non-zero on a per-source error OR a structural problem left behind (a broken
     # cross-link the agent introduced) — so ingest gates the wiki's integrity in CI.
@@ -450,6 +482,9 @@ def cmd_refresh(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    if args.jobs is not None and args.jobs < 1:
+        print(f"error: --jobs must be at least 1 (got {args.jobs}); 1 means the serial default.", file=sys.stderr)
+        return 2
     if args.verbose:
         config.LLM_VERBOSE = True
     if args.log_dir is not None:
@@ -459,7 +494,9 @@ def cmd_refresh(args: argparse.Namespace) -> int:
         from .progress import ConsoleProgress
 
         progress = ConsoleProgress(spinner=not config.LLM_VERBOSE)
-    report = refresh.refresh(limit=args.limit, min_age_days=args.min_age_days, dry_run=args.dry_run, progress=progress)
+    report = refresh.refresh(
+        limit=args.limit, min_age_days=args.min_age_days, dry_run=args.dry_run, progress=progress, jobs=args.jobs
+    )
     print(report.render(), end="")
     ing = report.ingest_report
     return 1 if ing is not None and (ing.errors or ing.broken_links) else 0
@@ -719,7 +756,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     issues = validate.validate_all(pages)
     missing: list[str] = []
     if args.paths:
-        wiki_root = config.WIKI_DIR.resolve()
+        wiki_root = config.wiki_dir().resolve()
         wanted: set[str] = set()
         for arg in args.paths:
             rel = arg.replace(os.sep, "/")
@@ -735,7 +772,7 @@ def cmd_check(args: argparse.Namespace) -> int:
         known = {p.rel_path for p in pages}
         for rel in sorted(wanted - known):
             try:
-                on_disk = okf.safe_join(config.WIKI_DIR, rel).is_file()
+                on_disk = okf.safe_join(config.wiki_dir(), rel).is_file()
             except okf.OKFError:
                 on_disk = False
             if on_disk:

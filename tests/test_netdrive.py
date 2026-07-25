@@ -214,9 +214,9 @@ def test_find_and_rewrite_raw_references_with_absolute_keys(tmp_citadel_external
 def _fake_session(rel_key, kind="ingest"):
     """Write one Concept page (as the agent would) into the configured WIKI_DIR, citing the raw
     file by its real RELATIVE path and recording the (possibly absolute) source key as resource."""
-    target = config.WIKI_DIR / "concepts" / "transformer.md"
+    target = config.wiki_dir() / "concepts" / "transformer.md"
     target.parent.mkdir(parents=True, exist_ok=True)
-    rel_link = os.path.relpath(config.source_path_for_key(rel_key), config.WIKI_DIR / "concepts").replace(os.sep, "/")
+    rel_link = os.path.relpath(config.source_path_for_key(rel_key), config.wiki_dir() / "concepts").replace(os.sep, "/")
     target.write_text(
         okf.dump(
             {
@@ -280,7 +280,7 @@ def test_ingest_deletes_out_of_repo_source(tmp_citadel_external, seed_page, fake
     manifest.save({abs_key: "deadbeef"})
 
     def unlink_topic(rel_key, kind="ingest"):
-        (config.WIKI_DIR / "concepts" / "topic.md").unlink()
+        (config.wiki_dir() / "concepts" / "topic.md").unlink()
 
     agent = fake_agent(side_effect=unlink_topic)
 
@@ -341,7 +341,7 @@ def test_ingest_canonicalizes_shortened_resource_for_out_of_repo_source(tmp_path
 
     def shortened_session(rel_key, kind="ingest"):
         # The agent does the work but SHORTENS the long absolute key to the conventional form.
-        page = config.WIKI_DIR / "concepts" / "internal-data-analysis.md"
+        page = config.wiki_dir() / "concepts" / "internal-data-analysis.md"
         page.parent.mkdir(parents=True, exist_ok=True)
         rel_link = os.path.relpath(config.source_path_for_key(rel_key), page.parent).replace(os.sep, "/")
         page.write_text(

@@ -92,7 +92,7 @@ def rewrite_links(rename_map: dict[str, str], pages: list[Page] | None = None) -
     for page in pages:
         new_body = _rewrite_body_links(page.rel_path, page.body, rename_map)
         if new_body != page.body:
-            target = okf.safe_join(config.WIKI_DIR, page.rel_path)
+            target = okf.safe_join(config.wiki_dir(), page.rel_path)
             target.write_text(okf.dump(page.frontmatter, new_body), encoding="utf-8")
             changed.append(page.rel_path)
     return changed
@@ -121,7 +121,7 @@ def source_key_to_page_link(page_rel: str, key: str) -> str:
     link still resolves rather than raising. Emitted through ``grammar.format_link_target``, so a
     key containing spaces comes back angle-wrapped — the ONE parseable citation form — and every
     emitter (the citation rewriter, sources/index.md, the index reflinks) stays round-trippable."""
-    page_dir = os.path.dirname(str(config.WIKI_DIR / page_rel))
+    page_dir = os.path.dirname(str(config.wiki_dir() / page_rel))
     target_abs = str(config.source_path_for_key(key))
     try:
         link = os.path.relpath(target_abs, page_dir).replace(os.sep, "/")
@@ -173,7 +173,7 @@ def rewrite_raw_references(old_rel: str, new_rel: str, pages: list[Page] | None 
             frontmatter["resource"] = new_rel
         new_body = _rewrite_raw_body_links(page.rel_path, page.body, old_rel, new_rel)
         if fm_changed or new_body != page.body:
-            target = okf.safe_join(config.WIKI_DIR, page.rel_path)
+            target = okf.safe_join(config.wiki_dir(), page.rel_path)
             target.write_text(okf.dump(frontmatter, new_body), encoding="utf-8")
             changed.append(page.rel_path)
     return changed
