@@ -2,7 +2,7 @@
 
 The wiki is plain markdown files, so git is the natural long-term changelog: after each ingest or
 curate run that changed pages, :func:`autocommit` stages and commits EVERYTHING under
-``config.WIKI_DIR`` (pages, the regenerated indexes, ``log.md``, the manifest) so every run is one
+``config.wiki_dir()`` (pages, the regenerated indexes, ``log.md``, the manifest) so every run is one
 reviewable diff — what changed, in which page, attributable to the run that did it. An optional
 remote (``CITADEL_WIKI_GIT_REMOTE`` — a name or URL, GitHub/GitLab/anything) is pushed to after
 each commit.
@@ -21,7 +21,7 @@ Design rules (all load-bearing):
   would otherwise stall every run on an interactive pinentry. These are automated audit commits —
   sign by hand if a signed history matters.
 
-Config is read at call time (``config.WIKI_GIT`` / ``config.WIKI_GIT_REMOTE`` / ``config.WIKI_DIR``)
+Config is read at call time (``config.WIKI_GIT`` / ``config.WIKI_GIT_REMOTE`` / ``config.wiki_dir()``)
 so tests monkeypatch it like everything else.
 """
 
@@ -107,7 +107,7 @@ def _identity_args(wiki_dir: Path) -> list[str]:
 
 
 def autocommit(message: str) -> str | None:
-    """Commit every change under ``config.WIKI_DIR`` as one commit with ``message``; push to
+    """Commit every change under ``config.wiki_dir()`` as one commit with ``message``; push to
     ``config.WIKI_GIT_REMOTE`` when set. Returns a one-line human note for the run report
     ("wiki git: committed <sha>", or a warning describing what was skipped and why) — or None when
     there is nothing to say (mode off, no repo in auto mode, or a clean tree). NEVER raises: the
@@ -115,7 +115,7 @@ def autocommit(message: str) -> str | None:
     mode = config.WIKI_GIT
     if mode == "off":
         return None
-    wiki_dir = Path(config.WIKI_DIR)
+    wiki_dir = Path(config.wiki_dir())
     if not wiki_dir.is_dir():
         return None
     if not (wiki_dir / ".git").exists() and mode != "init":

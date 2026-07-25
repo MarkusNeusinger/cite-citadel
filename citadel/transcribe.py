@@ -113,7 +113,7 @@ def is_audio_source(path: Path) -> bool:
 def cache_dir() -> Path:
     """The transcript cache directory: a dotdir sibling of the wiki dir (read at call time so
     tests can monkeypatch the config layout — exactly like ``runlock.lock_path``)."""
-    return Path(config.WIKI_DIR).parent / CACHE_DIR_NAME
+    return Path(config.wiki_dir()).parent / CACHE_DIR_NAME
 
 
 # A sha256 hexdigest and nothing else — the ONLY string shape allowed to become a cache filename.

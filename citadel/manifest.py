@@ -367,7 +367,7 @@ def _check_workspace(meta: dict) -> None:
         return
     _warned_workspaces.add(stamped)
     print(
-        f"WARNING: the ingest manifest ({config.MANIFEST_PATH}) was written by a workspace rooted at\n"
+        f"WARNING: the ingest manifest ({config.manifest_path()}) was written by a workspace rooted at\n"
         f"    {stamped}\n"
         f"but the current workspace root is\n"
         f"    {current}\n"
@@ -382,7 +382,7 @@ def _read() -> tuple[object, str | None]:
     JSON value and None on success, else ``(None, code)`` with ``code`` one of ``"missing"`` (no
     file), ``"empty"`` (present but blank), or ``"corrupt"`` (unparseable JSON). The single reader
     both :func:`load` and :func:`inspect` share, so neither re-reads the file."""
-    path = config.MANIFEST_PATH
+    path = config.manifest_path()
     try:
         text = path.read_text(encoding="utf-8")
     except UnicodeError:
@@ -485,7 +485,7 @@ def save(manifest: dict[str, Entry]) -> None:
     """Write ``{"meta": {format, workspace}, "sources": manifest}`` to MANIFEST_PATH
     (sort_keys, indent=2, trailing newline). ``manifest`` is the flat sources dict the callers
     hold; the workspace stamp records WHICH workspace the keys are relative to."""
-    path = config.MANIFEST_PATH
+    path = config.manifest_path()
     config.robust_mkdir(path.parent)
     data = {"meta": {"format": MANIFEST_FORMAT, "workspace": _workspace_stamp()}, "sources": manifest}
     text = json.dumps(data, sort_keys=True, indent=2) + "\n"

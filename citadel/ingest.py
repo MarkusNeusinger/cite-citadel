@@ -916,7 +916,7 @@ def _hash_pages(pages: list[Page]) -> dict[str, str]:
     snap: dict[str, str] = {}
     for page in pages:
         try:
-            target = okf.safe_join(config.WIKI_DIR, page.rel_path)
+            target = okf.safe_join(config.wiki_dir(), page.rel_path)
             snap[page.rel_path] = hashlib.sha256(target.read_bytes()).hexdigest()
         except (okf.OKFError, OSError):
             continue
@@ -1156,30 +1156,19 @@ def _make_staging(live: Path) -> Path:
     return staging
 
 
-@contextlib.contextmanager
 def _redirect_wiki(staging: Path):
-    """Point every wiki-derived config path — and ``CITADEL_WIKI_DIR`` for child processes (the agentic
-    CLI and the ``citadel check`` it shells out to) — at ``staging`` for the duration of one
-    session, so the agent reads/writes/validates the STAGING copy rather than the live wiki. The
-    raw/docs dirs are left untouched. Everything is restored on exit (including an originally-unset
-    ``CITADEL_WIKI_DIR``), so the redirect is invisible to the surrounding run."""
-    staging = Path(staging)
-    saved = (config.WIKI_DIR, config.INDEX_PATH, config.LOG_PATH, config.MANIFEST_PATH)
-    env_had = "CITADEL_WIKI_DIR" in os.environ
-    env_prev = os.environ.get("CITADEL_WIKI_DIR")
-    config.WIKI_DIR = staging
-    config.INDEX_PATH = staging / "index.md"
-    config.LOG_PATH = staging / "log.md"
-    config.MANIFEST_PATH = staging / ".citadel_ingested.json"
-    os.environ["CITADEL_WIKI_DIR"] = str(staging)
-    try:
-        yield
-    finally:
-        config.WIKI_DIR, config.INDEX_PATH, config.LOG_PATH, config.MANIFEST_PATH = saved
-        if env_had:
-            os.environ["CITADEL_WIKI_DIR"] = env_prev  # type: ignore[assignment]
-        else:
-            os.environ.pop("CITADEL_WIKI_DIR", None)
+    """Point every wiki-derived config path — and ``CITADEL_WIKI_DIR`` for the child processes the
+    session spawns (the agentic CLI and the ``citadel check`` it shells out to) — at ``staging``
+    for the duration of one session, so the agent reads/writes/validates the STAGING copy rather
+    than the live wiki. The raw/docs dirs are left untouched.
+
+    Thin alias for :func:`config.wiki_redirect`, kept under ingest's own name because this is where
+    the staging discipline lives. The redirect is CONTEXT-local, not process-global: it never
+    assigns ``config.WIKI_DIR`` or ``os.environ`` (the child's copy is built per spawn by
+    ``config.child_env``), which is precisely what lets ``--jobs N`` keep several sources staged at
+    once — each worker thread holds its own redirect, and the main thread still sees the live
+    wiki."""
+    return config.wiki_redirect(staging)
 
 
 def _is_reserved_name(name: str) -> bool:
@@ -1548,7 +1537,7 @@ def _run_agent_sessions(
     started = time.monotonic()
     if not session_fns:
         return _SourceOutcome(True)
-    live = config.WIKI_DIR
+    live = config.wiki_dir()
     staging: Path | None = None
     created: list[str] = []
     updated: list[str] = []
@@ -2078,7 +2067,7 @@ def ingest(
     # failures saves are all destructive under concurrency (see runlock's module docstring).
     # A second run fails loud here instead of silently eating the first one's work.
     with runlock.hold("ingest"):
-        _sweep_stale_staging(config.WIKI_DIR)
+        _sweep_stale_staging(config.wiki_dir())
         # Same place, same reason: under the exclusive lock, leftovers on disk belong to dead runs.
         # Age-based only — a checkpoint's own guards decide whether it is USABLE (see resume.sweep).
         resume.sweep()

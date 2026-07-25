@@ -719,7 +719,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     issues = validate.validate_all(pages)
     missing: list[str] = []
     if args.paths:
-        wiki_root = config.WIKI_DIR.resolve()
+        wiki_root = config.wiki_dir().resolve()
         wanted: set[str] = set()
         for arg in args.paths:
             rel = arg.replace(os.sep, "/")
@@ -735,7 +735,7 @@ def cmd_check(args: argparse.Namespace) -> int:
         known = {p.rel_path for p in pages}
         for rel in sorted(wanted - known):
             try:
-                on_disk = okf.safe_join(config.WIKI_DIR, rel).is_file()
+                on_disk = okf.safe_join(config.wiki_dir(), rel).is_file()
             except okf.OKFError:
                 on_disk = False
             if on_disk:

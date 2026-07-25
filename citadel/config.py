@@ -24,14 +24,18 @@ API key to manage — the CLI uses whatever subscription it is logged into.
 No logic beyond path/setting/rules resolution (plus the tiny content hash over the effective
 rules tree, :func:`rules_version`, which is pure derivation over that resolution).
 
-NOTE: other modules reference ``config.WIKI_DIR`` / ``config.INGEST_MODEL`` /
-``config.LLM_CLI`` / etc. at call-time (``from . import config`` then
-``config.WIKI_DIR``) so tests can monkeypatch these attributes.
+NOTE: other modules reference ``config.INGEST_MODEL`` / ``config.LLM_CLI`` / ``config.RAW_DIR`` /
+etc. at call-time (``from . import config`` then ``config.RAW_DIR``) so tests can monkeypatch
+these attributes. The WIKI path is the one exception: it is read through the
+:func:`wiki_dir`/:func:`index_path`/… ACCESSORS, because ingest redirects it per source (see
+:func:`wiki_redirect`) — the module attributes stay the process-wide base those accessors fall
+back to, so monkeypatching them still configures the whole layout.
 """
 
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import hashlib
 import os
 import shutil
@@ -590,6 +594,89 @@ MANIFEST_PATH: Path = WIKI_DIR / ".citadel_ingested.json"
 # instead of scrolling past in the console. Regenerated each run (a source that later succeeds is
 # dropped) and surfaced in wiki/sources/index.md.
 FAILURES_PATH: Path = WIKI_DIR / ".citadel_failures.json"
+
+
+# --- The wiki in effect right HERE (per-context, never process-global) ------------------------
+# Ingest runs every source's agent session against a per-source STAGING copy of the wiki, so for
+# the duration of that session "the wiki" is the staging dir, not WIKI_DIR. That redirect used to
+# ASSIGN the module attributes below (and os.environ), which made it process-global: one process
+# could only ever be inside one redirect, and two sources could never be in flight at once — the
+# blocker the 2026-07 audit named (finding 1.2.5) under `--jobs N`.
+#
+# It is a ContextVar instead. A ContextVar is per-thread by construction (each thread starts from
+# an empty context), so N worker threads can each hold their OWN staging redirect while the main
+# thread still sees the live wiki — and a redirect can never leak out of the `with` block that set
+# it, not even on an exception. Unset (the overwhelmingly common case: every read path, every CLI
+# command, the MCP server) the accessors return the module attributes verbatim, so the process-wide
+# layout — and every test that monkeypatches it — behaves exactly as before.
+_WIKI_OVERRIDE: contextvars.ContextVar["Path | None"] = contextvars.ContextVar("citadel_wiki_dir", default=None)
+
+
+def wiki_dir() -> Path:
+    """The wiki directory THIS context reads and writes: the active :func:`wiki_redirect` target
+    (ingest's per-source staging copy) when one is in effect, else the process-wide
+    :data:`WIKI_DIR`. Every in-package consumer goes through this accessor rather than reading
+    ``config.WIKI_DIR`` directly — that is what lets two sources stage concurrently."""
+    override = _WIKI_OVERRIDE.get()
+    return override if override is not None else WIKI_DIR
+
+
+def index_path() -> Path:
+    """:data:`INDEX_PATH` (``<wiki>/index.md``), redirect-aware — see :func:`wiki_dir`."""
+    override = _WIKI_OVERRIDE.get()
+    return override / "index.md" if override is not None else INDEX_PATH
+
+
+def sources_index_path() -> Path:
+    """:data:`SOURCES_INDEX_PATH` (``<wiki>/sources/index.md``), redirect-aware."""
+    override = _WIKI_OVERRIDE.get()
+    return override / "sources" / "index.md" if override is not None else SOURCES_INDEX_PATH
+
+
+def log_path() -> Path:
+    """:data:`LOG_PATH` (``<wiki>/log.md``), redirect-aware."""
+    override = _WIKI_OVERRIDE.get()
+    return override / "log.md" if override is not None else LOG_PATH
+
+
+def manifest_path() -> Path:
+    """:data:`MANIFEST_PATH` (``<wiki>/.citadel_ingested.json``), redirect-aware."""
+    override = _WIKI_OVERRIDE.get()
+    return override / ".citadel_ingested.json" if override is not None else MANIFEST_PATH
+
+
+def failures_path() -> Path:
+    """:data:`FAILURES_PATH` (``<wiki>/.citadel_failures.json``), redirect-aware."""
+    override = _WIKI_OVERRIDE.get()
+    return override / ".citadel_failures.json" if override is not None else FAILURES_PATH
+
+
+@contextlib.contextmanager
+def wiki_redirect(target: Path | str):
+    """Point :func:`wiki_dir` (and every path derived from it) at ``target`` for the duration of
+    the block, in THIS context only — a sibling thread's redirect, and the main thread's live
+    wiki, are unaffected. Restored on every exit path, including an exception.
+
+    The raw/docs dirs are deliberately untouched: staging is a SIBLING of the live wiki, so every
+    relative citation the agent writes (``../../raw/x.md``) resolves identically before and after
+    the promote."""
+    token = _WIKI_OVERRIDE.set(Path(target))
+    try:
+        yield
+    finally:
+        _WIKI_OVERRIDE.reset(token)
+
+
+def child_env() -> dict[str, str]:
+    """The environment to hand a CHILD process that must see THIS context's wiki: ``os.environ``
+    plus an explicit ``CITADEL_WIKI_DIR``. The agentic CLI (and the ``citadel check`` it shells
+    out to) resolves its own config at import, so the redirect has to reach it through the
+    environment — passed per spawn rather than assigned into ``os.environ``, which is
+    process-global and would make two concurrent sessions overwrite each other's wiki."""
+    env = dict(os.environ)
+    env["CITADEL_WIKI_DIR"] = str(wiki_dir())
+    return env
+
 
 # Ingest backend: which coding-agent CLI to shell out to, and (for the claude
 # CLI) which model alias/id to pass. No API key is used.

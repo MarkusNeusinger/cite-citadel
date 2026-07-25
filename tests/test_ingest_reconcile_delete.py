@@ -39,7 +39,7 @@ def test_deleted_source_citations_reconciled_out(tmp_citadel, fake_agent, seed_c
 
     def fake(rel_key, kind="ingest"):
         # The deleted source was this page's only provenance -> remove the page entirely.
-        (config.WIKI_DIR / "concepts" / "topic.md").unlink()
+        (config.wiki_dir() / "concepts" / "topic.md").unlink()
 
     agent = fake_agent(side_effect=fake)
 

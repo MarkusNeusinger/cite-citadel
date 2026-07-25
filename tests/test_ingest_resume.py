@@ -89,7 +89,7 @@ def test_checkpoint_captures_edits_no_session_diff_reports(chunked_source, fake_
     wiki = chunked_source.wiki
 
     def page(rel_path: str, title: str, body: str) -> None:
-        target = Path(config.WIKI_DIR) / rel_path
+        target = Path(config.wiki_dir()) / rel_path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(
             okf.dump(
@@ -105,7 +105,7 @@ def test_checkpoint_captures_edits_no_session_diff_reports(chunked_source, fake_
             page("concepts/kaffee.md", "Kaffee", "A fact.[^s1]" + sources)
             page("concepts/hub.md", "Hub", "See [Kaffee](kaffee.md).[^s1]" + sources)
         elif segment[0] == 2:  # rename: same title, new path -> _repair_renames repoints hub.md
-            (Path(config.WIKI_DIR) / "concepts" / "kaffee.md").unlink()
+            (Path(config.wiki_dir()) / "concepts" / "kaffee.md").unlink()
             page("concepts/coffee.md", "Kaffee", "A fact.[^s1]" + sources)
         elif segment[0] == 3:
             raise RuntimeError("segment three boom")
@@ -264,7 +264,7 @@ def test_replay_that_no_longer_validates_discards_the_checkpoint(chunked_source,
 
     def fake(rel_key, kind="ingest", read_path=None, segment=None):
         if segment[0] == 1:
-            target = Path(config.WIKI_DIR) / "misc" / "big.md"
+            target = Path(config.wiki_dir()) / "misc" / "big.md"
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(
                 okf.dump(

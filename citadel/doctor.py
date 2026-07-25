@@ -236,7 +236,7 @@ def check_manifest() -> Check:
 
     Reads the manifest through :func:`manifest.inspect` — ONE parse that also stashes the stamp for
     the mismatch probe below, so doctor never re-reads the file or reaches into manifest internals."""
-    path = config.MANIFEST_PATH
+    path = config.manifest_path()
     fmt, count, error = manifest.inspect()
     if error == "missing":
         return Check(OK, "manifest", f"no manifest yet ({path.name}) - nothing ingested")
@@ -434,7 +434,7 @@ def check_wiki_git() -> Check:
     if shutil.which("git") is None:
         detail = "git not found on PATH - wiki history skipped"
         return Check(WARN if mode == "init" else OK, "wiki git", detail)
-    state = wikigit.repo_state(Path(config.WIKI_DIR))
+    state = wikigit.repo_state(Path(config.wiki_dir()))
     remote = f" (push: {config.WIKI_GIT_REMOTE})" if config.WIKI_GIT_REMOTE else ""
     if state == wikigit.REPO:
         return Check(OK, "wiki git", f"wiki dir is a git repo - changes commit after each ingest/curate{remote}")
@@ -594,7 +594,7 @@ def check_workspace_coherence() -> Check:
                 OK, "workspace coherence", f"all {total} source citations resolve under the configured raw/docs roots"
             )
         page_rel, target, abs_path = example
-        suggested = config.WIKI_DIR.parent / "raw"
+        suggested = config.wiki_dir().parent / "raw"
         return Check(
             WARN,
             "workspace coherence",

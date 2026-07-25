@@ -38,7 +38,7 @@ def is_skipped_name(name: str) -> bool:
 
 
 def load() -> list[Page]:
-    """Walk config.WIKI_DIR; parse each *.md (not index.md/log.md, not a dotfile)
+    """Walk config.wiki_dir(); parse each *.md (not index.md/log.md, not a dotfile)
     into a Page whose rel_path is its posix path relative to WIKI_DIR. Missing
     'type' is surfaced by lint, not load, so failing pages are still included.
     Return the list sorted by rel_path.
@@ -48,7 +48,7 @@ def load() -> list[Page]:
     re-parse. The cache is off by default, always off inside the mutating lifecycles, and every
     consult re-checks the filesystem, so this function's contract is unchanged: it never returns
     anything a fresh walk would not have produced."""
-    wiki_dir = config.WIKI_DIR
+    wiki_dir = config.wiki_dir()
     cached = pagecache.get(wiki_dir)
     if cached is not None:
         return cached
@@ -346,7 +346,7 @@ def search(query: str, pages: list[Page] | None = None, limit: int = 8) -> list[
 def read_page(rel_path: str) -> Page:
     """okf.safe_join(WIKI_DIR, rel_path); read text; okf.parse; return Page.
     Raise FileNotFoundError if absent."""
-    target = okf.safe_join(config.WIKI_DIR, rel_path)
+    target = okf.safe_join(config.wiki_dir(), rel_path)
     if not target.is_file():
         raise FileNotFoundError(rel_path)
     text = target.read_text(encoding="utf-8")
@@ -379,7 +379,7 @@ def read_page_text(rel_path: str) -> str:
     an OS/decoding error (an undecodable file) — the callers translate those into a CLI exit
     code or an MCP error string."""
     rel_path = _normalize_rel_path(rel_path)
-    target = okf.safe_join(config.WIKI_DIR, rel_path)
+    target = okf.safe_join(config.wiki_dir(), rel_path)
     if not target.is_file():
         raise FileNotFoundError(rel_path)
     return target.read_text(encoding="utf-8-sig")
@@ -399,7 +399,7 @@ def neighbors_text(rel_path: str) -> str:
     from . import grammar, linkgraph
 
     rel_path = _normalize_rel_path(rel_path)
-    okf.safe_join(config.WIKI_DIR, rel_path)  # validate the path (raises okf.OKFError on traversal/escape)
+    okf.safe_join(config.wiki_dir(), rel_path)  # validate the path (raises okf.OKFError on traversal/escape)
     pages = load()
     by_path = {p.rel_path: p for p in pages}
     page = by_path.get(rel_path)
@@ -520,13 +520,13 @@ def define_text(term: str, pages: list[Page] | None = None) -> str:
 def index_text() -> str:
     """The generated ``wiki/index.md`` catalog text. Raises FileNotFoundError when no index exists
     yet (nothing ingested), or an OS error when the path is unreadable."""
-    return config.INDEX_PATH.read_text(encoding="utf-8")
+    return config.index_path().read_text(encoding="utf-8")
 
 
 def sources_text() -> str:
     """The generated ``wiki/sources/index.md`` provenance catalog text. Raises FileNotFoundError
     when nothing has been ingested yet, or an OS error when the path is unreadable."""
-    return config.SOURCES_INDEX_PATH.read_text(encoding="utf-8")
+    return config.sources_index_path().read_text(encoding="utf-8")
 
 
 def _is_reserved_name(rel_path: str) -> bool:
@@ -554,7 +554,7 @@ def write_page(rel_path: str, frontmatter: dict, body: str) -> Page:
     if _is_reserved_name(rel_path):
         raise okf.OKFError(f"refusing to write protected file: {rel_path!r}")
     okf.validate(frontmatter)
-    target = okf.safe_join(config.WIKI_DIR, rel_path)
+    target = okf.safe_join(config.wiki_dir(), rel_path)
     config.robust_mkdir(target.parent)
     frontmatter = dict(frontmatter)
     frontmatter["timestamp"] = utc_now_iso()
@@ -575,7 +575,7 @@ def delete_page(rel_path: str) -> bool:
     folder is inert and drops out of the catalog on the next rebuild."""
     if _is_reserved_name(rel_path):
         raise okf.OKFError(f"refusing to delete protected file: {rel_path!r}")
-    target = okf.safe_join(config.WIKI_DIR, rel_path)  # rejects ''/absolute/'..'
+    target = okf.safe_join(config.wiki_dir(), rel_path)  # rejects ''/absolute/'..'
     if target.is_file():
         target.unlink()
         pagecache.invalidate()  # as in write_page: the next load() must not see the page
@@ -605,7 +605,7 @@ def append_log(line: str) -> None:
     entries are grouped under ``## YYYY-MM-DD`` date headings (per the OKF reserved-file
     convention). A new date heading is opened the first time a given UTC day is logged;
     prior lines are never rewritten (append-only audit trail)."""
-    log_path = config.LOG_PATH
+    log_path = config.log_path()
     config.robust_mkdir(log_path.parent)
     now = datetime.now(timezone.utc)
     day, stamp = now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%SZ")

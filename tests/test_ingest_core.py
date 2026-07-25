@@ -61,7 +61,7 @@ def test_ingest_accepts_bom_prefixed_page(tmp_citadel, fake_agent, transformer_p
         # Windows. The frontmatter is well-formed; only the BOM precedes it. This reproduces
         # the run that failed with 'missing required field' on every field of every page —
         # the BOM hid the frontmatter from the parser so it looked empty.
-        target = config.WIKI_DIR / "concepts" / "transformer.md"
+        target = config.wiki_dir() / "concepts" / "transformer.md"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("\ufeff" + okf.dump(frontmatter, body), encoding="utf-8")
 
@@ -244,7 +244,7 @@ def test_reserved_files_excluded_from_diff(tmp_citadel, fake_agent, seed_page):
             {"type": "Concept", "title": "Foo", "description": "d", "tags": ["x"], "resource": "raw/notes.md"},
             "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/notes.md](../../raw/notes.md) - n\n",
         )
-        (config.WIKI_DIR / "index.md").write_text("GARBAGE the agent should not write\n", encoding="utf-8")
+        (config.wiki_dir() / "index.md").write_text("GARBAGE the agent should not write\n", encoding="utf-8")
 
     fake_agent(side_effect=fake)
     (raw / "notes.md").write_text("x\n", encoding="utf-8")
@@ -289,7 +289,7 @@ def test_agent_merge_repoints_inbound_link(tmp_citadel, fake_agent, seed_page):
             "Self-attention subsumes attention.[^s1]\n\n## Sources\n\n"
             "[^s1]: [raw/notes.md](../../raw/notes.md) - notes (ingested 2026-06-22)\n",
         )
-        (config.WIKI_DIR / "concepts" / "attention.md").unlink()
+        (config.wiki_dir() / "concepts" / "attention.md").unlink()
         # The agent repoints the inbound link itself.
         seed_page(
             "concepts/linker.md",
@@ -332,7 +332,7 @@ def test_repair_renames_repoints_after_rename(tmp_citadel, fake_agent, seed_page
 
     def fake(rel_key, kind="ingest"):
         # Rename a.md -> aa.md (SAME title 'Alpha'); do NOT touch linker.
-        (config.WIKI_DIR / "concepts" / "a.md").unlink()
+        (config.wiki_dir() / "concepts" / "a.md").unlink()
         seed_page(
             "concepts/aa.md",
             {"type": "Concept", "title": "Alpha", "description": "d", "tags": ["x"], "resource": "raw/old.md"},
@@ -368,7 +368,7 @@ def test_agent_delete_leaves_broken_link_surfaced(tmp_citadel, fake_agent, seed_
     )
 
     def fake(rel_key, kind="ingest"):
-        (config.WIKI_DIR / "concepts" / "a.md").unlink()  # nothing created in its place
+        (config.wiki_dir() / "concepts" / "a.md").unlink()  # nothing created in its place
 
     fake_agent(side_effect=fake)
     report = ingest.ingest([str(raw / "notes.md")])

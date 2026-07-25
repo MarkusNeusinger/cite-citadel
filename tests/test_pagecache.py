@@ -129,7 +129,7 @@ def test_same_length_rewrite_is_seen(tmp_citadel, seed_page, counted, warm):
     timestamp resolution."""
     _seed_three(seed_page)
     store.load()
-    target = Path(config.WIKI_DIR) / "concepts/coffee.md"
+    target = Path(config.wiki_dir()) / "concepts/coffee.md"
     before = target.stat()
     target.write_text(okf.dump(PAGE_FM, "Coffee is brewed from ROASTED beans.\n"), encoding="utf-8")
     assert target.stat().st_size == before.st_size  # the case size cannot catch
@@ -149,7 +149,7 @@ def test_new_page_is_seen(tmp_citadel, seed_page, counted, warm):
 def test_deleted_page_is_seen(tmp_citadel, seed_page, counted, warm):
     _seed_three(seed_page)
     store.load()
-    (Path(config.WIKI_DIR) / "concepts/tea.md").unlink()
+    (Path(config.wiki_dir()) / "concepts/tea.md").unlink()
     assert len(store.load()) == 2
     assert counted() == 2
 
@@ -158,7 +158,7 @@ def test_renamed_page_is_seen(tmp_citadel, seed_page, counted, warm):
     """A move keeps size and content; the fingerprint is keyed by rel_path, so it still misses."""
     _seed_three(seed_page)
     store.load()
-    wiki = Path(config.WIKI_DIR)
+    wiki = Path(config.wiki_dir())
     (wiki / "concepts/tea.md").rename(wiki / "concepts/black-tea.md")
     assert "concepts/black-tea.md" in [p.rel_path for p in store.load()]
     assert counted() == 2
@@ -169,7 +169,7 @@ def test_generated_files_do_not_invalidate(tmp_citadel, seed_page, counted, warm
     regenerated on every run and are not pages, so rewriting them must not cost a re-parse."""
     _seed_three(seed_page)
     store.load()
-    wiki = Path(config.WIKI_DIR)
+    wiki = Path(config.wiki_dir())
     (wiki / "index.md").write_text("# Index\n\nregenerated\n", encoding="utf-8")
     (wiki / "concepts/index.md").write_text("# concepts\n\nregenerated\n", encoding="utf-8")
     (wiki / "log.md").write_text("# Log\n\n- entry\n", encoding="utf-8")
@@ -184,7 +184,7 @@ def test_a_symlinked_page_is_stat_through_to_its_target(tmp_citadel, seed_page, 
     _seed_three(seed_page)
     target = tmp_path / "external-page.md"
     target.write_text(okf.dump({**PAGE_FM, "title": "External"}, "External body.\n"), encoding="utf-8")
-    link = Path(config.WIKI_DIR) / "concepts/external.md"
+    link = Path(config.wiki_dir()) / "concepts/external.md"
     try:
         link.symlink_to(target)
     except (OSError, NotImplementedError):  # pragma: no cover - Windows without symlink privilege
@@ -227,14 +227,14 @@ def test_a_freshly_written_wiki_is_not_cached(tmp_citadel, seed_page, counted, m
 
 
 def test_snapshot_is_keyed_by_wiki_directory(tmp_citadel, seed_page, counted, warm, tmp_path):
-    """Ingest redirects config.WIKI_DIR at a staging copy; a snapshot of one directory must never
+    """Ingest redirects config.wiki_dir() at a staging copy; a snapshot of one directory must never
     answer for another (and the single slot means staging dirs cannot accumulate)."""
     _seed_three(seed_page)
     assert len(store.load()) == 3
     other = tmp_path / "other-wiki"
     (other / "concepts").mkdir(parents=True)
     (other / "concepts/solo.md").write_text(okf.dump(PAGE_FM, "Only page.\n"), encoding="utf-8")
-    original = config.WIKI_DIR
+    original = config.wiki_dir()
     try:
         config.WIKI_DIR = other
         assert [p.rel_path for p in store.load()] == ["concepts/solo.md"]
@@ -285,13 +285,13 @@ def test_ingest_runs_with_the_cache_bypassed(tmp_citadel, seed_page, fake_agent,
 def test_fingerprint_is_none_on_a_walk_error(tmp_citadel, seed_page, warm, monkeypatch):
     """A flaky share (or a directory that vanished mid-walk) yields no fingerprint at all."""
     _seed_three(seed_page)
-    assert pagecache.fingerprint(config.WIKI_DIR, store_core.is_skipped_name) is not None
+    assert pagecache.fingerprint(config.wiki_dir(), store_core.is_skipped_name) is not None
 
     def boom(path):
         raise OSError("scandir failed")
 
     monkeypatch.setattr(os, "scandir", boom)
-    assert pagecache.fingerprint(config.WIKI_DIR, store_core.is_skipped_name) is None
+    assert pagecache.fingerprint(config.wiki_dir(), store_core.is_skipped_name) is None
 
 
 def test_no_fingerprint_degrades_to_uncached(tmp_citadel, seed_page, counted, warm, monkeypatch):
@@ -308,7 +308,7 @@ def test_a_missing_wiki_directory_is_not_cached(tmp_citadel, counted, warm):
     """An empty (or not-yet-created) wiki dir: [] every time, from disk, never from a snapshot."""
     import shutil
 
-    shutil.rmtree(config.WIKI_DIR)
+    shutil.rmtree(config.wiki_dir())
     assert store.load() == []
     assert store.load() == []
     assert counted() == 2
@@ -322,7 +322,7 @@ def test_a_wiki_that_changes_during_the_load_is_not_cached(tmp_citadel, seed_pag
 
     def load_then_change(wiki_dir):
         pages = real(wiki_dir)
-        target = Path(config.WIKI_DIR) / "concepts/late.md"
+        target = Path(config.wiki_dir()) / "concepts/late.md"
         target.write_text(okf.dump({**PAGE_FM, "title": "Late"}, "Written mid-load.\n"), encoding="utf-8")
         return pages
 

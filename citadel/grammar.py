@@ -352,7 +352,7 @@ def link_abs(page_rel: str, target: str) -> str | None:
     and works on synthetic or not-yet-existing paths."""
     if is_external(target):
         return None
-    page_dir = os.path.dirname(str(config.WIKI_DIR / page_rel))
+    page_dir = os.path.dirname(str(config.wiki_dir() / page_rel))
     return os.path.normpath(os.path.join(page_dir, target))
 
 

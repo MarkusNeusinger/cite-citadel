@@ -21,7 +21,7 @@ still reading the filesystem's own answer to "did anything change?" on every sin
    window is checked when the snapshot is STORED and never again, and that is sufficient: once a
    stamp is older than the coarsest tick, any later write necessarily lands in a later tick and so
    moves it.
-3. *A single slot, keyed by the wiki directory.* Ingest redirects ``config.WIKI_DIR`` at its
+3. *A single slot, keyed by the wiki directory.* Ingest redirects ``config.wiki_dir()`` at its
    per-source staging copy; a snapshot of one directory can never be served for another, and the
    single slot means the unbounded stream of staging dirs cannot accumulate entries.
 

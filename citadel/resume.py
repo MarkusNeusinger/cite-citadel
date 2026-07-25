@@ -109,9 +109,9 @@ def enabled() -> bool:
 def cache_dir() -> Path:
     """The checkpoint store: a dotdir sibling of the wiki dir. Read at call time — and deliberately
     derived from the wiki's PARENT, so it resolves to the same directory while ingest has
-    ``config.WIKI_DIR`` redirected at a per-source staging copy (staging is a SIBLING of the live
+    ``config.wiki_dir()`` redirected at a per-source staging copy (staging is a SIBLING of the live
     wiki — the same reason ``transcribe``/``pdftext``/``runlock`` resolve their siblings this way)."""
-    return Path(config.WIKI_DIR).parent / CACHE_DIR_NAME
+    return Path(config.wiki_dir()).parent / CACHE_DIR_NAME
 
 
 @dataclass(frozen=True)
