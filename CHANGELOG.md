@@ -28,7 +28,7 @@ All notable changes to this project are documented here. The format is based on
   cancels queued sources while still recording work already promoted. The default stays **1** —
   serial, line for line as before — because the real cost is not safety but **cross-linking**:
   concurrent sessions cannot see each other's new pages. Best on a large backlog of unrelated
-  sources (see docs/recipes.md); `curate` remains serial by design. Chunked sources needed one more
+  sources (see docs/recipes.md), and available on `citadel refresh --jobs N` too — a refresh slice is ordered by last-checked time rather than by topic, so its sources are usually unrelated; `curate` remains serial by design. Chunked sources needed one more
   rule, found by an adversarial cross-review and reproduced offline before it was fixed: a resume
   checkpoint's delta is measured against the wiki its source was **cloned from**, never against a
   live wiki that has since moved on. Measured against live, a page a concurrent source *created*

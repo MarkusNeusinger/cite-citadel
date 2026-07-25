@@ -200,6 +200,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Write a transcript file per source to DIR (see `citadel ingest --log-dir`). "
         "Overrides CITADEL_LLM_LOG_DIR.",
     )
+    p_refresh.add_argument(
+        "--jobs",
+        "-j",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Re-verify up to N sources CONCURRENTLY (default 1 = serial, or CITADEL_JOBS) — the "
+        "same knob, and the same trade-off, as `citadel ingest --jobs`. A refresh slice is ordered "
+        "by last-checked time rather than by topic, so its sources are usually unrelated and "
+        "parallelism costs little cross-linking here.",
+    )
     p_refresh.set_defaults(func=cmd_refresh)
 
     p_status = sub.add_parser(
@@ -471,6 +482,9 @@ def cmd_refresh(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    if args.jobs is not None and args.jobs < 1:
+        print(f"error: --jobs must be at least 1 (got {args.jobs}); 1 means the serial default.", file=sys.stderr)
+        return 2
     if args.verbose:
         config.LLM_VERBOSE = True
     if args.log_dir is not None:
@@ -480,7 +494,9 @@ def cmd_refresh(args: argparse.Namespace) -> int:
         from .progress import ConsoleProgress
 
         progress = ConsoleProgress(spinner=not config.LLM_VERBOSE)
-    report = refresh.refresh(limit=args.limit, min_age_days=args.min_age_days, dry_run=args.dry_run, progress=progress)
+    report = refresh.refresh(
+        limit=args.limit, min_age_days=args.min_age_days, dry_run=args.dry_run, progress=progress, jobs=args.jobs
+    )
     print(report.render(), end="")
     ing = report.ingest_report
     return 1 if ing is not None and (ing.errors or ing.broken_links) else 0

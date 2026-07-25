@@ -203,3 +203,30 @@ def test_cli_refresh_runs_the_budgeted_sessions(tmp_citadel, fake_agent, cite_pa
     assert agent.calls == [("raw/a.md", "reconcile"), ("raw/b.md", "reconcile")]
     out = capsys.readouterr().out
     assert "Refreshing 2 of 2" in out
+
+
+def test_refresh_hands_jobs_through_to_ingest(tmp_citadel, monkeypatch):
+    """`citadel refresh --jobs N` is the same knob as ingest's, because refresh IS a forced ingest
+    run: refresh only picks the sources. A refresh slice is ordered by last-checked time rather
+    than by topic, so it is the lifecycle where parallelism costs the least cross-linking."""
+    seen: dict = {}
+
+    def fake_ingest(paths=None, progress=None, full_rescan=False, force=False, jobs=None):
+        seen["jobs"] = jobs
+        seen["force"] = force
+        return ingest.IngestReport([], [], [], [])
+
+    (tmp_citadel.raw / "note.md").write_text("Content.\n", encoding="utf-8")
+    tracked = manifest.load()
+    tracked["raw/note.md"] = manifest.make_entry("aa" * 32, "claude:sonnet")
+    manifest.save(tracked)
+
+    monkeypatch.setattr(ingest, "ingest", fake_ingest)
+    refresh.refresh(limit=1, jobs=3)
+
+    assert seen == {"jobs": 3, "force": True}
+
+
+def test_refresh_cli_rejects_a_zero_job_count(tmp_citadel, capsys):
+    assert cli.main(["refresh", "--jobs", "0"]) == 2
+    assert "at least 1" in capsys.readouterr().err

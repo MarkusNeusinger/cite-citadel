@@ -122,6 +122,9 @@ dominated by per-session latency instead, and `--jobs` trades some of that linki
 citadel ingest --jobs 4     # or set CITADEL_JOBS=4 for every run in this workspace
 ```
 
+`citadel refresh --jobs N` takes the same flag, and is arguably where it fits best: a refresh
+slice is ordered by *last-checked time*, not by topic, so its sources are usually unrelated.
+
 Each source keeps its own staging copy and its own all-or-nothing promote — nothing about the
 safety model changes — but concurrent sessions cannot see each other's new pages, so they link less
 richly and can create two pages for one topic. Two things absorb that: a source whose promote raced

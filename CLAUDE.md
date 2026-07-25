@@ -31,7 +31,7 @@ session, `--log-dir DIR` writes a transcript per source, `--quiet` drops the pro
 `--jobs N`/`-j` folds N sources in CONCURRENTLY (default 1 = serial; `CITADEL_JOBS`),
 `--full-rescan` distrusts the manifest's stat cache and re-hashes every tracked source,
 `--force <paths>` deliberately re-reads already-ingested sources as a reconcile — it requires
-explicit paths and is refused without them), `refresh [--limit N] [--min-age-days D] [--dry-run]`
+explicit paths and is refused without them), `refresh [--limit N] [--min-age-days D] [--dry-run] [--jobs N]`
 (the THIRD lifecycle: re-verify the least-recently-checked sources — ordered by the manifest's
 `ingested_at` stamp, oldest/stampless first — through forced reconcile sessions on an explicit
 per-run budget of N sources; the sustainable alternative to regenerating the wiki after a model
