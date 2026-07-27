@@ -43,7 +43,10 @@ All notable changes to this project are documented here. The format is based on
   resolved form remains the one identity everywhere (manifest keys, root containment, staging vs.
   live); what child processes are handed — the agent CLI's `cwd` and its `--add-dir`/
   `--include-directories` grants, and git's `-C` — is now the **non-resolved** spelling citadel
-  already held (the `.env` value, or the drive the process was launched from). Nothing is guessed:
+  already held (the `.env` value, or the drive the process was launched from), and every path
+  UNDER an aliased directory inherits it — which is what reaches the *derived* paths, the common
+  case: with a workspace on `T:\`, the wiki is just `WORKSPACE_ROOT / "wiki"` with no
+  `CITADEL_WIKI_DIR` to spell it out, and it is exactly what git gets as `-C`. Nothing is guessed:
   an alias is recorded only where both spellings of one directory are known *and* resolution turned
   a non-UNC path into a UNC one, so POSIX layouts and ordinary Windows paths are byte-for-byte
   unchanged.

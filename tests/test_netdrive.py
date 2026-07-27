@@ -479,3 +479,45 @@ def test_wikigit_runs_git_against_the_child_friendly_path(tmp_citadel, monkeypat
     monkeypatch.setattr(wikigit.subprocess, "run", fake_run)
     wikigit._git(unc, "status", "--porcelain")
     assert seen["argv"][:3] == ["/usr/bin/git", "-C", r"T:\team-wiki\wiki"]
+
+
+def test_native_form_is_inherited_by_paths_under_an_aliased_root(monkeypatch):
+    """The alias covers the whole SUBTREE, which is what makes the fix reach the derived paths: a
+    default wiki is `WORKSPACE_ROOT / "wiki"` with no CITADEL_WIKI_DIR to record a spelling for,
+    and it is exactly what git gets as `-C`. Sound because a drive mapping maps the whole tree."""
+    unc = Path(r"\\fileserver\share\team-wiki")
+    monkeypatch.setattr(config, "NATIVE_FORMS", {config._path_id(unc): r"T:\team-wiki"})
+
+    # Built the same way on both sides: the separator is the platform's, not this file's.
+    drive = Path(r"T:\team-wiki")
+    assert config.native_form(unc / "wiki") == drive / "wiki"
+    assert config.native_form(unc / "raw" / "sub") == drive / "raw" / "sub"
+    # Unrelated trees keep their own spelling — inheritance is containment, not a global rewrite.
+    other = Path(r"\\fileserver\share\other\wiki")
+    assert config.native_form(other) == other
+
+
+def test_wikigit_uses_the_drive_letter_for_a_default_wiki_under_an_aliased_workspace(tmp_citadel, monkeypatch):
+    """The reviewer's case end to end: no CITADEL_WIKI_DIR at all, so the wiki is just
+    `WORKSPACE_ROOT / "wiki"` — and git must still be pointed at the drive letter."""
+    from citadel import wikigit
+
+    unc = Path(r"\\fileserver\share\team-wiki")
+    monkeypatch.setattr(config, "WORKSPACE_ROOT", unc)
+    monkeypatch.setattr(config, "WIKI_DIR", unc / "wiki")
+    monkeypatch.setattr(config, "NATIVE_FORMS", {config._path_id(unc): r"T:\team-wiki"})
+    monkeypatch.setattr(wikigit.shutil, "which", lambda name: "/usr/bin/git")
+    seen = {}
+
+    class _Proc:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(argv, **kwargs):
+        seen["argv"] = argv
+        return _Proc()
+
+    monkeypatch.setattr(wikigit.subprocess, "run", fake_run)
+    wikigit._git(Path(config.wiki_dir()), "status", "--porcelain")
+    assert seen["argv"][:3] == ["/usr/bin/git", "-C", str(Path(r"T:\team-wiki") / "wiki")]

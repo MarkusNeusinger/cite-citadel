@@ -110,11 +110,30 @@ def _record_native_form(resolved: Path | str, native: Path | str) -> None:
 def native_form(path: Path | str) -> Path:
     """The spelling of ``path`` to hand a CHILD process — the agent CLI's ``cwd`` and its directory
     grants, git's ``-C`` — namely the recorded non-resolved alias when there is one (a Windows
-    mapped drive letter instead of ``resolve()``'s UNC rewrite), else ``path`` unchanged. Read at
-    call time (tests monkeypatch :data:`NATIVE_FORMS` like any other config attribute) and purely
-    lexical: it never touches the filesystem, so a dead mount cannot make it hang."""
-    recorded = NATIVE_FORMS.get(_path_id(path))
-    return Path(recorded) if recorded else Path(path)
+    mapped drive letter instead of ``resolve()``'s UNC rewrite), else ``path`` unchanged.
+
+    An alias is INHERITED down the tree: a directory under one that has an alias is rebased onto
+    it, so the DERIVED paths get the fix too, not just the ones a ``.env`` spelled out. That is the
+    common case, not an edge one — with a workspace at ``T:\\team-wiki`` the wiki is
+    ``WORKSPACE_ROOT / "wiki"`` (no ``CITADEL_WIKI_DIR`` at all), and it is git's ``-C`` argument.
+    Rebasing is sound because a drive mapping covers the WHOLE subtree: if
+    ``\\\\srv\\share\\team-wiki`` and ``T:\\team-wiki`` are the same directory, so are their
+    identically-named children.
+
+    Read at call time (tests monkeypatch :data:`NATIVE_FORMS` like any other config attribute) and
+    purely lexical: it never touches the filesystem, so a dead mount cannot make it hang. The empty
+    registry — every POSIX layout, every ordinary Windows one — short-circuits before any of it."""
+    if not NATIVE_FORMS:
+        return Path(path)
+    p = Path(path)
+    recorded = NATIVE_FORMS.get(_path_id(p))
+    if recorded:
+        return Path(recorded)
+    for parent in p.parents:
+        alias = NATIVE_FORMS.get(_path_id(parent))
+        if alias:
+            return Path(alias) / p.relative_to(parent)
+    return p
 
 
 def child_cwd() -> str:
@@ -322,9 +341,11 @@ def _resolve_dir_entry(value: str) -> Path:
     ``CITADEL_RAW_DIRS`` entry resolve through the identical path.
 
     The value's own (non-resolved) spelling is remembered for child processes on the way through
-    (:func:`_record_native_form`), so a ``CITADEL_WIKI_DIR=T:\\team-wiki\\wiki`` is still handed to
-    the agent CLI / git as a drive-letter path even though its identity here is the resolved UNC
-    form."""
+    (:func:`_record_native_form`), so a ``CITADEL_WIKI_DIR=T:\\other-share\\wiki`` — an ABSOLUTE
+    override, the one spelling nothing else could derive — is still handed to the agent CLI / git as
+    a drive-letter path even though its identity here is the resolved UNC form. A default or
+    relative dir needs no record: it lives under the workspace root, so :func:`native_form` inherits
+    the root's own alias."""
     path = Path(value).expanduser()
     if not path.is_absolute():
         path = WORKSPACE_ROOT / path

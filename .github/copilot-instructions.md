@@ -428,9 +428,11 @@ assets loaded via `importlib.resources`). `config.py` resolves all paths/setting
 drive (`T:\team-wiki`) into its UNC form, and a UNC `cwd` is refused outright by some agent CLIs
 (and read as a different repository by git). So the NON-resolved spelling citadel already holds (the
 `.env` value, the launching drive) is remembered alongside the resolved one and handed to CHILD
-processes only — the agent CLI's `cwd` + directory grants, git's `-C`. An alias is recorded only
-when both spellings of one directory are known AND resolution turned a non-UNC path into a UNC one,
-so POSIX and ordinary Windows paths keep exactly one spelling. `cli.py` mirrors
+processes only — the agent CLI's `cwd` + directory grants, git's `-C` — and every path UNDER an
+aliased directory inherits it (a default `wiki/` has no `.env` value of its own to record, yet it is
+what git gets as `-C`). An alias is recorded only when both spellings of one directory are known AND
+resolution turned a non-UNC path into a UNC one, so POSIX and ordinary Windows paths keep exactly
+one spelling. `cli.py` mirrors
 the MCP tools as subcommands (full parity: `define`/`read`/`raw`/`neighbors`/`index`/`sources`/`capture` twin their tools;
 `view` stays CLI-only and `wiki_lint`/`wiki_status` close the `lint`/`status` gaps from the MCP side). `capture.py`
 is the conversational-capture bridge behind `wiki_capture`/`citadel capture`: an append-only,

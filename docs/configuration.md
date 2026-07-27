@@ -214,9 +214,12 @@ blocks UNC/network paths"), and git treats the two spellings as different reposi
 
 So citadel remembers the spelling you actually used — the `.env` value, or the drive your shell was
 on — and hands **that** to the agent CLI (`cwd` and its directory grants) and to git, while the
-resolved form stays the one identity everywhere else. Nothing is guessed: the alias is only recorded
-when citadel already holds both spellings of the same directory, and only when resolution turned a
-non-UNC path into a UNC one — on POSIX, and for ordinary Windows paths, nothing changes at all.
+resolved form stays the one identity everywhere else. The alias covers the whole **subtree**, so a
+default `wiki/`, `raw/`, or a relative `CITADEL_WIKI_DIR=wiki` inherits it without needing its own
+entry (if `\\fileserver\share\team-wiki` and `T:\team-wiki` are the same directory, so are their
+children). Nothing is guessed: an alias is only recorded when citadel already holds both spellings
+of the same directory, and only when resolution turned a non-UNC path into a UNC one — on POSIX,
+and for ordinary Windows paths, nothing changes at all.
 `citadel doctor`'s **child paths** check names the working directory sessions will actually use, and
 WARNs when only a UNC spelling is known (map the share to a drive letter and point
 `CITADEL_WORKSPACE` at it, or run citadel from that drive).
