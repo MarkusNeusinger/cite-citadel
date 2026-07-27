@@ -19,6 +19,7 @@ spawned.
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 
 from conftest import PROMPT_CHAR_BUDGET
@@ -371,3 +372,109 @@ def test_ingest_canonicalizes_shortened_resource_for_out_of_repo_source(tmp_path
     # The canonical resource matches the manifest key, so later move/delete lookups find the page.
     assert store.find_raw_references(abs_key) == ["concepts/internal-data-analysis.md"]
     assert ingest.ingest([str(source)]).processed == []  # idempotent on the abs key
+
+
+# --- Windows mapped drives: the UNC spelling handed to child processes -------------------
+
+
+def test_is_unc_path_recognizes_both_separators():
+    """A pure string test, so it stays meaningful on the POSIX box CI runs on."""
+    assert config._is_unc_path(r"\\fileserver\share\team-wiki")
+    assert config._is_unc_path("//fileserver/share/team-wiki")
+    assert not config._is_unc_path(r"T:\team-wiki")
+    assert not config._is_unc_path("/mnt/share/team-wiki")
+
+
+def test_prefer_native_only_fires_for_a_unc_rewrite():
+    """An alias is worth remembering ONLY when resolution turned a non-UNC path into a UNC one.
+    Everything else keeps a single spelling, which is what keeps the registry empty off Windows."""
+    assert config._prefer_native(r"\\srv\share\ws", r"T:\ws")
+    assert not config._prefer_native(r"T:\ws", r"T:\ws")  # identical
+    assert not config._prefer_native(r"T:\ws", r"T:\other")  # resolution did not produce a UNC path
+    assert not config._prefer_native(r"\\srv\share\ws", r"\\srv\share\ws\..\ws")  # both UNC
+    assert not config._prefer_native("/mnt/share/ws", "/home/me/ws")  # POSIX: never
+
+
+def test_native_form_is_the_identity_function_without_a_recorded_alias(tmp_citadel):
+    """No registry entry (every POSIX layout, every ordinary Windows path) means every child
+    process is handed exactly the path it was handed before this existed."""
+    assert config.NATIVE_FORMS == {}
+    assert config.native_form(tmp_citadel.root) == tmp_citadel.root
+    assert config.child_cwd() == str(tmp_citadel.root)
+
+
+def test_child_cwd_prefers_the_recorded_drive_letter(tmp_citadel, monkeypatch):
+    """The reported bug: `Path.resolve()` rewrites a mapped drive (T:\\...) into its UNC form, and
+    that resolved path was handed to the agent CLI as cwd — where some backends refuse to run at
+    all ("environment blocks UNC/network paths"). The resolved form stays the identity; only what
+    a CHILD is handed switches back to the drive letter."""
+    unc = Path(r"\\fileserver\share\team-wiki")
+    monkeypatch.setattr(config, "WORKSPACE_ROOT", unc)
+    monkeypatch.setattr(config, "NATIVE_FORMS", {config._path_id(unc): r"T:\team-wiki"})
+
+    assert config.child_cwd() == r"T:\team-wiki"
+    assert config.WORKSPACE_ROOT == unc  # identity is untouched — only the child spelling changed
+    assert config.native_form(Path(r"\\fileserver\share\other")) == Path(r"\\fileserver\share\other")
+
+
+def test_record_native_form_only_stores_a_unc_rewrite(monkeypatch):
+    monkeypatch.setattr(config, "NATIVE_FORMS", {})
+    config._record_native_form(Path("/mnt/share/ws"), Path("/home/me/ws"))
+    assert config.NATIVE_FORMS == {}
+    config._record_native_form(Path(r"\\srv\share\ws"), Path(r"T:\ws"))
+    assert config.NATIVE_FORMS == {config._path_id(r"\\srv\share\ws"): r"T:\ws"}
+
+
+def test_run_session_spawns_the_cli_in_the_child_friendly_cwd(monkeypatch):
+    """The whole point of the fix: the subprocess actually gets the drive-letter cwd."""
+    unc = Path(r"\\fileserver\share\team-wiki")
+    monkeypatch.setattr(config, "WORKSPACE_ROOT", unc)
+    monkeypatch.setattr(config, "NATIVE_FORMS", {config._path_id(unc): r"T:\team-wiki"})
+    seen = {}
+
+    class _Proc:
+        returncode = 0
+        stdout = '{"type":"result","is_error":false,"result":"done"}'
+        stderr = ""
+
+    def fake_run(*a, **kwargs):
+        seen.update(kwargs)
+        return _Proc()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    llm._run_session("claude", ["claude", "-p"], "PROMPT")
+    assert seen["cwd"] == r"T:\team-wiki"
+
+
+def test_external_dir_grants_use_the_child_friendly_spelling(tmp_citadel_external, monkeypatch):
+    """`--add-dir` has to name the paths the agent can actually reach from its cwd: on a mapped
+    drive that is the drive letter, not resolve()'s UNC rewrite."""
+    raw_dir = Path(config.RAW_DIR)
+    monkeypatch.setattr(config, "NATIVE_FORMS", {config._path_id(raw_dir): r"T:\team-wiki\raw"})
+    granted = llm._external_dirs(config.rel_or_abs_posix(raw_dir / "notes.md"))
+    assert r"T:\team-wiki\raw" in granted
+    assert str(raw_dir) not in granted
+
+
+def test_wikigit_runs_git_against_the_child_friendly_path(tmp_citadel, monkeypatch):
+    """git for Windows treats a mapped drive and its UNC form as different repositories, so the
+    drive-letter path the user already ran `git init` / safe.directory against is the one to use."""
+    from citadel import wikigit
+
+    unc = Path(r"\\fileserver\share\team-wiki\wiki")
+    monkeypatch.setattr(config, "NATIVE_FORMS", {config._path_id(unc): r"T:\team-wiki\wiki"})
+    monkeypatch.setattr(wikigit.shutil, "which", lambda name: "/usr/bin/git")
+    seen = {}
+
+    class _Proc:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(argv, **kwargs):
+        seen["argv"] = argv
+        return _Proc()
+
+    monkeypatch.setattr(wikigit.subprocess, "run", fake_run)
+    wikigit._git(unc, "status", "--porcelain")
+    assert seen["argv"][:3] == ["/usr/bin/git", "-C", r"T:\team-wiki\wiki"]

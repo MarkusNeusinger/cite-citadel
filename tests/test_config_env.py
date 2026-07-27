@@ -127,3 +127,32 @@ def test_wiki_git_unrecognized_value_warns_and_falls_back_to_auto(monkeypatch, r
     assert "CITADEL_WIKI_GIT" in config.CONFIG_WARNINGS[0]
     assert raw in config.CONFIG_WARNINGS[0]
     assert "auto" in config.CONFIG_WARNINGS[0]
+
+
+# --- _max_source_bytes (the discovery size ceiling) -----------------------------------------
+
+
+@pytest.mark.parametrize("raw", ["", "   ", "0"])
+def test_max_source_bytes_defaults_to_no_limit(monkeypatch, raw):
+    """Unset/blank/0 all mean "no ceiling" — the default behavior citadel has always had."""
+    monkeypatch.setattr(config, "CONFIG_WARNINGS", [])
+    monkeypatch.setenv("CITADEL_MAX_SOURCE_BYTES", raw)
+    assert config._max_source_bytes() == 0
+    assert config.CONFIG_WARNINGS == []
+
+
+def test_max_source_bytes_valid_value_parses(monkeypatch):
+    monkeypatch.setattr(config, "CONFIG_WARNINGS", [])
+    monkeypatch.setenv("CITADEL_MAX_SOURCE_BYTES", " 5242880 ")
+    assert config._max_source_bytes() == 5242880
+    assert config.CONFIG_WARNINGS == []
+
+
+def test_max_source_bytes_negative_clamps_to_no_limit_and_warns(monkeypatch):
+    """A negative ceiling is a misconfiguration, not "unlimited" spelled oddly (mirroring
+    CITADEL_JOBS): it falls back to 0 AND records a warning doctor's config check surfaces."""
+    monkeypatch.setattr(config, "CONFIG_WARNINGS", [])
+    monkeypatch.setenv("CITADEL_MAX_SOURCE_BYTES", "-1")
+    assert config._max_source_bytes() == 0
+    assert len(config.CONFIG_WARNINGS) == 1
+    assert "CITADEL_MAX_SOURCE_BYTES" in config.CONFIG_WARNINGS[0]

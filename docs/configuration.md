@@ -123,6 +123,7 @@ $env:CITADEL_LLM_CLI = "copilot"
 | `CITADEL_RESUME` | `1` | Resume checkpoints for those chunked sources: each completed segment banks the delta it produced (`.citadel_resume/` next to the wiki), so a run that dies at segment N continues there next time instead of re-buying segments 1…N-1. Promotion stays all-or-nothing — nothing partial ever reaches the wiki — and every guard (changed source/model/rules/knobs, a page changed underneath, a replay that no longer validates) falls back to a full restart. `0` turns it off; only chunked sources ever write one. |
 | `CITADEL_DEDUP_BY_BASENAME` | `1` | When several same-folder files share a basename and are all export formats (e.g. `report.pptx` + `report.pdf`), ingest one (PDF → modern Office → legacy) and record the rest as skipped duplicates. |
 | `CITADEL_IGNORE_PATTERNS` | (built-in OS/junk globs) | Case-insensitive globs skipped at discovery (`Thumbs.db`, `.DS_Store`, `~$` locks, editor swap/backup files). A comma/newline list **replaces** the defaults; a `+` prefix **extends** them. |
+| `CITADEL_MAX_SOURCE_BYTES` | `0` (no limit) | Discovery **size** ceiling, in bytes — the complement to the name-matching patterns above. A raw file over it is skipped from the walk's own stat: never opened, never hashed, never ingested, and never recorded in the manifest or the failures catalog. It is *reported*, though — the run report's *Oversized* section and `citadel status`' *Oversized* bucket — so nothing is dropped silently. Set it when a raw root also holds machine data (a folder of multi-GB `.tdms` sensor dumps is useless to a wiki but expensive to scan: every untracked candidate is stream-hashed in full before anything can classify it as unreadable binary). Off by default, because silently skipping a large-but-legitimate source (a 2 GB lecture recording, a scanned archive PDF) would be worse than a slow scan. An explicitly named path (`citadel ingest big.tdms`) bypasses it — explicit always wins — and an already-ingested source that later crosses the ceiling stays in the wiki, it just stops being re-checked. |
 
 ## Audio/video sources (whisper)
 
@@ -190,3 +191,32 @@ as `.obsidian/` are skipped at discovery, so a living vault is a clean source �
 | `CITADEL_DOCS_DIR` | `docs` | Reference docs. |
 | `CITADEL_RAW_DIRS` | (single `raw/`) | Comma/newline-separated list of raw roots, each walked by ingest. **Replaces** the walk list (include `raw` to keep the workspace root — `citadel doctor` warns when the primary `raw/` holds files but is missing from the list). A page citing a source in a non-sibling root cites it by absolute posix path. Deletion detection is scoped per root — an unmounted root never reads as deleted sources. |
 | `CITADEL_WORKSPACE` | (walk up for `citadel.toml`) | Force the workspace root (useful for `citadel serve` launched from an arbitrary CWD). |
+
+### The wiki is never one of its own sources
+
+A raw root may sit **above** the wiki — `CITADEL_RAW_DIRS=T:\` with the wiki at
+`T:\llmWiki\data-science\wiki` is a normal way to say "scan this whole drive". Discovery prunes the
+wiki directory out of that walk (it is generated output, never a source), announces the exclusion
+once per run, and sweeps any page an earlier run had already self-ingested out of the manifest and
+the failures catalog. No `CITADEL_IGNORE_PATTERNS` entry is needed. `citadel doctor`'s **wiki
+placement** check still WARNs about the nesting, because it costs clarity: with the wiki inside a
+source tree, a stray citation *into* the wiki looks like legal provenance.
+
+### Windows mapped drives (`T:\…`) and UNC paths
+
+Every configured path is `resolve()`-d — that is what makes path identity (manifest keys, root
+containment) unambiguous. On Windows, resolving a **mapped network drive** rewrites it into its UNC
+form: `T:\team-wiki` becomes `\\fileserver\share\team-wiki`, whether your `.env` named the drive
+letter or the share. That resolved path is fine as an identity, but it is a bad thing to hand a
+child process: some agent CLIs refuse to run at all with a UNC working directory ("environment
+blocks UNC/network paths"), and git treats the two spellings as different repositories
+(`safe.directory` / `core.filemode` complaints).
+
+So citadel remembers the spelling you actually used — the `.env` value, or the drive your shell was
+on — and hands **that** to the agent CLI (`cwd` and its directory grants) and to git, while the
+resolved form stays the one identity everywhere else. Nothing is guessed: the alias is only recorded
+when citadel already holds both spellings of the same directory, and only when resolution turned a
+non-UNC path into a UNC one — on POSIX, and for ordinary Windows paths, nothing changes at all.
+`citadel doctor`'s **child paths** check names the working directory sessions will actually use, and
+WARNs when only a UNC spelling is known (map the share to a drive letter and point
+`CITADEL_WORKSPACE` at it, or run citadel from that drive).

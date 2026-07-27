@@ -126,13 +126,13 @@ def test_cli_status_exits_0_with_every_section_header(tmp_citadel, capsys):
     assert cli.main(["status"]) == 0
     out = capsys.readouterr().out
     assert "Corpus status" in out
-    for heading in ("Ingested (", "Failed (", "Skipped as duplicate (", "Ignored (", "Pending ("):
+    for heading in ("Ingested (", "Failed (", "Skipped as duplicate (", "Ignored (", "Oversized (", "Pending ("):
         assert heading in out
     assert "raw/good.md" in out and "raw/dup.pdf" in out and "raw/pending.md" in out
 
 
 def test_cli_status_json_emits_machine_readable_buckets(tmp_citadel, capsys):
-    """``status --json`` dumps the five buckets + rules_version as one JSON object, so a script
+    """``status --json`` dumps the six buckets + rules_version as one JSON object, so a script
     gets 'which sources failed and why' without scraping the table."""
     import json
 
@@ -147,6 +147,7 @@ def test_cli_status_json_emits_machine_readable_buckets(tmp_citadel, capsys):
     assert [s["key"] for s in data["ingested"]] == ["raw/good.md"]
     assert data["failed"][0]["key"] == "raw/bad.bin" and data["failed"][0]["reason"] == failures.UNREADABLE
     assert data["pending"] == ["raw/pending.md"]
+    assert data["oversized"] == []
 
 
 def test_cli_status_exit_code_gates_on_failed_or_pending(tmp_citadel, capsys):
@@ -159,3 +160,18 @@ def test_cli_status_exit_code_gates_on_failed_or_pending(tmp_citadel, capsys):
     _track("raw/pending.md", manifest.file_sha256(tmp_citadel.raw / "pending.md"), config.rules_version())
     assert cli.main(["status", "--exit-code"]) == 0
     capsys.readouterr()
+
+
+def test_oversized_file_is_its_own_bucket_not_pending(tmp_citadel, monkeypatch):
+    """A file past ``CITADEL_MAX_SOURCE_BYTES`` is neither pending (ingest will never pick it up)
+    nor failed (nothing went wrong) — it gets its own bucket, with the size that explains it."""
+    (tmp_citadel.raw / "dump.tdms").write_bytes(b"\x00" * 4096)
+    (tmp_citadel.raw / "real.md").write_text("real\n", encoding="utf-8")
+    monkeypatch.setattr(config, "MAX_SOURCE_BYTES", 1024)
+
+    report = status.build_status()
+    assert report.oversized == [("raw/dump.tdms", 4096)]
+    assert "raw/dump.tdms" not in report.pending
+    assert "raw/real.md" in report.pending
+    assert "raw/dump.tdms  4.0 KB" in report.render()
+    assert report.as_dict()["oversized"] == [{"key": "raw/dump.tdms", "size_bytes": 4096}]

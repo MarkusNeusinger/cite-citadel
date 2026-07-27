@@ -88,8 +88,9 @@ source — **ingested** (with the importing model and rules version, plus `(stal
 was ingested under an older rulebook than the current one, `checked YYYY-MM-DD` — when a model
 last verified it, the ordering `citadel refresh` works through — and what that last verification
 cost when the backend reported it, e.g. `$0.05`), **failed** (with the reason and attempt
-count), **skipped-duplicate**, **ignored** (which pattern matched), or **pending** (not yet
-ingested — the next `citadel ingest` will pick it up). A `Recorded LLM cost` line above the table
+count), **skipped-duplicate**, **ignored** (which pattern matched), **oversized** (past the
+`CITADEL_MAX_SOURCE_BYTES` discovery ceiling, with the size that explains it), or **pending** (not
+yet ingested — the next `citadel ingest` will pick it up). A `Recorded LLM cost` line above the table
 totals the per-source stamps (the maintenance-cost snapshot of the current corpus; `--json`
 carries it as `cost_usd_total`). It never runs an agent and never re-hashes
 sources, so it is always cheap to run. An MCP client gets the same table via the read-only

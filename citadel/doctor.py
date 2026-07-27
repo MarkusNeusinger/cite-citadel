@@ -19,6 +19,11 @@ One command answering "is my setup sane?" without touching a byte. Each check em
 - **raw roots** — is every raw root ingest actually walks (``CITADEL_RAW_DIRS``) reachable (a dir
   on disk)? Also WARNs when the primary ``raw/`` was configured OUT of the walk list while holding
   files — those would silently never be ingested.
+- **wiki placement** — does the wiki dir sit INSIDE a walked raw root (a whole mounted drive as one
+  root)? Discovery excludes the wiki either way, so this is a clarity WARN, not data loss.
+- **child paths** — the UNC advisory: ``resolve()`` rewrites a Windows mapped drive into its UNC
+  form, which some agent CLIs refuse as a working directory; names the drive-letter spelling
+  citadel hands child processes, or WARNs when only a UNC one exists.
 - **manifest** — does ``wiki/.citadel_ingested.json`` parse, with its format version, source count,
   and a workspace stamp matching the current root?
 - **failures** — a summary of the sources the failures catalog says could not be ingested.
@@ -227,6 +232,54 @@ def check_raw_roots() -> Check:
             "are never scanned; include `raw` in CITADEL_RAW_DIRS to walk it",
         )
     return Check(OK, "raw roots", f"{len(roots)} walked raw root(s) reachable")
+
+
+def check_wiki_placement() -> Check:
+    """WARN when the wiki directory lies under a walked raw root — the self-ingest layout (a whole
+    mounted drive configured as one raw root, with the wiki somewhere inside it). Discovery now
+    excludes the wiki automatically (``ingest._is_wiki_internal``), so this is not a data-loss FAIL;
+    it is worth saying out loud because the nesting still costs clarity: every wiki file sits inside
+    a source tree, so a stray citation INTO the wiki looks like legal provenance, and any
+    third-party tool pointed at the raw root sees generated pages as content. OK otherwise."""
+    from . import grammar
+
+    wiki = Path(config.WIKI_DIR)
+    covering = [Path(r) for r in config.RAW_DIRS if grammar.is_within(wiki, r)]
+    if not covering:
+        return Check(OK, "wiki placement", "the wiki dir is outside every walked raw root")
+    return Check(
+        WARN,
+        "wiki placement",
+        f"the wiki dir ({wiki}) lies under walked raw root(s) {', '.join(str(r) for r in covering)} - "
+        "discovery excludes it automatically (generated pages are never sources), but prefer a wiki "
+        "outside the raw tree: narrow CITADEL_RAW_DIRS, or move the wiki with CITADEL_WIKI_DIR",
+    )
+
+
+def check_child_paths() -> Check:
+    """The UNC advisory. ``Path.resolve()`` rewrites a Windows mapped network drive (``T:\\wiki``)
+    into its UNC form (``\\\\server\\share\\wiki``), and that resolved path used to be what citadel
+    handed to the agent CLI as its working directory — where some backends refuse to run at all
+    ("environment blocks UNC/network paths") and git treats the spelling as a different repository.
+
+    OK (with the drive-letter cwd named) when citadel recorded a non-UNC alias for the workspace,
+    OK when no UNC path is involved at all, and WARN when the workspace really is UNC-only — then
+    the agent genuinely runs on a UNC cwd, and the fix is to map the share to a drive letter and
+    point ``CITADEL_WORKSPACE`` (or run citadel from) there."""
+    root = Path(config.WORKSPACE_ROOT)
+    native = config.native_form(root)
+    if config._path_id(native) != config._path_id(root):
+        return Check(OK, "child paths", f"agent sessions run in {native} (workspace resolves to {root})")
+    if config._is_unc_path(root):
+        return Check(
+            WARN,
+            "child paths",
+            f"the workspace resolves to a UNC path ({root}) and no drive-letter spelling of it is "
+            "known here - some agent CLIs refuse a UNC working directory and git treats it as a "
+            "separate repository; map the share to a drive letter and set CITADEL_WORKSPACE to it "
+            "(or run citadel from that drive) if sessions fail with path errors",
+        )
+    return Check(OK, "child paths", "no UNC/network path rewriting in effect")
 
 
 def check_manifest() -> Check:
@@ -618,6 +671,8 @@ def run() -> DoctorReport:
             check_agent_cli(),
             check_ingest_model(),
             check_raw_roots(),
+            check_wiki_placement(),
+            check_child_paths(),
             check_manifest(),
             check_failures(),
             check_billing_shadow(),

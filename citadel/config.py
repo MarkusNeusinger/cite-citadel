@@ -56,6 +56,74 @@ def _safe_resolve(path: Path) -> Path:
         return path if path.is_absolute() else path.absolute()
 
 
+def _path_id(path: Path | str) -> str:
+    """The normalized, case-folded identity of a path for pure STRING comparison
+    (``normcase(normpath(...))``) — no ``resolve()``, so it never touches the filesystem and never
+    blocks on a dead mount. The one spelling-normalizer behind root de-duplication
+    (:func:`source_roots`) and the native-form registry below."""
+    return os.path.normcase(os.path.normpath(str(path)))
+
+
+# --- Native (non-resolved) path spellings: the UNC-vs-drive-letter seam ------------------------
+# Every configured path is ``resolve()``-d, which is what makes path IDENTITY unambiguous (manifest
+# keys, root containment, staging vs. live). On Windows that resolution has one side effect we must
+# not hand to a CHILD process: ``Path.resolve()`` rewrites a mapped network drive (``T:\team-wiki``)
+# into its UNC form (``\\fileserver\share\team-wiki``) — what ``GetFinalPathNameByHandle`` reports —
+# no matter whether the ``.env`` named the drive letter or the share. Some agent CLIs then refuse to
+# work at all ("environment blocks UNC/network paths") because their sandbox rejects a UNC working
+# directory, and git treats the two spellings as different repositories (``safe.directory`` /
+# ``core.filemode`` complaints) — so a workspace that behaves perfectly when the user cds into
+# ``T:\...`` breaks the moment citadel spawns the same tool with the resolved cwd.
+#
+# The fix is deliberately narrow: the resolved form stays the ONE identity everywhere, and the
+# non-resolved spelling is remembered ALONGSIDE it purely for what child processes are handed.
+# Nothing is guessed — an alias is recorded only where we already hold both spellings of the same
+# directory (a ``.env`` value or the process CWD, plus its resolution), and only in the one case
+# that matters: a resolved UNC path whose native spelling is not UNC. Everywhere else (all of
+# POSIX, every ordinary Windows path) the registry stays EMPTY and :func:`native_form` is the
+# identity function, so those invocations are byte-for-byte unchanged.
+NATIVE_FORMS: dict[str, str] = {}
+
+
+def _is_unc_path(path: Path | str) -> bool:
+    """True for a Windows UNC path (``\\\\server\\share\\...``, or its forward-slash spelling).
+    A pure string test, so it stays meaningful — and unit-testable — on any platform."""
+    return str(path).replace("/", "\\").startswith("\\\\")
+
+
+def _prefer_native(resolved: Path | str, native: Path | str) -> bool:
+    """Whether ``native`` is worth remembering as the child-process spelling of ``resolved``: only
+    when the two genuinely differ AND resolution turned a non-UNC path into a UNC one (the Windows
+    mapped-drive rewrite). Every other pair — all of POSIX, a workspace the user named by UNC in
+    the first place — keeps a single spelling."""
+    return _path_id(resolved) != _path_id(native) and _is_unc_path(resolved) and not _is_unc_path(native)
+
+
+def _record_native_form(resolved: Path | str, native: Path | str) -> None:
+    """Remember ``native`` as the child-process spelling of ``resolved``, but only when
+    :func:`_prefer_native` says it is worth it — which is what keeps :data:`NATIVE_FORMS` empty
+    (and :func:`native_form` an identity function) outside the Windows mapped-drive case."""
+    if _prefer_native(resolved, native):
+        NATIVE_FORMS[_path_id(resolved)] = str(native)
+
+
+def native_form(path: Path | str) -> Path:
+    """The spelling of ``path`` to hand a CHILD process — the agent CLI's ``cwd`` and its directory
+    grants, git's ``-C`` — namely the recorded non-resolved alias when there is one (a Windows
+    mapped drive letter instead of ``resolve()``'s UNC rewrite), else ``path`` unchanged. Read at
+    call time (tests monkeypatch :data:`NATIVE_FORMS` like any other config attribute) and purely
+    lexical: it never touches the filesystem, so a dead mount cannot make it hang."""
+    recorded = NATIVE_FORMS.get(_path_id(path))
+    return Path(recorded) if recorded else Path(path)
+
+
+def child_cwd() -> str:
+    """The working directory to spawn a child process in: :data:`WORKSPACE_ROOT` in its
+    child-friendly spelling (:func:`native_form`). Every ``cwd=`` that citadel passes to a
+    subprocess goes through this one accessor, so the UNC seam is fixed in exactly one place."""
+    return str(native_form(WORKSPACE_ROOT))
+
+
 WORKSPACE_MARKER: str = "citadel.toml"
 
 
@@ -144,12 +212,46 @@ def _cwd_fallback() -> Path:
         return Path(".")
 
 
+def _native_workspace_alias(root: Path) -> Path | None:
+    """The non-resolved spelling of the workspace ``root`` when THIS process already holds one:
+    the ``CITADEL_WORKSPACE`` value as typed, or the process CWD / one of its parents (the marker
+    walk resolves upward, so the root is at or above the CWD). None when no candidate matches —
+    the normal case everywhere except a Windows mapped drive.
+
+    ``os.path.abspath`` rather than ``resolve()`` is the whole point: it normalizes without asking
+    the OS for a final path, so a mapped drive letter survives it. The cheap string gate
+    (:func:`_prefer_native`) runs BEFORE the resolve, so no platform pays for a candidate walk it
+    can never use."""
+    candidates: list[Path] = []
+    env = os.environ.get("CITADEL_WORKSPACE", "").strip()
+    if env:
+        candidates.append(Path(os.path.abspath(os.path.expanduser(env))))
+    try:
+        cwd = Path(os.path.abspath(os.getcwd()))
+        candidates.append(cwd)
+        candidates.extend(cwd.parents)
+    except OSError:
+        pass
+    for candidate in candidates:
+        if _prefer_native(root, candidate) and _safe_resolve(candidate) == root:
+            return candidate
+    return None
+
+
 _resolved_root = _resolve_workspace()
 # Whether discovery actually found a workspace. False means WORKSPACE_ROOT is only the bare CWD
 # fallback — cli.main fails loud on every workspace-needing subcommand.
 WORKSPACE_FOUND: bool = _resolved_root is not None
 WORKSPACE_ROOT: Path = _resolved_root if _resolved_root is not None else _cwd_fallback()
 del _resolved_root
+
+# Remember how the user (or the CWD) actually SPELLED the workspace root, for the child processes
+# citadel spawns there — see NATIVE_FORMS. A no-op unless resolution rewrote a mapped drive letter
+# into a UNC path.
+_ws_native = _native_workspace_alias(WORKSPACE_ROOT)
+if _ws_native is not None:
+    _record_native_form(WORKSPACE_ROOT, _ws_native)
+del _ws_native
 
 # Load the optional workspace .env BEFORE reading the env settings below, so a bare .env
 # (no exported vars) also works. Only when a workspace actually resolved — the fallback
@@ -217,11 +319,18 @@ def _resolve_dir_entry(value: str) -> Path:
     an ABSOLUTE value AS-IS — including a Windows mapped-drive path (``T:\\team-wiki\\wiki``) or
     a POSIX mount (``/mnt/share/wiki``) — and resolve a RELATIVE value against the WORKSPACE
     ROOT (never the process CWD). Always ``_safe_resolve``-d, so ``CITADEL_*_DIR`` and every
-    ``CITADEL_RAW_DIRS`` entry resolve through the identical path."""
+    ``CITADEL_RAW_DIRS`` entry resolve through the identical path.
+
+    The value's own (non-resolved) spelling is remembered for child processes on the way through
+    (:func:`_record_native_form`), so a ``CITADEL_WIKI_DIR=T:\\team-wiki\\wiki`` is still handed to
+    the agent CLI / git as a drive-letter path even though its identity here is the resolved UNC
+    form."""
     path = Path(value).expanduser()
     if not path.is_absolute():
         path = WORKSPACE_ROOT / path
-    return _safe_resolve(path)
+    resolved = _safe_resolve(path)
+    _record_native_form(resolved, Path(os.path.abspath(path)))
+    return resolved
 
 
 def _dir_setting(env_key: str, default: Path) -> Path:
@@ -302,7 +411,7 @@ def source_roots() -> list[Path]:
     roots: list[Path] = []
     seen: set[str] = set()
     for root in (*RAW_DIRS, RAW_DIR):
-        ident = os.path.normcase(os.path.normpath(str(root)))
+        ident = _path_id(root)
         if ident not in seen:
             seen.add(ident)
             roots.append(Path(root))
@@ -829,6 +938,37 @@ DEDUP_BY_BASENAME: bool = _bool_env("CITADEL_DEDUP_BY_BASENAME", True)
 # only genuinely large sources are split; lower it for a small-context backend, raise it (or set 0
 # to disable) for a very large one.
 MAX_SOURCE_CHARS: int = _int_env("CITADEL_MAX_SOURCE_CHARS", 300000)
+
+
+def _max_source_bytes() -> int:
+    """Resolve ``CITADEL_MAX_SOURCE_BYTES`` to a byte ceiling >= 0. A negative value is a
+    misconfiguration, not "unlimited" spelled oddly: it falls back to 0 (no limit — the default)
+    and records a :data:`CONFIG_WARNINGS` entry, so ``citadel doctor`` names it."""
+    value = _int_env("CITADEL_MAX_SOURCE_BYTES", 0)
+    if value < 0:
+        CONFIG_WARNINGS.append(f"CITADEL_MAX_SOURCE_BYTES={value} is not a byte count (>= 0) - using 0 (no limit)")
+        return 0
+    return value
+
+
+# Discovery SIZE ceiling, in bytes. A raw file bigger than this is skipped at discovery — before it
+# is hashed, before it is sniffed — and reported as oversized; 0 (the default) means no limit, so
+# the behavior is exactly what it has always been until this is deliberately set.
+#
+# The complement to CITADEL_IGNORE_PATTERNS: those match names, this matches SIZE, and size is what
+# distinguishes a knowledge corpus from the machine-data that tends to sit beside it (a folder of
+# 617 raw sensor dumps, 10 GB of `.tdms`, is useless to a wiki but expensive to scan — every
+# untracked candidate is stream-hashed in full before anything can classify it as unreadable
+# binary). Set it just above your largest real document to keep such a folder out of the scan.
+#
+# Deliberately OFF by default: silently dropping a large-but-legitimate source (a 2 GB lecture
+# recording under CITADEL_AUDIO_SUPPORT, a scanned archive PDF) would be a data-loss-shaped
+# surprise, and citadel's contract is that everything under a raw root is either ingested or
+# reported. Skips ARE reported (the run report's "Oversized" section, `citadel status`), so the
+# ceiling never hides work silently. Explicitly-named paths (`citadel ingest big.tdms`) bypass it —
+# explicit always wins, exactly as it does for ignore patterns and hidden files. An already-ingested
+# source that later crosses the ceiling stays in the wiki: it simply stops being re-checked.
+MAX_SOURCE_BYTES: int = _max_source_bytes()
 
 # Resume checkpoints for CHUNKED sources (citadel/resume.py). Promotion stays all-or-nothing — the
 # live wiki only ever holds fully-imported sources — but when ON (default) each completed segment

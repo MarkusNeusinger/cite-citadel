@@ -55,13 +55,18 @@ ABSENT = "absent"  # no git repository anywhere up the tree
 
 def _git(cwd: Path, *args: str, timeout: int = _GIT_TIMEOUT_S) -> tuple[int, str] | None:
     """Run ``git -C <cwd> <args>``; return ``(returncode, combined output)`` or None when git is
-    missing or the call itself failed to run (OSError/timeout). Never raises."""
+    missing or the call itself failed to run (OSError/timeout). Never raises.
+
+    ``cwd`` is passed in its child-friendly spelling (``config.native_form``): git for Windows
+    treats a mapped drive letter and its UNC form as different repositories, so the drive-letter
+    path the user configured — and already ran ``git init`` / ``safe.directory`` against — is the
+    one to hand it. Identical to ``str(cwd)`` everywhere else."""
     git = shutil.which("git")
     if not git:
         return None
     try:
         proc = subprocess.run(
-            [git, "-C", str(cwd), *args],
+            [git, "-C", str(config.native_form(cwd)), *args],
             capture_output=True,
             text=True,
             encoding="utf-8",
