@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import socket
+from pathlib import Path
 
 import pytest
 
@@ -223,6 +224,53 @@ def test_raw_roots_ok_when_excluded_primary_raw_is_empty(tmp_citadel, monkeypatc
     c = doctor.check_raw_roots()
     assert c.status == doctor.OK
     assert "1 walked raw root(s) reachable" in c.detail
+
+
+# --- wiki placement ------------------------------------------------------------------------
+
+
+def test_wiki_placement_ok_when_the_wiki_sits_outside_the_raw_roots(tmp_citadel):
+    c = doctor.check_wiki_placement()
+    assert c.status == doctor.OK
+    assert "outside every walked raw root" in c.detail
+
+
+def test_wiki_placement_warns_when_the_wiki_is_inside_a_raw_root(make_citadel, tmp_path):
+    """The self-ingest layout (a whole mounted drive as one raw root, the wiki somewhere inside it).
+    Discovery excludes the wiki automatically, so this is a clarity WARN — but it must be said."""
+    drive = tmp_path / "drive"
+    make_citadel(root=tmp_path / "repo", raw=drive, wiki=drive / "llmWiki" / "wiki")
+    c = doctor.check_wiki_placement()
+    assert c.status == doctor.WARN
+    assert "lies under walked raw root" in c.detail
+    assert "discovery excludes it automatically" in c.detail
+
+
+# --- child paths (the UNC advisory) ---------------------------------------------------------
+
+
+def test_child_paths_ok_without_any_unc_rewriting(tmp_citadel):
+    c = doctor.check_child_paths()
+    assert c.status == doctor.OK
+    assert "no UNC/network path rewriting" in c.detail
+
+
+def test_child_paths_names_the_drive_letter_when_one_is_known(tmp_citadel, monkeypatch):
+    unc = Path(r"\\fileserver\share\team-wiki")
+    monkeypatch.setattr(config, "WORKSPACE_ROOT", unc)
+    monkeypatch.setattr(config, "NATIVE_FORMS", {config._path_id(unc): r"T:\team-wiki"})
+    c = doctor.check_child_paths()
+    assert c.status == doctor.OK
+    assert r"T:\team-wiki" in c.detail
+
+
+def test_child_paths_warns_when_only_a_unc_spelling_exists(tmp_citadel, monkeypatch):
+    """No drive-letter alias: the agent really does run on a UNC cwd, which some backends refuse."""
+    monkeypatch.setattr(config, "WORKSPACE_ROOT", Path(r"\\fileserver\share\team-wiki"))
+    monkeypatch.setattr(config, "NATIVE_FORMS", {})
+    c = doctor.check_child_paths()
+    assert c.status == doctor.WARN
+    assert "UNC" in c.detail and "CITADEL_WORKSPACE" in c.detail
 
 
 # --- manifest ----------------------------------------------------------------------------
@@ -719,6 +767,8 @@ def test_run_emits_the_full_check_inventory(tmp_citadel, monkeypatch):
         "agent CLI",
         "ingest model",
         "raw roots",
+        "wiki placement",
+        "child paths",
         "manifest",
         "failures",
         "billing",

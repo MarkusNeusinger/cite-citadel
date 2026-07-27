@@ -343,3 +343,196 @@ def test_failures_are_persisted_surfaced_and_cleared(tmp_citadel, fake_agent, tr
     data2 = json.loads(fpath.read_text(encoding="utf-8"))
     assert "raw/notes.md" not in data2  # succeeded -> dropped
     assert data2["raw/blob.bin"]["reason"] == "unreadable"  # still stuck -> stays across runs
+
+
+# --- the wiki is never its own raw source ---------------------------------------------------
+
+
+@pytest.fixture
+def wiki_under_raw(make_citadel, tmp_path):
+    """The self-ingest layout: ONE raw root (a whole mounted drive, say) with the wiki INSIDE it —
+    ``CITADEL_RAW_DIRS=T:\\`` and the wiki at ``T:\\llmWiki\\ds\\wiki``. Discovery must exclude the
+    wiki from the walk; nothing but a hand-written ignore pattern used to."""
+    drive = tmp_path / "drive"
+    return make_citadel(root=tmp_path / "repo", raw=drive, wiki=drive / "llmWiki" / "ds" / "wiki")
+
+
+def test_wiki_under_a_raw_root_is_never_discovered(wiki_under_raw, seed_page):
+    """The wiki's own pages (and its generated index) are not candidates, while real sources in the
+    same root are — the walk prunes the wiki directory whole."""
+    seed_page("concepts/thing.md", {"type": "Concept", "title": "T", "description": "d", "tags": ["x"]})
+    (wiki_under_raw.wiki / "index.md").write_text("# Index\n", encoding="utf-8")
+    (wiki_under_raw.raw / "notes.md").write_text("real source\n", encoding="utf-8")
+    (wiki_under_raw.raw / "llmWiki").mkdir(exist_ok=True)
+    (wiki_under_raw.raw / "llmWiki" / "readme.md").write_text("also a real source\n", encoding="utf-8")
+
+    got = {p.relative_to(wiki_under_raw.raw).as_posix() for p in ingest._candidates(None)}
+    assert got == {"notes.md", "llmWiki/readme.md"}
+
+
+def test_wiki_pages_are_not_ingested_and_the_exclusion_is_announced(
+    wiki_under_raw, fake_agent, seed_page, cite_page, capsys
+):
+    """End to end: a wiki page sitting under the raw root is neither ingested nor tracked, and the
+    run says out loud that the wiki was excluded (silence would read as "there was nothing there")."""
+    seed_page("concepts/thing.md", {"type": "Concept", "title": "T", "description": "d", "tags": ["x"]})
+    src = wiki_under_raw.raw / "notes.md"
+    src.write_text("Transformers use self-attention.\n", encoding="utf-8")
+    key = manifest.rel_key(src)
+    agent = fake_agent(side_effect=lambda *a, **k: cite_page("concepts/transformer.md", key, "A fact."))
+
+    report = ingest.ingest()
+    assert [called for called, _kind in agent.calls] == [key]
+    assert report.processed == [key]
+    tracked = wiki_under_raw.read_manifest()
+    assert not [k for k in tracked if "/wiki/" in k], tracked
+    assert "excluded from discovery" in capsys.readouterr().err
+
+
+def test_prior_self_ingested_wiki_entries_are_pruned(wiki_under_raw, fake_agent, seed_page):
+    """A wiki page ingested by an EARLIER run (before the guard existed) is swept out of the
+    manifest and the failures catalog — it still exists on disk, so deletion detection would never
+    clean it up, and it would sit in wiki/sources/index.md forever."""
+    seed_page("concepts/thing.md", {"type": "Concept", "title": "T", "description": "d", "tags": ["x"]})
+    agent = fake_agent()
+    page_key = manifest.rel_key(wiki_under_raw.wiki / "concepts" / "thing.md")
+    seeded = manifest.load()
+    seeded[page_key] = manifest.make_entry("aa" * 32, "claude:sonnet")
+    manifest.save(seeded)
+    fails = failures.load()
+    failures.record(fails, page_key + ".bak", failures.UNREADABLE, "no extractable text")
+    failures.save(fails)
+
+    ingest.ingest()
+    assert agent.count == 0
+    assert page_key not in manifest.load()
+    assert page_key + ".bak" not in failures.load()
+
+
+def test_explicit_path_inside_the_wiki_is_still_refused(wiki_under_raw, seed_page, monkeypatch):
+    """Explicit wins over hidden names, ignore globs and the size ceiling — but not over the wiki
+    guard: a generated page cannot be turned into a source by naming it, absolutely OR relatively
+    (the relative form is what a user actually types)."""
+    page = seed_page("concepts/thing.md", {"type": "Concept", "title": "T", "description": "d", "tags": ["x"]})
+    assert ingest._candidates([str(page)]) == []
+    assert ingest._candidates([str(wiki_under_raw.wiki)]) == []
+
+    monkeypatch.chdir(wiki_under_raw.wiki.parent)
+    assert ingest._candidates(["wiki/concepts/thing.md"]) == []
+    assert ingest._candidates(["wiki"]) == []
+
+
+def test_a_git_backed_wiki_is_not_ingested_as_a_repo_source(wiki_under_raw, seed_page, monkeypatch):
+    """CITADEL_WIKI_GIT makes the wiki dir its OWN git repo — i.e. a repo source by every other
+    measure. Neither the walk nor an explicit path may digest it as one."""
+    monkeypatch.setattr(config, "REPO_SUPPORT", True, raising=False)
+    seed_page("concepts/thing.md", {"type": "Concept", "title": "T", "description": "d", "tags": ["x"]})
+    (wiki_under_raw.wiki / ".git").mkdir()
+
+    assert ingest._discover_repos(None, ingest._discover_walk(None)) == []
+    explicit = [str(wiki_under_raw.wiki)]
+    assert ingest._discover_repos(explicit, ingest._discover_walk(explicit)) == []
+
+
+def test_raw_root_that_is_the_wiki_walks_nothing_and_arms_no_sweep(make_citadel, tmp_path, seed_page):
+    """The degenerate config (a raw root that IS the wiki): the walk is refused outright, and the
+    root is never counted as entered — so the deletion sweep stays disarmed rather than reading the
+    whole corpus as vanished."""
+    both = tmp_path / "both"
+    make_citadel(root=tmp_path / "repo", raw=both, wiki=both)
+    seed_page("concepts/thing.md", {"type": "Concept", "title": "T", "description": "d", "tags": ["x"]})
+
+    walk = ingest._discover_walk(None)
+    assert walk.files == [] and walk.entered_roots == []
+    assert walk.excluded_wiki == [both]
+
+
+# --- the discovery size ceiling (CITADEL_MAX_SOURCE_BYTES) -----------------------------------
+
+
+def test_oversized_files_are_skipped_without_being_hashed(tmp_citadel, monkeypatch):
+    """Over the ceiling: skipped at discovery from the walk's own stat — the file is never opened,
+    so no sha256 is streamed over it (the whole point for a folder of multi-GB machine data)."""
+    raw = tmp_citadel.raw
+    (raw / "small.md").write_text("x" * 100, encoding="utf-8")
+    (raw / "dump.tdms").write_bytes(b"\x00" * 5000)
+    monkeypatch.setattr(config, "MAX_SOURCE_BYTES", 1000)
+    monkeypatch.setattr(manifest, "file_sha256", lambda p: pytest.fail(f"hashed {p}"))
+
+    walk = ingest._discover_walk(None)
+    assert [p.name for p, _st in walk.files] == ["small.md"]
+    assert [(p.name, size) for p, size in walk.oversized] == [("dump.tdms", 5000)]
+
+
+def test_oversized_files_are_reported_and_never_tracked(tmp_citadel, fake_agent, transformer_page, monkeypatch, capsys):
+    """A size skip is visible (run report + a stderr NOTE) but, like an ignore-pattern match, is
+    never recorded in the manifest or the failures catalog — it is not a failure, just out of scope."""
+    raw = tmp_citadel.raw
+    (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
+    (raw / "dump.tdms").write_bytes(b"\x00" * 4096)
+    monkeypatch.setattr(config, "MAX_SOURCE_BYTES", 1024)
+    fake_agent(transformer_page)
+
+    report = ingest.ingest()
+    assert report.processed == ["raw/notes.md"]
+    assert report.oversized == [("raw/dump.tdms", 4096)]
+    assert "raw/dump.tdms (4.0 KB)" in report.render()
+    assert "CITADEL_MAX_SOURCE_BYTES" in capsys.readouterr().err
+    assert "raw/dump.tdms" not in tmp_citadel.read_manifest()
+    assert "raw/dump.tdms" not in failures.load()
+
+
+def test_size_ceiling_is_off_by_default(tmp_citadel):
+    """0 (the default) means no limit at all — the behavior citadel has always had."""
+    (tmp_citadel.raw / "big.md").write_text("y" * 20000, encoding="utf-8")
+    assert config.MAX_SOURCE_BYTES == 0
+    assert [p.name for p in ingest._candidates(None)] == ["big.md"]
+
+
+def test_explicitly_named_oversized_path_is_still_ingested(tmp_citadel, monkeypatch):
+    """The ceiling is a scan-budget policy, not a ban: naming the file explicitly ingests it."""
+    big = tmp_citadel.raw / "dump.tdms"
+    big.write_bytes(b"x" * 5000)
+    monkeypatch.setattr(config, "MAX_SOURCE_BYTES", 1000)
+    assert ingest._candidates([str(big)]) == [big]
+
+
+def test_a_tracked_source_growing_past_the_ceiling_is_not_swept_as_deleted(tmp_citadel, fake_agent, monkeypatch):
+    """An already-ingested source that later crosses the ceiling drops out of the walk. It must NOT
+    read as deleted (its provenance would be reconciled out of a wiki that is still correct): the
+    sweep's positive .exists() confirmation is what saves it — it simply stops being re-checked."""
+    raw = tmp_citadel.raw
+    src = raw / "notes.md"
+    src.write_text("z" * 5000, encoding="utf-8")
+    tracked = manifest.load()
+    tracked["raw/notes.md"] = manifest.make_entry(manifest.file_sha256(src), "claude:sonnet")
+    manifest.save(tracked)
+    monkeypatch.setattr(config, "MAX_SOURCE_BYTES", 1000)
+    agent = fake_agent()
+
+    report = ingest.ingest()
+    assert report.sources_deleted == []
+    assert agent.count == 0
+    assert "raw/notes.md" in manifest.load()
+
+
+def test_explicit_paths_expand_a_leading_tilde(tmp_citadel, wiki_under_raw, monkeypatch):
+    """`~` is expanded for explicitly requested paths, like every other configured path already is.
+    A POSIX shell expands it first, but Windows cmd.exe / PowerShell hand a native binary the
+    literal `~` — so it used to stat away to nothing, and the wiki guard could not recognize such a
+    path as wiki-internal either. Both now hold by construction."""
+    monkeypatch.setenv("HOME", str(wiki_under_raw.raw))
+    monkeypatch.setenv("USERPROFILE", str(wiki_under_raw.raw))  # Windows' home variable
+    (wiki_under_raw.raw / "notes.md").write_text("real source\n", encoding="utf-8")
+
+    assert ingest._candidates(["~/notes.md"]) == [wiki_under_raw.raw / "notes.md"]
+    # ...and the wiki guard sees through it: ~ pointing INTO the wiki is still refused.
+    (wiki_under_raw.wiki / "concepts").mkdir(parents=True, exist_ok=True)
+    (wiki_under_raw.wiki / "concepts" / "thing.md").write_text("generated\n", encoding="utf-8")
+    rel = wiki_under_raw.wiki.relative_to(wiki_under_raw.raw)
+    assert ingest._candidates([f"~/{rel.as_posix()}/concepts/thing.md"]) == []
+
+
+def test_explicit_path_with_an_unresolvable_home_never_raises(tmp_citadel):
+    """`~nosuchuser` must degrade, not crash: Path.expanduser() raises there, os.path's does not."""
+    assert ingest._candidates(["~nosuchuser-zzz/notes.md"]) == []

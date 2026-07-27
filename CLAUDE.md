@@ -38,10 +38,11 @@ per-run budget of N sources; the sustainable alternative to regenerating the wik
 upgrade), `curate [--dry-run] [--limit N] [--stale-rules]
 [--diff PATH] [--retry]` (the SECOND lifecycle: improve EXISTING pages — re-sort/split/re-ground/resolve
 contradictions/fix locators — against a recomputed findings checklist), `status` (read-only
-per-source state table: ingested / failed / skipped-duplicate / ignored / pending; MCP twin
+per-source state table: ingested / failed / skipped-duplicate / ignored / oversized / pending; MCP twin
 `wiki_status`), `doctor`
 (read-only setup health check — OK/WARN/FAIL lines for workspace / rules / config-parse fallbacks /
-agent CLI / the inert-`CITADEL_INGEST_MODEL`-on-copilot/gemini advisory / raw roots /
+agent CLI / the inert-`CITADEL_INGEST_MODEL`-on-copilot/gemini advisory / raw roots / wiki placement
+(the wiki nested inside a raw root) / child paths (the UNC-vs-drive-letter cwd) /
 manifest / billing / the HTTP-serve posture / wiki-git state / a best-effort PyPI update check / workspace coherence; needs no workspace, exits 1 only on a FAIL),
 `serve [--http [--host H] [--port P] [--path /mcp] [--read-only]]` (the MCP server — stdio by
 default; `--http` serves the SAME surface over MCP's Streamable HTTP transport for a client that is
@@ -200,7 +201,14 @@ it is itself a workspace.
 - **Discovery is incremental and deletion-safe**: one iterative `os.scandir`
   walk over every `CITADEL_RAW_DIRS` root keeps each file's stat; the **manifest doubles as the
   scan cache** (an entry's `size`/`mtime_ns`/`ctime_ns`/`hashed_at_ns` are a skip-hint — sha256
-  stays the sole arbiter of "changed"; `--full-rescan` distrusts the cache). Deletion candidates
+  stays the sole arbiter of "changed"; `--full-rescan` distrusts the cache). Two things are pruned
+  from the walk before any of that: the **wiki dir itself** (`_is_wiki_internal`, lexical — a raw
+  root ABOVE the wiki, e.g. the whole of `T:\`, would otherwise fold the generated wiki back in as
+  sources run after run; a root that IS the wiki is refused without arming the sweep, an explicit
+  path inside it is refused too, and the run-start migration sweep clears any already-self-ingested
+  key), and files over `CITADEL_MAX_SOURCE_BYTES` (the size complement to the name-matching ignore
+  globs — skipped from the walk's own stat, so a 10 GB sensor dump is never opened, let alone
+  hashed; reported, never silent, and off by default). Deletion candidates
   come from the walked-seen-set diff and each is positively **confirmed with `.exists()`**; any
   walk error aborts the whole sweep, an unreachable root contributes no candidates, keys under no
   configured root are logged and never swept, and a workspace-identity mismatch whose keys do not
@@ -251,7 +259,8 @@ it is itself a workspace.
   at run start under the lock, never per source.
 
 **`llm.py` is the ONLY place that talks to an LLM**, and it does so by shelling out to a CLI in
-agentic mode (`cwd` = workspace root, autonomous file tools). The prompt is **paths-only** — it references
+agentic mode (`cwd` = `config.child_cwd()` — the workspace root in its child-friendly spelling —
+autonomous file tools). The prompt is **paths-only** — it references
 the source and rules by path, never embeds file content — which keeps argv tiny (the Windows
 `WinError 206` fix). One per-kind spec table (`_KIND_SPECS`) maps each `kind` to its task-rule
 file, whether it reads a source, and its format policy; an unknown kind fails loud. `kind` selects
@@ -317,7 +326,8 @@ catalog + one stat-only walk (never re-hashes) rendered as a per-source state ta
 (model + rules_version, `(stale)` when it predates the current rulebook, `checked YYYY-MM-DD` from
 the `ingested_at` stamp, the last session's cost when recorded — with a `Recorded LLM cost` corpus
 total above the table), failed (reason, attempts),
-skipped-duplicate, ignored (pattern), pending.
+skipped-duplicate, ignored (pattern), oversized (over `CITADEL_MAX_SOURCE_BYTES`, with the size),
+pending.
 
 **Other modules:** `okf.py` is the OKF format core (parse/dump, type→folder routing, link math, and
 the non-negotiable `safe_join` path guard — reuse it for any wiki-relative path). `grammar.py` is
@@ -409,7 +419,17 @@ browser `Origin`s refused unless `CITADEL_HTTP_ALLOWED_ORIGINS` admits them — 
 11 readers and the advertised tool list untouched (`server.set_read_only`). No new dependency —
 starlette/uvicorn already ship with `mcp`. The `viewer/` subpackage builds the self-contained offline HTML
 viewer (build logic in `__init__.py`; `template.html`/`app.css`/`app.js` are real package-data
-assets loaded via `importlib.resources`). `config.py` resolves all paths/settings. `cli.py` mirrors
+assets loaded via `importlib.resources`). `config.py` resolves all paths/settings — including the
+**native-form registry** (`NATIVE_FORMS`/`native_form`/`child_cwd`): every configured path stays
+`resolve()`-d, which is what makes path identity unambiguous, but on Windows that rewrites a mapped
+drive (`T:\team-wiki`) into its UNC form, and a UNC `cwd` is refused outright by some agent CLIs
+(and read as a different repository by git). So the NON-resolved spelling citadel already holds (the
+`.env` value, the launching drive) is remembered alongside the resolved one and handed to CHILD
+processes only — the agent CLI's `cwd` + directory grants, git's `-C` — and every path UNDER an
+aliased directory inherits it (a default `wiki/` has no `.env` value of its own to record, yet it is
+what git gets as `-C`). An alias is recorded only when both spellings of one directory are known AND
+resolution turned a non-UNC path into a UNC one, so POSIX and ordinary Windows paths keep exactly
+one spelling. `cli.py` mirrors
 the MCP tools as subcommands (full parity: `define`/`read`/`raw`/`neighbors`/`index`/`sources`/`capture` twin their tools;
 `view` stays CLI-only and `wiki_lint`/`wiki_status` close the `lint`/`status` gaps from the MCP side). `capture.py`
 is the conversational-capture bridge behind `wiki_capture`/`citadel capture`: an append-only,
@@ -465,7 +485,10 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   sources: continue at the segment an interrupted run died on instead of re-paying for the earlier
   ones; default on), `CITADEL_DEDUP_BY_BASENAME` (skip same-basename document
   duplicates), `CITADEL_IGNORE_PATTERNS` (OS/junk-file globs skipped at discovery — `Thumbs.db`,
-  `desktop.ini`, `~$` locks, …; a `+` prefix extends the built-in defaults), `CITADEL_WIKI_LANG`
+  `desktop.ini`, `~$` locks, …; a `+` prefix extends the built-in defaults),
+  `CITADEL_MAX_SOURCE_BYTES` (the SIZE complement to those globs: a raw file bigger than this many
+  bytes is skipped at discovery — never hashed, never tracked, but reported; 0 = no limit, the
+  default; an explicitly named path always wins), `CITADEL_WIKI_LANG`
   (target language of all wiki prose, default `en`; verbatim quotes stay original),
   `CITADEL_PDF_MODE` (`text` | `images` — whether the agent also reads a PDF's figures),
   `CITADEL_PDF_TEXT` (`auto` | `1` | `0` — the pypdf text-layer pre-pass; auto = on when pypdf

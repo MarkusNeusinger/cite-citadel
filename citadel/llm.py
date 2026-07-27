@@ -181,7 +181,12 @@ def _external_dirs(rel_key: str, read_path: str | None = None) -> list[str]:
     workspace ``rules/`` overlay, which lives under cwd and therefore filters out), the source
     file's own parent, and — for an Office source — the temp dir holding its extracted text}.
     Empty for the all-under-workspace dev-checkout layout (cwd already covers the rules), so that
-    invocation is byte-for-byte unchanged."""
+    invocation is byte-for-byte unchanged.
+
+    Each granted directory is named in its CHILD-friendly spelling (``config.native_form``): the
+    grant has to match the paths the agent actually walks from its ``cwd``, and on a Windows mapped
+    drive that is the drive letter, not the UNC form ``resolve()`` produces. Outside that case the
+    two spellings are identical."""
     candidates = [
         config.wiki_dir(),
         *config.source_roots(),  # every raw source root (multi-root: an out-of-workspace root needs a grant)
@@ -199,7 +204,7 @@ def _external_dirs(rel_key: str, read_path: str | None = None) -> list[str]:
     out: dict[str, None] = {}
     for d in candidates:
         if config.is_outside_workspace(d):
-            out[str(Path(d).resolve())] = None
+            out[str(config.native_form(Path(d).resolve()))] = None
     return sorted(out)
 
 
@@ -773,7 +778,7 @@ def _stream_subprocess(cli: str, argv: list[str], stdin_text: str | None) -> tup
         encoding="utf-8",
         errors="replace",
         bufsize=1,
-        cwd=str(config.WORKSPACE_ROOT),
+        cwd=config.child_cwd(),
         env=config.child_env(),
     )
     if stdin_text is not None and proc.stdin is not None:
@@ -867,7 +872,8 @@ def _write_transcript(
 def _run_session(
     cli: str, argv: list[str], stdin_text: str | None, *, log_label: str | None = None
 ) -> SessionUsage | None:
-    """Run the agentic CLI once in ``config.WORKSPACE_ROOT``. Success = the session completed
+    """Run the agentic CLI once in the workspace root (``config.child_cwd()`` — the root in the
+    spelling a child process can use; see ``config.NATIVE_FORMS``). Success = the session completed
     without error; the agent's edits are on disk. Returns the session's :class:`SessionUsage`
     when the backend reported one (claude's result envelope; None for copilot/gemini, whose
     stdout carries no cost data — gemini's stats file is read by ``run_ingest_session``).
@@ -899,7 +905,7 @@ def _run_session(
                 encoding="utf-8",
                 errors="replace",
                 timeout=config.LLM_TIMEOUT,
-                cwd=str(config.WORKSPACE_ROOT),
+                cwd=config.child_cwd(),
                 # The wiki this session must edit is passed EXPLICITLY (ingest's per-source staging
                 # copy, via config.wiki_redirect) rather than through a process-global
                 # os.environ assignment — two concurrent sessions each get their own.

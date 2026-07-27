@@ -11,6 +11,8 @@ sits in —
   style record, its attempt count;
 - **skipped-duplicate** — a same-basename twin skipped in favor of another format;
 - **ignored** — an OS/junk file matched by ``CITADEL_IGNORE_PATTERNS``;
+- **oversized** — on disk under a raw root but past the ``CITADEL_MAX_SOURCE_BYTES`` ceiling, so
+  discovery skips it (never hashed, never tracked);
 - **pending** — on disk under a raw root, not yet in the manifest or the failures catalog.
 
 Built from the manifest + the failures catalog + ONE stat-only discovery walk (reusing ingest's
@@ -24,6 +26,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 from . import config, failures, ingest, llm, manifest
 
@@ -64,6 +67,8 @@ class StatusReport:
     failed: list[SourceState] = field(default_factory=list)
     skipped_duplicate: list[SourceState] = field(default_factory=list)
     ignored: list[str] = field(default_factory=list)
+    # (key, size_bytes) for files the CITADEL_MAX_SOURCE_BYTES ceiling keeps out of discovery.
+    oversized: list[tuple[str, int]] = field(default_factory=list)
     pending: list[str] = field(default_factory=list)
     rules_version: str = ""
 
@@ -122,6 +127,10 @@ class StatusReport:
         for name in self.ignored:
             lines.append(f"  {name}")
 
+        lines.append(f"Oversized ({len(self.oversized)})")
+        for key, size in self.oversized:
+            lines.append(f"  {key}  {ingest._human_bytes(size)}")
+
         lines.append(f"Pending ({len(self.pending)})")
         for key in self.pending:
             lines.append(f"  {key}")
@@ -129,10 +138,12 @@ class StatusReport:
         return "\n".join(lines).rstrip() + "\n"
 
     def as_dict(self) -> dict:
-        """The report as one JSON-ready dict (``citadel status --json``): the five buckets plus
+        """The report as one JSON-ready dict (``citadel status --json``): the six buckets plus
         ``rules_version`` and ``cost_usd_total``, each source row a plain dict with only its None fields dropped —
         ``attempts: 0`` / ``stale_rules: false`` stay explicit, so scripts get a predictable
-        shape for 'which sources failed and why' without scraping :meth:`render`'s table."""
+        shape for 'which sources failed and why' without scraping :meth:`render`'s table.
+        ``oversized`` carries ``{"key", "size_bytes"}`` objects rather than bare strings, since the
+        size is the reason the row exists."""
 
         def row(s: SourceState) -> dict:
             return {k: v for k, v in asdict(s).items() if v is not None}
@@ -147,6 +158,7 @@ class StatusReport:
             "failed": [row(s) for s in self.failed],
             "skipped_duplicate": [row(s) for s in self.skipped_duplicate],
             "ignored": list(self.ignored),
+            "oversized": [{"key": key, "size_bytes": size} for key, size in self.oversized],
             "pending": list(self.pending),
         }
 
@@ -158,32 +170,38 @@ def _is_stale_rules(entry, current_rules_version: str) -> bool:
     return recorded is not None and recorded != current_rules_version
 
 
-def _present_source_keys() -> set[str]:
-    """Every source key visible on disk under the raw roots RIGHT NOW — files plus repo dirs —
-    via ingest's own stat-only walk (no hashing, repo-aware, dead-mount-safe). Defensive: any walk
-    failure degrades to the empty set (pending simply shows nothing) rather than raising."""
+def _walk_state() -> tuple[set[str], list[tuple[str, int]]]:
+    """ONE stat-only discovery walk (ingest's own — no hashing, repo-aware, dead-mount-safe), read
+    for the two things status needs from disk: every source key visible under the raw roots RIGHT
+    NOW (files plus repo dirs), and the ``(key, size)`` pairs the ``CITADEL_MAX_SOURCE_BYTES``
+    ceiling kept out of it. Defensive: any walk failure degrades to empty (pending/oversized simply
+    show nothing) rather than raising."""
     try:
         walk = ingest._discover_walk(None)
     except OSError:
-        return set()
+        return set(), []
     keys = {manifest.rel_key(path) for path, _st in walk.files}
     keys |= {manifest.rel_key(path) for path in walk.repos}
-    return keys
+    oversized = sorted((manifest.rel_key(path), size) for path, size in walk.oversized)
+    return keys, oversized
 
 
 def _ignored_names() -> list[str]:
     """The OS/junk basenames under the raw roots that discovery skips (``CITADEL_IGNORE_PATTERNS``)
-    — a light, stat-free ``os.walk`` that prunes ignored/hidden directories exactly as discovery
-    does (the ONE ignore predicate, :func:`ingest._is_ignored_name`). Deduped + sorted; degrades to
-    an empty list on any walk error."""
+    — a light, stat-free ``os.walk`` that prunes ignored/hidden directories (and the wiki dir)
+    exactly as discovery does, through discovery's OWN predicates
+    (:func:`ingest._is_ignored_name` / :func:`ingest._is_wiki_internal`). Deduped + sorted; degrades
+    to an empty list on any walk error."""
     found: set[str] = set()
     for root in config.source_roots():
         try:
-            for _dirpath, dirnames, filenames in os.walk(root):
+            for dirpath, dirnames, filenames in os.walk(root):
                 kept = []
                 for d in dirnames:
                     if d.startswith("."):
                         continue
+                    if ingest._is_wiki_internal(Path(dirpath) / d):
+                        continue  # generated output, not a source tree — never walked
                     if ingest._is_ignored_name(d):
                         found.add(d)
                     else:
@@ -247,6 +265,8 @@ def build_status() -> StatusReport:
             report.failed.append(row)
 
     tracked = set(manifest_dict) | set(failures_dict)
-    report.pending = sorted(key for key in _present_source_keys() if key not in tracked)
+    present, oversized = _walk_state()
+    report.pending = sorted(key for key in present if key not in tracked)
+    report.oversized = oversized
     report.ignored = _ignored_names()
     return report

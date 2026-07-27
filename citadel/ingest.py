@@ -46,6 +46,7 @@ from . import (
     config,
     extract,
     failures,
+    grammar,
     llm,
     manifest,
     okf,
@@ -106,6 +107,10 @@ class IngestReport:
     # (forced_key, kept_key) for same-basename pairs a FORCED run ingested ALONGSIDE the kept
     # sibling (a forced run bypasses the dedup drop — nothing was skipped, both formats are in the wiki).
     duplicates_forced: list[tuple[str, str]] = field(default_factory=list)
+    # (rel_key, size_bytes) for sources skipped at discovery because they exceed
+    # CITADEL_MAX_SOURCE_BYTES — never hashed, never ingested, and (like an ignore-pattern match)
+    # never recorded in the manifest or the failures catalog. Reported so a size skip is visible.
+    oversized: list[tuple[str, int]] = field(default_factory=list)
     # rel-keys of tracked sources that VANISHED from disk (a full run only): their provenance is
     # reconciled out of the wiki by a cleanup agent session, then the manifest key is dropped.
     sources_deleted: list[str] = field(default_factory=list)
@@ -179,6 +184,9 @@ class IngestReport:
                     )
                 else:
                     lines.append(f"  - {p}")
+        if self.oversized:
+            lines.append(f"Oversized (over CITADEL_MAX_SOURCE_BYTES = {_human_bytes(config.MAX_SOURCE_BYTES)}):")
+            lines.extend(f"  - {key} ({_human_bytes(size)})" for key, size in self.oversized)
         if self.duplicates:
             lines.append("Skipped as duplicate (same basename as another format that was ingested):")
             lines.extend(f"  - {dropped} (kept {kept})" for dropped, kept in self.duplicates)
@@ -226,6 +234,75 @@ def _is_ignored_name(name: str) -> bool:
     return any(fnmatch.fnmatchcase(lowered, pattern.lower()) for pattern in config.IGNORE_PATTERNS)
 
 
+def _is_wiki_internal(path: Path) -> bool:
+    """True when ``path`` is at or under the LIVE wiki directory — the generated, LLM-owned layer,
+    which is never a raw source.
+
+    This is the self-ingest guard. A layout whose raw root sits ABOVE the wiki — a whole mounted
+    drive walked as one root (``CITADEL_RAW_DIRS=T:\\`` with the wiki at ``T:\\llmWiki\\ds\\wiki``)
+    — would otherwise discover the wiki's own pages as sources and fold the wiki into itself, run
+    after run, each pass citing the last. Nothing else prevented it: the wiki dir is not hidden and
+    matches no ignore pattern, so the only workaround was a hand-written
+    ``CITADEL_IGNORE_PATTERNS`` entry.
+
+    Containment is ``grammar.is_within`` — purely lexical, no ``resolve()`` and no ``abspath()`` —
+    so the check costs nothing per directory entry and can never block (or syscall) on a dead
+    mount. ``path`` must therefore already be ABSOLUTE, which every walk-built path and every
+    ``config.source_path_for_key`` result is; the one caller that can be handed a relative path (an
+    explicitly requested one, typed by the user) normalizes it itself.
+
+    Deliberately the process-wide ``config.WIKI_DIR`` rather than ``config.wiki_dir()``: what must
+    never be scanned is the LIVE wiki, whichever per-source staging copy the current context is
+    redirected to (staging copies are hidden dotdir siblings, which discovery already skips)."""
+    return grammar.is_within(path, config.WIKI_DIR)
+
+
+def _explicit_path(raw: str | os.PathLike) -> Path:
+    """One EXPLICITLY requested path (``citadel ingest <paths…>``, ``wiki_ingest``), with ``~``
+    expanded — the same courtesy every other configured path already gets
+    (``config._resolve_dir_entry``, ``workspace.init``, ``CITADEL_WORKSPACE``); the ingest
+    arguments were the outlier.
+
+    It matters most where this PR's other fixes do: a POSIX shell expands ``~`` before citadel ever
+    sees it, but Windows ``cmd.exe`` (and PowerShell, for a native binary's arguments) does not, so
+    ``citadel ingest ~/ws/raw/notes.md`` arrived as a literal ``~`` directory that stat'ed away to
+    nothing. It also closes the same gap in the wiki guard: an unexpanded path could not be
+    recognized as wiki-internal (it merely failed to resolve, so nothing was ingested — but the
+    guard must hold by construction, not by a downstream accident).
+
+    ``os.path.expanduser`` rather than ``Path.expanduser``: the latter RAISES on an unresolvable
+    home (``~nosuchuser``), and discovery must never raise on user input — the stdlib function
+    returns such a path unchanged instead."""
+    return Path(os.path.expanduser(raw))
+
+
+def _is_untrackable_key(key: str) -> bool:
+    """True for a tracked key that must not be tracked AT ALL any more — the run-start migration
+    sweep's predicate: an OS/junk basename (an ignore pattern added after it was recorded) or a
+    path inside the wiki itself (a page self-ingested before :func:`_is_wiki_internal` guarded
+    discovery). Both keep existing on disk, so deletion detection would never clean them up."""
+    return _is_ignored_name(PurePosixPath(key).name) or _is_wiki_internal(config.source_path_for_key(key))
+
+
+def _exceeds_size_cap(size: int) -> bool:
+    """True when ``config.MAX_SOURCE_BYTES`` is set and a file of ``size`` bytes is over it — the
+    discovery SIZE ceiling that complements the name-matching ignore patterns. Read at call time;
+    0 (the default) means no limit."""
+    cap = config.MAX_SOURCE_BYTES
+    return cap > 0 and size > cap
+
+
+def _human_bytes(size: int) -> str:
+    """A short ASCII rendering of a byte count for the report ("10.6 GB") — console output stays
+    ASCII-only, so no multiplication sign or non-breaking space sneaks in."""
+    value = float(size)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if value < 1024 or unit == "TB":
+            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{size} B"  # unreachable; keeps the return type total
+
+
 def _is_repo_source(path: Path) -> bool:
     """True if ``path`` should be ingested as ONE repo source: repo support is on, it is a repo
     dir (``.git``/``.citadelsource``), and it is NOT a configured corpus root (``RAW_DIR`` or any
@@ -253,6 +330,12 @@ class _Walk:
     errors: list[str] = field(default_factory=list)  # OSErrors below an entered root
     unreachable: list[Path] = field(default_factory=list)  # roots that could not be entered at all
     entered_roots: list[Path] = field(default_factory=list)  # roots whose top-level scandir succeeded
+    # (path, size) for files skipped by the CITADEL_MAX_SOURCE_BYTES ceiling — never hashed, never
+    # ingested, but reported, so a size skip is visible instead of silent.
+    oversized: list[tuple[Path, int]] = field(default_factory=list)
+    # Directories skipped because they ARE (or are inside) the wiki — a raw root that sits above
+    # the wiki dir. Reported once per run so the exclusion is visible, never inferred as absence.
+    excluded_wiki: list[Path] = field(default_factory=list)
 
 
 def _scan_tree(root: Path, walk: _Walk) -> None:
@@ -260,13 +343,21 @@ def _scan_tree(root: Path, walk: _Walk) -> None:
     the two ``os.walk`` passes (files + repos) with a single traversal whose ``DirEntry.stat``
     results are kept for the scan-cache quick check.
 
-    Same skip rules as before: hidden names (leading ``.``), OS/junk ignore globs
-    (:func:`_is_ignored_name`), and — with repo support on — no descending into a git repository
-    (collected as one repo source instead). Any file type in any sub-folder is picked up;
-    ``follow_symlinks=False`` throughout, so a symlinked directory is never recursed into (a
-    cycle on a share must not hang discovery). Deterministic order (names sorted per directory,
-    depth-first). NEVER raises: a top-level failure marks the root unreachable; a failure deeper
-    in records a walk error (either one disarms the deletion sweep — see :func:`ingest`)."""
+    Skip rules: hidden names (leading ``.``), OS/junk ignore globs (:func:`_is_ignored_name`), the
+    wiki directory itself (:func:`_is_wiki_internal` — the generated layer is never a source), files
+    over the size ceiling (:func:`_exceeds_size_cap`), and — with repo support on — no descending
+    into a git repository (collected as one repo source instead). Any other file type in any
+    sub-folder is picked up; ``follow_symlinks=False`` throughout, so a symlinked directory is never
+    recursed into (a cycle on a share must not hang discovery). Deterministic order (names sorted
+    per directory, depth-first). NEVER raises: a top-level failure marks the root unreachable; a
+    failure deeper in records a walk error (either one disarms the deletion sweep — see
+    :func:`ingest`)."""
+    if _is_wiki_internal(Path(root)):
+        # The configured raw root IS the wiki (or lives inside it). Refuse the whole walk rather
+        # than scan generated pages back in as sources — and, by never entering, leave this root
+        # out of ``entered_roots``, so the deletion sweep is not armed for a root nothing scanned.
+        walk.excluded_wiki.append(Path(root))
+        return
     at_root = True
     stack: list[Path] = [Path(root)]
     while stack:
@@ -291,14 +382,26 @@ def _scan_tree(root: Path, walk: _Walk) -> None:
             path = Path(d) / name
             try:
                 if entry.is_dir(follow_symlinks=False):
+                    if _is_wiki_internal(path):
+                        # The wiki dir under a raw root: prune it whole. Its pages are generated,
+                        # never sources — ingesting them would fold the wiki into itself.
+                        walk.excluded_wiki.append(path)
                     # Deliberately NOT _is_repo_source: its corpus-root guard resolve()s every root per call
                     # — too costly per-directory on a network share (a subdir is never a configured root here).
-                    if config.REPO_SUPPORT and repo.is_repo_dir(path):
+                    elif config.REPO_SUPPORT and repo.is_repo_dir(path):
                         walk.repos.append(path)  # one repo source; the file walk stops here
                     else:
                         subdirs.append(path)
                 elif entry.is_file(follow_symlinks=False):
-                    walk.files.append((path, entry.stat(follow_symlinks=False)))
+                    st = entry.stat(follow_symlinks=False)
+                    # The size ceiling is applied HERE, on the stat the walk already took: an
+                    # oversized file is never opened, never hashed, and never classified — which
+                    # is the whole point (a folder of multi-GB machine-data dumps otherwise costs
+                    # a full sha256 stream per file before anything can call it unreadable).
+                    if _exceeds_size_cap(st.st_size):
+                        walk.oversized.append((path, st.st_size))
+                    else:
+                        walk.files.append((path, st))
             except OSError as exc:
                 walk.errors.append(f"{path}: {exc}")
         stack.extend(reversed(subdirs))  # LIFO -> depth-first in sorted order
@@ -306,15 +409,23 @@ def _scan_tree(root: Path, walk: _Walk) -> None:
 
 def _discover_walk(paths: list[str] | None) -> _Walk:
     """Resolve requested paths (or default to every configured raw root, ``config.RAW_DIRS``)
-    into one :class:`_Walk`. A requested file path is stat'ed and taken as-is (even a hidden or
-    ignore-matched name — explicit wins, as before; one that is missing or not a regular file is
-    silently dropped, replacing the old per-candidate ``is_file()``); a requested directory
-    contributes its whole subtree — unless it is itself a repo source, which
-    :func:`_discover_repos` handles. Roots are de-duplicated by resolved path."""
+    into one :class:`_Walk`. A requested file path is stat'ed and taken as-is (even a hidden name,
+    an ignore-matched one, or one over the size ceiling — explicit wins, as before; one that is
+    missing or not a regular file is silently dropped, replacing the old per-candidate
+    ``is_file()``); a requested directory contributes its whole subtree — unless it is itself a repo
+    source, which :func:`_discover_repos` handles. Roots are de-duplicated by resolved path.
+
+    The ONE thing explicit does NOT win over is :func:`_is_wiki_internal`: a path inside the wiki is
+    generated output, not a source, so naming it directly cannot make it one either."""
     walk = _Walk()
     if paths:
         for raw in paths:
-            p = Path(raw)
+            p = _explicit_path(raw)
+            # abspath (not resolve) so a RELATIVE argument — `citadel ingest wiki/x.md` from the
+            # workspace root — is still recognized as wiki-internal, without a filesystem round trip.
+            if _is_wiki_internal(Path(os.path.abspath(p))):
+                walk.excluded_wiki.append(p)
+                continue
             if p.is_dir():
                 if not _is_repo_source(p):
                     _scan_tree(p, walk)
@@ -397,13 +508,20 @@ def _discover_repos(paths: list[str] | None, walk: _Walk) -> list[Path]:
     """The repo sources to ingest: the repo dirs the walk found under the raw roots (or under an
     explicitly requested directory), plus an explicitly requested path that is itself a repo.
     De-duplicated by resolved path, sorted. Empty when repo support is off (the walk then
-    descended into repos file-by-file — the legacy behavior)."""
+    descended into repos file-by-file — the legacy behavior).
+
+    The walk's own repo list is already wiki-free (:func:`_scan_tree` prunes the wiki before the
+    repo test), but an EXPLICIT path needs the same guard here: a wiki dir under
+    ``CITADEL_WIKI_GIT`` holds a ``.git``, so naming it would otherwise digest the whole wiki as a
+    repo source."""
     if not config.REPO_SUPPORT:
         return []
     found: list[Path] = list(walk.repos)
     if paths:
         for raw in paths:
-            p = Path(raw)
+            p = _explicit_path(raw)
+            if _is_wiki_internal(Path(os.path.abspath(p))):
+                continue
             if p.is_dir() and _is_repo_source(p):
                 found.append(p)
     seen: set[Path] = set()
@@ -2498,16 +2616,17 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
     # Updated through the run and rewritten at the end, so it always reflects the CURRENT stuck set.
     failures_dict = failures.load()
     failures_before = {k: dict(v) if isinstance(v, dict) else v for k, v in failures_dict.items()}
-    # Migration sweep: drop any entry a PREVIOUS run recorded for a file that is NOW ignored
-    # (Thumbs.db & friends, before this feature existed). It still exists on disk, so a full run
-    # would never re-detect it as deleted — clean it out of the manifest AND the failures catalog
-    # directly so wiki/sources/index.md stops carrying the noise. Repo entries never match (their
-    # key basename is a folder name), so this only touches junk-file keys.
+    # Migration sweep: drop any entry a PREVIOUS run recorded for a source that must not be tracked
+    # at all — a now-ignored junk file (Thumbs.db & friends, recorded before that feature existed)
+    # or a path inside the WIKI (a page self-ingested by a layout whose raw root sits above the wiki,
+    # before the discovery guard existed). Both still exist on disk, so a full run would never
+    # re-detect them as deleted — clean them out of the manifest AND the failures catalog directly
+    # so wiki/sources/index.md stops carrying the noise.
     pruned_ignored = False
-    for key in [k for k in manifest_dict if _is_ignored_name(PurePosixPath(k).name)]:
+    for key in [k for k in manifest_dict if _is_untrackable_key(k)]:
         del manifest_dict[key]
         pruned_ignored = True
-    for key in [k for k in failures_dict if _is_ignored_name(PurePosixPath(k).name)]:
+    for key in [k for k in failures_dict if _is_untrackable_key(k)]:
         failures.clear(failures_dict, key)
         pruned_ignored = True
     if pruned_ignored:
@@ -2602,6 +2721,27 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
         print(
             "NOTE: already-ingested source(s) could not be re-read this run (permissions / IO); "
             "kept as ingested and re-checked next run:\n  " + "\n  ".join(sorted(scan.unreadable_tracked)),
+            file=sys.stderr,
+        )
+    # --- Discovery exclusions: both are deliberate skips, so say so rather than let the sources
+    # simply not appear. The wiki note fires once per run (a raw root above the wiki prunes the
+    # same tree at every level); the size note lists what the ceiling kept out. ---
+    if walk.excluded_wiki:
+        print(
+            f"NOTE: the wiki directory ({config.WIKI_DIR}) is excluded from discovery - generated "
+            "pages are never raw sources. If a raw root sits above the wiki, narrow "
+            "CITADEL_RAW_DIRS (or move the wiki with CITADEL_WIKI_DIR) to silence this.",
+            file=sys.stderr,
+        )
+    report.oversized = sorted((manifest.rel_key(p), size) for p, size in walk.oversized)
+    if report.oversized:
+        listed = [f"{key} ({_human_bytes(size)})" for key, size in report.oversized[:10]]
+        if len(report.oversized) > len(listed):
+            listed.append(f"... +{len(report.oversized) - len(listed)} more (all listed on the run report)")
+        print(
+            f"NOTE: {len(report.oversized)} file(s) skipped by CITADEL_MAX_SOURCE_BYTES "
+            f"({_human_bytes(config.MAX_SOURCE_BYTES)}); raise it (or name a path explicitly) to "
+            "ingest them:\n  " + "\n  ".join(listed),
             file=sys.stderr,
         )
     # A pending source whose key is ALREADY tracked is a re-ingest of changed bytes (reconcile);

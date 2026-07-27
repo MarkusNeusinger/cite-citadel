@@ -6,6 +6,58 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **`CITADEL_MAX_SOURCE_BYTES` — a discovery size ceiling.** Ignore patterns matched *names*;
+  nothing matched **size**, so a raw root that also holds machine data (the reported case: 617
+  `.tdms` sensor dumps, 10.6 GB in one folder) was stream-hashed in full on every first scan just to
+  end up recorded as unreadable binary. A file over the ceiling is now skipped from the walk's own
+  `stat` — never opened, never hashed, never written to the manifest or the failures catalog — and
+  *reported*: a stderr NOTE, an **Oversized** section on the run report, and an **Oversized** bucket
+  in `citadel status` (`--json` included). Off by default (`0` = no limit), because silently
+  dropping a large-but-legitimate source — a 2 GB lecture recording, a scanned archive PDF — would
+  be worse than a slow scan. Explicitly named paths bypass it, and an already-ingested source that
+  later crosses the ceiling stays in the wiki; it just stops being re-checked (the deletion sweep's
+  positive `.exists()` confirmation is what keeps it from reading as vanished).
+- **Two `citadel doctor` checks**: **wiki placement** (WARNs when the wiki dir sits inside a walked
+  raw root) and **child paths** (names the working directory agent sessions will actually run in,
+  WARNing when only a UNC spelling of the workspace is known).
+
+### Fixed
+
+- **Explicitly requested ingest paths now expand `~`.** Every other configured path already did
+  (`config._resolve_dir_entry`, `workspace.init`, `CITADEL_WORKSPACE`); the `citadel ingest
+  <paths…>` / `wiki_ingest` arguments were the outlier. A POSIX shell expands `~` before citadel
+  sees it, but Windows `cmd.exe` — and PowerShell, for a native binary's arguments — does not, so
+  `citadel ingest ~/ws/raw/notes.md` arrived as a literal `~` directory and stat'ed away to
+  nothing. Expansion uses `os.path.expanduser`, not `Path.expanduser`, which raises on an
+  unresolvable home (`~nosuchuser`) — discovery must never raise on user input.
+- **The wiki can no longer become one of its own raw sources.** With a raw root *above* the wiki
+  (`CITADEL_RAW_DIRS=T:\` and the wiki at `T:\llmWiki\data-science\wiki` — a normal way to say "scan
+  this whole drive"), discovery walked the wiki's generated pages back in as sources, run after run,
+  each pass citing the last; the only defense was a hand-written `CITADEL_IGNORE_PATTERNS` entry.
+  Discovery now prunes the wiki directory out of every walk (lexically, so it costs nothing per
+  entry and never blocks on a dead mount), refuses a raw root that *is* the wiki without arming the
+  deletion sweep for it, refuses an explicitly named path inside the wiki, and announces the
+  exclusion once per run. The run-start migration sweep additionally clears any page an earlier run
+  had already self-ingested out of the manifest and the failures catalog, so `wiki/sources/index.md`
+  stops carrying them.
+- **Agent sessions no longer run with a UNC working directory on Windows mapped drives.**
+  `Path.resolve()` rewrites `T:\team-wiki` into `\\fileserver\share\team-wiki` regardless of which
+  spelling the `.env` used, and that resolved path was what citadel passed as the agent CLI's `cwd`
+  — where the copilot backend refuses to work at all ("environment blocks UNC/network paths") and
+  git treats the spelling as a separate repository (`safe.directory` / `core.filemode`). The
+  resolved form remains the one identity everywhere (manifest keys, root containment, staging vs.
+  live); what child processes are handed — the agent CLI's `cwd` and its `--add-dir`/
+  `--include-directories` grants, and git's `-C` — is now the **non-resolved** spelling citadel
+  already held (the `.env` value, or the drive the process was launched from), and every path
+  UNDER an aliased directory inherits it — which is what reaches the *derived* paths, the common
+  case: with a workspace on `T:\`, the wiki is just `WORKSPACE_ROOT / "wiki"` with no
+  `CITADEL_WIKI_DIR` to spell it out, and it is exactly what git gets as `-C`. Nothing is guessed:
+  an alias is recorded only where both spellings of one directory are known *and* resolution turned
+  a non-UNC path into a UNC one, so POSIX layouts and ordinary Windows paths are byte-for-byte
+  unchanged.
+
 ## [0.5.0] - 2026-07-25
 
 ### Added

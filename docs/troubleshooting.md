@@ -108,7 +108,8 @@ CLI (see [configuration — Audio/video sources](configuration.md#audiovideo-sou
 ### "Nothing got ingested"
 
 - Run `citadel status` — the read-only per-source state table shows exactly what happened to each
-  file: ingested, failed, skipped-duplicate, ignored (matched `CITADEL_IGNORE_PATTERNS`), or pending.
+  file: ingested, failed, skipped-duplicate, ignored (matched `CITADEL_IGNORE_PATTERNS`), oversized
+  (over `CITADEL_MAX_SOURCE_BYTES`), or pending.
 - Already-ingested sources are skipped by sha match — that's not a bug. To deliberately re-read one,
   use `citadel ingest --force <paths>`.
 - Watch a run live with `citadel ingest --verbose` (`-v`), or capture a full transcript per source
@@ -141,6 +142,44 @@ viewer's sources lose their names/links, and `citadel lint` reports the citation
 `citadel doctor` — its **workspace coherence** check flags the mismatch, names one offending
 citation and where it actually resolved, and prints the fix (set `CITADEL_RAW_DIR` to the `raw/`
 tree next to the wiki, or select the workspace with `CITADEL_WORKSPACE`).
+
+### The scan is slow, or a raw root also holds huge machine-data files
+
+Discovery stream-hashes every new candidate in full before anything can classify it, so a folder of
+multi-GB `.tdms` sensor dumps (or video, or database exports) costs real time on every first scan —
+even though every one of them ends up recorded as unreadable binary. Set a **size ceiling**:
+`CITADEL_MAX_SOURCE_BYTES=52428800` (50 MB) skips anything larger straight from the walk's own
+`stat`, so those files are never opened. Skips are listed on the run report (*Oversized*) and in
+`citadel status`, never dropped silently; naming a path explicitly (`citadel ingest big.tdms`)
+ingests it anyway. Off by default — see
+[configuration.md](configuration.md#what-gets-ingested).
+
+### Windows: the agent CLI fails on a mapped network drive (`T:\…`)
+
+Symptoms, on a workspace that works perfectly when you `cd` into it yourself: sessions fail with
+*"environment blocks UNC/network paths"* or plain "file not found" for paths that plainly exist, and
+`git init` / `git add` in the wiki complain about `core.filemode` or `safe.directory`.
+
+Cause: `Path.resolve()` rewrites a mapped drive into its UNC form (`T:\wiki` →
+`\\fileserver\share\wiki`), and that resolved path used to be what citadel handed the agent CLI as
+its working directory. Citadel now hands child processes the spelling you configured (the drive
+letter) while keeping the resolved form as its internal identity — run `citadel doctor` and read the
+**child paths** line to see which working directory sessions will use. If it WARNs that only a UNC
+spelling is known, map the share to a drive letter and either run citadel from that drive or set
+`CITADEL_WORKSPACE=T:\your-workspace`.
+
+WSL is not a workaround here: a DrvFs mount of the same SMB share (`/mnt/t/…`) does not support the
+POSIX metadata operations the staging copy and `git init` need, so it fails differently (*Operation
+not permitted*). Run citadel natively on Windows against the drive letter.
+
+### My whole wiki turned up as raw sources
+
+This happened when a raw root sat above the wiki (`CITADEL_RAW_DIRS=T:\` with the wiki inside it):
+discovery walked the wiki's own pages back in as sources. Discovery now excludes the wiki directory
+from every walk, and the next run also sweeps the self-ingested keys out of the manifest and the
+failures catalog — so a plain `citadel ingest` cleans it up. The pages those sessions created are
+ordinary wiki pages; delete the ones you don't want, or let `citadel curate` fold them in.
+`citadel doctor`'s **wiki placement** check flags the nesting itself.
 
 ### Where failures are recorded
 
