@@ -257,6 +257,25 @@ def _is_wiki_internal(path: Path) -> bool:
     return grammar.is_within(path, config.WIKI_DIR)
 
 
+def _explicit_path(raw: str | os.PathLike) -> Path:
+    """One EXPLICITLY requested path (``citadel ingest <paths…>``, ``wiki_ingest``), with ``~``
+    expanded — the same courtesy every other configured path already gets
+    (``config._resolve_dir_entry``, ``workspace.init``, ``CITADEL_WORKSPACE``); the ingest
+    arguments were the outlier.
+
+    It matters most where this PR's other fixes do: a POSIX shell expands ``~`` before citadel ever
+    sees it, but Windows ``cmd.exe`` (and PowerShell, for a native binary's arguments) does not, so
+    ``citadel ingest ~/ws/raw/notes.md`` arrived as a literal ``~`` directory that stat'ed away to
+    nothing. It also closes the same gap in the wiki guard: an unexpanded path could not be
+    recognized as wiki-internal (it merely failed to resolve, so nothing was ingested — but the
+    guard must hold by construction, not by a downstream accident).
+
+    ``os.path.expanduser`` rather than ``Path.expanduser``: the latter RAISES on an unresolvable
+    home (``~nosuchuser``), and discovery must never raise on user input — the stdlib function
+    returns such a path unchanged instead."""
+    return Path(os.path.expanduser(raw))
+
+
 def _is_untrackable_key(key: str) -> bool:
     """True for a tracked key that must not be tracked AT ALL any more — the run-start migration
     sweep's predicate: an OS/junk basename (an ignore pattern added after it was recorded) or a
@@ -401,7 +420,7 @@ def _discover_walk(paths: list[str] | None) -> _Walk:
     walk = _Walk()
     if paths:
         for raw in paths:
-            p = Path(raw)
+            p = _explicit_path(raw)
             # abspath (not resolve) so a RELATIVE argument — `citadel ingest wiki/x.md` from the
             # workspace root — is still recognized as wiki-internal, without a filesystem round trip.
             if _is_wiki_internal(Path(os.path.abspath(p))):
@@ -500,7 +519,7 @@ def _discover_repos(paths: list[str] | None, walk: _Walk) -> list[Path]:
     found: list[Path] = list(walk.repos)
     if paths:
         for raw in paths:
-            p = Path(raw)
+            p = _explicit_path(raw)
             if _is_wiki_internal(Path(os.path.abspath(p))):
                 continue
             if p.is_dir() and _is_repo_source(p):

@@ -25,6 +25,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Explicitly requested ingest paths now expand `~`.** Every other configured path already did
+  (`config._resolve_dir_entry`, `workspace.init`, `CITADEL_WORKSPACE`); the `citadel ingest
+  <paths…>` / `wiki_ingest` arguments were the outlier. A POSIX shell expands `~` before citadel
+  sees it, but Windows `cmd.exe` — and PowerShell, for a native binary's arguments — does not, so
+  `citadel ingest ~/ws/raw/notes.md` arrived as a literal `~` directory and stat'ed away to
+  nothing. Expansion uses `os.path.expanduser`, not `Path.expanduser`, which raises on an
+  unresolvable home (`~nosuchuser`) — discovery must never raise on user input.
 - **The wiki can no longer become one of its own raw sources.** With a raw root *above* the wiki
   (`CITADEL_RAW_DIRS=T:\` and the wiki at `T:\llmWiki\data-science\wiki` — a normal way to say "scan
   this whole drive"), discovery walked the wiki's generated pages back in as sources, run after run,

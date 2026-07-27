@@ -514,3 +514,25 @@ def test_a_tracked_source_growing_past_the_ceiling_is_not_swept_as_deleted(tmp_c
     assert report.sources_deleted == []
     assert agent.count == 0
     assert "raw/notes.md" in manifest.load()
+
+
+def test_explicit_paths_expand_a_leading_tilde(tmp_citadel, wiki_under_raw, monkeypatch):
+    """`~` is expanded for explicitly requested paths, like every other configured path already is.
+    A POSIX shell expands it first, but Windows cmd.exe / PowerShell hand a native binary the
+    literal `~` — so it used to stat away to nothing, and the wiki guard could not recognize such a
+    path as wiki-internal either. Both now hold by construction."""
+    monkeypatch.setenv("HOME", str(wiki_under_raw.raw))
+    monkeypatch.setenv("USERPROFILE", str(wiki_under_raw.raw))  # Windows' home variable
+    (wiki_under_raw.raw / "notes.md").write_text("real source\n", encoding="utf-8")
+
+    assert ingest._candidates(["~/notes.md"]) == [wiki_under_raw.raw / "notes.md"]
+    # ...and the wiki guard sees through it: ~ pointing INTO the wiki is still refused.
+    (wiki_under_raw.wiki / "concepts").mkdir(parents=True, exist_ok=True)
+    (wiki_under_raw.wiki / "concepts" / "thing.md").write_text("generated\n", encoding="utf-8")
+    rel = wiki_under_raw.wiki.relative_to(wiki_under_raw.raw)
+    assert ingest._candidates([f"~/{rel.as_posix()}/concepts/thing.md"]) == []
+
+
+def test_explicit_path_with_an_unresolvable_home_never_raises(tmp_citadel):
+    """`~nosuchuser` must degrade, not crash: Path.expanduser() raises there, os.path's does not."""
+    assert ingest._candidates(["~nosuchuser-zzz/notes.md"]) == []
