@@ -449,7 +449,8 @@ def test_run_session_spawns_the_cli_in_the_child_friendly_cwd(monkeypatch):
 def test_external_dir_grants_use_the_child_friendly_spelling(tmp_citadel_external, monkeypatch):
     """`--add-dir` has to name the paths the agent can actually reach from its cwd: on a mapped
     drive that is the drive letter, not resolve()'s UNC rewrite."""
-    raw_dir = Path(config.RAW_DIR)
+    # Keyed off the RESOLVED path, exactly as _external_dirs looks it up.
+    raw_dir = Path(config.RAW_DIR).resolve()
     monkeypatch.setattr(config, "NATIVE_FORMS", {config._path_id(raw_dir): r"T:\team-wiki\raw"})
     granted = llm._external_dirs(config.rel_or_abs_posix(raw_dir / "notes.md"))
     assert r"T:\team-wiki\raw" in granted

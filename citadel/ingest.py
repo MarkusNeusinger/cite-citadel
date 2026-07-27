@@ -2709,9 +2709,9 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
     # same tree at every level); the size note lists what the ceiling kept out. ---
     if walk.excluded_wiki:
         print(
-            f"NOTE: the wiki directory ({config.WIKI_DIR}) lies under a configured raw root - it is "
-            "excluded from discovery (generated pages are never sources). Move the wiki out of the "
-            "raw root, or narrow CITADEL_RAW_DIRS, to silence this.",
+            f"NOTE: the wiki directory ({config.WIKI_DIR}) is excluded from discovery - generated "
+            "pages are never raw sources. If a raw root sits above the wiki, narrow "
+            "CITADEL_RAW_DIRS (or move the wiki with CITADEL_WIKI_DIR) to silence this.",
             file=sys.stderr,
         )
     report.oversized = sorted((manifest.rel_key(p), size) for p, size in walk.oversized)
