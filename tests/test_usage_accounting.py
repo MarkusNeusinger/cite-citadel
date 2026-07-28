@@ -579,6 +579,21 @@ def test_ai_credits_travel_from_the_session_to_status(tmp_citadel, fake_agent):
     assert report.as_dict()["aic_total"] == pytest.approx(2.5083)
 
 
+def test_credits_without_dollars_are_still_shown_everywhere(tmp_citadel, fake_agent):
+    """``cost_usd`` and ``aic`` are stamped INDEPENDENTLY, so a session can report credits and no
+    dollars. Every consumer must then show the credits: rendering ``—`` would hide spend the
+    corpus total is already counting."""
+    (tmp_citadel.raw / "a.md").write_text("alpha\n", encoding="utf-8")
+    fake_agent(_valid_page("raw/a.md"), usage=llm.SessionUsage(aic=2.5083, output_tokens=40))
+    ingest.ingest()
+
+    entry = tmp_citadel.read_manifest()["raw/a.md"]
+    assert entry["aic"] == pytest.approx(2.5083) and "cost_usd" not in entry
+    assert "2.5083 AIC" in status.build_status().render()
+    catalog = (config.wiki_dir() / "sources" / "index.md").read_text(encoding="utf-8")
+    assert "2.5083 AIC" in catalog and "| — |" not in catalog.split("raw/a.md")[1].split("\n")[0]
+
+
 def test_ingest_stamps_the_model_the_backend_actually_reported(tmp_citadel, fake_agent, monkeypatch):
     """The manifest must name what RAN, not what .env asked for — the configured label is only a
     fallback for a backend that reported nothing."""

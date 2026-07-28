@@ -117,6 +117,10 @@ class StatusReport:
                 cost = llm.format_cost(s.cost_usd)
                 # The credits are the figure copilot actually reported; the dollars are derived.
                 parts.append(f"{cost} ({llm.format_aic(s.aic)} AIC)" if s.aic is not None else cost)
+            elif s.aic is not None:
+                # Stamped independently, so credits can outlive an unknown dollar figure — show
+                # them rather than silently dropping spend the corpus total already counts.
+                parts.append(f"{llm.format_aic(s.aic)} AIC")
             lines.append("  " + "  ".join(parts))
 
         lines.append(f"Failed ({len(self.failed)})")

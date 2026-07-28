@@ -90,6 +90,10 @@
       var money = fmtCost(u.cost_usd);
       out.push({ cls: "src-usage",
                  text: typeof u.aic === "number" ? money + " (" + fmtAic(u.aic) + " AIC)" : money });
+    } else if (typeof u.aic === "number") {
+      // The two are stamped independently, so credits can arrive without dollars — showing them
+      // beats rendering nothing for spend that is actually known.
+      out.push({ cls: "src-usage", text: fmtAic(u.aic) + " AIC" });
     }
     var tok = [];
     if (typeof u.tokens_in === "number") tok.push(fmtTokens(u.tokens_in) + " in");

@@ -37,12 +37,13 @@ def _usage_cells(usage: dict) -> tuple[str, str]:
     dimension — an unknown figure is never rendered as a ``$0.00``/``0`` that reads like a
     measured zero. copilot quotes no dollars itself, so its dollars are its reported AI credits
     converted at GitHub's fixed rate — the credits are shown beside them, since they are the
-    un-derived figure. agy/copilot report no prompt-side count, so a one-sided token stamp renders
-    only the side that is known."""
+    un-derived figure. The two are stamped INDEPENDENTLY, so credits alone still render (dropping
+    them would hide spend that is actually known). agy/copilot report no prompt-side count, so a
+    one-sided token stamp renders only the side that is known."""
     cost = usage.get("cost_usd")
     aic = usage.get("aic")
     if cost is None:
-        cost_cell = "—"
+        cost_cell = f"{llm.format_aic(aic)} AIC" if aic is not None else "—"
     elif aic is not None:
         cost_cell = f"{llm.format_cost(cost)} ({llm.format_aic(aic)} AIC)"
     else:
