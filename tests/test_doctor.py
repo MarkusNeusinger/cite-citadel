@@ -131,49 +131,41 @@ def test_agent_cli_warn_when_binary_missing(tmp_citadel, monkeypatch):
         raise RuntimeError("not found")
 
     monkeypatch.setattr(llm_mod, "_resolve_cli", _boom)
-    monkeypatch.setattr(config, "LLM_CLI", "gemini")
+    monkeypatch.setattr(config, "LLM_CLI", "copilot")
     c = doctor.check_agent_cli()
     assert c.status == doctor.WARN
-    assert "gemini" in c.detail
+    assert "copilot" in c.detail
     assert "ingest will fail" in c.detail
+
+
+def test_agent_cli_fails_on_the_retired_gemini_backend(tmp_citadel, monkeypatch):
+    """No binary can satisfy a removed backend, so PATH is the wrong complaint: FAIL with the
+    migration hint that names agy."""
+    monkeypatch.setattr(config, "LLM_CLI", "gemini")
+    c = doctor.check_agent_cli()
+    assert c.status == doctor.FAIL
+    assert "agy" in c.detail
 
 
 # --- ingest model ------------------------------------------------------------------------
 
 
-def test_ingest_model_warns_when_exported_on_non_claude_backend(monkeypatch):
-    """CITADEL_INGEST_MODEL is claude-only (only that backend is passed --model): exported against
-    copilot it is silently inert, so doctor names the backend's own env var as the real selector."""
+def test_ingest_model_reports_the_configured_request(monkeypatch):
+    """Every backend is passed --model now, so a set knob is never inert — it is echoed as the
+    model that will be REQUESTED, on any backend."""
     monkeypatch.setattr(config, "LLM_CLI", "copilot", raising=False)
-    monkeypatch.setenv("CITADEL_INGEST_MODEL", "sonnet")
-    c = doctor.check_ingest_model()
-    assert (c.status, c.name) == (doctor.WARN, "ingest model")
-    assert "COPILOT_MODEL" in c.detail
-    assert "--model" in c.detail
-
-
-def test_ingest_model_warn_names_gemini_env_var(monkeypatch):
-    monkeypatch.setattr(config, "LLM_CLI", "gemini", raising=False)
-    monkeypatch.setenv("CITADEL_INGEST_MODEL", "opus")
-    c = doctor.check_ingest_model()
-    assert c.status == doctor.WARN
-    assert "GEMINI_MODEL" in c.detail
-
-
-def test_ingest_model_ok_on_claude_and_when_not_exported(monkeypatch):
-    """The knob is authoritative on claude (OK, echoing the recorded label) — and the claude-only
-    default 'sonnet' counts only when actually exported, so an untouched copilot/gemini setup
-    stays OK (mirroring config.ingest_model_label)."""
-    monkeypatch.setattr(config, "LLM_CLI", "claude", raising=False)
-    monkeypatch.setattr(config, "INGEST_MODEL", "opus", raising=False)
-    monkeypatch.setenv("CITADEL_INGEST_MODEL", "opus")
+    monkeypatch.setattr(config, "INGEST_MODEL", "claude-sonnet-4.5", raising=False)
     c = doctor.check_ingest_model()
     assert (c.status, c.name) == (doctor.OK, "ingest model")
-    assert "claude:opus" in c.detail
+    assert "claude-sonnet-4.5" in c.detail
 
-    monkeypatch.setattr(config, "LLM_CLI", "gemini", raising=False)
-    monkeypatch.delenv("CITADEL_INGEST_MODEL", raising=False)
-    assert doctor.check_ingest_model().status == doctor.OK
+
+def test_ingest_model_unset_says_the_cli_default_runs(monkeypatch):
+    monkeypatch.setattr(config, "LLM_CLI", "agy", raising=False)
+    monkeypatch.setattr(config, "INGEST_MODEL", "", raising=False)
+    c = doctor.check_ingest_model()
+    assert c.status == doctor.OK
+    assert "own default" in c.detail
 
 
 # --- raw roots ---------------------------------------------------------------------------

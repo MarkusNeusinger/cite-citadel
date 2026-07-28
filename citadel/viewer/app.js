@@ -51,6 +51,58 @@
     s.lowId = id.toLowerCase();
   });
 
+  // --- Source provenance rendering ------------------------------------------------------------
+  // A source's manifest stamp: which model actually imported it, what that session cost, and when
+  // it was last verified. Every piece is optional and OMITTED when unknown — an unreported figure
+  // must never render as a measured "$0.00"/"0 tokens".
+  // fmtCost mirrors citadel.llm.format_cost: four decimals so a sub-cent session never rounds to a
+  // lying $0.00, trailing zeros trimmed but never below two decimals.
+  function fmtCost(v) {
+    if (typeof v !== "number" || !isFinite(v)) return "";
+    var t = v.toFixed(4);
+    while (/0$/.test(t) && t.length - t.indexOf(".") > 3) t = t.slice(0, -1);
+    return "$" + Number(t).toLocaleString("en-US", { minimumFractionDigits: t.split(".")[1].length,
+                                                     maximumFractionDigits: t.split(".")[1].length });
+  }
+  // fmtAic mirrors citadel.llm.format_aic: AI credits at four decimals, trailing zeros trimmed
+  // but never below one, so a fraction-of-a-credit session never renders as a lying "0".
+  function fmtAic(v) {
+    if (typeof v !== "number" || !isFinite(v)) return "";
+    var t = v.toFixed(4);
+    while (/0$/.test(t) && t.length - t.indexOf(".") > 2) t = t.slice(0, -1);
+    var d = t.split(".")[1].length;
+    return Number(t).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  function fmtTokens(v) {
+    if (typeof v !== "number" || !isFinite(v) || v < 0) return "";
+    if (v >= 1000000) return (v / 1000000).toFixed(1).replace(/\.0$/, "") + "M";
+    if (v >= 1000) return (v / 1000).toFixed(1).replace(/\.0$/, "") + "k";
+    return String(v);
+  }
+  // The provenance fragments of a source, in display order: model, spend, tokens, last check.
+  function sourceProvenance(s) {
+    var u = s.usage || {};
+    var out = [];
+    if (s.model) out.push({ cls: "src-model", text: s.model });
+    if (typeof u.cost_usd === "number") {
+      // copilot quotes no dollars: its cost is derived from the AI credits it DID report, so the
+      // credits are shown beside the conversion rather than replaced by it.
+      var money = fmtCost(u.cost_usd);
+      out.push({ cls: "src-usage",
+                 text: typeof u.aic === "number" ? money + " (" + fmtAic(u.aic) + " AIC)" : money });
+    } else if (typeof u.aic === "number") {
+      // The two are stamped independently, so credits can arrive without dollars — showing them
+      // beats rendering nothing for spend that is actually known.
+      out.push({ cls: "src-usage", text: fmtAic(u.aic) + " AIC" });
+    }
+    var tok = [];
+    if (typeof u.tokens_in === "number") tok.push(fmtTokens(u.tokens_in) + " in");
+    if (typeof u.tokens_out === "number") tok.push(fmtTokens(u.tokens_out) + " out");
+    if (tok.length) out.push({ cls: "src-usage", text: tok.join(" / ") });
+    if (s.checked) out.push({ cls: "src-checked", text: "checked " + String(s.checked).slice(0, 10) });
+    return out;
+  }
+
   function esc(s) {
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -1414,9 +1466,14 @@
     var want = "src:" + encodeURIComponent(sid);
     if ((location.hash || "").slice(1) !== want) { location.hash = want; }
     var open = rawFileLink(s, "Open original file");
+    // Provenance line: which model actually served this source's session, what it cost in that
+    // backend's own unit, its token volume, and when it was last verified — each shown only when
+    // the manifest carries it.
+    var prov = sourceProvenance(s).map(function (part, i) {
+      return "<span class='" + part.cls + "'>" + (i === 0 ? "via " : "\u00b7 ") + esc(part.text) + "</span>";
+    }).join(" ");
     var meta = "<div class='meta'><span class='ptype src'>Source</span> <span class='src-id'>" +
-      esc(s.id) + "</span>" + (s.model ? " <span class='src-model'>via " + esc(s.model) +
-      "</span>" : "") + (open ? " " + open : "") + "</div>";
+      esc(s.id) + "</span>" + (prov ? " " + prov : "") + (open ? " " + open : "") + "</div>";
     var body;
     if (s.missing) {
       body = "<div class='callout'><div class='callout-title'>SOURCE UNAVAILABLE</div>" +
@@ -1471,8 +1528,9 @@
     if (!pop) pop = document.getElementById("srcpop");
     var note = s.missing ? " · (file unavailable)"
       : (s.kind === "binary" ? " · (binary — opens original)" : "");
+    var provText = sourceProvenance(s).map(function (p) { return p.text; }).join(" · ");
     pop.innerHTML = "<div class='sp-title'>" + esc(s.title) + "</div><div class='sp-meta'>" +
-      esc(s.id) + (s.model ? " · " + esc(s.model) : "") + note + "</div>" +
+      esc(s.id) + (provText ? " · " + esc(provText) : "") + note + "</div>" +
       (s.snippet ? "<div class='sp-snip'>" + esc(s.snippet) + "…</div>" : "") +
       "<div class='sp-hint'>Click to open source</div>";
     positionPop(anchor);

@@ -349,6 +349,40 @@ def test_format2_manifest_provenance_decorates_sources(tmp_citadel, seed_page):
     assert all(s["key"] not in ("meta", "sources") for s in sources.values())
 
 
+def test_sources_carry_the_manifest_usage_stamp_and_check_date(tmp_citadel, seed_page):
+    """What the import cost and when it was last verified travel into the offline bundle beside
+    the model, so the viewer can show full provenance under each source."""
+    (tmp_citadel.raw / "a.md").write_text("# A\n\ncited\n", encoding="utf-8")
+    manifest.save(
+        {
+            "raw/a.md": {
+                "sha256": "h1",
+                "model": "claude:claude-opus-5",
+                "ingested_at": "2026-07-28T10:00:00Z",
+                "cost_usd": 0.0553,
+                "tokens_in": 43012,
+                "tokens_out": 496,
+                "aic": 5.53,
+            }
+        }
+    )
+    _two_page_wiki(seed_page)
+    src = viewer.build_bundle()["sources"]["raw/a.md"]
+    assert src["model"] == "claude:claude-opus-5"
+    assert src["usage"] == {"cost_usd": 0.0553, "aic": 5.53, "tokens_in": 43012, "tokens_out": 496}
+    assert src["checked"].startswith("2026-07-28")
+
+
+def test_sources_omit_usage_when_the_manifest_says_nothing(tmp_citadel, seed_page):
+    """An unstamped source carries no usage/checked keys at all — the viewer renders nothing
+    rather than a measured-looking zero."""
+    (tmp_citadel.raw / "a.md").write_text("# A\n\ncited\n", encoding="utf-8")
+    manifest.save({"raw/a.md": {"sha256": "h1"}})
+    _two_page_wiki(seed_page)
+    src = viewer.build_bundle()["sources"]["raw/a.md"]
+    assert "usage" not in src and "checked" not in src
+
+
 def test_citation_inside_code_fence_is_not_a_source(tmp_citadel, seed_page):
     (tmp_citadel.raw / "real.md").write_text("# Real\n\nx\n", encoding="utf-8")
     (tmp_citadel.raw / "fenced.md").write_text("# Fenced\n\ny\n", encoding="utf-8")

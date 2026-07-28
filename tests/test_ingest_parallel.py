@@ -414,11 +414,63 @@ def test_config_clamps_a_bad_jobs_value(monkeypatch):
     assert any("CITADEL_JOBS" in w for w in config.CONFIG_WARNINGS)
 
 
-def test_progress_drops_the_spinner_when_running_parallel():
-    """With several sources in flight there is no single "current source" for the spinner to name,
-    so the console falls back to a start line per source."""
+def test_parallel_run_keeps_the_live_region_and_names_the_worker_count():
+    """A ``--jobs N`` run no longer sacrifices the animated display. The old carriage-return writer
+    could rewrite only ONE line, so with several sources in flight it had no single "current
+    source" to name and switched itself off; rich renders a row per task, so the live region stays
+    and the headline says how many sources are folded in at once."""
     from citadel.progress import ConsoleProgress
 
     progress = ConsoleProgress(stream=io.StringIO())
     progress("start", {"pending": 3, "skipped": 0, "jobs": 3})
-    assert progress.spinner is False
+
+    assert progress.spinner is True
+    assert "3 at a time" in progress.stream.getvalue()
+
+
+def test_each_in_flight_source_gets_its_own_live_row():
+    """The point of the rich rewrite for ``--jobs N``: every concurrently running source owns a
+    spinner row, and finishing one retires exactly that row while the others keep animating."""
+    from citadel.progress import ConsoleProgress
+
+    class Tty(io.StringIO):
+        def isatty(self):
+            return True
+
+    progress = ConsoleProgress(stream=Tty())
+    progress.console.width = 200
+    progress("start", {"pending": 2, "skipped": 0, "jobs": 2})
+    assert progress.live_mode is True
+
+    progress("source_start", {"index": 1, "total": 2, "source": "raw/a.md"})
+    progress("source_start", {"index": 2, "total": 2, "source": "raw/b.md"})
+    assert set(progress._tasks) == {"raw/a.md", "raw/b.md"}
+
+    progress(
+        "source_done",
+        {"index": 1, "total": 2, "source": "raw/a.md", "created": 1, "updated": 0, "deleted": 0, "seconds": 1.0},
+    )
+    assert set(progress._tasks) == {"raw/b.md"}
+
+    progress("done", {})
+    assert progress._tasks == {}
+
+
+def test_a_raced_source_does_not_advance_the_overall_bar():
+    """A ``raced`` attempt promoted nothing and is re-run serially, which emits its own
+    start/done pair — counting it here would push the bar past the source count."""
+    from citadel.progress import ConsoleProgress
+
+    class Tty(io.StringIO):
+        def isatty(self):
+            return True
+
+    progress = ConsoleProgress(stream=Tty())
+    progress.console.width = 200
+    progress("start", {"pending": 2, "skipped": 0, "jobs": 2})
+    progress("source_start", {"index": 1, "total": 2, "source": "raw/a.md"})
+
+    progress("source_retry", {"index": 1, "total": 2, "source": "raw/a.md", "seconds": 1.0})
+
+    assert progress._overall.tasks[0].completed == 0
+    progress("done", {})

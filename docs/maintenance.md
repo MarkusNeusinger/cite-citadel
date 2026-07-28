@@ -68,8 +68,10 @@ one).
 
 The budget unit is **sources, not tokens** — one source is exactly one agent session, so
 `--limit N` is an honest, predictable proxy. And the spend is no longer invisible: every
-session's cost/usage, as reported by the agent CLI itself (claude's result envelope, gemini's
-`--session-summary`), is stamped into the source's manifest entry and totaled on the run report,
+session's cost/usage *and the model that actually served it*, as reported by the agent CLI
+itself (claude's result envelope, copilot's JSONL stream — its AI credits, converted to dollars
+at GitHub's fixed $0.01/credit and stamped beside the credits themselves — agy's `stream-json`
+events), is stamped into the source's manifest entry and totaled on the run report,
 so each refresh run tells you what the slice actually cost and `citadel status` shows the
 per-source and corpus figures. `--min-age-days D` makes a scheduled run self-limiting: once everything has
 been checked within D days, the run is a free no-op. There is deliberately no "refresh everything"

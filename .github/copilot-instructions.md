@@ -11,10 +11,10 @@ this file by hand: change `CLAUDE.md` and regenerate with
 personal wiki in Google's [Open Knowledge Format](../docs/okf-reference.md), with an MCP server so an
 AI can search and read it. It implements Karpathy's LLM-Wiki pattern: drop arbitrary text-bearing
 files into `raw/`, and one agentic CLI session per source folds each into a cross-linked OKF wiki
-under `wiki/`. Pure Python 3.12, KISS. Runtime deps are only `mcp`, `pyyaml`, and `pypdf` (all
-pure-Python, no native/transitive weight) — **there is no LLM SDK and no API key**: ingest shells
+under `wiki/`. Pure Python 3.12, KISS. Runtime deps are only `mcp`, `pyyaml`, `pypdf`, and `rich`
+(all pure-Python, no native weight) — **there is no LLM SDK and no API key**: ingest shells
 out to a coding-agent CLI you already have logged in
-(`claude`/`copilot`/`gemini`).
+(`claude`/`copilot`/`agy`).
 
 ## Commands
 
@@ -30,7 +30,7 @@ uv run python -m citadel <subcommand>
 
 Subcommands: `init [DIR]` (scaffold a workspace: `citadel.toml` marker, `.env`, `raw/`, `wiki/`;
 idempotent), `ingest [paths…]` (fold raw/ into the wiki; `--verbose`/`-v` streams the agent
-session, `--log-dir DIR` writes a transcript per source, `--quiet` drops the progress spinner,
+session, `--log-dir DIR` writes a transcript per source, `--quiet` drops the live progress display,
 `--jobs N`/`-j` folds N sources in CONCURRENTLY (default 1 = serial; `CITADEL_JOBS`),
 `--full-rescan` distrusts the manifest's stat cache and re-hashes every tracked source,
 `--force <paths>` deliberately re-reads already-ingested sources as a reconcile — it requires
@@ -44,7 +44,7 @@ contradictions/fix locators — against a recomputed findings checklist), `statu
 per-source state table: ingested / failed / skipped-duplicate / ignored / oversized / pending; MCP twin
 `wiki_status`), `doctor`
 (read-only setup health check — OK/WARN/FAIL lines for workspace / rules / config-parse fallbacks /
-agent CLI / the inert-`CITADEL_INGEST_MODEL`-on-copilot/gemini advisory / raw roots / wiki placement
+agent CLI / the configured ingest model / raw roots / wiki placement
 (the wiki nested inside a raw root) / child paths (the UNC-vs-drive-letter cwd) /
 manifest / billing / the HTTP-serve posture / wiki-git state / a best-effort PyPI update check / workspace coherence; needs no workspace, exits 1 only on a FAIL),
 `serve [--http [--host H] [--port P] [--path /mcp] [--read-only]]` (the MCP server — stdio by
@@ -276,10 +276,21 @@ git repo folded as one digest), `image`/`image-reconcile` (an image source read 
 raw source). A large source is split into segments and folded in over several passes
 (`segment=(part, total)` on `run_ingest_session`, telling later passes to MERGE into earlier ones).
 `run_ingest_session` is the single seam tests monkeypatch; it returns the session's best-effort
-`SessionUsage` (the backend's OWN cost/usage report: claude's result envelope, gemini's
-`--session-summary` behind a cached `--help` feature probe; None when nothing was reported —
-accounting is strictly passive and can never fail a session), which ingest sums per source into
-the manifest stamp and per run onto the reports.
+`SessionUsage` (the backend's OWN report of what it spent AND which model actually served the
+session: claude's result envelope - `total_cost_usd` plus the `modelUsage` map, whose PRIMARY
+entry is the one carrying the token volume, since claude routes cheap side work to a smaller
+model; copilot's `--output-format json` JSONL - no dollars, so its own billing unit is recorded
+instead: `totalNanoAiu`, the counter behind the `N AIC used` session footer (1 AIC = 1e9 nanoAiu),
+converted to `cost_usd` at GitHub's fixed published $0.01/credit so a mixed corpus keeps ONE
+comparable total while the un-derived credits stay stamped beside it (the retired
+`totalPremiumRequests` is deliberately ignored); agy's `--output-format stream-json` - the
+opening `init.model` plus the
+closing `result.usage` token totals; None when nothing was reported - accounting is strictly
+passive and can never fail a session), which ingest sums per source into the manifest stamp and
+per run onto the reports. **The REPORTED model wins**: `config.model_label_for(reported)` stamps
+the backend plus what actually ran, and falls back to the configured label only when the backend
+named nothing (an Ollama/proxy backend, or agy left on its own default), so the manifest never
+claims a model that never ran.
 
 **Two checking layers, one implementation** (`validate.py`):
 - `citadel check` / `wiki_validate` — the **strict per-page gate** (required fields, honest/defined
@@ -324,11 +335,18 @@ repeated runs walk the corpus round-robin with NO persisted queue (the manifest 
 The budget is always explicit (`limit >= 1` enforced, default 1), mirroring `--force`'s
 no-accidental-corpus-wide-run refusal. CLI-only, like curate.
 
+An auth-shaped session failure under hermetic isolation is **retried once without the isolation
+flags**: on a machine whose CLI credentials live in exactly the personal config `--bare` skips,
+every session used to die on authentication until the user found `CITADEL_HERMETIC=0`. The retry
+is scoped to that signature (flags actually passed + an auth-shaped message), so a real credential
+problem still fails instead of looping.
+
 **Status is the read-only corpus view** (`status.py`, `citadel status`): the manifest + failures
 catalog + one stat-only walk (never re-hashes) rendered as a per-source state table — ingested
 (model + rules_version, `(stale)` when it predates the current rulebook, `checked YYYY-MM-DD` from
-the `ingested_at` stamp, the last session's cost when recorded — with a `Recorded LLM cost` corpus
-total above the table), failed (reason, attempts),
+the `ingested_at` stamp, the last session's cost when recorded, with copilot's AI credits shown
+beside the dollars they converted into — with `Recorded LLM cost` / `Recorded AI credits` corpus
+totals above the table), failed (reason, attempts),
 skipped-duplicate, ignored (pattern), oversized (over `CITADEL_MAX_SOURCE_BYTES`, with the size),
 pending.
 
@@ -390,6 +408,21 @@ setup health check (OK/WARN/FAIL lines over workspace resolution, the rules tree
 PATH, raw-root reachability, manifest parse + stamp, failures summary, the API-key/PDF/audio
 advisories, the wiki-git state, a best-effort PyPI update check naming the right upgrade command
 per install method, and workspace coherence).
+`progress.py` is the CLI's live console reporter (`rich`), wired in only by `cmd_ingest`/`cmd_refresh`
+— the MCP server passes no progress, so its stdio stays clean. On a terminal it renders a live
+region: one spinner row per IN-FLIGHT source (which is what makes `--jobs N` legible) plus an
+overall bar, while finished sources scroll away above it as permanent one-line verdicts carrying
+what the session actually spent (`[2/3] OK raw/notes.md 18.4s 2 created $0.0123 1.2k in / 456 out
+claude-opus-5` — only fields the backend genuinely reported). Off a TTY or under `--verbose` it
+degrades to a START line plus a verdict line per source. Two invariants are load-bearing: every
+composed string is ASCII-only and the spinner is pinned to rich's ASCII `line` frames (a cp1252
+Windows console must be able to encode it), and every write goes through a swallow-everything guard
+— console output must never be able to fail a run that already spent money. Source keys are
+shortened by `config.display_key`, which drops the whole prefix before the raw folder in three
+tiers: an exact prefix match, a cut at the last path segment NAMED like a configured root (this is
+what rescues a Windows drive letter mapped to a share, where `T:\proj\raw` and the key's
+`//fileserver.../proj/raw/...` are one folder but share no text), and finally a `.../`-marked tail
+clip, so no absolute key can ever flood the console.
 `wikigit.py` is the best-effort wiki-HISTORY layer: after every run that changed the wiki (ingest or
 curate) it commits the whole wiki dir as ONE commit (and pushes to `CITADEL_WIKI_GIT_REMOTE` when
 set), so every change is a reviewable diff; `auto` (default) only acts when the wiki dir is already
@@ -473,7 +506,9 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   Windows/SMB failures.
 - Config knobs live in the workspace-root `.env` (auto-loaded, gitignored; template:
   `citadel/templates/env.example`): `CITADEL_LLM_CLI`,
-  `CITADEL_INGEST_MODEL`, `CITADEL_CURATE_MODEL` (model for `citadel curate` sessions; falls back to
+  `CITADEL_INGEST_MODEL` (passed as `--model` to EVERY backend - claude, copilot and agy all
+  honor it; unset (the default) means "run the CLI's own default model"),
+  `CITADEL_CURATE_MODEL` (model for `citadel curate` sessions; falls back to
   `CITADEL_INGEST_MODEL`), `CITADEL_LLM_TIMEOUT`, `CITADEL_HERMETIC` (session isolation — append claude's `--bare` when the
   installed binary advertises it, so personal `~/.claude` config never leaks into ingest; default
   on, probe-gated), `CITADEL_PAGE_CACHE` (the serve-side page snapshot cache: `auto` = on in

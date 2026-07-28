@@ -1,11 +1,11 @@
 ---
 name: bench-model
-description: Benchmark an LLM (model and/or agent CLI) on citadel's wiki-building quality — the model-focused twin of verify-corpus (which tests the PIPELINE with a fixed model, while bench-model tests a MODEL with the fixed pipeline). Mode A ingests a corpus into a throwaway sandbox with the chosen CITADEL_INGEST_MODEL / CITADEL_LLM_CLI, grades it with verify-corpus's retrieval-first method, then applies a DISCRIMINATIVE tier (locator precision, oblique-query retrieval, merge quality, redundancy/cross-links, judgment delta on contradictions + planted-false claims) so runs by models of different strength never tie at the top — if two models both ace the grade, the test was too easy, which is itself a finding. Ends with a side-by-side metrics table and a verdict (is the cheaper model's wiki acceptable, where does it degrade first, what rule changes would close the gap). Use whenever the user wants to compare models on wiki creation (sonnet vs haiku, a new Claude model, gemini/copilot, or open/local models via the CITADEL_LLM_CLI seam), asks "does model X suffice for ingest?", wants a cost/quality trade-off measured, or wants to re-run the model bench from the 2026-07 audit — even if they do not say the word "skill". Takes a corpus name, a model id, and optionally a CLI and a baseline sandbox to compare against.
+description: Benchmark an LLM (model and/or agent CLI) on citadel's wiki-building quality — the model-focused twin of verify-corpus (which tests the PIPELINE with a fixed model, while bench-model tests a MODEL with the fixed pipeline). Mode A ingests a corpus into a throwaway sandbox with the chosen CITADEL_INGEST_MODEL / CITADEL_LLM_CLI, grades it with verify-corpus's retrieval-first method, then applies a DISCRIMINATIVE tier (locator precision, oblique-query retrieval, merge quality, redundancy/cross-links, judgment delta on contradictions + planted-false claims) so runs by models of different strength never tie at the top — if two models both ace the grade, the test was too easy, which is itself a finding. Ends with a side-by-side metrics table and a verdict (is the cheaper model's wiki acceptable, where does it degrade first, what rule changes would close the gap). Use whenever the user wants to compare models on wiki creation (sonnet vs haiku, a new Claude model, agy/copilot, or open/local models via the CITADEL_LLM_CLI seam), asks "does model X suffice for ingest?", wants a cost/quality trade-off measured, or wants to re-run the model bench from the 2026-07 audit — even if they do not say the word "skill". Takes a corpus name, a model id, and optionally a CLI and a baseline sandbox to compare against.
 ---
 
 # Bench a model on wiki creation
 
-**Usage:** `bench-model <corpus> <model> [--cli claude|copilot|gemini] [--baseline SANDBOX] [--grade-only SANDBOX]`
+**Usage:** `bench-model <corpus> <model> [--cli claude|copilot|agy] [--baseline SANDBOX] [--grade-only SANDBOX]`
 
 Everything sandbox/grading-related follows **verify-corpus** (read its SKILL.md first — sandbox
 recipe, phase 1 structural gates, phase 2 retrieval-first grading, the creation-vs-retrieval miss
@@ -36,7 +36,7 @@ REPO="$(git rev-parse --show-toplevel)"
 SANDBOX="$(mktemp -d)/bench-<corpus>-<model>"
 uv run python -m citadel init "$SANDBOX"
 cat > "$SANDBOX/.env" <<EOF
-CITADEL_LLM_CLI=claude                 # or copilot / gemini — the seam for open/local models
+CITADEL_LLM_CLI=claude                 # or copilot / agy — the seam for open/local models
 CITADEL_INGEST_MODEL=<model>
 CITADEL_LLM_LOG_DIR=$SANDBOX/logs
 CITADEL_RAW_DIR=$REPO/corpora/<corpus>/raw

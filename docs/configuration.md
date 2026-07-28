@@ -25,11 +25,10 @@ lives once in the README:
 
 | Variable | Default | What it does |
 |----------|---------|--------------|
-| `CITADEL_LLM_CLI` | `claude` | Which CLI ingest shells out to: `claude` \| `copilot` \| `gemini`. Run agentically (claude with acceptEdits + allowlist, copilot `--allow-all-tools`, gemini `--approval-mode yolo`); the CLI must be installed and logged in. If your workspace is a git checkout, run ingest on a clean working tree so any stray edit shows up (git is optional otherwise). |
-| `CITADEL_INGEST_MODEL` | `sonnet` | Model for the `claude` backend — an alias (`sonnet`/`opus`/`haiku`) or full id. copilot/gemini use their own default (`citadel doctor` warns when this knob is set there, where it selects nothing — `COPILOT_MODEL`/`GEMINI_MODEL` are the real selectors). |
-| `CITADEL_CURATE_MODEL` | (reuses ingest model) | Cheaper/faster model for `citadel curate` sessions (claude backend, via `--model`). |
-| `CLAUDE_CODE_PATH` / `COPILOT_CLI_PATH` / `GEMINI_CLI_PATH` | (PATH lookup) | Override the CLI binary path when it isn't on `PATH`. |
-| `COPILOT_MODEL` / `GEMINI_MODEL` | (unset) | Concrete model id recorded per source for those backends (also covers a local/Ollama model). |
+| `CITADEL_LLM_CLI` | `claude` | Which CLI ingest shells out to: `claude` \| `copilot` \| `agy` (Google's Antigravity CLI, successor to the retired `gemini` CLI — setting `gemini` now fails with a migration hint). Run agentically (claude with acceptEdits + allowlist, copilot `--allow-all-tools`, agy `--dangerously-skip-permissions`); the CLI must be installed and logged in. If your workspace is a git checkout, run ingest on a clean working tree so any stray edit shows up (git is optional otherwise). |
+| `CITADEL_INGEST_MODEL` | *(unset)* | Model for **every** backend — passed through as `--model` to `claude`, `copilot` and `agy` alike. claude takes an alias (`sonnet`/`opus`/`haiku`) or a full id, copilot a model name (or `auto`), agy an id from `agy models`. Unset means "run the CLI's own default". This knob is only the *request*: the manifest, `citadel status` and the viewer record the model the backend actually **reported** for the session, falling back to this label only when the backend named none. |
+| `CITADEL_CURATE_MODEL` | (reuses ingest model) | Cheaper/faster model for `citadel curate` sessions, passed as `--model` on any backend. |
+| `CLAUDE_CODE_PATH` / `COPILOT_CLI_PATH` / `AGY_CLI_PATH` | (PATH lookup) | Override the CLI binary path when it isn't on `PATH`. |
 
 ## Local models (Ollama)
 
@@ -50,15 +49,15 @@ CITADEL_LLM_CLI=claude
 CITADEL_INGEST_MODEL=qwen3.6:27b              # the exact `ollama list` tag
 ```
 
-**GitHub Copilot → local model.** OpenAI-compatible surface — note the `/v1`. citadel's copilot path
-passes no `--model`, so **`COPILOT_MODEL` is the selector** (`CITADEL_INGEST_MODEL` is ignored here);
-this is proven for the non-interactive `copilot -p` that citadel spawns:
+**GitHub Copilot → local model.** OpenAI-compatible surface — note the `/v1`. Select the model
+with `CITADEL_INGEST_MODEL` (citadel passes it through as `--model`); this is proven for the
+non-interactive `copilot -p` that citadel spawns:
 
 ```sh
 COPILOT_PROVIDER_BASE_URL=http://<host>:11434/v1
 COPILOT_PROVIDER_API_KEY=ollama
 COPILOT_PROVIDER_WIRE_API=completions
-COPILOT_MODEL=qwen3.6:27b
+CITADEL_INGEST_MODEL=qwen3.6:27b
 COPILOT_PROVIDER_MAX_PROMPT_TOKENS=120000
 COPILOT_PROVIDER_MAX_OUTPUT_TOKENS=8000
 NO_PROXY=<host>                               # when a proxy is set in the environment
@@ -71,7 +70,7 @@ The same in PowerShell:
 $env:COPILOT_PROVIDER_BASE_URL = "http://<host>:11434/v1"
 $env:COPILOT_PROVIDER_API_KEY = "ollama"
 $env:COPILOT_PROVIDER_WIRE_API = "completions"
-$env:COPILOT_MODEL = "qwen3.6:27b"
+$env:CITADEL_INGEST_MODEL = "qwen3.6:27b"
 $env:COPILOT_PROVIDER_MAX_PROMPT_TOKENS = "120000"
 $env:COPILOT_PROVIDER_MAX_OUTPUT_TOKENS = "8000"
 $env:NO_PROXY = "<host>"
@@ -85,14 +84,18 @@ $env:CITADEL_LLM_CLI = "copilot"
 - Tool-calling-capable models only (the agent CLI drives file tools).
 - Expect a coder-class model of ~27B or larger; owner-tested floor is `qwen3.6:27b`.
 - `CITADEL_PDF_MODE=images` additionally needs a **vision**-capable local model.
-- The Gemini CLI has no first-party local-model path today, so it is not offered here.
+- The Antigravity CLI (`agy`) has no first-party local-model path today, so it is not offered here.
+- A local/proxy backend usually reports no model id of its own, so the per-source stamp falls back
+  to the `CITADEL_INGEST_MODEL` label you configured — which is exactly the model you selected.
 
 ## Sessions & observability
 
 | Variable | Default | What it does |
 |----------|---------|--------------|
 | `CITADEL_LLM_TIMEOUT` | `1200` | Per-call CLI timeout in seconds. Raise it for opus or large raw files. |
-| `CITADEL_HERMETIC` | `1` | Hermetic agent sessions: append the backend's session-isolation flag (claude `--bare` — skips user hooks/`CLAUDE.md`/MCP discovery) so your personal agent config never leaks into ingest. Only passed when the installed binary advertises the flag in `--help` (older CLIs run unchanged); `0` deliberately runs sessions with your personal config. copilot/gemini have no such flag today. **Set it to `0` if every session fails on authentication while the CLI works interactively** — on some setups (managed containers, an `apiKeyHelper`) the skipped personal config is where the credentials live; see [troubleshooting](troubleshooting.md#every-session-fails-with-an-authentication-error-but-the-cli-works-when-i-run-it-myself). |
+| `CITADEL_HERMETIC` | `1` | Hermetic agent sessions: append the backend's session-isolation flag (claude `--bare` — skips user hooks/`CLAUDE.md`/MCP discovery) so your personal agent config never leaks into ingest. Only passed when the installed binary advertises the flag in `--help` (older CLIs run unchanged); `0` deliberately runs sessions with your personal config. copilot/agy have no such flag today. An auth-shaped failure under hermetic mode is retried once
+automatically without the flag, so this knob is a way to skip that retry rather than a hard
+prerequisite. **Set it to `0` if every session fails on authentication while the CLI works interactively** — on some setups (managed containers, an `apiKeyHelper`) the skipped personal config is where the credentials live; see [troubleshooting](troubleshooting.md#every-session-fails-with-an-authentication-error-but-the-cli-works-when-i-run-it-myself). |
 | `CITADEL_LLM_LOG_DIR` | (off) | Write one transcript per source (prompt + full CLI stdout/stderr + exit code + duration). Relative paths resolve under the workspace root. **Local-only — keep out of VCS** (transcripts can contain source content). CLI flag: `--log-dir`. |
 | `CITADEL_LLM_VERBOSE` | `0` | `1`/`true` streams each session's output live. CLI flag: `-v`. |
 

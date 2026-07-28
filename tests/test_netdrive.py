@@ -6,7 +6,7 @@ everything lives under ``WORKSPACE_ROOT``:
 
   * config key<->path helpers (the single source of truth) + env-override resolution;
   * the agent bridge (absolute paths in the prompt + ``--add-dir`` for claude / ``--include-
-    directories`` for gemini, while the in-repo invocation stays unchanged);
+    dir`` for agy, while the in-repo invocation stays unchanged);
   * resource validation against an absolute out-of-repo path;
   * source-citation matching (find/rewrite) with absolute keys;
   * and an END-TO-END ingest whose wiki/raw sit OUTSIDE the repo.
@@ -154,11 +154,11 @@ def test_build_invocation_claude_no_add_dir_when_in_repo(monkeypatch):
     assert "--add-dir" not in argv_default  # extra_dirs defaults to none
 
 
-def test_build_invocation_gemini_includes_directories_only_when_external():
-    argv, _ = llm._build_invocation("gemini", "/bin/gemini", "P", ["/net/wiki"])
-    assert "--include-directories" in argv and "/net/wiki" in argv
-    argv_in_repo, _ = llm._build_invocation("gemini", "/bin/gemini", "P", [])
-    assert "--include-directories" not in argv_in_repo  # in-repo argv unchanged
+def test_build_invocation_agy_adds_directories_only_when_external():
+    argv, _ = llm._build_invocation("agy", "/bin/agy", "P", ["/net/wiki"])
+    assert "--add-dir" in argv and "/net/wiki" in argv
+    argv_in_repo, _ = llm._build_invocation("agy", "/bin/agy", "P", [])
+    assert "--add-dir" not in argv_in_repo  # in-repo argv unchanged
 
 
 # --- resource validation against an absolute out-of-repo path ---------------------------

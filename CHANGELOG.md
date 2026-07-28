@@ -6,7 +6,64 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- **The `gemini` backend is replaced by `agy` (Google's Antigravity CLI).** The Gemini CLI it
+  wrapped no longer exists, so `CITADEL_LLM_CLI=gemini` now fails immediately with a migration
+  hint instead of shelling out to a missing binary (`citadel doctor` FAILs on it too). The new
+  backend runs `agy -p <prompt> --output-format stream-json --dangerously-skip-permissions`, grants
+  out-of-workspace directories with a repeatable `--add-dir`, and reports its token usage through
+  the closing `result` event — the `--session-summary` stats-file machinery is gone with the CLI it
+  probed for. Rename `GEMINI_CLI_PATH` to `AGY_CLI_PATH` if you set it.
+- **`CITADEL_INGEST_MODEL` now applies to every backend, and defaults to unset.** It used to be a
+  claude-only knob hard-defaulted to `sonnet`, inert on the others (`citadel doctor` actively warned
+  about it). `claude`, `copilot` and `agy` all honor `--model`, so it is passed through to all
+  three; leaving it unset runs the CLI's own default model, and the per-backend `COPILOT_MODEL` /
+  `GEMINI_MODEL` guesswork is gone (the model recorded per source is now the one the backend
+  *reported*). Set it explicitly if you were relying on the old implicit `sonnet`.
+
 ### Added
+
+- **The model a source was imported with is now the model that actually ran.** Each backend's own
+  session envelope is parsed for the serving model — claude's `modelUsage` map (the PRIMARY entry
+  by token volume, so the small model claude routes side work to never wins), copilot's JSONL
+  `assistant.message`/`model.call_start` events, agy's opening `init` event — and that id is what
+  gets stamped into the manifest as `<cli>:<model>`. The configured label is only a fallback for a
+  backend that named nothing (an Ollama/proxy setup, or agy left on its own default), so the wiki
+  can no longer claim a model that never served it.
+- **copilot spend is recorded in AI credits — and priced.** copilot quotes no dollars, so its
+  `totalNanoAiu` counter (the `N AIC used` figure its interactive session footer shows;
+  1 AIC = 1e9 nanoAiu) is stamped as a new `aic` field, and converted to `cost_usd` at GitHub's
+  fixed published $0.01/credit — so a mixed claude+copilot corpus finally has ONE comparable cost
+  total, with the un-derived credits always shown beside the dollars (`$0.0251 (2.5083 AIC)`).
+  `citadel status` gained a `Recorded AI credits` total and a `--json` `aic_total`. The retired
+  `premiumRequests` counter is deliberately not recorded — GitHub replaced it with credits, and it
+  was far too coarse to describe a session (every ingest is "1"). copilot also runs under
+  `--output-format json` now — `-s` trimmed away the very envelope that names the model and counts
+  the spend.
+- **An authentication failure under hermetic isolation now retries once without it.** On machines
+  where the CLI's credentials live in exactly the personal configuration `--bare` skips (managed
+  containers, an `apiKeyHelper`, some WSL setups), *every* session failed with "Not logged in"
+  until you found `CITADEL_HERMETIC=0` — while the same CLI worked fine interactively. Isolation is
+  a hardening nicety; ingesting at all is the product. The retry is scoped to that exact signature
+  (an isolation flag really was passed **and** the message is auth-shaped), so a genuinely
+  logged-out CLI still fails instead of looping.
+- **Full provenance under every source in `citadel view` and `sources/index.md`.** The viewer's
+  source reader and hover popover show the model, what the import cost (dollars or premium
+  requests), the token split and the last-checked date; the generated sources catalog grew matching
+  `Cost` / `Tokens` / `Checked` columns (`—` where the backend reported nothing — an unknown figure
+  is never rendered as a measured zero).
+- **The ingest console is now a live `rich` display, and it shows what each source cost.** On a
+  terminal the run renders a live region — one spinner row per IN-FLIGHT source plus an overall
+  bar — while finished sources scroll away above it as permanent verdict lines that now carry the
+  spend and the model that actually ran (`[2/3] OK raw/notes.md 18.4s 2 created $0.0123
+  1.2k in / 456 out claude-opus-5`; only fields the backend genuinely reported appear). This also
+  repairs `--jobs N`, which used to switch the animation OFF entirely: a single
+  carriage-return-rewritten line could name only one source, so several in flight had nothing to
+  show. `rich` joins `mcp`/`pyyaml`/`pypdf` as a runtime dependency (pure-Python, two small
+  transitive packages). ASCII-only output and the ASCII spinner frames are preserved deliberately,
+  so a legacy Windows code page can still encode every line, and console failures are still
+  swallowed — output must never break a run that already spent money.
 
 - **`CITADEL_MAX_SOURCE_BYTES` — a discovery size ceiling.** Ignore patterns matched *names*;
   nothing matched **size**, so a raw root that also holds machine data (the reported case: 617
@@ -24,6 +81,16 @@ All notable changes to this project are documented here. The format is based on
   WARNing when only a UNC spelling of the workspace is known).
 
 ### Fixed
+
+- **A long absolute source key no longer floods the ingest console.** `config.display_key` collapsed
+  a path to `raw/<below>` only when it matched a configured root as a string — so a Windows drive
+  letter mapped to a share (root configured as `T:\proj\raw`, key arriving as
+  `//fileserver.corp.example/proj/raw/...`) matched nothing and printed the whole UNC path, FQDN
+  host and all, on every line. It now falls back to cutting at the last path segment *named* like a
+  configured root, and finally to a `.../`-marked tail clip for a key under no known root at all.
+  Verdict lines additionally clip the key from the LEFT (keeping the identifying filename) rather
+  than clipping the line from the right, so a narrow terminal never drops the cost and model at the
+  end of the line.
 
 - **Explicitly requested ingest paths now expand `~`.** Every other configured path already did
   (`config._resolve_dir_entry`, `workspace.init`, `CITADEL_WORKSPACE`); the `citadel ingest

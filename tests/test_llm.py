@@ -640,9 +640,9 @@ def test_external_dirs_always_grant_out_of_workspace_rules(pip_like_workspace):
     assert str(Path(config.PACKAGED_RULES_DIR).resolve()) in dirs
 
 
-def test_claude_and_gemini_grant_rules_dir_copilot_needs_nothing(pip_like_workspace, monkeypatch):
-    """The rules-dir grant reaches each CLI's own mechanism: claude ``--add-dir``, gemini
-    ``--include-directories``. copilot has NO per-directory grant mechanism and needs none —
+def test_claude_and_agy_grant_rules_dir_copilot_needs_nothing(pip_like_workspace, monkeypatch):
+    """The rules-dir grant reaches each CLI's own mechanism: claude and agy both take a repeatable
+    ``--add-dir``. copilot has NO per-directory grant mechanism and needs none —
     it always runs with ``--allow-all-paths`` (which covers site-packages)."""
     monkeypatch.setattr(config, "INGEST_MODEL", "", raising=False)
     dirs = llm._external_dirs("raw/notes.md")
@@ -652,9 +652,9 @@ def test_claude_and_gemini_grant_rules_dir_copilot_needs_nothing(pip_like_worksp
     granted = [argv[i + 1] for i, flag in enumerate(argv) if flag == "--add-dir"]
     assert rules_dir in granted
 
-    argv, _ = llm._build_invocation("gemini", "/bin/gemini", "P", dirs)
-    included = argv[argv.index("--include-directories") + 1]
-    assert rules_dir in included.split(",")
+    argv, _ = llm._build_invocation("agy", "/bin/agy", "P", dirs)
+    granted = [argv[i + 1] for i, flag in enumerate(argv) if flag == "--add-dir"]
+    assert rules_dir in granted
 
     argv, _ = llm._build_invocation("copilot", "/bin/copilot", "P", dirs)
     assert "--allow-all-paths" in argv
@@ -702,11 +702,45 @@ def test_build_invocation_copilot_prompt_in_argv(monkeypatch):
     assert "--no-ask-user" in argv
 
 
-def test_build_invocation_gemini_yolo():
-    argv, stdin_text = llm._build_invocation("gemini", "/bin/gemini", "SHORT PROMPT")
+def test_build_invocation_agy_headless():
+    argv, stdin_text = llm._build_invocation("agy", "/bin/agy", "SHORT PROMPT")
     assert stdin_text is None
     assert "SHORT PROMPT" in argv
-    assert "--approval-mode" in argv and "yolo" in argv
+    assert "--dangerously-skip-permissions" in argv
+    # stream-json (not plain json) is what carries the effective model.
+    assert argv[argv.index("--output-format") + 1] == "stream-json"
+
+
+def test_build_invocation_passes_the_configured_model_to_every_backend(monkeypatch):
+    """All three backends honor --model, so one knob drives them all."""
+    monkeypatch.setattr(config, "INGEST_MODEL", "some-model", raising=False)
+    for cli in ("claude", "copilot", "agy"):
+        argv, _ = llm._build_invocation(cli, f"/bin/{cli}", "P")
+        assert argv[argv.index("--model") + 1] == "some-model", cli
+
+
+def test_build_invocation_omits_model_when_unset(monkeypatch):
+    """No configured model = run the CLI's own default: never hand a backend a foreign id."""
+    monkeypatch.setattr(config, "INGEST_MODEL", "", raising=False)
+    for cli in ("claude", "copilot", "agy"):
+        argv, _ = llm._build_invocation(cli, f"/bin/{cli}", "P")
+        assert "--model" not in argv, cli
+
+
+def test_copilot_uses_json_output_so_the_model_is_reportable(monkeypatch):
+    """-s trimmed away exactly the envelope that names the model and counts the spend."""
+    monkeypatch.setattr(config, "INGEST_MODEL", "", raising=False)
+    argv, _ = llm._build_invocation("copilot", "/bin/copilot", "P")
+    assert argv[argv.index("--output-format") + 1] == "json"
+    assert "-s" not in argv
+
+
+def test_the_retired_gemini_backend_is_refused_with_a_migration_hint():
+    with pytest.raises(RuntimeError, match="agy"):
+        llm.resolve_cli_name("gemini")
+    assert llm.resolve_cli_name("  CoPilot ") == "copilot"
+    assert llm.resolve_cli_name("") == "claude"
+    assert llm.resolve_cli_name(None) == "claude"
 
 
 # --- hermetic sessions: the probe-gated isolation flag (CITADEL_HERMETIC) -------------------
@@ -729,7 +763,7 @@ def test_hermetic_flags_appended_when_claude_advertises_bare(monkeypatch):
 
 def test_hermetic_flags_empty_when_not_advertised(monkeypatch):
     """An older claude whose --help does not list --bare is never handed the flag — and a longer
-    option (--bare-metal) must not read as it (exact flag-token match, like the gemini probe)."""
+    option (--bare-metal) must not read as it (exact flag-token match)."""
     monkeypatch.setattr(config, "HERMETIC", True, raising=False)
     _seed_help(monkeypatch, "/bin/claude", "Usage: claude [--model X] [--add-dir D]\n")
     assert llm._hermetic_flags("claude", "/bin/claude") == []
@@ -738,7 +772,7 @@ def test_hermetic_flags_empty_when_not_advertised(monkeypatch):
 
 
 def test_hermetic_flags_off_by_knob_and_absent_for_other_clis(monkeypatch):
-    """CITADEL_HERMETIC=0 disables the flag even when advertised; copilot/gemini have no isolation
+    """CITADEL_HERMETIC=0 disables the flag even when advertised; copilot/agy have no isolation
     flag registered — nothing is probed (the help cache stays untouched) and nothing is passed."""
     _seed_help(monkeypatch, "/bin/claude", "--bare\n")
     monkeypatch.setattr(config, "HERMETIC", False, raising=False)
@@ -746,8 +780,8 @@ def test_hermetic_flags_off_by_knob_and_absent_for_other_clis(monkeypatch):
     monkeypatch.setattr(config, "HERMETIC", True, raising=False)
     cache = _seed_help(monkeypatch, "/bin/claude", "--bare\n")
     assert llm._hermetic_flags("copilot", "/bin/copilot") == []
-    assert llm._hermetic_flags("gemini", "/bin/gemini") == []
-    assert set(cache) == {"/bin/claude"}  # no probe was attempted for copilot/gemini
+    assert llm._hermetic_flags("agy", "/bin/agy") == []
+    assert set(cache) == {"/bin/claude"}  # no probe was attempted for copilot/agy
 
 
 def test_run_ingest_session_appends_hermetic_flag_probe_gated(monkeypatch):
@@ -868,7 +902,7 @@ def test_run_session_empty_output_is_success_for_copilot(monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     llm._run_session("copilot", ["copilot", "-p", "x"], None)  # no raise
-    llm._run_session("gemini", ["gemini", "-p", "x"], None)  # no raise
+    llm._run_session("agy", ["agy", "-p", "x"], None)  # no raise
 
 
 def test_run_session_timeout_raises(monkeypatch):
@@ -1085,7 +1119,7 @@ def test_stream_subprocess_nonzero_exit_is_returned_not_raised(monkeypatch, caps
     _install_fake_popen(monkeypatch, ["boom\n"], returncode=2)
     monkeypatch.setattr(threading, "Timer", _NoopTimer)
 
-    rc, out, err = llm._stream_subprocess("gemini", ["gemini"], None)
+    rc, out, err = llm._stream_subprocess("agy", ["agy"], None)
     assert rc == 2 and out == "boom\n" and err == ""
 
 
@@ -1099,7 +1133,7 @@ def test_stream_subprocess_timeout_kills_child_and_carries_partial(monkeypatch, 
     monkeypatch.setattr(threading, "Timer", _ImmediateTimer)  # fire the timeout-kill synchronously
 
     with pytest.raises(subprocess.TimeoutExpired) as exc:
-        llm._stream_subprocess("gemini", ["gemini"], None)
+        llm._stream_subprocess("agy", ["agy"], None)
 
     assert exc.value.output == "partial 1\npartial 2\n"  # partial transcript preserved on the exc
     assert created["proc"].killed  # the hung child was killed
