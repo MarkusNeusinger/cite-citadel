@@ -1,7 +1,7 @@
 """Per-session cost accounting (the 2026-07 audit's backlog #2), fully offline.
 
-The backend CLIs' own cost/usage reports — claude's ``--output-format json`` envelope, gemini's
-``--session-summary`` stats file — are parsed per session (:class:`llm.SessionUsage`), combined
+The backend CLIs' own cost/usage reports — claude's ``--output-format json`` envelope, copilot's
+JSONL stream, agy's ``stream-json`` events — are parsed per session (:class:`llm.SessionUsage`), combined
 per source, stamped into the manifest (carried across moves/cache re-stamps exactly like
 ``ingested_at``), and surfaced on the ingest/refresh/curate reports and ``citadel status``.
 Accounting is strictly passive: no usage path may ever fail a session, so every parse is
@@ -153,119 +153,243 @@ def test_run_session_without_usage_returns_none(monkeypatch):
     assert llm._run_session("copilot", ["copilot", "-p", "x"], None) is None
 
 
-# --- gemini: --session-summary behind a --help feature probe ---------------------------------
+# --- the effective model each backend reports -------------------------------------------------
+#
+# Every fixture below is a TRIMMED but shape-faithful copy of what the installed CLI actually
+# emitted in a probe session, so the parsers are tested against the real envelopes.
 
 
-def test_gemini_summary_file_requires_advertised_flag(monkeypatch):
-    """The flag is appended only when the binary ADVERTISES it — an older gemini must never be
-    handed an unknown flag that would fail the whole session over optional accounting."""
-    monkeypatch.setattr(llm, "_HELP_TEXT_CACHE", {})
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeProc(0, "usage: gemini\n  --approval-mode\n"))
-    assert llm._gemini_summary_file("gemini", "/bin/gemini") is None
-
-    # An exact flag TOKEN is required: a longer option must not read as this flag (a false
-    # positive would hand the CLI an unknown flag and fail the session — the very thing the
-    # probe exists to prevent; a false negative merely disables optional accounting).
-    monkeypatch.setattr(llm, "_HELP_TEXT_CACHE", {})
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeProc(0, "  --session-summary-file <file>\n"))
-    assert llm._gemini_summary_file("gemini", "/bin/gemini") is None
-
-    monkeypatch.setattr(llm, "_HELP_TEXT_CACHE", {})
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeProc(0, "  --session-summary <file>\n"))
-    path = llm._gemini_summary_file("gemini", "/bin/gemini")
-    assert path is not None and path.suffix == ".json"
-    path.unlink()
-
-
-def test_gemini_summary_file_never_probes_other_backends(monkeypatch):
-    def boom(*a, **k):
-        raise AssertionError("must not probe --help for non-gemini backends")
-
-    monkeypatch.setattr(subprocess, "run", boom)
-    assert llm._gemini_summary_file("claude", "/bin/claude") is None
-    assert llm._gemini_summary_file("copilot", "/bin/copilot") is None
+def test_claude_envelope_names_the_model_that_carried_the_session():
+    """claude routes cheap side work to a smaller model, so modelUsage regularly holds two
+    entries: the PRIMARY one is the one with the token volume, not the first key. canonicalModel
+    wins over the raw key, which carries context-window suffixes and dated ids."""
+    env = {
+        "type": "result",
+        "total_cost_usd": 0.21,
+        "modelUsage": {
+            "claude-haiku-4-5-20251001": {"inputTokens": 40, "outputTokens": 12, "canonicalModel": "claude-haiku-4-5"},
+            "claude-opus-5[1m]": {
+                "inputTokens": 120,
+                "outputTokens": 900,
+                "cacheReadInputTokens": 40000,
+                "cacheCreationInputTokens": 3000,
+                "canonicalModel": "claude-opus-5",
+                "provider": "firstParty",
+            },
+        },
+    }
+    assert llm._usage_from_claude_envelope(env).model == "claude-opus-5"
+    assert llm._model_from_claude_envelope({"modelUsage": {"llama3.1:8b": {"outputTokens": 5}}}) == "llama3.1:8b"
 
 
-def test_gemini_probe_failure_degrades_to_no_accounting(monkeypatch):
-    """A broken/hanging --help probe reads as 'feature absent' — accounting can never break a
-    session — and the failure is cached so the binary is not re-probed every source."""
-    monkeypatch.setattr(llm, "_HELP_TEXT_CACHE", {})
+def test_claude_model_parse_is_defensive_so_proxy_backends_fall_back():
+    """An Ollama/proxy-backed claude fills in nothing here. That must read as 'unknown' (the
+    caller then stamps the configured label), never as a crash or an invented id."""
+    for env in ({}, {"modelUsage": None}, {"modelUsage": {}}, {"modelUsage": {"": {}, "  ": {}}}):
+        assert llm._model_from_claude_envelope(env) is None
+    # A junk stats value must not shadow the key itself.
+    assert llm._model_from_claude_envelope({"modelUsage": {"m": "not-a-dict"}}) == "m"
+
+
+def test_usage_from_copilot_jsonl_reads_model_and_ai_credits():
+    """copilot quotes no dollars — its billing unit is the AI credit, metered as totalNanoAiu
+    (1 AIC = 1e9), which is also the "N AIC used" figure its interactive footer shows. Those
+    credits convert to dollars at GitHub's fixed published rate so a mixed corpus stays
+    comparable. copilot reports no prompt-side count, so input_tokens stays honestly None."""
+    stream = "\n".join(
+        [
+            "Some banner line that is not JSON",
+            json.dumps({"type": "model.call_start", "data": {"model": "claude-sonnet-4.5"}}),
+            json.dumps({"type": "assistant.message", "data": {"model": "claude-sonnet-4.5", "outputTokens": 120}}),
+            json.dumps({"type": "assistant.message", "data": {"model": "claude-sonnet-4.5", "outputTokens": 30}}),
+            json.dumps(
+                {"type": "session.usage_checkpoint", "data": {"totalNanoAiu": 2508300000, "totalPremiumRequests": 1}}
+            ),
+            '{"type": "result", "usage": {"premi',  # a killed session truncates its last line
+        ]
+    )
+    usage = llm._usage_from_copilot_jsonl(stream)
+    assert usage.model == "claude-sonnet-4.5"
+    assert usage.aic == pytest.approx(2.5083)
+    assert usage.cost_usd == pytest.approx(0.025083)  # 1 AIC = $0.01
+    assert usage.output_tokens == 150
+    assert usage.input_tokens is None
+    # The retired premium-request counter is deliberately ignored: every ingest session is "1".
+
+
+def test_copilot_checkpoints_report_totals_not_deltas():
+    """Each usage_checkpoint restates the session total, so the LAST one wins — summing them
+    would multiply the billed credits."""
+    stream = "\n".join(
+        [
+            json.dumps({"type": "session.usage_checkpoint", "data": {"totalNanoAiu": 1000000000}}),
+            json.dumps({"type": "session.usage_checkpoint", "data": {"totalNanoAiu": 3000000000}}),
+        ]
+    )
+    assert llm._usage_from_copilot_jsonl(stream).aic == pytest.approx(3.0)
+
+
+def test_copilot_falls_back_to_the_cache_state_model():
+    stream = json.dumps(
+        {
+            "type": "session.usage_checkpoint",
+            "data": {"totalPremiumRequests": 1, "modelCacheState": [{"modelId": "gpt-5.4"}]},
+        }
+    )
+    assert llm._usage_from_copilot_jsonl(stream).model == "gpt-5.4"
+
+
+def test_usage_from_agy_stream_reads_init_model_and_result_totals():
+    """agy names the effective model only in its opening init event, and totals the session in
+    the closing result event."""
+    stream = "\n".join(
+        [
+            json.dumps({"event": "init", "init": {"model": "gemini-3.1-pro-high", "permission_mode": "bypass"}}),
+            json.dumps({"event": "message", "message": {"text": "working"}}),
+            json.dumps(
+                {
+                    "event": "result",
+                    "result": {"usage": {"input_tokens": 8123, "output_tokens": 611, "thinking_tokens": 40}},
+                }
+            ),
+        ]
+    )
+    usage = llm._usage_from_agy_stream(stream)
+    assert (usage.model, usage.input_tokens, usage.output_tokens) == ("gemini-3.1-pro-high", 8123, 611)
+    assert usage.cost_usd is None  # agy quotes no dollars
+
+
+def test_agy_without_an_explicit_model_reports_no_model():
+    """Left on the CLI's own default, agy's init event carries no model key at all — 'unknown' is
+    the honest answer, not a guess."""
+    stream = (
+        json.dumps({"event": "init", "init": {"cwd": "/w"}})
+        + "\n"
+        + json.dumps({"event": "result", "result": {"usage": {"input_tokens": 5, "output_tokens": 2}}})
+    )
+    usage = llm._usage_from_agy_stream(stream)
+    assert usage.model is None and usage.input_tokens == 5
+
+
+def test_stream_parsers_are_defensive_about_junk():
+    """These streams are external input on the accounting path, which may never fail a session."""
+    for text in ("", "not json at all\n", "{not json\n", json.dumps({"type": "noise"}), "[1,2,3]\n"):
+        assert llm._usage_from_copilot_jsonl(text) is None
+        assert llm._usage_from_agy_stream(text) is None
+    # Negative/bool counts from a corrupted stream never surface.
+    assert llm._usage_from_agy_stream(json.dumps({"result": {"usage": {"input_tokens": -5}}})) is None
+    junk_credits = json.dumps({"type": "session.usage_checkpoint", "data": {"totalNanoAiu": -5}})
+    assert llm._usage_from_copilot_jsonl(junk_credits) is None
+
+
+def test_usage_from_stream_dispatches_per_backend():
+    """claude reports through its result envelope, not this seam."""
+    assert llm._usage_from_stream("claude", json.dumps({"type": "result"})) is None
+    copilot = json.dumps({"type": "assistant.message", "data": {"model": "m", "outputTokens": 3}})
+    assert llm._usage_from_stream("copilot", copilot).model == "m"
+    agy = json.dumps({"event": "init", "init": {"model": "g"}})
+    assert llm._usage_from_stream("agy", agy).model == "g"
+
+
+def test_combine_usage_carries_the_model_and_sums_credits():
+    """A chunked source runs every segment on the same model, so the first known one describes
+    the whole import; AI credits sum like tokens."""
+    parts = [
+        llm.SessionUsage(output_tokens=10, aic=1.5),
+        llm.SessionUsage(output_tokens=5, aic=1.25, model="claude-sonnet-4.5"),
+    ]
+    combined = llm.combine_usage(parts)
+    assert combined.model == "claude-sonnet-4.5"
+    assert combined.aic == pytest.approx(2.75) and combined.output_tokens == 15
+    assert "2.75 AIC" in llm.SessionUsage(aic=2.75).describe()
+
+
+def test_format_aic_never_rounds_a_fraction_of_a_credit_to_zero():
+    assert llm.format_aic(2.5083) == "2.5083"
+    assert llm.format_aic(2.0) == "2.0"
+    assert llm.format_aic(0.0004) == "0.0004"
+    assert llm.format_aic(1204.5) == "1,204.5"
+    assert llm.format_aic(float("nan")) == "nan"  # never raises on a hand-edited manifest
+
+
+# --- hermetic isolation: the auth-failure auto-retry -------------------------------------------
+
+
+def test_hermetic_auth_failure_retries_once_without_the_isolation_flag(tmp_citadel, monkeypatch, capsys):
+    """On a machine whose CLI credentials live in the personal config `--bare` skips, EVERY
+    session died on authentication until the user found CITADEL_HERMETIC=0. Isolation is a
+    hardening nicety; ingesting at all is the product — so an auth-shaped failure under hermetic
+    mode retries ONCE without the flag, loudly."""
+    monkeypatch.setattr(config, "LLM_CLI", "claude", raising=False)
+    monkeypatch.setattr(llm, "_resolve_cli", lambda cli: "/bin/claude")
+    monkeypatch.setattr(llm, "_HELP_TEXT_CACHE", {"/bin/claude": "--bare"})
+    seen: list[bool] = []
+
+    def fake_run_session(cli, argv, stdin_text, *, log_label=None):
+        bare = "--bare" in argv
+        seen.append(bare)
+        if bare:
+            message = "claude CLI error: Not logged in - Please run /login"
+            error = RuntimeError(message + llm._hermetic_auth_hint(cli, argv, message))
+            error.hermetic_auth_failure = True
+            raise error
+        return llm.SessionUsage(cost_usd=0.02)
+
+    monkeypatch.setattr(llm, "_run_session", fake_run_session)
+    assert llm.run_ingest_session("raw/notes.md") == llm.SessionUsage(cost_usd=0.02)
+    assert seen == [True, False]  # exactly one retry, and it dropped the flag
+    assert "retrying this session without hermetic isolation" in capsys.readouterr().err
+
+
+def test_a_real_credential_problem_still_fails_instead_of_looping(tmp_citadel, monkeypatch):
+    """The retry is scoped tightly: it happens once, so a genuinely logged-out CLI fails the
+    source rather than spinning."""
+    monkeypatch.setattr(config, "LLM_CLI", "claude", raising=False)
+    monkeypatch.setattr(llm, "_resolve_cli", lambda cli: "/bin/claude")
+    monkeypatch.setattr(llm, "_HELP_TEXT_CACHE", {"/bin/claude": "--bare"})
     calls = {"n": 0}
 
-    def boom(*a, **k):
+    def always_auth_fail(cli, argv, stdin_text, *, log_label=None):
         calls["n"] += 1
-        raise OSError("no such binary")
+        error = RuntimeError("claude CLI error: Not logged in")
+        error.hermetic_auth_failure = "--bare" in argv
+        raise error
 
-    monkeypatch.setattr(subprocess, "run", boom)
-    assert llm._gemini_summary_file("gemini", "/bin/gemini") is None
-    assert llm._gemini_summary_file("gemini", "/bin/gemini") is None
+    monkeypatch.setattr(llm, "_run_session", always_auth_fail)
+    with pytest.raises(RuntimeError, match="Not logged in"):
+        llm.run_ingest_session("raw/notes.md")
+    assert calls["n"] == 2
+
+
+def test_a_non_auth_failure_is_never_retried(tmp_citadel, monkeypatch):
+    """Re-running a session costs real money, so anything but the auth signature is re-raised
+    untouched — including an auth-shaped failure when no isolation flag was even passed."""
+    monkeypatch.setattr(config, "LLM_CLI", "claude", raising=False)
+    monkeypatch.setattr(llm, "_resolve_cli", lambda cli: "/bin/claude")
+    monkeypatch.setattr(llm, "_HELP_TEXT_CACHE", {"/bin/claude": "--bare"})
+    calls = {"n": 0}
+
+    def boom(cli, argv, stdin_text, *, log_label=None):
+        calls["n"] += 1
+        raise RuntimeError("the claude CLI failed (exit 1): rate limited")
+
+    monkeypatch.setattr(llm, "_run_session", boom)
+    with pytest.raises(RuntimeError, match="rate limited"):
+        llm.run_ingest_session("raw/notes.md")
     assert calls["n"] == 1
 
+    # No advertised flag = nothing to drop, so no retry even on an auth-shaped message.
+    monkeypatch.setattr(llm, "_HELP_TEXT_CACHE", {"/bin/claude": "no isolation flag here"})
+    calls["n"] = 0
 
-def test_usage_from_gemini_summary_walks_model_token_dicts(tmp_path):
-    """The wrapper shape has shifted across gemini versions, so the parse walks for the stable
-    inner token dicts (prompt/candidates) and sums across models."""
-    stats = {
-        "sessionMetrics": {
-            "models": {
-                "gemini-2.5-pro": {"api": {"totalRequests": 4}, "tokens": {"prompt": 1200, "candidates": 300}},
-                "gemini-2.5-flash": {"tokens": {"prompt": 100, "candidates": 20, "total": 120}},
-            }
-        }
-    }
-    path = tmp_path / "summary.json"
-    path.write_text(json.dumps(stats), encoding="utf-8")
-    assert llm._usage_from_gemini_summary(path) == llm.SessionUsage(cost_usd=None, input_tokens=1300, output_tokens=320)
+    def auth_fail(cli, argv, stdin_text, *, log_label=None):
+        calls["n"] += 1
+        raise RuntimeError("claude CLI error: Not logged in")
 
-
-def test_usage_from_gemini_summary_defensive(tmp_path):
-    assert llm._usage_from_gemini_summary(tmp_path / "gone.json") is None
-    corrupt = tmp_path / "corrupt.json"
-    corrupt.write_text("{not json", encoding="utf-8")
-    assert llm._usage_from_gemini_summary(corrupt) is None
-    foreign = tmp_path / "foreign.json"
-    foreign.write_text('{"lastUpdated": "2026-07-23"}', encoding="utf-8")
-    assert llm._usage_from_gemini_summary(foreign) is None
-    # Negative counts in a corrupted/hand-edited stats file never surface (positive ints only).
-    negative = tmp_path / "negative.json"
-    negative.write_text('{"models": {"g": {"tokens": {"prompt": -5, "candidates": -2}}}}', encoding="utf-8")
-    assert llm._usage_from_gemini_summary(negative) is None
-
-
-def test_run_ingest_session_gemini_appends_flag_parses_and_cleans_up(monkeypatch):
-    """End-to-end gemini accounting: the probed flag appends ``--session-summary <tempfile>`` to
-    the argv, the stats the CLI wrote there come back as the session's usage, and the temp file
-    is deleted afterwards."""
-    monkeypatch.setattr(config, "LLM_CLI", "gemini", raising=False)
-    monkeypatch.setattr(llm, "_resolve_cli", lambda cli: "/bin/gemini")
-    monkeypatch.setattr(llm, "_HELP_TEXT_CACHE", {"/bin/gemini": "--session-summary <file>"})
-    seen: dict = {}
-
-    def fake_run_session(cli, argv, stdin_text, *, log_label=None):
-        assert cli == "gemini"
-        summary = Path(argv[argv.index("--session-summary") + 1])
-        seen["summary"] = summary
-        stats = {"sessionMetrics": {"models": {"g": {"tokens": {"prompt": 10, "candidates": 4}}}}}
-        summary.write_text(json.dumps(stats), encoding="utf-8")
-        return None  # gemini's stdout reports nothing — the stats file is the source
-
-    monkeypatch.setattr(llm, "_run_session", fake_run_session)
-    usage = llm.run_ingest_session("raw/notes.md")
-    assert usage == llm.SessionUsage(cost_usd=None, input_tokens=10, output_tokens=4)
-    assert not seen["summary"].exists()  # cleaned up, success or not
-
-
-def test_run_ingest_session_gemini_without_flag_keeps_argv_unchanged(monkeypatch):
-    monkeypatch.setattr(config, "LLM_CLI", "gemini", raising=False)
-    monkeypatch.setattr(llm, "_resolve_cli", lambda cli: "/bin/gemini")
-    monkeypatch.setattr(llm, "_HELP_TEXT_CACHE", {"/bin/gemini": "no such flag here"})
-
-    def fake_run_session(cli, argv, stdin_text, *, log_label=None):
-        assert "--session-summary" not in argv
-        return None
-
-    monkeypatch.setattr(llm, "_run_session", fake_run_session)
-    assert llm.run_ingest_session("raw/notes.md") is None
+    monkeypatch.setattr(llm, "_run_session", auth_fail)
+    with pytest.raises(RuntimeError, match="Not logged in"):
+        llm.run_ingest_session("raw/notes.md")
+    assert calls["n"] == 1
 
 
 # --- manifest: the per-source usage stamp -----------------------------------------------------
@@ -438,6 +562,39 @@ def test_status_renders_cost_column_and_total(tmp_citadel, fake_agent):
     assert rows["raw/a.md"]["tokens_in"] == 500 and rows["raw/a.md"]["tokens_out"] == 50
 
 
+def test_ai_credits_travel_from_the_session_to_status(tmp_citadel, fake_agent):
+    """copilot bills in AI credits, not dollars, so that unit gets its own stamp all the way
+    through: session -> manifest -> the status table and its corpus total. The derived dollars
+    ride ALONGSIDE the credits, never instead of them."""
+    (tmp_citadel.raw / "a.md").write_text("alpha\n", encoding="utf-8")
+    fake_agent(_valid_page("raw/a.md"), usage=llm.SessionUsage(cost_usd=0.025083, aic=2.5083, output_tokens=40))
+    ingest.ingest()
+
+    entry = tmp_citadel.read_manifest()["raw/a.md"]
+    assert entry["aic"] == pytest.approx(2.5083) and entry["cost_usd"] == pytest.approx(0.0251)
+    report = status.build_status()
+    rendered = report.render()
+    assert "$0.0251 (2.5083 AIC)" in rendered
+    assert "Recorded AI credits: 2.5083 AIC over 1 source(s)" in rendered
+    assert report.as_dict()["aic_total"] == pytest.approx(2.5083)
+
+
+def test_ingest_stamps_the_model_the_backend_actually_reported(tmp_citadel, fake_agent, monkeypatch):
+    """The manifest must name what RAN, not what .env asked for — the configured label is only a
+    fallback for a backend that reported nothing."""
+    monkeypatch.setattr(config, "LLM_CLI", "copilot", raising=False)
+    monkeypatch.setattr(config, "INGEST_MODEL", "auto", raising=False)
+    (tmp_citadel.raw / "a.md").write_text("alpha\n", encoding="utf-8")
+    fake_agent(_valid_page("raw/a.md"), usage=llm.SessionUsage(model="claude-sonnet-4.5", aic=1.0))
+    ingest.ingest()
+    assert tmp_citadel.read_manifest()["raw/a.md"]["model"] == "copilot:claude-sonnet-4.5"
+
+    (tmp_citadel.raw / "b.md").write_text("beta\n", encoding="utf-8")
+    fake_agent(_valid_page("raw/b.md"), usage=llm.SessionUsage(aic=1.0))  # nothing reported
+    ingest.ingest()
+    assert tmp_citadel.read_manifest()["raw/b.md"]["model"] == "copilot:auto"
+
+
 def test_status_without_cost_stamps_shows_no_cost_line(tmp_citadel, fake_agent):
     (tmp_citadel.raw / "notes.md").write_text("alpha\n", encoding="utf-8")
     fake_agent(_valid_page())
@@ -572,31 +729,20 @@ def test_cli_help_probe_uses_devnull_stdin(monkeypatch):
 
     def fake_run(argv, **kwargs):
         seen.update(kwargs)
-        return _FakeProc(0, "--session-summary")
+        return _FakeProc(0, "--bare")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    llm._cli_help_text("/bin/gemini")
+    llm._cli_help_text("/bin/claude")
     assert seen.get("stdin") == subprocess.DEVNULL
 
 
-def test_gemini_summary_file_survives_unwritable_tempdir(monkeypatch):
-    """An unwritable/full temp dir reads as 'no accounting this session' — never as a failed
-    source (the session must run exactly as it would have pre-accounting)."""
-    monkeypatch.setattr(llm, "_HELP_TEXT_CACHE", {"/bin/gemini": "--session-summary <file>"})
-
-    def boom(*a, **k):
-        raise OSError(28, "No space left on device")
-
-    monkeypatch.setattr(llm.tempfile, "mkstemp", boom)
-    assert llm._gemini_summary_file("gemini", "/bin/gemini") is None
-
-
-def test_usage_from_gemini_summary_survives_pathological_nesting(tmp_path):
-    """A pathologically nested stats file blows the recursion limit inside json.loads (or the
-    walk) — that must record nothing, never fail the session it accounts for."""
-    deep = tmp_path / "deep.json"
-    deep.write_text("[" * 200000, encoding="utf-8")
-    assert llm._usage_from_gemini_summary(deep) is None
+def test_stream_parsers_survive_pathological_nesting():
+    """A pathologically nested line blows the recursion limit inside json.loads — that must
+    record nothing, never fail the session it accounts for."""
+    deep = "[" * 200000
+    assert llm._usage_from_copilot_jsonl("{" * 200000) is None
+    assert llm._usage_from_agy_stream(deep) is None
+    assert list(llm._iter_jsonl("{" * 200000)) == []
 
 
 def test_delete_cleanup_usage_counts_in_run_total(tmp_citadel, fake_agent):

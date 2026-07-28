@@ -16,11 +16,11 @@ always safe once you are sure no run is alive.
 
 ### The agent CLI isn't installed or logged in
 
-Ingest shells out to a coding-agent CLI *you* provide (`claude` / `copilot` / `gemini`) — there is
+Ingest shells out to a coding-agent CLI *you* provide (`claude` / `copilot` / `agy`) — there is
 no API key and no bundled model. `citadel doctor` flags a missing CLI; the fix is to install it and
 log in (each CLI's own auth flow), then set `CITADEL_LLM_CLI` in the workspace `.env` to match. If
 the binary isn't on `PATH`, point at it with `CLAUDE_CODE_PATH` / `COPILOT_CLI_PATH` /
-`GEMINI_CLI_PATH`.
+`AGY_CLI_PATH`.
 
 ### Every session fails with an authentication error, but the CLI works when I run it myself
 

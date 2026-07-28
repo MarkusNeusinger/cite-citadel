@@ -1,14 +1,18 @@
-"""Tests for the ingest progress reporter's spinner line and its short source-key display.
+"""Tests for the ingest progress reporter and its short source-key display.
 
-A long source path (e.g. one on a mounted network drive) used to wrap the terminal: the spinner
-line is rewritten in place with a leading ``\\r``, but a wrapped line spans several physical rows
-and ``\\r`` only returns to the start of the LAST one — so every 0.1s repaint left the earlier
-rows on screen and the path appeared printed over and over. The fix clips the rewritten spinner
-line to a single terminal row, AND the source is now shown by its short key (the long prefix before
-the ``raw/`` folder is dropped) so a network path stays on one line and names the in-flight file.
+Two things are guaranteed here, both of which exist because a long absolute source key (an
+out-of-repo source on a mounted network drive) used to flood the console during a multi-file
+ingest:
 
-No real TTY is involved — output goes to an in-memory stream and the terminal width is
-monkeypatched, so the tests are deterministic. The example paths below are fictional.
+1. **The key is shortened** (``citadel.config.display_key``) — the whole prefix before the raw
+   folder is dropped, through three fallback tiers so it works even when the configured root and
+   the key share no common text (a Windows drive letter mapped to a share).
+2. **Every printed line stays on ONE row** — the reporter renders through ``rich``, which would
+   otherwise WRAP an over-wide line onto extra rows.
+
+No real TTY is involved — output goes to an in-memory stream (so ``rich`` renders plain,
+un-animated text) and the console width is set explicitly, keeping the tests deterministic. The
+example paths below are fictional.
 """
 
 from __future__ import annotations
@@ -16,10 +20,10 @@ from __future__ import annotations
 import io
 from pathlib import Path
 
-from citadel import config, progress
+from citadel import config, llm, progress
 
 
-# A long, fictional out-of-repo source key, of the shape that wrapped the terminal.
+# A long, fictional out-of-repo source key, of the shape that flooded the terminal.
 _LONG_KEY = "//fileserver/share/projects/data/wiki/raw/sub/EXAMPLE_LONG_DOCUMENT.md"
 # The raw/ folder that key lives under (a network drive), and the short form the console should show:
 # the long prefix before raw/ is dropped, leaving just the path from the raw folder down.
@@ -27,68 +31,15 @@ _LONG_KEY_RAW_DIR = "//fileserver/share/projects/data/wiki/raw"
 _LONG_KEY_SHORT = "raw/sub/EXAMPLE_LONG_DOCUMENT.md"
 
 
-# --- the spinner line is clipped to one row (the "printed over and over" bug) ------------
+def _reporter(stream, width=200, spinner=True):
+    """A reporter writing to ``stream`` at a fixed console width (a StringIO is not a TTY, so rich
+    renders plain text and no live region is started)."""
+    prog = progress.ConsoleProgress(stream=stream, spinner=spinner)
+    prog.console.width = width
+    return prog
 
 
-def test_paint_clips_to_terminal_width(monkeypatch):
-    """A spinner repaint is clipped to one row (width - 1), with an ASCII ellipsis — so it cannot
-    wrap and leave earlier rows behind on each carriage-return rewrite."""
-    stream = io.StringIO()
-    prog = progress.ConsoleProgress(stream=stream)
-    monkeypatch.setattr(prog, "_term_width", lambda: 40)
-
-    prog._paint("x" * 200)
-
-    frame = stream.getvalue().split("\r")[-1]
-    assert len(frame) <= 39
-    assert frame.endswith("...")
-    assert "\n" not in frame  # single row, no wrap
-
-
-def test_paint_holds_one_row_invariant_for_degenerate_widths(monkeypatch):
-    """A misreported / pathological terminal width (0 or 1 columns) must still clip to a single row
-    — it clips to empty rather than falling through and emitting the full, wrap-prone line."""
-    for width in (0, 1):
-        stream = io.StringIO()
-        prog = progress.ConsoleProgress(stream=stream)
-        monkeypatch.setattr(prog, "_term_width", lambda w=width: w)
-
-        prog._paint("x" * 200)
-
-        frame = stream.getvalue().split("\r")[-1].rstrip(" ")
-        assert frame == ""  # nothing that could wrap
-        assert "\n" not in stream.getvalue()
-
-
-def test_short_line_is_not_clipped(monkeypatch):
-    """A line that already fits is left exactly as-is (no spurious ellipsis)."""
-    stream = io.StringIO()
-    prog = progress.ConsoleProgress(stream=stream)
-    monkeypatch.setattr(prog, "_term_width", lambda: 80)
-
-    prog._paint("[3/88] raw/notes.md  |  10.0s")
-
-    frame = stream.getvalue().split("\r")[-1]
-    assert frame == "[3/88] raw/notes.md  |  10.0s"
-
-
-def test_repeated_paint_overwrites_instead_of_stacking(monkeypatch):
-    """Successive repaints of a long label each start with a carriage return and stay within the
-    width, so the output is a sequence of overwriting frames — never a growing pile of full lines."""
-    stream = io.StringIO()
-    prog = progress.ConsoleProgress(stream=stream)
-    monkeypatch.setattr(prog, "_term_width", lambda: 50)
-
-    for _ in range(5):
-        prog._paint(f"[3/88] {_LONG_KEY}  |  10.0s")  # the long label, as the spinner would build
-
-    out = stream.getvalue()
-    assert out.count("\r") == 5  # one overwriting frame per repaint
-    for frame in out.split("\r")[1:]:
-        assert len(frame) <= 49  # every frame fits one row, so none can wrap
-
-
-# --- an out-of-repo source key is shortened for the console (the long network prefix is dropped) --
+# --- tier 1: an exact prefix match against a configured root ------------------------------
 
 
 def test_display_key_drops_prefix_before_raw(monkeypatch):
@@ -105,34 +56,77 @@ def test_display_key_leaves_in_repo_key_unchanged(monkeypatch):
     assert config.display_key("raw/notes.md") == "raw/notes.md"
 
 
-def test_display_key_leaves_unrelated_absolute_key_unchanged(monkeypatch):
-    """An absolute key that is NOT under RAW_DIR/DOCS_DIR is left as-is — we only strip a KNOWN
-    prefix, never guess one."""
+# --- tier 2: the mapped-drive case, where prefixes share no common text --------------------
+
+
+def test_display_key_cuts_at_the_root_folder_name_when_prefixes_disagree(monkeypatch):
+    """A Windows drive letter mapped to a share: the root is configured as ``T:/proj/raw`` but the
+    key travelled as the UNC path the drive points at. Nothing relates the two textually, so the
+    prefix match fails — and the fallback cuts at the last segment NAMED like the root, yielding
+    the same short key the matching branch would have."""
+    monkeypatch.setattr(config, "RAW_DIR", Path("T:/proj/raw"))
+    monkeypatch.setattr(config, "DOCS_DIR", Path("T:/proj/docs"))
+
+    key = "//fileserver.corp.example.internal/proj/raw/sub/notes.pdf"
+
+    assert config.display_key(key) == "raw/sub/notes.pdf"
+
+
+def test_display_key_cuts_at_the_last_root_named_segment(monkeypatch):
+    """When the folder name occurs more than once, the LAST occurrence wins — that is the real
+    root, not a same-named directory somewhere up the share."""
+    monkeypatch.setattr(config, "RAW_DIR", Path("T:/raw"))
+    monkeypatch.setattr(config, "DOCS_DIR", Path("T:/docs"))
+
+    assert config.display_key("//host/raw/archive/raw/notes.md") == "raw/notes.md"
+
+
+# --- tier 3: an absolute key under no known root at all ------------------------------------
+
+
+def test_display_key_clips_an_unrecognized_absolute_key(monkeypatch):
+    """A long absolute key belonging to NO configured root (a stale manifest entry from an earlier
+    layout) still must not flood the console: the identifying tail is kept and the dropped prefix is
+    marked with an ASCII ``.../``."""
+    monkeypatch.setattr(config, "RAW_DIR", Path(_LONG_KEY_RAW_DIR))
+    monkeypatch.setattr(config, "DOCS_DIR", Path("//fileserver/share/projects/data/wiki/docs"))
+
+    short = config.display_key("//other.very.long.host.example/share/dept/2026/archive/file.txt")
+
+    assert short == ".../2026/archive/file.txt"
+    assert "other.very.long.host" not in short
+
+
+def test_display_key_leaves_a_short_absolute_key_unchanged(monkeypatch):
+    """Clipping only kicks in past the kept tail length — a short absolute key is left alone, so we
+    never mangle something that was already readable."""
     monkeypatch.setattr(config, "RAW_DIR", Path(_LONG_KEY_RAW_DIR))
     monkeypatch.setattr(config, "DOCS_DIR", Path("//fileserver/share/projects/data/wiki/docs"))
     assert config.display_key("//other/place/file.txt") == "//other/place/file.txt"
 
 
 def test_display_key_always_returns_normalized_str(monkeypatch):
-    """Every fallback path returns a normalized ``str`` — so the ``-> str`` contract holds even for a
-    non-str (``Path``) input, and backslashes are normalized rather than dropped, on a key that is
-    NOT collapsed under a known root."""
+    """Every path returns a normalized ``str`` — backslashes normalized rather than dropped, and a
+    non-str (``Path``) input still comes back as a str."""
     monkeypatch.setattr(config, "RAW_DIR", Path(_LONG_KEY_RAW_DIR))
-    # A backslash (Windows-style) key not under RAW_DIR keeps its normalization on the fallback.
-    assert config.display_key("\\\\host\\share\\other\\file.txt") == "//host/share/other/file.txt"
-    # A non-str input still comes back as a str.
+    # A backslash (Windows-style) key not under RAW_DIR is normalized, then clipped.
+    assert config.display_key("\\\\host\\share\\other\\file.txt") == ".../share/other/file.txt"
     result = config.display_key(Path("//other/place/file.txt"))
     assert isinstance(result, str)
 
 
+# --- the printed lines ---------------------------------------------------------------------
+
+
 def test_completion_line_shows_short_path(monkeypatch):
     """The per-file START and completion lines show the SHORT key (prefix before raw/ dropped), not
-    the long network path. A StringIO is not a TTY, so no spinner thread runs — the source is
+    the long network path. A StringIO is not a TTY, so there is no live region — the source is
     announced up front (so you see which file is in flight) and again on completion."""
     monkeypatch.setattr(config, "RAW_DIR", Path(_LONG_KEY_RAW_DIR))
     stream = io.StringIO()
-    prog = progress.ConsoleProgress(stream=stream)
+    prog = _reporter(stream)
     assert prog.tty is False
+    assert prog.live_mode is False
 
     prog("source_start", {"index": 3, "total": 88, "source": _LONG_KEY})
     prog(
@@ -152,9 +146,202 @@ def test_error_line_shows_short_path(monkeypatch):
     """An error line likewise carries the SHORT source key and the error text."""
     monkeypatch.setattr(config, "RAW_DIR", Path(_LONG_KEY_RAW_DIR))
     stream = io.StringIO()
-    prog = progress.ConsoleProgress(stream=stream)
+    prog = _reporter(stream)
     prog("source_error", {"index": 1, "total": 1, "source": _LONG_KEY, "error": "CLI not found", "seconds": 0.2})
     out = stream.getvalue()
     assert _LONG_KEY_SHORT in out
     assert "//fileserver" not in out
     assert "CLI not found" in out
+
+
+def test_every_printed_line_stays_on_one_row(monkeypatch):
+    """The one-row invariant: rich WRAPS by default, which is exactly how a long key turned a
+    scrolling ingest into a wall of text. Lines are printed no-wrap with an ellipsis overflow, so a
+    label far wider than the console still occupies a single row."""
+    monkeypatch.setattr(config, "RAW_DIR", Path("/nowhere"))
+    stream = io.StringIO()
+    prog = _reporter(stream, width=40)
+
+    prog("source_error", {"index": 1, "total": 1, "source": "x" * 400, "error": "y" * 400, "seconds": 0.2})
+
+    rows = [ln for ln in stream.getvalue().split("\n") if ln]
+    assert len(rows) == 1
+    assert len(rows[0]) <= 40
+
+
+def test_a_narrow_terminal_sacrifices_the_path_not_the_money(monkeypatch):
+    """When the verdict does not fit, the SOURCE KEY is what gets clipped — and from the left, so
+    the identifying filename survives. Clipping from the right (rich's default) would drop the
+    cost/tokens/model at the end of the line, which is the most valuable part of it."""
+    monkeypatch.setattr(config, "RAW_DIR", Path("/nowhere"))
+    stream = io.StringIO()
+    prog = _reporter(stream, width=100)
+
+    prog(
+        "source_done",
+        {
+            "index": 1,
+            "total": 1,
+            "source": "raw/a/deeply/nested/and/very/long/folder/chain/quarterly-report.pdf",
+            "created": 2,
+            "updated": 0,
+            "deleted": 0,
+            "seconds": 18.4,
+            "usage": llm.SessionUsage(cost_usd=0.0123, input_tokens=534000, output_tokens=4560),
+            "model": "claude-opus-5",
+        },
+    )
+
+    row = stream.getvalue().strip()
+    assert len(row) <= 100
+    assert "quarterly-report.pdf" in row  # the identifying tail of the path survived
+    assert "raw/a/deeply" not in row  # its head was dropped
+    assert "$0.0123" in row and "534k in / 4.6k out" in row and "claude-opus-5" in row
+
+
+def test_the_key_keeps_a_floor_even_when_the_tail_fills_the_row(monkeypatch):
+    """Past the point where clipping the path would buy enough room, the key stops shrinking: a
+    verdict that names no file at all is worse than one whose tail is trimmed. The floor is why the
+    priority order ends at "filename", not at "spend"."""
+    monkeypatch.setattr(config, "RAW_DIR", Path("/nowhere"))
+    stream = io.StringIO()
+    prog = _reporter(stream, width=60)
+
+    prog(
+        "source_done",
+        {
+            "index": 1,
+            "total": 1,
+            "source": "raw/a/deeply/nested/and/very/long/folder/chain/quarterly-report.pdf",
+            "created": 2,
+            "updated": 0,
+            "deleted": 0,
+            "seconds": 18.4,
+            "usage": llm.SessionUsage(cost_usd=0.0123, input_tokens=534000, output_tokens=4560),
+            "model": "claude-opus-5",
+        },
+    )
+
+    rows = [ln for ln in stream.getvalue().split("\n") if ln]
+    assert len(rows) == 1
+    assert "report.pdf" in rows[0]  # the file is still named
+
+
+def test_a_pathological_width_still_yields_one_row(monkeypatch):
+    """A degenerate console width must not break the layout math — the key degrades to the ellipsis
+    (or nothing) rather than pushing the line onto extra rows."""
+    monkeypatch.setattr(config, "RAW_DIR", Path("/nowhere"))
+    stream = io.StringIO()
+    prog = _reporter(stream, width=10)
+
+    prog("source_error", {"index": 1, "total": 1, "source": "raw/" + "x" * 200, "error": "boom", "seconds": 0.2})
+
+    rows = [ln for ln in stream.getvalue().split("\n") if ln]
+    assert len(rows) == 1
+
+
+# --- the money: what the session actually cost, per source ---------------------------------
+
+
+def test_completion_line_reports_cost_tokens_and_model(monkeypatch):
+    """The verdict line carries the session's spend and the model that ACTUALLY ran, so a long
+    ingest shows what each source cost as it scrolls past."""
+    monkeypatch.setattr(config, "RAW_DIR", Path("/nowhere"))
+    stream = io.StringIO()
+    prog = _reporter(stream)
+
+    prog(
+        "source_done",
+        {
+            "index": 1,
+            "total": 1,
+            "source": "raw/notes.md",
+            "created": 2,
+            "updated": 0,
+            "deleted": 0,
+            "seconds": 18.4,
+            "usage": llm.SessionUsage(cost_usd=0.0123, input_tokens=1234, output_tokens=456),
+            "model": "claude-opus-5",
+        },
+    )
+
+    out = stream.getvalue()
+    assert "$0.0123" in out
+    assert "1.2k in / 456 out" in out
+    assert "claude-opus-5" in out
+
+
+def test_completion_line_omits_what_the_backend_never_reported(monkeypatch):
+    """A backend that reports no cost (or no prompt tokens) renders NOTHING for it — never a ``0``
+    or ``$0.00`` that would read like a real, measured figure."""
+    monkeypatch.setattr(config, "RAW_DIR", Path("/nowhere"))
+    stream = io.StringIO()
+    prog = _reporter(stream)
+
+    prog(
+        "source_done",
+        {
+            "index": 1,
+            "total": 1,
+            "source": "raw/notes.md",
+            "created": 1,
+            "updated": 0,
+            "deleted": 0,
+            "seconds": 2.0,
+            "usage": llm.SessionUsage(output_tokens=456, aic=2.5083),
+            "model": None,
+        },
+    )
+
+    out = stream.getvalue()
+    assert "456 out" in out
+    assert "2.5083 AIC" in out
+    assert "$" not in out  # no cost was reported
+    assert " in " not in out  # no prompt-token count was reported
+
+
+def test_completion_line_without_usage_is_unchanged(monkeypatch):
+    """Usage is optional: an emitter that passes none (or a backend that reported nothing) still
+    produces the plain verdict line."""
+    monkeypatch.setattr(config, "RAW_DIR", Path("/nowhere"))
+    stream = io.StringIO()
+    prog = _reporter(stream)
+
+    prog(
+        "source_done",
+        {"index": 1, "total": 2, "source": "raw/a.md", "created": 0, "updated": 0, "deleted": 0, "seconds": 1.0},
+    )
+
+    out = stream.getvalue()
+    assert "[1/2] OK" in out
+    assert "no changes" in out
+
+
+def test_format_tokens_is_compact_and_never_raises():
+    """The at-a-glance token form, and its defensive fallback for a value that is not a count."""
+    assert progress.format_tokens(456) == "456"
+    assert progress.format_tokens(1234) == "1.2k"
+    assert progress.format_tokens(534_000) == "534k"
+    assert progress.format_tokens(1_200_000) == "1.2M"
+    assert progress.format_tokens(None) == "?"
+
+
+def test_console_output_never_breaks_an_ingest(monkeypatch):
+    """A stream that blows up on write must not propagate — console output is cosmetic and can
+    never be allowed to fail a run that has already spent real money."""
+
+    class Exploding(io.StringIO):
+        def write(self, *_args, **_kwargs):
+            raise OSError("terminal vanished")
+
+    monkeypatch.setattr(config, "RAW_DIR", Path("/nowhere"))
+    prog = _reporter(Exploding())
+
+    prog("start", {"pending": 1, "skipped": 0})
+    prog("source_start", {"index": 1, "total": 1, "source": "raw/a.md"})
+    prog(
+        "source_done",
+        {"index": 1, "total": 1, "source": "raw/a.md", "created": 1, "updated": 0, "deleted": 0, "seconds": 1.0},
+    )
+    prog("finalize", {})
+    prog("done", {})

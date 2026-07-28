@@ -1,6 +1,7 @@
 """The ONLY place that talks to an LLM — through a coding-agent CLI, not an API key.
 
-Ingest shells out to a CLI (``claude``, ``copilot``, or ``gemini``) in **agentic** mode:
+Ingest shells out to a CLI (``claude``, ``copilot``, or ``agy`` — Google's Antigravity CLI) in
+**agentic** mode:
 the CLI is pointed at the workspace (``cwd`` = the workspace root) with autonomous file tools,
 reads the raw source and the existing wiki itself, and **edits the wiki page files directly**. We
 pass only a short instruction that references files BY PATH — never file content — so the argv
@@ -10,12 +11,17 @@ rules tree (``citadel/rules/``, overridable per file from the workspace ``rules/
 is only the code-invariant frame — the rules read list ``kind`` maps onto, the session variables,
 and the operational invariants (see :func:`_build_instruction`).
 
-- Pick the backend with ``CITADEL_LLM_CLI`` (``claude`` | ``copilot`` | ``gemini``; default
-  ``claude``), read via ``config.LLM_CLI``.
-- Override the binary path with ``CLAUDE_CODE_PATH`` / ``COPILOT_CLI_PATH`` /
-  ``GEMINI_CLI_PATH``.
-- The model for the ``claude`` CLI comes from ``config.INGEST_MODEL``. copilot/gemini use
-  their own default model.
+- Pick the backend with ``CITADEL_LLM_CLI`` (``claude`` | ``copilot`` | ``agy``; default
+  ``claude``), read via ``config.LLM_CLI`` and normalized by :func:`resolve_cli_name` (which is
+  also where the RETIRED ``gemini`` backend is refused with a migration hint).
+- Override the binary path with ``CLAUDE_CODE_PATH`` / ``COPILOT_CLI_PATH`` / ``AGY_CLI_PATH``.
+- ``config.INGEST_MODEL`` is passed as ``--model`` to EVERY backend (all three honor the flag),
+  and to none when it is unset — the knob has no default, so an unconfigured workspace runs each
+  CLI on its own default model instead of being handed a foreign model id.
+- Each backend also REPORTS which model actually served the session (claude's ``modelUsage`` map,
+  copilot's JSONL ``model``/``modelCacheState`` events, agy's ``init`` event). That reported id —
+  not the configured request — is what ingest stamps into the manifest, so the wiki never claims
+  a model that never ran.
 - Sessions run **hermetically** by default (``CITADEL_HERMETIC``, default on): when the
   installed CLI advertises a session-isolation flag (claude ``--bare`` — skip user
   hooks/CLAUDE.md/MCP discovery), it is appended so the user's personal agent configuration
@@ -25,8 +31,9 @@ One function does real work: ``run_ingest_session(rel_key)`` runs the chosen CLI
 the workspace. The RESULT is whatever the agent wrote under ``wiki/``, which ``ingest``
 discovers via a filesystem diff; the return value is only the session's best-effort
 :class:`SessionUsage` (what the run cost, as the backend itself reports it — claude's
-``--output-format json`` envelope, gemini's ``--session-summary`` stats file; None when the
-backend reports nothing, e.g. copilot). It raises ``RuntimeError`` on a missing/
+``--output-format json`` envelope, copilot's ``--output-format json`` JSONL stream, agy's
+``--output-format stream-json`` events; None when the backend reports nothing). It raises
+``RuntimeError`` on a missing/
 unusable CLI, a non-zero exit, a claude ``is_error`` envelope, or a timeout (the failure
 surface ``ingest``'s per-source ``try/except`` already expects).
 """
@@ -41,7 +48,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from dataclasses import dataclass
@@ -56,11 +62,22 @@ class SessionUsage:
     never priced by us (the audit's cost-observability gap: the product argues in budgets while
     the CLIs' own cost envelopes were discarded).
 
-    - ``cost_usd`` — the backend's own dollar figure (claude's ``total_cost_usd``); None for a
-      backend that prices nothing (gemini/copilot).
+    - ``cost_usd`` — the session's dollar figure: the backend's OWN number where it quotes one
+      (claude's ``total_cost_usd``), or copilot's AI credits converted at GitHub's published,
+      fixed 1 AIC = $0.01 (see ``aic``). None for a backend that offers neither (agy).
     - ``input_tokens`` — the prompt-side total actually processed, INCLUDING cache writes/reads
       (the honest volume, not just the uncached slice).
     - ``output_tokens`` — the completion-side total.
+    - ``aic`` — copilot's billing unit, **AI credits**, from its ``totalNanoAiu`` counter
+      (1 AIC = 1e9 nanoAiu; it is the ``N AIC used`` figure the interactive CLI prints in its
+      session footer). copilot quotes no dollars itself, so without this a copilot wiki would
+      show "no cost data" forever. Its predecessor ``totalPremiumRequests`` is a legacy counter
+      that GitHub retired in favour of credits, so it is deliberately NOT recorded.
+    - ``model`` — the model the backend says ACTUALLY ran, as it names it
+      (``claude-opus-5``, ``claude-sonnet-4.5``, ``gemini-3.1-pro-high``). This is the whole point
+      of reading the session envelope: the configured ``CITADEL_INGEST_MODEL`` is a REQUEST, and
+      recording it as fact would claim a model that may never have served the session (an `auto`
+      selection, a backend fallback, a stale ``.env``). None when the backend named nothing.
 
     Every field is None when unknown; a whole-unknown session is represented as ``None`` rather
     than an empty instance (:func:`combine_usage` returns None when no part knew anything), so
@@ -69,11 +86,15 @@ class SessionUsage:
     cost_usd: float | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
+    aic: float | None = None
+    model: str | None = None
 
     def describe(self) -> str:
-        """One ASCII report fragment: ``$0.42, tokens 1,234,567 in / 45,678 out`` — only the
-        fields that are actually known (an unknown side is OMITTED, never rendered as a 0 that
-        reads like a real count), "" when none are (so callers can skip the line)."""
+        """One ASCII report fragment: ``$0.42, tokens 1,234,567 in / 45,678 out, 2.51 AIC``
+        — only the fields that are actually known (an unknown side is OMITTED, never rendered as
+        a 0 that reads like a real count), "" when none are (so callers can skip the line). The
+        model is NOT part of this fragment: it is provenance, not spend, and is reported on its
+        own line/column."""
         parts: list[str] = []
         if self.cost_usd is not None:
             parts.append(format_cost(self.cost_usd))
@@ -84,16 +105,20 @@ class SessionUsage:
         ]
         if tokens:
             parts.append("tokens " + " / ".join(tokens))
+        if self.aic is not None:
+            parts.append(f"{format_aic(self.aic)} AIC")
         return ", ".join(parts)
 
 
 def combine_usage(parts) -> SessionUsage | None:
     """Sum an iterable of ``SessionUsage | None`` into one (a chunked source's segments, a run's
     sources). Each field sums over the parts that KNOW it and stays None when none did — so a
-    claude+gemini mix keeps honest semantics (cost from the sessions that priced themselves,
-    tokens from the ones that counted). Returns None when no part carried anything, and skips
+    claude+copilot mix keeps honest semantics (cost from the sessions that priced themselves,
+    tokens from the ones that counted). ``model`` is not summable: the FIRST part that named one
+    wins (every segment of a source runs on the same backend/model, and a run-level mix is
+    reported per source anyway). Returns None when no part carried anything, and skips
     non-``SessionUsage`` values entirely (the test fakes return None)."""
-    cost = tokens_in = tokens_out = None
+    cost = tokens_in = tokens_out = aic = model = None
     for part in parts:
         if not isinstance(part, SessionUsage):
             continue
@@ -103,9 +128,13 @@ def combine_usage(parts) -> SessionUsage | None:
             tokens_in = (tokens_in or 0) + part.input_tokens
         if part.output_tokens is not None:
             tokens_out = (tokens_out or 0) + part.output_tokens
-    if cost is None and tokens_in is None and tokens_out is None:
+        if part.aic is not None:
+            aic = (aic or 0.0) + part.aic
+        if model is None and part.model:
+            model = part.model
+    if cost is None and tokens_in is None and tokens_out is None and aic is None and model is None:
         return None
-    return SessionUsage(cost_usd=cost, input_tokens=tokens_in, output_tokens=tokens_out)
+    return SessionUsage(cost_usd=cost, input_tokens=tokens_in, output_tokens=tokens_out, aic=aic, model=model)
 
 
 def format_cost(cost_usd: float) -> str:
@@ -119,6 +148,25 @@ def format_cost(cost_usd: float) -> str:
     while text.endswith("0") and len(text) - text.rindex(".") > 3:  # keep >= 2 decimals
         text = text[:-1]
     return f"${text}"
+
+
+# GitHub prices one AI credit at a fixed, published $0.01 (docs.github.com "GitHub Copilot
+# billing"). It is a stated rate, not a market price, so converting is arithmetic rather than an
+# estimate — which is what lets a mixed claude+copilot corpus have ONE comparable cost total. The
+# credits themselves are always kept and shown alongside, so nothing is lost if the rate changes.
+AIC_USD = 0.01
+
+
+def format_aic(aic: float) -> str:
+    """``2.51`` / ``0.0042`` / ``1,204.5`` — AI credits at four decimals with trailing zeros
+    trimmed to at least one, so a fraction-of-a-credit session never renders as a lying ``0``.
+    Never raises on a non-finite value (a hand-edited manifest is external input)."""
+    if not math.isfinite(aic):
+        return str(aic)
+    text = f"{aic:,.4f}"
+    while text.endswith("0") and len(text) - text.rindex(".") > 2:  # keep >= 1 decimal
+        text = text[:-1]
+    return text
 
 
 def _finite_cost(value) -> float | None:
@@ -136,8 +184,30 @@ def _finite_cost(value) -> float | None:
 
 
 # CLI binary resolution (env override name -> default binary name).
-_CLI_PATH_ENV = {"claude": "CLAUDE_CODE_PATH", "copilot": "COPILOT_CLI_PATH", "gemini": "GEMINI_CLI_PATH"}
-_CLI_DEFAULT_BIN = {"claude": "claude", "copilot": "copilot", "gemini": "gemini"}
+_CLI_PATH_ENV = {"claude": "CLAUDE_CODE_PATH", "copilot": "COPILOT_CLI_PATH", "agy": "AGY_CLI_PATH"}
+_CLI_DEFAULT_BIN = {"claude": "claude", "copilot": "copilot", "agy": "agy"}
+
+# Backends that were supported once and are not any more -> the migration hint. The Gemini CLI was
+# renamed and reworked into Google's Antigravity CLI (`agy`), whose flags, output format and model
+# ids all differ; silently treating `gemini` as an unknown CLI would spawn a binary with a
+# best-effort argv it does not understand, so the removal is named out loud instead.
+_RETIRED_CLIS = {
+    "gemini": (
+        "the 'gemini' backend was removed: the Gemini CLI is now Google's Antigravity CLI. "
+        "Set CITADEL_LLM_CLI=agy (binary 'agy', override with AGY_CLI_PATH) and pick a model "
+        "with CITADEL_INGEST_MODEL (see `agy models`)."
+    )
+}
+
+
+def resolve_cli_name(cli: str | None) -> str:
+    """The configured backend name, normalized (lower-cased, trimmed, empty -> ``claude``) — and
+    the ONE place a RETIRED backend is refused, with the migration hint instead of a confusing
+    downstream failure. Every entry point that reads ``config.LLM_CLI`` goes through this."""
+    name = (cli or "claude").strip().lower()
+    if name in _RETIRED_CLIS:
+        raise RuntimeError(_RETIRED_CLIS[name])
+    return name
 
 
 def _resolve_cli(cli: str) -> str:
@@ -170,8 +240,8 @@ def _agent_path(path: Path) -> str:
 
 def _external_dirs(rel_key: str, read_path: str | None = None) -> list[str]:
     """OS-native paths of the directories the agent must read/write that live OUTSIDE the
-    workspace, so the CLI can be granted access to them (claude ``--add-dir``, gemini
-    ``--include-directories`` — both grant RECURSIVELY, so one grant of a rules root covers its
+    workspace, so the CLI can be granted access to them (claude ``--add-dir``, agy ``--add-dir``
+    — both grant RECURSIVELY, so one grant of a rules root covers its
     tasks/formats/genres subdirs; copilot needs nothing — it runs with ``--allow-all-paths``). The
     agent's ``cwd`` is the workspace root, so this returns — de-duplicated and sorted — only the
     out-of-workspace members of {wiki dir (written), every raw source root
@@ -498,7 +568,11 @@ def _build_invocation(
     workspace (an out-of-workspace wiki/raw on a mounted network drive, and the packaged rules dir
     for a pip install — computed by :func:`_external_dirs`) — empty for the all-under-workspace
     dev-checkout layout. For **claude** the prompt goes on STDIN (argv carries only flags); for
-    copilot/gemini it is a ``-p`` argument — now safe because the prompt is tiny.
+    copilot/agy it is a ``-p`` argument — now safe because the prompt is tiny.
+
+    Every backend is passed ``--model`` when :data:`config.INGEST_MODEL` is set, and none when it
+    is not (the knob has no default, so an unset workspace runs each CLI on its own default model
+    rather than being handed a foreign model id).
 
     All three CLIs run in their fully autonomous mode (each backend's headless YOLO equivalent);
     which files the agent may touch and which tools it should use is governed by the run
@@ -532,24 +606,186 @@ def _build_invocation(
         # --allow-all-tools is required for non-interactive editing; --allow-all-paths lets it
         # reach the wiki/raw AND the packaged rules whether they are under cwd, on a mounted drive,
         # or in site-packages (copilot has no per-directory grant mechanism, and needs none —
-        # extra_dirs is deliberately unused here); --no-ask-user keeps it autonomous; -s trims stats.
-        return [cli_path, "-p", prompt, "--allow-all-tools", "--allow-all-paths", "--no-ask-user", "-s"], None
-    if cli == "gemini":
-        # yolo auto-approves all tool calls (auto_edit still prompts for read/search tools,
-        # which would hang with no TTY). --include-directories adds the out-of-workspace dirs — a
-        # wiki/raw on a mounted drive, the packaged rules under site-packages — to the agent's
-        # workspace (best-effort; only when needed, so the all-under-workspace argv is unchanged).
-        argv = [cli_path, "-p", prompt, "--approval-mode", "yolo"]
-        if extra_dirs:
-            argv += ["--include-directories", ",".join(extra_dirs)]
+        # extra_dirs is deliberately unused here); --no-ask-user keeps it autonomous.
+        # --output-format json emits one JSON object per line: the ONLY way to learn which model
+        # actually served the session (copilot honors --model, including 'auto', so the configured
+        # id is a request, not a fact) and what it cost in AI credits. It replaces the older -s,
+        # which trimmed exactly that envelope away.
+        argv = [
+            cli_path,
+            "-p",
+            prompt,
+            "--allow-all-tools",
+            "--allow-all-paths",
+            "--no-ask-user",
+            "--output-format",
+            "json",
+        ]
+        if config.INGEST_MODEL:
+            argv += ["--model", config.INGEST_MODEL]
+        return argv, None
+    if cli == "agy":
+        # Google's Antigravity CLI. --dangerously-skip-permissions is its headless YOLO equivalent
+        # (anything less prompts for tool approval, which hangs with no TTY); --add-dir is
+        # repeatable and adds the out-of-workspace dirs (a wiki/raw on a mounted drive, the
+        # packaged rules under site-packages) to the agent's workspace. --output-format stream-json
+        # is what carries the effective model (the `init` event) plus the final token usage; the
+        # plain `json` format reports usage but never names the model.
+        argv = [cli_path, "-p", prompt, "--output-format", "stream-json", "--dangerously-skip-permissions"]
+        if config.INGEST_MODEL:
+            argv += ["--model", config.INGEST_MODEL]
+        for d in extra_dirs:
+            argv += ["--add-dir", d]
         return argv, None
     # Unknown CLI: a plain headless prompt as an argument (best effort).
     return [cli_path, "-p", prompt], None
 
 
+def _positive_int(value) -> int | None:
+    """``value`` as a positive real int, or None — the shared filter for externally-supplied
+    counts (tokens, nano-AI-units). Rejects bools (an int subclass), non-ints and values <= 0,
+    so a corrupted/hand-edited envelope can never surface a negative or fake-zero count."""
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return None
+
+
+def _model_from_claude_envelope(env: dict) -> str | None:
+    """Which model ACTUALLY served a claude session, from the envelope's ``modelUsage`` map
+    (``{"claude-opus-5[1m]": {...}, "claude-haiku-4-5-...": {...}}``).
+
+    claude routes cheap side work (title generation, small classifications) to a second, smaller
+    model, so the map regularly holds more than one entry and "the first key" would report the
+    wrong one. The PRIMARY model is the one that carried the session's volume, so entries are
+    ranked by total token traffic (prompt + completion + both cache sides). Ties fall back to
+    declaration order, which is what a single-entry map trivially yields.
+
+    ``canonicalModel`` is preferred over the raw key when present: the key carries context-window
+    suffixes (``claude-opus-5[1m]``) and dated ids that differ across releases of the same model.
+    Purely defensive — a missing/foreign-shaped map (an Ollama or other proxy backend that fills
+    in nothing) simply reads as None, and the caller falls back to the configured label."""
+    usage = env.get("modelUsage")
+    if not isinstance(usage, dict):
+        return None
+    best_name: str | None = None
+    best_volume = -1
+    for name, stats in usage.items():
+        if not isinstance(name, str) or not name.strip():
+            continue
+        stats = stats if isinstance(stats, dict) else {}
+        volume = sum(
+            _positive_int(stats.get(key)) or 0
+            for key in ("inputTokens", "outputTokens", "cacheReadInputTokens", "cacheCreationInputTokens")
+        )
+        if volume > best_volume:
+            canonical = stats.get("canonicalModel")
+            best_name = canonical.strip() if isinstance(canonical, str) and canonical.strip() else name.strip()
+            best_volume = volume
+    return best_name
+
+
+def _iter_jsonl(text: str):
+    """Every line of ``text`` that parses as a JSON object, in order — the shared reader for the
+    JSONL/stream-json envelopes copilot and agy emit. Non-JSON lines (a banner, an update notice,
+    a truncated final line from a killed session) are skipped rather than fatal: these streams are
+    external input on the accounting path, which must never fail a session."""
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or not line.startswith("{"):
+            continue
+        try:
+            obj = json.loads(line)
+        except (json.JSONDecodeError, RecursionError):
+            continue
+        if isinstance(obj, dict):
+            yield obj
+
+
+def _usage_from_copilot_jsonl(text: str) -> SessionUsage | None:
+    """The model + spend of a copilot session, from its ``--output-format json`` JSONL stream.
+
+    copilot quotes no dollars, so its OWN billing unit is recorded instead: the
+    ``session.usage_checkpoint`` events carry ``totalNanoAiu``, the nano-precision counter behind
+    the ``N AIC used`` figure the interactive CLI prints in its session footer (1 AIC = 1e9
+    nanoAiu). Those credits are converted to dollars at GitHub's fixed published rate
+    (:data:`AIC_USD`) so a mixed-backend corpus still has one comparable cost total, while the
+    credits stay recorded as the primary, un-derived figure. The legacy ``totalPremiumRequests``
+    counter in the same event is deliberately ignored — GitHub retired it in favour of credits,
+    and it is far too coarse to describe a session (every ingest is "1").
+
+    The same checkpoints' ``modelCacheState`` entries name the model, as do ``assistant.message``
+    events; the model is taken from the LAST event that names one (a session that switches models
+    mid-run is reported by what finished it). Output tokens are summed across assistant messages —
+    copilot reports no prompt-side count, so ``input_tokens`` stays honestly None.
+
+    Best-effort like every accounting path: a stream that says nothing usable returns None."""
+    model: str | None = None
+    nano_aiu: int | None = None
+    tokens_out = 0
+    for obj in _iter_jsonl(text):
+        data = obj.get("data")
+        data = data if isinstance(data, dict) else {}
+        kind = obj.get("type")
+        if kind in ("assistant.message", "model.call_start", "session.tools_updated"):
+            name = data.get("model")
+            if isinstance(name, str) and name.strip():
+                model = name.strip()
+            tokens_out += _positive_int(data.get("outputTokens")) or 0
+        elif kind == "session.usage_checkpoint":
+            # Each checkpoint reports the session TOTAL so far, not a delta — take the last.
+            count = _positive_int(data.get("totalNanoAiu"))
+            if count is not None:
+                nano_aiu = count
+            cache_state = data.get("modelCacheState")
+            if model is None and isinstance(cache_state, list):
+                for item in cache_state:
+                    name = item.get("modelId") if isinstance(item, dict) else None
+                    if isinstance(name, str) and name.strip():
+                        model = name.strip()
+                        break
+    if model is None and nano_aiu is None and not tokens_out:
+        return None
+    aic = round(nano_aiu / 1_000_000_000, 6) if nano_aiu is not None else None
+    return SessionUsage(
+        cost_usd=round(aic * AIC_USD, 6) if aic is not None else None,
+        output_tokens=tokens_out or None,
+        aic=aic,
+        model=model,
+    )
+
+
+def _usage_from_agy_stream(text: str) -> SessionUsage | None:
+    """The model + token usage of an agy (Antigravity CLI) session, from its
+    ``--output-format stream-json`` stream: the opening ``init`` event names the effective model,
+    and the closing ``result`` event carries the session's token totals
+    (``input_tokens``/``output_tokens``). agy quotes no dollar cost, so ``cost_usd`` stays None.
+
+    The ``init`` event only carries ``model`` when a model was explicitly selected; a session left
+    on the CLI's own default names nothing, which correctly reads as "unknown" (the caller then
+    falls back to the configured label rather than inventing an id)."""
+    model: str | None = None
+    tokens_in = tokens_out = 0
+    for obj in _iter_jsonl(text):
+        init = obj.get("init")
+        if isinstance(init, dict):
+            name = init.get("model")
+            if model is None and isinstance(name, str) and name.strip():
+                model = name.strip()
+        result = obj.get("result")
+        # The final `result` event totals the whole session; per-step usage would double count.
+        usage = result.get("usage") if isinstance(result, dict) else None
+        if isinstance(usage, dict):
+            tokens_in = _positive_int(usage.get("input_tokens")) or 0
+            tokens_out = _positive_int(usage.get("output_tokens")) or 0
+    if model is None and not tokens_in and not tokens_out:
+        return None
+    return SessionUsage(input_tokens=tokens_in or None, output_tokens=tokens_out or None, model=model)
+
+
 def _usage_from_claude_envelope(env: dict | None) -> SessionUsage | None:
     """The session's cost/usage from claude's ``--output-format json`` result envelope:
-    ``total_cost_usd`` plus the ``usage`` token counts. Input tokens include the cache
+    ``total_cost_usd`` plus the ``usage`` token counts, and the model that actually served it
+    (:func:`_model_from_claude_envelope`). Input tokens include the cache
     creation/read counts — the prompt-side volume actually billed, not just the uncached slice.
     Defensive by design (an envelope is external input): non-numeric fields read as absent, and
     an envelope carrying nothing usable returns None."""
@@ -565,24 +801,26 @@ def _usage_from_claude_envelope(env: dict | None) -> SessionUsage | None:
     usage = usage if isinstance(usage, dict) else {}
 
     def count(key: str) -> int:
-        value = usage.get(key)
-        return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
+        return _positive_int(usage.get(key)) or 0
 
     tokens_in = count("input_tokens") + count("cache_creation_input_tokens") + count("cache_read_input_tokens")
     tokens_out = count("output_tokens")
-    if cost_usd is None and not tokens_in and not tokens_out:
+    model = _model_from_claude_envelope(env)
+    if cost_usd is None and not tokens_in and not tokens_out and model is None:
         return None
-    return SessionUsage(cost_usd=cost_usd, input_tokens=tokens_in or None, output_tokens=tokens_out or None)
+    return SessionUsage(
+        cost_usd=cost_usd, input_tokens=tokens_in or None, output_tokens=tokens_out or None, model=model
+    )
 
 
-# --help output per resolved CLI binary, probed at most once per process (the gemini
-# feature-detection below; a probe failure caches "" so a broken binary is not re-probed).
+# --help output per resolved CLI binary, probed at most once per process (the hermetic-flag
+# feature detection; a probe failure caches "" so a broken binary is not re-probed).
 _HELP_TEXT_CACHE: dict[str, str] = {}
 
 
 def _cli_help_text(cli_path: str) -> str:
     """The CLI's ``--help`` output (stdout+stderr merged), cached per binary path — the
-    feature probe behind :func:`_gemini_summary_file`. Best-effort: any spawn failure or
+    feature probe behind :func:`_hermetic_flags`. Best-effort: any spawn failure or
     timeout degrades to "" (the probed feature simply reads as absent), because usage
     accounting must never be able to break an ingest."""
     if cli_path not in _HELP_TEXT_CACHE:
@@ -608,7 +846,7 @@ def _cli_help_text(cli_path: str) -> str:
 # Per-CLI session-isolation flags: what to pass so the user's PERSONAL agent configuration
 # (~/.claude hooks, CLAUDE.md context, MCP-server discovery) does not leak into citadel's agent
 # sessions — the session then runs on the rules tree alone, reproducibly. Only claude documents
-# such a switch today; copilot/gemini have no equivalent (no entry, so nothing is probed or passed).
+# such a switch today; copilot/agy have no equivalent (no entry, so nothing is probed or passed).
 _HERMETIC_FLAGS: dict[str, tuple[str, ...]] = {"claude": ("--bare",)}
 
 
@@ -616,7 +854,7 @@ def _hermetic_flags(cli: str, cli_path: str) -> list[str]:
     """The session-isolation flags to append for this backend, or ``[]`` when hermetic mode is off
     (``CITADEL_HERMETIC=0``), the CLI has no registered isolation flag, or the installed binary
     does not ADVERTISE the flag in ``--help`` — probed once per binary with an exact flag-token
-    match, the same feature-detection discipline as gemini's ``--session-summary``: an older CLI
+    match: an older CLI
     must never be handed an unknown flag that would fail every session over configuration
     hygiene. A false NEGATIVE is safe (the session merely runs non-hermetic, the pre-knob
     behavior)."""
@@ -649,68 +887,6 @@ def _hermetic_auth_hint(cli: str, argv: list[str], message: str) -> str:
         f" {cli} configuration, which on some machines is where the CLI keeps its credentials."
         " If that CLI works interactively but every session fails here, set CITADEL_HERMETIC=0.]"
     )
-
-
-def _gemini_summary_file(cli: str, cli_path: str) -> Path | None:
-    """A fresh temp file for gemini's ``--session-summary`` stats JSON, or None when the backend
-    is not gemini or its binary does not ADVERTISE the flag in ``--help`` (probed once per
-    binary) — an older gemini must never be handed an unknown flag that would fail the whole
-    session over optional accounting. The advertisement check is an exact flag-token match
-    (a longer option like ``--session-summary-file`` must not read as this flag; a false
-    NEGATIVE is safe — it merely disables optional accounting). The temp-file creation is
-    guarded like every other usage-path operation: an unwritable/full temp dir (a real
-    Windows/AV/quota failure mode) reads as "no accounting this session", never as a failed
-    source — the session must run exactly as it would have pre-accounting. The caller owns
-    deleting the file."""
-    if cli != "gemini" or not re.search(r"--session-summary(?![\w-])", _cli_help_text(cli_path)):
-        return None
-    try:
-        fd, name = tempfile.mkstemp(prefix="citadel_gemini_stats_", suffix=".json")
-        os.close(fd)
-    except OSError:
-        return None
-    return Path(name)
-
-
-def _usage_from_gemini_summary(path: Path) -> SessionUsage | None:
-    """Token counts from the stats JSON gemini's ``--session-summary`` writes. Best-effort by
-    design: the wrapper shape has shifted across gemini versions, so instead of pinning one
-    schema this walks the JSON for the stable inner token dicts (integer ``prompt`` /
-    ``candidates`` counts) and sums them across models; a missing/unreadable/foreign-shaped
-    file records nothing (None). The parse AND the walk sit under one guard that includes
-    ``RecursionError`` (a pathologically nested document blows the stack in either) — a stats
-    file is external input and must never fail the session it accounts for. Gemini reports no
-    dollar cost, so ``cost_usd`` stays None."""
-    totals = {"in": 0, "out": 0}
-    found = False
-
-    def walk(node) -> None:
-        nonlocal found
-        if isinstance(node, dict):
-            counted = False
-            for key, bucket in (("prompt", "in"), ("candidates", "out")):
-                value = node.get(key)
-                # Positive real ints only (matching the claude-side count filter): a corrupted/
-                # hand-edited stats file must not surface negative token counts on a report.
-                if isinstance(value, int) and not isinstance(value, bool) and value > 0:
-                    totals[bucket] += value
-                    counted = True
-            if counted:
-                found = True
-                return  # a tokens leaf — never descend into it (no double counting)
-            for value in node.values():
-                walk(value)
-        elif isinstance(node, list):
-            for value in node:
-                walk(value)
-
-    try:
-        walk(json.loads(path.read_text(encoding="utf-8")))
-    except (OSError, ValueError, RecursionError):
-        return None
-    if not found:
-        return None
-    return SessionUsage(input_tokens=totals["in"], output_tokens=totals["out"])
 
 
 def _last_result_envelope(text: str) -> dict | None:
@@ -875,8 +1051,8 @@ def _run_session(
     """Run the agentic CLI once in the workspace root (``config.child_cwd()`` — the root in the
     spelling a child process can use; see ``config.NATIVE_FORMS``). Success = the session completed
     without error; the agent's edits are on disk. Returns the session's :class:`SessionUsage`
-    when the backend reported one (claude's result envelope; None for copilot/gemini, whose
-    stdout carries no cost data — gemini's stats file is read by ``run_ingest_session``).
+    when the backend reported one — claude's result envelope, copilot's JSONL stream, agy's
+    stream-json events (:func:`_usage_from_stream`); None when the backend named nothing.
     Raises ``RuntimeError`` on timeout, a spawn error, a non-zero exit, or (for claude) an
     ``is_error`` result envelope.
 
@@ -957,7 +1133,9 @@ def _run_session(
                 + (f" ({status})" if status else "")
                 + f": {env.get('result') or err or 'unknown error'}"
             )
-            error = RuntimeError(message + _hermetic_auth_hint(cli, argv, message))
+            hint = _hermetic_auth_hint(cli, argv, message)
+            error = RuntimeError(message + hint)
+            error.hermetic_auth_failure = bool(hint)
             # A failure envelope still reports what the session COST (error_max_turns, API
             # errors) — carry it on the exception so the run total counts the failed spend
             # (the documented "failed sessions included" contract; the manifest stamp stays
@@ -966,15 +1144,37 @@ def _run_session(
             raise error
         if returncode != 0:
             message = f"the claude CLI failed (exit {returncode}): {(err or out)[:500]}"
-            error = RuntimeError(message + _hermetic_auth_hint(cli, argv, message))
+            hint = _hermetic_auth_hint(cli, argv, message)
+            error = RuntimeError(message + hint)
+            error.hermetic_auth_failure = bool(hint)
             error.session_usage = _usage_from_claude_envelope(env)
             raise error
         return _usage_from_claude_envelope(env)
 
-    # copilot / gemini (and any unknown CLI): the exit code is the success signal.
+    # copilot / agy (and any unknown CLI): the exit code is the success signal. Their stdout
+    # envelopes still carry the model + spend, so parse them on BOTH paths — a failed session's
+    # money was spent too, and it is carried on the exception exactly like claude's.
+    usage = _usage_from_stream(cli, out)
     if returncode != 0:
         message = f"the {cli!r} CLI failed (exit {returncode}): {(err or out)[:500]}"
-        raise RuntimeError(message + _hermetic_auth_hint(cli, argv, message))
+        hint = _hermetic_auth_hint(cli, argv, message)
+        error = RuntimeError(message + hint)
+        error.hermetic_auth_failure = bool(hint)
+        error.session_usage = usage
+        raise error
+    return usage
+
+
+def _usage_from_stream(cli: str, out: str) -> SessionUsage | None:
+    """The model/spend a non-claude backend reported on stdout, per backend envelope format —
+    None for a backend with no known format (an unknown CLI runs on a best-effort argv and is
+    never assumed to speak one)."""
+    if not out:
+        return None
+    if cli == "copilot":
+        return _usage_from_copilot_jsonl(out)
+    if cli == "agy":
+        return _usage_from_agy_stream(out)
     return None
 
 
@@ -1004,32 +1204,34 @@ def run_ingest_session(
 
     The agent's edits under ``config.wiki_dir()`` are the real result — ``ingest`` discovers what
     changed via a filesystem diff. The return value is only the session's best-effort
-    :class:`SessionUsage` (the backend's own cost/usage report: claude's result envelope,
-    gemini's ``--session-summary`` stats file when its binary advertises the flag; None when
-    nothing was reported — copilot, an older gemini, or any parse miss). Accounting is strictly
+    :class:`SessionUsage` (the backend's own report of what ran and what it cost: claude's result
+    envelope, copilot's JSONL stream, agy's stream-json events; None when nothing was reported or
+    the parse missed). Accounting is strictly
     passive: no usage path can fail the session. Raises ``RuntimeError`` (collected per-source
     by ingest) on a missing/failed CLI or a timeout."""
-    cli = (config.LLM_CLI or "claude").strip().lower()
+    cli = resolve_cli_name(config.LLM_CLI)
     cli_path = _resolve_cli(cli)
     prompt = _build_instruction(rel_key, kind, read_path, segment, line_range)
     argv, stdin_text = _build_invocation(cli, cli_path, prompt, _external_dirs(rel_key, read_path))
-    argv += _hermetic_flags(cli, cli_path)  # session isolation (claude --bare), probe-gated
-    summary_path = _gemini_summary_file(cli, cli_path)
-    if summary_path is not None:
-        argv = argv + ["--session-summary", str(summary_path)]
+    label = f"{kind}.{rel_key}"
+    hermetic = _hermetic_flags(cli, cli_path)  # session isolation (claude --bare), probe-gated
     try:
-        usage = _run_session(cli, argv, stdin_text, log_label=f"{kind}.{rel_key}")
-        if summary_path is not None:
-            usage = combine_usage([usage, _usage_from_gemini_summary(summary_path)])
-        return usage
+        return _run_session(cli, argv + hermetic, stdin_text, log_label=label)
     except RuntimeError as exc:
-        # A FAILED gemini session may still have written its stats file before dying — attach
-        # the tokens to the exception (mirroring the claude error-envelope carry) so ingest's
-        # failure path can count the spend in the run total.
-        if summary_path is not None and getattr(exc, "session_usage", None) is None:
-            exc.session_usage = _usage_from_gemini_summary(summary_path)
-        raise
-    finally:
-        if summary_path is not None:
-            with contextlib.suppress(OSError):
-                summary_path.unlink()
+        # Isolation is a hardening nicety; ingesting at all is the product. On the machines where
+        # the skipped personal config is exactly where the CLI keeps its credentials, EVERY
+        # session used to die on authentication until the user found CITADEL_HERMETIC=0 — a
+        # discoverability trap, since the same CLI works fine interactively. So an auth-shaped
+        # failure under hermetic mode is retried ONCE without the isolation flags, loudly. Scoped
+        # as tightly as possible: only when flags were actually passed AND the message was
+        # auth-shaped, so a real credential problem still fails (twice) instead of looping, and
+        # every other failure is re-raised untouched.
+        if not hermetic or not getattr(exc, "hermetic_auth_failure", False):
+            raise
+        print(
+            f"  ! {' '.join(hermetic)} was refused with an authentication error; retrying this"
+            " session without hermetic isolation (set CITADEL_HERMETIC=0 to skip this retry).",
+            file=sys.stderr,
+            flush=True,
+        )
+        return _run_session(cli, argv, stdin_text, log_label=label)

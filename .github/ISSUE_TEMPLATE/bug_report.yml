@@ -9,7 +9,7 @@ body:
         version and how to reproduce it are the most helpful parts.
 
         Reminder: cite-citadel ships no LLM SDK and no API key. Ingest shells out to a
-        coding-agent CLI (`claude` / `copilot` / `gemini`) that *you* have installed and
+        coding-agent CLI (`claude` / `copilot` / `agy`) that *you* have installed and
         logged in. If the problem is really about that CLI's own auth or billing, it may
         belong upstream — but file here if you are unsure.
 
@@ -48,7 +48,7 @@ body:
       options:
         - claude
         - copilot
-        - gemini
+        - agy (Antigravity CLI)
         - other / local model
         - not applicable (read-only command)
     validations:

@@ -44,7 +44,18 @@ classifiers = [
 # it powers the text-layer pre-pass (citadel/pdftext.py) so PDF citations get real, offline-
 # verifiable `lines A-B` locators out of the box. It is pure-Python, BSD, with no transitive
 # runtime deps — the same lightweight profile as pyyaml.
-dependencies = ["mcp>=1.2", "pyyaml>=6.0", "pypdf>=4"]
+#
+# `rich` renders the ingest CLI's live console (citadel/progress.py): a spinner row per in-flight
+# source plus an overall bar, and the one-row layout math behind the per-source verdict lines.
+# Pure-Python, MIT, two small pure-Python transitive deps (markdown-it-py, mdurl). The floor is 13
+# because that is where every API used here (Group, Live, MofNCompleteColumn, Column overflow) is
+# stable; nothing newer is required.
+dependencies = [
+    "mcp>=1.2",
+    "pyyaml>=6.0",
+    "pypdf>=4",
+    "rich>=13",
+]
 
 # `pdf` is now a NO-OP compatibility alias: pypdf ships by default (see dependencies above), so
 # `pip install cite-citadel[pdf]` still resolves and installs nothing extra. Kept so existing

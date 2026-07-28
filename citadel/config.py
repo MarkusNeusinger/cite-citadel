@@ -18,7 +18,7 @@ Reads env with sane defaults so a fresh workspace works out of the box. Includes
 ``.env`` loader (no dependency) that populates ``os.environ`` from ``WORKSPACE_ROOT/.env`` when a
 workspace actually resolved (``WORKSPACE_FOUND``) and the var is unset.
 
-Ingest runs through a coding-agent CLI (claude/copilot/gemini), so there is no
+Ingest runs through a coding-agent CLI (claude/copilot/agy), so there is no
 API key to manage — the CLI uses whatever subscription it is logged into.
 
 No logic beyond path/setting/rules resolution (plus the tiny content hash over the effective
@@ -470,7 +470,14 @@ def display_key(key: str) -> str:
     bookkeeping use. Read ``RAW_DIR`` / ``DOCS_DIR`` at call time so tests can monkeypatch the layout.
     Always returns a ``str`` (the input normalized to forward slashes) and never raises — every
     fallback path returns the normalized string, so the ``-> str`` contract holds even for a non-str
-    (e.g. ``Path``) input and the normalization is never dropped."""
+    (e.g. ``Path``) input and the normalization is never dropped.
+
+    Three tiers, each a fallback for the one before: an exact prefix match against a configured
+    root; failing that, a cut at the last path segment NAMED like a root (which is what rescues a
+    Windows drive letter mapped to a share, where the configured ``T:\\proj\\raw`` and the key's
+    ``//fileserver.corp.example/proj/raw/...`` are the same folder but share no common text); and
+    failing that, :func:`_clip_middle`, so an absolute key belonging to no known root still cannot
+    flood the console."""
     text = str(key).replace("\\", "/").strip()
     if not text:
         return text
@@ -479,16 +486,49 @@ def display_key(key: str) -> str:
         # Resolve an ABSOLUTE key through the same normalization the roots use, so the two compare in
         # one space; leave a relative (in-repo) key alone — resolving it would bind it to the CWD.
         kp = PurePosixPath(_safe_resolve(p).as_posix()) if p.is_absolute() else PurePosixPath(text)
-        for root in (*source_roots(), DOCS_DIR):
+        roots = [*source_roots(), DOCS_DIR]
+        for root in roots:
             base = PurePosixPath(_safe_resolve(root).as_posix())
             try:
                 rel = kp.relative_to(base)
             except ValueError:
                 continue
             return base.name + "/" + "/".join(rel.parts) if rel.parts else base.name
+        # Prefix-matching FAILED but the key may still live under a configured root that simply
+        # does not compare equal as a string: a Windows drive mapped to a share (``T:\proj\raw``)
+        # resolves to itself, while the key travelled as the UNC path the drive points at
+        # (``//fileserver.corp.example/proj/raw/...``). Nothing relates the two textually, so fall
+        # back to the root's FOLDER NAME and cut at its last occurrence in the key — the same
+        # ``raw/sub/notes.pdf`` the matched branch produces, without needing the prefixes to agree.
+        names = {r.name.lower() for r in (PurePosixPath(_safe_resolve(x).as_posix()) for x in roots) if r.name}
+        parts = kp.parts
+        for i in range(len(parts) - 1, -1, -1):
+            if parts[i].lower() in names:
+                return "/".join(parts[i:])
     except (OSError, ValueError):
         return text
-    return text
+    return _clip_middle(text)
+
+
+# How many trailing path segments an unrecognized absolute key keeps (see `_clip_middle`).
+_DISPLAY_TAIL_PARTS = 3
+
+
+def _clip_middle(text: str) -> str:
+    """Last-resort shortening for an ABSOLUTE key that matched no configured root at all (a stale
+    manifest entry from an earlier layout, a source reached through a path citadel no longer walks).
+
+    Such a key would otherwise print in full — and a UNC path with a long FQDN host is exactly the
+    noise that makes a scrolling multi-file ingest unreadable. Keep the tail, which is the part that
+    identifies the file, and mark the drop with an ASCII ``.../`` (this module's output stays
+    encodable on a legacy Windows code page). A relative in-repo key is already short and is never
+    touched."""
+    if not text.startswith("/") and ":" not in text[:3]:
+        return text
+    parts = [p for p in text.split("/") if p]
+    if len(parts) <= _DISPLAY_TAIL_PARTS:
+        return text
+    return ".../" + "/".join(parts[-_DISPLAY_TAIL_PARTS:])
 
 
 def is_outside_workspace(path: Path | str) -> bool:
@@ -819,16 +859,19 @@ def child_env() -> dict[str, str]:
     return env
 
 
-# Ingest backend: which coding-agent CLI to shell out to, and (for the claude
-# CLI) which model alias/id to pass. No API key is used.
+# Ingest backend: which coding-agent CLI to shell out to, and which model alias/id to pass it.
+# No API key is used. Every supported backend (claude / copilot / agy) honors --model, so this is
+# ONE knob with one meaning. It deliberately has NO default: an unset workspace runs each CLI on
+# its own configured default model, rather than being handed an alias only one backend knows
+# (the old claude-only "sonnet" default, which was meaningless — and unpassable — elsewhere).
 LLM_CLI: str = os.environ.get("CITADEL_LLM_CLI", "claude")
-INGEST_MODEL: str = os.environ.get("CITADEL_INGEST_MODEL", "sonnet")
+INGEST_MODEL: str = os.environ.get("CITADEL_INGEST_MODEL", "").strip()
 # The model `citadel curate` sessions run under. Curate is a bounded cleanup pass (re-sort, split,
 # re-ground) that can run on a cheaper/faster model than a full ingest — set CITADEL_CURATE_MODEL to
 # choose it. Empty (the default) falls back to INGEST_MODEL, so a workspace that never sets it
-# curates on the same model it ingests with. Only the claude backend is passed --model, so this
-# knob is authoritative there; copilot/gemini run their own model regardless (see
-# ingest_model_label). Read at call time / swapped in by curate.py so tests can monkeypatch it.
+# curates on the same model it ingests with. Every backend is passed --model, so this knob is
+# authoritative for all of them. Read at call time / swapped in by curate.py so tests can
+# monkeypatch it.
 CURATE_MODEL: str = os.environ.get("CITADEL_CURATE_MODEL", "").strip()
 LLM_TIMEOUT: int = _int_env("CITADEL_LLM_TIMEOUT", 1200)
 # Hermetic agent sessions (the 2026-07 audit's reproducibility fix): when ON (default) and the
@@ -849,7 +892,7 @@ HERMETIC: bool = _bool_env("CITADEL_HERMETIC", True)
 #   stdout/stderr + exit code + duration). Relative paths resolve under WORKSPACE_ROOT. Empty = off.
 # - CITADEL_LLM_VERBOSE: stream the CLI's output to the terminal live as the session runs, instead of
 #   capturing it silently — so you can watch the model work ("see everything") without dropping
-#   the non-interactive pipeline. copilot/gemini stream their full agentic transcript; the claude
+#   the non-interactive pipeline. copilot/agy stream their full agentic transcript; the claude
 #   CLI (run with --output-format json) only emits its final result envelope, so prefer a transcript
 #   log there.
 LLM_LOG_DIR: str = os.environ.get("CITADEL_LLM_LOG_DIR", "").strip()
@@ -1202,35 +1245,35 @@ def _resolve_ignore_patterns() -> list[str]:
 IGNORE_PATTERNS: list[str] = _resolve_ignore_patterns()
 
 
-# Where each non-claude backend keeps its OWN model id in the environment. A copilot user on a
-# local/Ollama model sets COPILOT_MODEL (e.g. "qwen3.6:27b"); gemini uses GEMINI_MODEL. We read
-# these so the recorded label reflects the model that ACTUALLY ran, not a guess. claude is absent
-# because we pass it --model INGEST_MODEL ourselves (so INGEST_MODEL is authoritative there).
-_CLI_MODEL_ENV = {"copilot": "COPILOT_MODEL", "gemini": "GEMINI_MODEL"}
+# The model a source was ingested with is recorded in two layers, and only one of them is a fact:
+#   - ingest_model_label() — what was REQUESTED (the backend plus the configured CITADEL_INGEST_MODEL).
+#   - model_label_for(reported) — what the backend said ACTUALLY ran, which is what ingest stamps.
+# The second wins wherever it exists; the first is only the fallback for a backend/session that
+# named nothing. Recording a configured id as if it were fact is exactly the lie this split
+# removes: `auto` selections, backend fallbacks and stale .env values would all be misreported.
 
 
 def ingest_model_label() -> str:
-    """A short, human-readable id of the model/backend that ingests a source — recorded per
-    source in the manifest (``wiki/.citadel_ingested.json``) so you can see WHICH raw file was
-    imported by WHICH model. Resolved at call time so tests can monkeypatch the inputs.
+    """The model/backend an ingest was ASKED to run on: ``"claude:opus"``, ``"copilot"``,
+    ``"agy:gemini-3.1-pro-high"``. Resolved at call time so tests (and curate's model swap) can
+    monkeypatch the inputs.
 
-    - ``claude`` — the only backend we pass ``--model`` to, so :data:`INGEST_MODEL` is exactly the
-      model that ran: ``"claude:sonnet"`` (or just ``"claude"`` if no model is configured).
-    - ``copilot`` / ``gemini`` — run their own model, which we never pass. The label is resolved in
-      priority order so it reflects what really ran:
-        1. the CLI's OWN model env var (``COPILOT_MODEL`` / ``GEMINI_MODEL``) — this is what a
-           local/Ollama copilot setup sets, e.g. ``"copilot:qwen3.6:27b"``;
-        2. an explicitly-set ``CITADEL_INGEST_MODEL`` (the default ``"sonnet"`` is claude-only, so it
-           counts only when the user actually exported the var) — e.g. ``"copilot:gpt-5.4-mini"``;
-        3. otherwise just the CLI name (``"copilot"``).
-    """
+    ``<cli>:<model>`` when :data:`INGEST_MODEL` is configured, a bare ``<cli>`` when it is not
+    (the knob has no default, so "unset" honestly means "the backend's own default model").
+    This is the FALLBACK label: :func:`model_label_for` prefers what the session actually
+    reported."""
     cli = (LLM_CLI or "claude").strip().lower()
-    if cli == "claude":
-        model = (INGEST_MODEL or "").strip()
-        return f"claude:{model}" if model else "claude"
-    native = os.environ.get(_CLI_MODEL_ENV.get(cli, ""), "").strip()
-    if native:
-        return f"{cli}:{native}"
-    if "CITADEL_INGEST_MODEL" in os.environ and (INGEST_MODEL or "").strip():
-        return f"{cli}:{INGEST_MODEL.strip()}"
-    return cli
+    model = (INGEST_MODEL or "").strip()
+    return f"{cli}:{model}" if model else cli
+
+
+def model_label_for(reported: str | None) -> str:
+    """The label to RECORD for a finished session: the backend's own report of the model that
+    served it (``"copilot:claude-sonnet-4.5"``, ``"claude:claude-opus-5"``), falling back to
+    :func:`ingest_model_label` when the backend named nothing (an older CLI, an agy session left
+    on its default model, a parse miss). Prefixed with the CLI so the manifest keeps saying WHICH
+    backend produced a page's facts — two backends can serve the same underlying model."""
+    name = (reported or "").strip()
+    if not name:
+        return ingest_model_label()
+    return f"{(LLM_CLI or 'claude').strip().lower()}:{name}"

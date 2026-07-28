@@ -88,7 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
         "-v",
         action="store_true",
         help="Stream each LLM agent session's output live to the terminal (see exactly what the "
-        "model does). copilot/gemini show their full transcript; the claude CLI only emits its "
+        "model does). copilot/agy show their full transcript; the claude CLI only emits its "
         "final result envelope — use --log-dir for a full claude record. Disables the spinner.",
     )
     p_ingest.add_argument(

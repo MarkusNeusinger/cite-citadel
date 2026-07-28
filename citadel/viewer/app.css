@@ -151,7 +151,7 @@ mark.cur { outline:2px solid var(--accent); outline-offset:1px; }
 #reader .ptype { font-weight:600; color:var(--accent); }
 #reader .ptype.src { color:var(--source); }
 #reader .src-id { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; }
-#reader .src-model { color:var(--muted); }
+#reader .src-model, #reader .src-usage, #reader .src-checked { color:var(--muted); }
 #reader .desc { color:var(--muted); font-style:italic; }
 #reader .backlinks { font-size:13px; color:var(--muted); margin:6px 0; }
 #reader .toc { border:1px solid var(--line); background:var(--card); border-radius:8px;

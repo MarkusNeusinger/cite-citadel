@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 
-from . import config, grammar, okf
+from . import config, grammar, llm, okf
 from . import failures as failures_mod
 from . import manifest as manifest_mod
 from .linkgraph import citing_pages_map, inbound_map, source_key_to_page_link
@@ -31,6 +31,30 @@ def _md_cell(text: str) -> str:
 SOURCES_INDEX_REL = "sources/index.md"
 
 
+def _usage_cells(usage: dict) -> tuple[str, str]:
+    """The ``Cost`` and ``Tokens`` cells of a source row, from a manifest usage stamp
+    (``manifest.entry_usage``). Each is ``"—"`` when the backend reported nothing for that
+    dimension — an unknown figure is never rendered as a ``$0.00``/``0`` that reads like a
+    measured zero. copilot quotes no dollars itself, so its dollars are its reported AI credits
+    converted at GitHub's fixed rate — the credits are shown beside them, since they are the
+    un-derived figure. agy/copilot report no prompt-side count, so a one-sided token stamp renders
+    only the side that is known."""
+    cost = usage.get("cost_usd")
+    aic = usage.get("aic")
+    if cost is None:
+        cost_cell = "—"
+    elif aic is not None:
+        cost_cell = f"{llm.format_cost(cost)} ({llm.format_aic(aic)} AIC)"
+    else:
+        cost_cell = llm.format_cost(cost)
+    tokens = [
+        f"{count:,} {label}"
+        for count, label in ((usage.get("tokens_in"), "in"), (usage.get("tokens_out"), "out"))
+        if count is not None
+    ]
+    return cost_cell, " / ".join(tokens) if tokens else "—"
+
+
 def _render_sources_catalog(
     manifest_dict: dict,
     pages: list[Page],
@@ -40,7 +64,8 @@ def _render_sources_catalog(
     """Render the body of ``wiki/sources/index.md`` — the provenance catalog.
 
     One row per tracked raw source (from the ingest manifest), showing the MODEL that imported it
-    and the wiki pages that cite it. ``refs_by_key`` is the source-key → citing-pages map
+    (as the backend REPORTED it, not as it was configured), what that session cost, when it was
+    last verified, and the wiki pages that cite it. ``refs_by_key`` is the source-key → citing-pages map
     (:func:`citing_pages_map`) that :func:`rebuild_indexes` builds ONCE per rebuild and shares with
     the index.md ``## Sources`` section; when omitted it is computed here (standalone use). The
     source path links to the raw file and each citing page links to its page, both relative to
@@ -62,14 +87,19 @@ def _render_sources_catalog(
     lines: list[str] = [
         "# Sources",
         "",
-        "Provenance for every ingested raw source: the model that imported it and the wiki "
-        "pages that cite it. Generated — do not edit.",
+        "Provenance for every ingested raw source: the model that actually imported it, what "
+        "that session cost, when it was last checked, and the wiki pages that cite it. "
+        "Generated — do not edit.",
         "",
     ]
     if manifest_dict:
-        lines += ["| Source | Model | Referenced by |", "| --- | --- | --- |"]
+        lines += [
+            "| Source | Model | Cost | Tokens | Checked | Referenced by |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
         for key in sorted(manifest_dict):
-            model = manifest_mod.entry_model(manifest_dict[key]) or "—"
+            entry = manifest_dict[key]
+            model = manifest_mod.entry_model(entry) or "—"
             source_cell = f"[{_md_cell(key)}]({source_key_to_page_link(SOURCES_INDEX_REL, key)})"
             refs = refs_by_key.get(key, [])
             if refs:
@@ -78,7 +108,12 @@ def _render_sources_catalog(
                 )
             else:
                 ref_cell = "—"
-            lines.append(f"| {source_cell} | {_md_cell(model)} | {ref_cell} |")
+            cost_cell, tokens_cell = _usage_cells(manifest_mod.entry_usage(entry))
+            checked = (manifest_mod.entry_ingested_at(entry) or "")[:10] or "—"
+            lines.append(
+                f"| {source_cell} | {_md_cell(model)} | {cost_cell} | {tokens_cell} | "
+                f"{_md_cell(checked)} | {ref_cell} |"
+            )
     if failures_dict:
         lines += [
             "",

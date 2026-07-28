@@ -167,7 +167,7 @@ def test_sources_catalog_lists_source_model_and_referencing_pages(
 
     catalog = (wiki / "sources" / "index.md").read_text(encoding="utf-8")
     assert catalog.startswith("# Sources") and not catalog.startswith("---")
-    assert "| Source | Model | Referenced by |" in catalog
+    assert "| Source | Model | Cost | Tokens | Checked | Referenced by |" in catalog
     # The source links to the raw file, shows the model, and links the page that cites it.
     assert "[raw/notes.md](../../raw/notes.md)" in catalog
     assert "claude:sonnet" in catalog

@@ -15,7 +15,7 @@ still only after the last segment, and a failure still leaves the live wiki unto
 
 Deviation from the audit's scoped design (backlog #9 said "capture backend session IDs, retry from
 segment N" via ``claude --resume``): checkpoints are BACKEND-AGNOSTIC. They work on every CLI
-(copilot/gemini expose no session-resume flag), they *keep* the earlier segments' work instead of
+(copilot/agy expose no session-resume flag), they *keep* the earlier segments' work instead of
 re-running it, and they need no provider to hold a session open — which a resumed conversation
 would anyway find gone, since the staging tree it edited is deleted on every failure path.
 

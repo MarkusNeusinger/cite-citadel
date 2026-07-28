@@ -52,10 +52,14 @@ class SourceState:
     detail: str | None = None
     attempts: int = 0
     # What the last verifying session(s) cost, per the manifest's usage stamp — None when the
-    # backend reported nothing (copilot, pre-cost-accounting entries).
+    # backend reported nothing (pre-cost-accounting entries). copilot quotes no dollars itself,
+    # so its spend arrives as `aic` — AI credits, its own billing unit — and `cost_usd` is that
+    # figure converted at GitHub's fixed published rate, which is what keeps a mixed-backend
+    # corpus comparable in ONE total.
     cost_usd: float | None = None
     tokens_in: int | None = None
     tokens_out: int | None = None
+    aic: float | None = None
 
 
 @dataclass
@@ -83,6 +87,12 @@ class StatusReport:
             # the current corpus, not lifetime spend (per-run spend is on each run's report).
             total = llm.format_cost(sum(s.cost_usd for s in costed))
             lines.append(f"Recorded LLM cost: {total} over {len(costed)} source(s) (last session each)")
+        credited = [s for s in self.ingested if s.aic is not None]
+        if credited:
+            # copilot's own billing unit, shown beside the dollars it was converted into — the
+            # same "last session each" snapshot as the cost line.
+            total_aic = llm.format_aic(sum(s.aic for s in credited))
+            lines.append(f"Recorded AI credits: {total_aic} AIC over {len(credited)} source(s) (last session each)")
         lines.append("")
 
         lines.append(f"Ingested ({len(self.ingested)})")
@@ -104,7 +114,9 @@ class StatusReport:
                 # shows the full queue ordering.
                 parts.append(f"checked {s.ingested_at[:10]}")
             if s.cost_usd is not None:
-                parts.append(llm.format_cost(s.cost_usd))
+                cost = llm.format_cost(s.cost_usd)
+                # The credits are the figure copilot actually reported; the dollars are derived.
+                parts.append(f"{cost} ({llm.format_aic(s.aic)} AIC)" if s.aic is not None else cost)
             lines.append("  " + "  ".join(parts))
 
         lines.append(f"Failed ({len(self.failed)})")
@@ -139,7 +151,7 @@ class StatusReport:
 
     def as_dict(self) -> dict:
         """The report as one JSON-ready dict (``citadel status --json``): the six buckets plus
-        ``rules_version`` and ``cost_usd_total``, each source row a plain dict with only its None fields dropped —
+        ``rules_version``, ``cost_usd_total`` and ``aic_total``, each source row a plain dict with only its None fields dropped —
         ``attempts: 0`` / ``stale_rules: false`` stay explicit, so scripts get a predictable
         shape for 'which sources failed and why' without scraping :meth:`render`'s table.
         ``oversized`` carries ``{"key", "size_bytes"}`` objects rather than bare strings, since the
@@ -149,11 +161,14 @@ class StatusReport:
             return {k: v for k, v in asdict(s).items() if v is not None}
 
         costed = [s.cost_usd for s in self.ingested if s.cost_usd is not None]
+        credits = [s.aic for s in self.ingested if s.aic is not None]
         return {
             "rules_version": self.rules_version,
             # The render()'s "Recorded LLM cost" total, machine-readably: the sum of each
             # source's last-session cost stamp (null when no entry carries one).
             "cost_usd_total": round(sum(costed), 4) if costed else None,
+            # The same snapshot in copilot's billing unit (null when no entry carries one).
+            "aic_total": round(sum(credits), 6) if credits else None,
             "ingested": [row(s) for s in self.ingested],
             "failed": [row(s) for s in self.failed],
             "skipped_duplicate": [row(s) for s in self.skipped_duplicate],
@@ -240,6 +255,7 @@ def build_status() -> StatusReport:
                 cost_usd=usage.get("cost_usd"),
                 tokens_in=usage.get("tokens_in"),
                 tokens_out=usage.get("tokens_out"),
+                aic=usage.get("aic"),
             )
         )
 

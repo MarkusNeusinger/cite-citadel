@@ -447,7 +447,8 @@ def _build_sources(pages) -> dict:
     resolves straight to its record; tracked-but-uncited files fall back to :func:`_source_view_id`.
     Each record carries the CITED EXCERPTS of the file (via :func:`_embed_source` — a whole ``body``
     for a short/mostly-cited file, else ``segments`` + ``total_lines``), a title/snippet computed
-    from the full text, the model that imported it (from the manifest), the wiki pages that cite it
+    from the full text, the model that imported it plus that session's cost/tokens and its
+    last-checked stamp (all from the manifest), the wiki pages that cite it
     (the live link graph), a kind (text/office/audio/binary), an "open the original" href, and a missing
     flag when the file isn't on disk. Includes file
     sources tracked in the manifest even if currently uncited, so the Sources axis is complete;
@@ -482,12 +483,22 @@ def _build_sources(pages) -> dict:
             # Title and snippet are computed from the FULL text (it is read anyway).
             "title": _source_title(text, view_id),
             "model": manifest_mod.entry_model(manifest[key]) if key in manifest else None,
+            # Provenance decoration, exactly like `model`: what the source's last agent session
+            # cost (the manifest's usage stamp) and when it was last verified. Both are omitted
+            # rather than zeroed when the backend reported nothing — the viewer must never render
+            # an unknown figure as a measured one.
             "cited_by": store.find_raw_references(key, pages),
             "missing": not present,
             "kind": kind,  # "text" | "office" | "audio" | "binary"
             "href": _source_href(abs_path) if present else None,
             "snippet": _source_snippet(text),
         }
+        usage = manifest_mod.entry_usage(manifest.get(key))
+        if usage:
+            record["usage"] = usage
+        checked = manifest_mod.entry_ingested_at(manifest.get(key)) if key in manifest else None
+        if checked:
+            record["checked"] = checked
         if kind == "binary" or not text:
             # Missing / binary / empty: no inline text, mirror the pre-excerpt whole-body shape.
             record.update(body="", truncated=False)

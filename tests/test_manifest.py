@@ -95,7 +95,7 @@ def test_entry_helpers_accept_stat_extended_records():
     assert not manifest.is_repo_entry(record)
 
 
-# --- config.ingest_model_label resolution ----------------------------------------------
+# --- config.ingest_model_label / model_label_for resolution ----------------------------
 
 
 def test_label_claude_uses_ingest_model(monkeypatch):
@@ -107,36 +107,35 @@ def test_label_claude_uses_ingest_model(monkeypatch):
     assert config.ingest_model_label() == "claude"
 
 
-def test_label_copilot_prefers_native_env(monkeypatch):
-    """A local/Ollama copilot sets COPILOT_MODEL — that is the model that really ran, so it wins
-    over CITADEL_INGEST_MODEL and the CLI default."""
+def test_label_is_backend_agnostic(monkeypatch):
+    """Every backend honors --model, so the configured knob labels them all the same way — no
+    per-backend guessing from COPILOT_MODEL/GEMINI_MODEL any more."""
     monkeypatch.setattr(config, "LLM_CLI", "copilot", raising=False)
-    monkeypatch.setattr(config, "INGEST_MODEL", "sonnet", raising=False)  # claude default, ignored
-    monkeypatch.setenv("COPILOT_MODEL", "qwen3.6:27b")
-    assert config.ingest_model_label() == "copilot:qwen3.6:27b"
+    monkeypatch.setattr(config, "INGEST_MODEL", "claude-sonnet-4.5", raising=False)
+    assert config.ingest_model_label() == "copilot:claude-sonnet-4.5"
+
+    monkeypatch.setattr(config, "LLM_CLI", "agy", raising=False)
+    monkeypatch.setattr(config, "INGEST_MODEL", "gemini-3.1-pro-high", raising=False)
+    assert config.ingest_model_label() == "agy:gemini-3.1-pro-high"
 
 
-def test_label_copilot_explicit_okf_override(monkeypatch):
+def test_label_unset_model_is_just_the_cli_name(monkeypatch):
+    """No configured model = "the CLI's own default": the label must not invent one."""
     monkeypatch.setattr(config, "LLM_CLI", "copilot", raising=False)
-    monkeypatch.delenv("COPILOT_MODEL", raising=False)
-    monkeypatch.setenv("CITADEL_INGEST_MODEL", "gpt-5.4-mini")
-    monkeypatch.setattr(config, "INGEST_MODEL", "gpt-5.4-mini", raising=False)
-    assert config.ingest_model_label() == "copilot:gpt-5.4-mini"
-
-
-def test_label_copilot_default_is_just_cli_name(monkeypatch):
-    """With no native env and only the claude-oriented default model, a copilot run is NOT
-    mislabeled 'copilot:sonnet' — it records just 'copilot'."""
-    monkeypatch.setattr(config, "LLM_CLI", "copilot", raising=False)
-    monkeypatch.delenv("COPILOT_MODEL", raising=False)
-    monkeypatch.delenv("CITADEL_INGEST_MODEL", raising=False)
-    monkeypatch.setattr(config, "INGEST_MODEL", "sonnet", raising=False)
+    monkeypatch.setattr(config, "INGEST_MODEL", "", raising=False)
     assert config.ingest_model_label() == "copilot"
 
 
-def test_label_gemini_native_env(monkeypatch):
-    monkeypatch.setattr(config, "LLM_CLI", "gemini", raising=False)
-    monkeypatch.delenv("CITADEL_INGEST_MODEL", raising=False)
-    monkeypatch.setattr(config, "INGEST_MODEL", "sonnet", raising=False)
-    monkeypatch.setenv("GEMINI_MODEL", "gemini-2.5-pro")
-    assert config.ingest_model_label() == "gemini:gemini-2.5-pro"
+def test_model_label_for_prefers_the_reported_model(monkeypatch):
+    """What the backend SAYS it ran beats what we asked for — the whole point of reading the
+    session envelope. The CLI prefix is kept, so the manifest still names the backend."""
+    monkeypatch.setattr(config, "LLM_CLI", "copilot", raising=False)
+    monkeypatch.setattr(config, "INGEST_MODEL", "auto", raising=False)
+    assert config.model_label_for("claude-sonnet-4.5") == "copilot:claude-sonnet-4.5"
+
+
+def test_model_label_for_falls_back_when_nothing_was_reported(monkeypatch):
+    monkeypatch.setattr(config, "LLM_CLI", "agy", raising=False)
+    monkeypatch.setattr(config, "INGEST_MODEL", "gemini-3.1-pro-high", raising=False)
+    for reported in (None, "", "   "):
+        assert config.model_label_for(reported) == "agy:gemini-3.1-pro-high"

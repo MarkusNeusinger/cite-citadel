@@ -85,8 +85,10 @@ class IngestReport:
     skipped: list[str]
     pages_written: list[str]  # = pages_created + pages_updated (union, in write order)
     errors: list[str]
-    # The model/backend that imported this run's sources (config.ingest_model_label), recorded
-    # per-source in the manifest and surfaced here so the report says WHICH model ran.
+    # The model/backend that imported this run's sources, surfaced so the report says WHICH model
+    # ran. Starts as the CONFIGURED label (config.ingest_model_label) and is upgraded in place to
+    # the model the backend REPORTED serving as soon as a session names one (_record_spend) — the
+    # same id the per-source manifest entries are stamped with.
     model: str = ""
     pages_deleted: list[str] = field(default_factory=list)
     # (source_rel_path, target) cross-links left dangling after this run — should be empty.
@@ -1623,24 +1625,41 @@ def _usage_from_fields(fields: dict) -> llm.SessionUsage | None:
     if not fields:
         return None
     return llm.SessionUsage(
-        cost_usd=fields.get("cost_usd"), input_tokens=fields.get("tokens_in"), output_tokens=fields.get("tokens_out")
+        cost_usd=fields.get("cost_usd"),
+        input_tokens=fields.get("tokens_in"),
+        output_tokens=fields.get("tokens_out"),
+        aic=fields.get("aic"),
     )
 
 
 def _usage_fields(usage: llm.SessionUsage | None) -> dict:
     """A source's combined session usage as ``manifest.make_entry`` / ``make_repo_entry`` kwargs
-    (``cost_usd``/``tokens_in``/``tokens_out``, only the known fields) — the one translation from
-    the llm-layer shape to the manifest-layer stamp, so the done-hooks stay one-liners."""
+    (``cost_usd``/``tokens_in``/``tokens_out``/``aic``, only the known fields) — the
+    one translation from the llm-layer shape to the manifest-layer stamp, so the done-hooks stay
+    one-liners. ``model`` is deliberately NOT part of this: it is provenance, stamped through
+    :func:`_stamp_model` into the entry's own ``model`` field, not usage."""
     if usage is None:
         return {}
     out: dict = {}
-    if usage.cost_usd is not None:
-        out["cost_usd"] = usage.cost_usd
-    if usage.input_tokens is not None:
-        out["tokens_in"] = usage.input_tokens
-    if usage.output_tokens is not None:
-        out["tokens_out"] = usage.output_tokens
+    for key, value in (
+        ("cost_usd", usage.cost_usd),
+        ("aic", usage.aic),
+        ("tokens_in", usage.input_tokens),
+        ("tokens_out", usage.output_tokens),
+    ):
+        if value is not None:
+            out[key] = value
     return out
+
+
+def _stamp_model(usage: llm.SessionUsage | None, fallback: str) -> str:
+    """The model label to RECORD for a finished source: what the backend reported actually
+    serving the session (``config.model_label_for``), else ``fallback`` — the run's configured
+    label (``config.ingest_model_label``). The reported id is the only honest one: the configured
+    model is a request the backend may not have honored (``auto``, a fallback, a stale ``.env``),
+    and a wiki that claims an unused model misleads every later audit of its provenance."""
+    reported = usage.model if isinstance(usage, llm.SessionUsage) else None
+    return config.model_label_for(reported) if reported else fallback
 
 
 def _sha_shared_by_other_entry(manifest_dict: dict, sha: str | None, exclude_key: str) -> bool:
@@ -1962,7 +1981,7 @@ def _run_agent_sessions(
         )
     except Exception as exc:  # noqa: BLE001 - collect per-source, keep going; live wiki untouched
         # A raising session never returned its usage, but the backend may still have reported
-        # what the FAILED attempt cost (claude's error envelope, gemini's stats file) — llm
+        # what the FAILED attempt cost (claude's error envelope, copilot/agy's stdout stream) — llm
         # carries that on the exception, so the run total honors "failed sessions included".
         salvaged = getattr(exc, "session_usage", None)
         usage_parts.append(salvaged if isinstance(salvaged, llm.SessionUsage) else None)
@@ -2093,6 +2112,10 @@ def _record_spend(outcome: _SourceOutcome, report: IngestReport) -> None:
     usage has no surface to appear on — the completed sources' manifest stamps were already saved
     per-source with their usage intact."""
     report.usage = llm.combine_usage([report.usage, outcome.usage])
+    # The first session that NAMES its model upgrades the report's label from "what we asked for"
+    # to "what actually ran" (the manifest entries are stamped with the same id per source).
+    if isinstance(outcome.usage, llm.SessionUsage) and outcome.usage.model:
+        report.model = config.model_label_for(outcome.usage.model)
     if outcome.resumed_note:
         report.resumed.append(outcome.resumed_note)
 
@@ -2141,7 +2164,8 @@ def _record_source_run(run: _JobRun, emit, report: IngestReport, failures_dict, 
     # whatever an earlier run already paid for the segments a checkpoint restored — while
     # ``report.usage`` above stays strictly this run's spend, so nothing is double-counted
     # across runs and `citadel status` never under-reports a resumed source.
-    job.on_success(llm.combine_usage([outcome.usage, outcome.carried_usage]))
+    stamped = llm.combine_usage([outcome.usage, outcome.carried_usage])
+    job.on_success(stamped)
     emit(
         "source_done",
         index=index,
@@ -2151,6 +2175,11 @@ def _record_source_run(run: _JobRun, emit, report: IngestReport, failures_dict, 
         updated=len(outcome.updated),
         deleted=len(outcome.deleted),
         seconds=outcome.seconds,
+        # The console reports what THIS run spent (matching the run report's total), but names the
+        # model from the full stamp — a resumed source's model is known even when every segment
+        # this run ran came back from a checkpoint.
+        usage=outcome.usage,
+        model=getattr(stamped, "model", None),
     )
 
 
@@ -2594,8 +2623,8 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
     # keeps "your progress callback is never invoked concurrently" a property of the API rather than
     # something each caller has to discover, and it costs nothing: emit fires a handful of times per
     # source, around sessions that take minutes. The console reporter is safe under it either way
-    # (its writes are locked and the spinner is off when jobs > 1), but the contract must not depend
-    # on that reasoning holding for every future callback.
+    # (its writes are locked, and rich gives each in-flight source its own live row), but the
+    # contract must not depend on that reasoning holding for every future callback.
     emit_lock = threading.Lock()
 
     def emit(event: str, **data) -> None:
@@ -2970,7 +2999,15 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             if old_sha and old_sha != done_sha and not _sha_shared_by_other_entry(manifest_dict, old_sha, rel_key):
                 transcribe.prune_cached(old_sha)
                 pdftext.prune_cached(old_sha)
-            manifest.mark_done(manifest_dict, src, model, rules_ver, sha=done_sha, st=done_stat, **_usage_fields(usage))
+            manifest.mark_done(
+                manifest_dict,
+                src,
+                _stamp_model(usage, model),
+                rules_ver,
+                sha=done_sha,
+                st=done_stat,
+                **_usage_fields(usage),
+            )
             # A source that had failed before (unreadable/errored/duplicate) now succeeded: drop
             # its persisted failure record — and any resume checkpoint (the session runner already
             # clears the one it consumed; this also catches a slot left by an earlier run whose
@@ -3018,7 +3055,7 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             # moves ingested_at) and the session's usage stamp when the backend reported one.
             manifest_dict[rjob.key] = manifest.make_repo_entry(
                 repo.identity(rjob.path),
-                model,
+                _stamp_model(usage, model),
                 repo.remote_url(rjob.path),
                 rules_ver,
                 ingested_at=manifest.now_iso(),

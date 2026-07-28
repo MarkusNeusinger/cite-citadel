@@ -145,7 +145,7 @@ Cron runs with a minimal environment, so two things must resolve without your sh
 `citadel` itself (use the absolute path — `which citadel`) and the agent CLI it shells out to.
 For the latter, skip fighting cron's `PATH` entirely: the workspace `.env` is auto-loaded, so set
 the binary override there once (`CLAUDE_CODE_PATH=/home/me/.local/bin/claude`, or
-`COPILOT_CLI_PATH`/`GEMINI_CLI_PATH`) and the CLI must simply be **logged in for that user**.
+`COPILOT_CLI_PATH`/`AGY_CLI_PATH`) and the CLI must simply be **logged in for that user**.
 `citadel doctor` from a bare-environment shell (`env -i sh -c '…'`) is the quick preflight. On
 macOS, grant `cron` Full Disk Access (or use `launchd`) if the workspace lives under `~/Documents`
 or another protected folder.

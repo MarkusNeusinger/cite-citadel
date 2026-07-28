@@ -80,8 +80,8 @@ def test_mixed_run_progress_vocabulary_and_order_are_pinned(
         "unreadable": 0,
         "deleted": 1,
         "repos": 1,
-        # `--jobs N`: the worker count the run was given, so the console can drop the spinner when
-        # several sources are in flight at once. 1 is the serial default.
+        # `--jobs N`: the worker count the run was given, so the console can show how many sources
+        # are in flight at once (rich gives each its own spinner row). 1 is the serial default.
         "jobs": 1,
     }
     # Deletions first, then files, then repos — and per-GROUP counters restarting at 1/1.
@@ -91,7 +91,19 @@ def test_mixed_run_progress_vocabulary_and_order_are_pinned(
             assert set(data) == {"index", "total", "source"}
             assert data["index"] == 1 and data["total"] == 1
         elif event == "source_done":
-            assert set(data) == {"index", "total", "source", "created", "updated", "deleted", "seconds"}
+            # `usage`/`model` carry what the session actually SPENT and which model really ran,
+            # so the console verdict line can show the per-source cost as the run scrolls past.
+            assert set(data) == {
+                "index",
+                "total",
+                "source",
+                "created",
+                "updated",
+                "deleted",
+                "seconds",
+                "usage",
+                "model",
+            }
     done = events[-1][1]
     assert set(done) == {
         "processed",
@@ -116,12 +128,16 @@ def test_ingest_progress_default_is_silent(tmp_citadel, fake_agent, transformer_
 
 
 def test_console_progress_renders_ascii_without_tty():
-    """ConsoleProgress on a non-TTY stream prints one plain line per file, ASCII-only."""
+    """ConsoleProgress on a non-TTY stream prints one plain line per file, ASCII-only.
+
+    ASCII-only is a hard Windows guarantee, not a preference: a cp1252 console cannot encode the
+    Unicode glyphs rich reaches for by default, so the reporter composes ASCII text and pins the
+    ASCII ``line`` spinner. Off a TTY rich emits no colour codes either, so the buffer is plain."""
     import io
 
     from citadel.progress import ConsoleProgress
 
-    buf = io.StringIO()  # isatty() -> False, so no spinner thread
+    buf = io.StringIO()  # isatty() -> False, so no live region is started
     p = ConsoleProgress(stream=buf)
     p("start", {"pending": 2, "skipped": 1})
     p("source_start", {"index": 1, "total": 2, "source": "raw/a.md"})
@@ -135,6 +151,6 @@ def test_console_progress_renders_ascii_without_tty():
 
     assert "Ingesting 2 file(s) (1 already up to date)" in out
     assert "[1/2] OK  raw/a.md" in out and "2 created, 1 updated, 1 deleted" in out
-    assert "[2/2] ERR raw/b.md" in out and "boom" in out
+    assert "[2/2] ERR  raw/b.md" in out and "boom" in out
     assert "Rebuilding indexes" in out
     out.encode("ascii")  # must be ASCII-only (safe on any Windows code page)

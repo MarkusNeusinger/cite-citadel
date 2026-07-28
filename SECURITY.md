@@ -19,7 +19,7 @@ cite-citadel has a small, honest data-flow surface — understanding it is the b
 
 - **cite-citadel spawns *your* CLI as a subprocess in the workspace.** Ingest does
   `shutil.which(<cli>)` + `subprocess` on the official coding-agent binary you installed and logged
-  in (`claude` / `copilot` / `gemini`). It bundles no provider code, embeds no credentials, and
+  in (`claude` / `copilot` / `agy`). It bundles no provider code, embeds no credentials, and
   **reads, logs, or transmits no secret or token itself.**
 - **Raw content travels wherever your provider's terms say.** Your CLI reads the files under `raw/`
   under *your* account; where that content then goes (and whether prompts/logs are retained) is
