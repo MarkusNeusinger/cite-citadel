@@ -257,3 +257,9 @@ _site/
 
 # Playwright MCP test artifacts
 .playwright-mcp/
+
+# citadel runtime artifacts (never committed)
+.citadel_run.lock
+.citadel_resume/
+.citadel_transcripts/
+.citadel_pdftext/

@@ -51,12 +51,38 @@ Row format:
 
 | id | first seen | corpus | guarantee | lane | defect + route | status |
 |----|------------|--------|-----------|------|----------------|--------|
+| VCB-005 | 2026-07-29 | kelvarra | complete enumeration of catalog entries | wiki-generation | An enumerable source's tail was compressed instead of captured: `organizations/instrument-works.md` presses 5 "Sundries" products (survey chains, thermometers, sounding leads, tide-pole, rain gauge) into ONE footnote `[^s9]` with no per-entry attributes and no per-entry retrievability — the granularity floor + essence-not-structure rules actively demanded it. Route: the `Registry` page kind — `genres/registry.md`, the `Registry` type row + `## Registries` contract in `schema.md`, floor/essence carve-outs in `core.md`, `okf.folder_for_type`, registry-aware curate length guidance. | fixed (PR #134 — capability verified by the werkhof Mode A run below; the kelvarra showcase itself keeps its pre-registry wiki until its next rebuild, so its catalogue page still shows the old compression) |
 
 ## Runs
 
 *(Newest first. One `### <date> <corpus>` sub-block per grading run — mode, model, `rules_version`,
 verdict, and the `VCB-` ids the run touched, or `misses: none`. This `## Runs` heading stays
 singular; runs nest under it.)*
+
+### 2026-07-29 werkhof (first run — the registry corpus, grading PR #134's Registry feature)
+
+- **Mode:** Mode A into the corpus workspace itself (`CITADEL_WORKSPACE=corpora/werkhof`), building
+  the committed showcase; full answer-key walk of `werkhof/ground-truth.md` afterwards,
+  retrieval-first.
+- **Model:** `claude:claude-sonnet-5` (`CITADEL_INGEST_MODEL=sonnet`) · **rules_version:**
+  `ed2320969640` · serial (`--jobs 1`) · 4 sources, 8 sessions (each first `--bare` attempt hit the
+  container's auth-in-user-settings shape and retried without hermetic isolation — the shipped
+  hermetic-auth fallback working as designed) · $4.14 recorded.
+- **Result:** `check` exit 0, `lint` exit 0 (advisories: 2 undefined abbreviations HX/PV). All three
+  collections came out as `type: Registry` pages under `registries/` with **28/28 machines, 20/20
+  fault codes, 15/15 customers** as rows, one `[^sN]` per row (`lines A-B` block locators on the
+  machine register, `line N` per code/CSV row; locator issues 0, so every one offline-verifies). The
+  register's stated "all 28" total is cited in the scope line. **Promotion** worked unprompted:
+  PV-014 and HX-201 → `objects/`, Nordwerk (K-007) → `organizations/`, each registry row reduced to
+  key + link + gloss; register-only machines stayed rows (no stub pages). The HX-201 register-vs-report
+  status supersession landed as a dated trace; E-142 vs E-412 and HX-201 vs HX-210 never conflated;
+  E-155's deprecation hand-over survives as a row; Petersen/Albers stay attributed; the report's three
+  done-able items landed as `## Open Points` threads (3 points in the generated catalog), not registry
+  rows; the CSV was treated as data (0 `[^llm]` pages). Retrieval: mid-list keys `KP-011`, `E-420`,
+  `K-009` each surface their registry page as the top hit.
+- **Verdict:** PASS on every guarantee — the Registry rules produce complete, per-row-cited,
+  retrievable registries with correct promotion on the first try. **VCB-005** recorded and moved to
+  § Resolved on this evidence. `misses: none`.
 
 ### 2026-07-25 beverages + a purpose-built overlap corpus
 
