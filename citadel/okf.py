@@ -174,6 +174,7 @@ def folder_for_type(type_: str) -> str:
     | ``Organization`` | ``organizations`` |
     | ``Project``      | ``projects``      |
     | ``Abbreviation`` | ``abbreviations`` |
+    | ``Registry``     | ``registries``    |
     | ``Entity`` (legacy) | ``entities``   |
     | anything else    | ``misc``          |
 
@@ -181,10 +182,13 @@ def folder_for_type(type_: str) -> str:
     route without guessing (the "can you touch it?" test: a physical/engineered thing — a part,
     product, material, or device — is an ``Object``; a principle/method/topic is a ``Concept``; an
     external software system/service a source connects to — DB, API, queue, library — is a
-    ``System``). ``Person``/``Organization``/``Project`` replace the old overloaded ``Entity``
-    ("person, org, project, tool"). ``Entity`` is still routed to ``entities`` as a tolerated
-    **legacy alias** so old pages keep working, but it should no longer be produced. The British
-    spelling ``Organisation`` is accepted as an alias of ``Organization``."""
+    ``System``). ``Registry`` is a complete enumeration of like entries captured row-by-row from
+    a source (a machine inventory, an error-code catalog, a customer roster — see
+    ``rules/genres/registry.md``). ``Person``/``Organization``/``Project`` replace the old
+    overloaded ``Entity`` ("person, org, project, tool"). ``Entity`` is still routed to
+    ``entities`` as a tolerated **legacy alias** so old pages keep working, but it should no
+    longer be produced. The British spelling ``Organisation`` is accepted as an alias of
+    ``Organization``."""
     normalized = (type_ or "").strip().lower()
     return {
         "concept": "concepts",
@@ -195,6 +199,7 @@ def folder_for_type(type_: str) -> str:
         "organisation": "organizations",  # British spelling — same folder
         "project": "projects",
         "abbreviation": "abbreviations",
+        "registry": "registries",
         "entity": "entities",  # legacy alias — superseded by object/person/organization/project
     }.get(normalized, "misc")
 

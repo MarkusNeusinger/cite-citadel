@@ -8,7 +8,7 @@ files changes how the wiki is built — **with no code change**; treat them as p
 
 | File | Purpose | Consumed by |
 | ---- | ------- | ----------- |
-| `schema.md` | The format contract: OKF frontmatter, folder routing, citation grammar + locators, grounding/quality contract, contradictions, links, tags, abbreviations, wiki language, opinions & style | every session |
+| `schema.md` | The format contract: OKF frontmatter, folder routing, citation grammar + locators, grounding/quality contract, contradictions, links, tags, abbreviations, registries, wiki language, opinions & style | every session |
 | `core.md` | Generic behavior: paths-verbatim, workflow, path-as-context, code essence, genre selection, restructuring, off-limits, self-check | every session |
 | `tasks/ingest.md` | Fold a NEW source in; segmented large-source passes | kinds `ingest`, `image`, `audio`, `pdf`, `repo` |
 | `tasks/reconcile.md` | Re-fold a CHANGED (or force-re-read) source: update/remove stale facts, re-check locators, keep genre treatment | kinds `reconcile`, `image-reconcile`, `audio-reconcile`, `pdf-reconcile`, `repo-reconcile` |
@@ -29,6 +29,7 @@ files changes how the wiki is built — **with no code change**; treat them as p
 | `genres/chat.md` | Workplace-chat exports: timestamped attribution, decisions reverse in-thread (live fact = end state), terse decisions still count, banter stays out | agent judgment |
 | `genres/transcript.md` | Multi-speaker spoken word: per-speaker attribution, unlabeled speakers stay roles, no invented precision | agent judgment |
 | `genres/cv.md` | CVs/applications: everything is self-reported and attributed, claims vs corroborating evidence | agent judgment |
+| `genres/registry.md` | Enumerable-entry sources (inventories, catalogs, rosters, code lists): one `Registry` page per collection, one cited row per entry, complete — promotion past the granularity floor | agent judgment |
 
 The two axes are decided by two different parties: a **format** is structurally detectable, so
 the *code* selects the format brief (repo markers, image/Office/audio extensions, PDF); a **genre** is

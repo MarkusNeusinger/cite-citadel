@@ -24,6 +24,20 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`Registry` pages — enumerable sources are captured completely.** A source that is (or
+  contains) a uniform enumeration of like entries — a machine/asset inventory, an error-code
+  catalog, a customer roster, a product/price list — now folds into ONE `type: Registry` page
+  (new folder `wiki/registries/`): one cited row per entry with the finest available locator,
+  instead of a representative subset with the tail compressed into a single footnote. The
+  granularity floor is unchanged — an entry earns its own page (of its own kind) only once it
+  carries several independent cited facts, and its registry row becomes a link + one-line gloss.
+  The behavior lives in the rules tree (new `genres/registry.md` brief, a `Registry` row +
+  decision-procedure step + `## Registries` contract in `schema.md`, floor/essence carve-outs in
+  `core.md`); code-side the type is routed by `okf.folder_for_type`, and curate's over-length
+  guidance is now type-aware — an oversized registry splits by entry range/subclass into sibling
+  registries, never along topics. Known limit: a list source over `CITADEL_MAX_SOURCE_CHARS`
+  (~300k chars) is chunked through segment files whose line numbers rebase, so per-row
+  `lines A-B` locators of such oversized lists are not offline-verifiable yet.
 - **The model a source was imported with is now the model that actually ran.** Each backend's own
   session envelope is parsed for the serving model — claude's `modelUsage` map (the PRIMARY entry
   by token volume, so the small model claude routes side work to never wins), copilot's JSONL

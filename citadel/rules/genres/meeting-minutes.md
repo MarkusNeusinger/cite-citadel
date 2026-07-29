@@ -15,7 +15,8 @@ open", "now resolved", "closed") **or** its **semantics** say so even without th
 unstructured note that names an owner and an unresolved action — "Ana will look at the DB, aiming
 for next sprint"). It is **not** a tracking artifact when its items are **standing/recurring** —
 a runbook, checklist, policy, or reference table. Test: *can this item reach a terminal "done"
-state?* If items are perennial, ingest as ordinary facts, no thread.
+state?* If items are perennial, no thread: ingest as ordinary facts — and when they form a
+uniform enumeration of like entries, as a registry (`genres/registry.md`).
 
 ## Fan-out stays mandatory; the thread is an additive overlay
 

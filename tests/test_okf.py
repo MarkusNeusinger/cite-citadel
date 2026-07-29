@@ -175,11 +175,17 @@ def test_default_rel_path_routing():
         okf.default_rel_path("Abbreviation", "TDS — Total Dissolved Solids")
         == "abbreviations/tds-total-dissolved-solids.md"
     )
+    # Registry routes to its own folder — the complete-enumeration page kind.
+    assert (
+        okf.default_rel_path("Registry", "Machine Registry — Aldervik Plant")
+        == "registries/machine-registry-aldervik-plant.md"
+    )
     # Case-insensitive on the known types; British 'Organisation' aliases to organizations/.
     assert okf.default_rel_path("concept", "X") == "concepts/x.md"
     assert okf.default_rel_path("object", "Y") == "objects/y.md"
     assert okf.default_rel_path("organisation", "Z") == "organizations/z.md"
     assert okf.default_rel_path("abbreviation", "API") == "abbreviations/api.md"
+    assert okf.default_rel_path("registry", "Error Codes") == "registries/error-codes.md"
     # Entity is kept as a tolerated legacy alias so old pages keep working.
     assert okf.default_rel_path("Entity", "Legacy Thing") == "entities/legacy-thing.md"
     assert okf.default_rel_path("ENTITY", "Y") == "entities/y.md"

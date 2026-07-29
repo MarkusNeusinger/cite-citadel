@@ -1,0 +1,60 @@
+{
+  "meta": {
+    "format": 2,
+    "workspace": ""
+  },
+  "sources": {
+    "raw/kundenliste.csv": {
+      "cost_usd": 1.0117,
+      "ctime_ns": 1785312324129361292,
+      "hashed_at_ns": 1785312324133361292,
+      "ingested_at": "2026-07-29T08:10:03Z",
+      "model": "claude:claude-sonnet-5",
+      "mtime_ns": 1785312324125361292,
+      "rules_version": "ed2320969640",
+      "sha256": "54093573ced734d7ae4b0cb7539fca5644fac4631a744062e02d5d9f1747bf39",
+      "size": 746,
+      "tokens_in": 1054855,
+      "tokens_out": 11284
+    },
+    "raw/maschinenbestand-2026.md": {
+      "cost_usd": 0.7945,
+      "ctime_ns": 1785312305313361722,
+      "hashed_at_ns": 1785312305317361722,
+      "ingested_at": "2026-07-29T08:12:20Z",
+      "model": "claude:claude-sonnet-5",
+      "mtime_ns": 1785312305309361722,
+      "rules_version": "ed2320969640",
+      "sha256": "bff7ac7d9b279438ca065c271ec1842b67c8d90f1f5ee421909d4c156036ff3b",
+      "size": 4834,
+      "tokens_in": 565729,
+      "tokens_out": 16732
+    },
+    "raw/stoercode-katalog.md": {
+      "cost_usd": 0.671,
+      "ctime_ns": 1785312318981361410,
+      "hashed_at_ns": 1785312318985361409,
+      "ingested_at": "2026-07-29T08:13:39Z",
+      "model": "claude:claude-sonnet-5",
+      "mtime_ns": 1785312318969361410,
+      "rules_version": "ed2320969640",
+      "sha256": "1fddda30c79bd2631bac8cefdbb0a611018d9d89094058cad4a94d19ca2dd278",
+      "size": 2329,
+      "tokens_in": 715902,
+      "tokens_out": 8200
+    },
+    "raw/wartungsbericht-2026-06.md": {
+      "cost_usd": 1.6673,
+      "ctime_ns": 1785312334053361065,
+      "hashed_at_ns": 1785312334061361065,
+      "ingested_at": "2026-07-29T08:19:41Z",
+      "model": "claude:claude-sonnet-5",
+      "mtime_ns": 1785312334049361065,
+      "rules_version": "ed2320969640",
+      "sha256": "95028c045c97cecd6cbd5a86cae5ebe01318a2c6cac5009b49ef3dc09ffaf7fd",
+      "size": 2265,
+      "tokens_in": 1878809,
+      "tokens_out": 35024
+    }
+  }
+}

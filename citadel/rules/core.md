@@ -74,6 +74,9 @@ component, or type.
 - **Litmus test:** *would this still be true and useful if the code were rewritten in another
   language or framework?* If yes, capture it. If it only describes how this particular file is
   structured, skip it.
+- **Data rows are not code structure.** A machine list, price table, or code catalog *inside* a
+  data file is CONTENT, captured row-by-row (`genres/registry.md`) — the essence rule strips a
+  program's scaffolding, never a dataset's entries.
 
 A code "fact" is a faithful description of intent or behavior **derived from and cited to the
 file** — a slightly more interpretive mode than restating a prose sentence, but the grounding
@@ -103,6 +106,9 @@ when needed:
   cultivar, a product variant, a sub-process. A named entity earns its own page only when it
   carries **several independent cited facts**; until then, fold it into its parent concept page
   as a linkable section. Prefer fewer dense, well-cross-linked pages over many thin stubs.
+  The floor limits **pages, not rows**: like entries enumerated by a source (an inventory,
+  catalog, roster, or code list) are captured **completely** — one cited row each — on a
+  `Registry` page (`genres/registry.md`); an entry still earns its own page only past the floor.
 - **Split** a page that has grown too large or mixes unrelated topics: write the focused new
   files carrying the moved facts **with their `[^sN]` citations**, then delete the original.
 - **Merge** two pages on the same topic: write the survivor with the full merged body (citations

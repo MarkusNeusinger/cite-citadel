@@ -85,8 +85,8 @@ authoritative rules, which the ingest agent reads — referenced by path — eve
 1. **`raw/`** — immutable sources; ingest reads but never edits them.
 2. **`wiki/`** — the LLM-owned OKF bundle: markdown pages with YAML frontmatter, routed **by kind**
    into `concepts/`, `objects/`, `systems/`, `persons/`, `organizations/`, `projects/`,
-   `abbreviations/`, `misc/`, densely cross-linked, each fact carrying a citation. The reserved
-   `index.md`, `log.md`, and `sources/index.md` are generated, not authored.
+   `abbreviations/`, `registries/`, `misc/`, densely cross-linked, each fact carrying a citation.
+   The reserved `index.md`, `log.md`, and `sources/index.md` are generated, not authored.
 3. **[`citadel/rules/`](https://github.com/MarkusNeusinger/cite-citadel/blob/main/citadel/rules/README.md)** — the schema/rules layer: `schema.md` (the
    format contract) + `core.md` (agent behavior) + per-lifecycle `tasks/`, per-file-type
    `formats/`, and agent-judged `genres/` briefs. Editing them changes how the wiki is built with

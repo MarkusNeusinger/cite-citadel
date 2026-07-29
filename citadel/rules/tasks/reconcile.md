@@ -22,10 +22,10 @@ next to the new one:
 - **Re-check this source's locators** (`schema.md` § Locators): its page/line/heading locators
   must still point at the right place in the current file.
 - **Keep the existing genre treatment.** The wiki shows how this source was treated at first
-  ingest — existing `## Open Points` threads, `## Change Log` sections, style-profile sections.
-  Keep maintaining that treatment (per the matching genre briefs) instead of reclassifying the
-  source and churning its pages. Dated thread bullets are **append-only history — a reconcile
-  never rewrites or deletes one**; a correction is a new dated bullet
+  ingest — existing `## Open Points` threads, `## Change Log` sections, registry row lists,
+  style-profile sections. Keep maintaining that treatment (per the matching genre briefs) instead
+  of reclassifying the source and churning its pages. Dated thread bullets are **append-only
+  history — a reconcile never rewrites or deletes one**; a correction is a new dated bullet
   (`genres/meeting-minutes.md`).
 
 ## Segmented reconcile — you see only PART of the source
