@@ -1,0 +1,16 @@
+id,name,city,contract,customer_since
+K-001,Stahlbau Greven GmbH,Aldervik,frame,2012
+K-002,Hafenbetrieb Larsen,Aldervik,on-call,2015
+K-003,Molkerei Nordkap eG,Tondern,frame,2013
+K-004,Brauerei Feldschloss,Aldervik,on-call,2018
+K-005,Papierwerk Ussel,Ussel,frame,2011
+K-006,Getriebebau Söllner,Aldervik,on-call,2019
+K-007,Nordwerk Maschinenbau GmbH,Wischhafen,frame,2014
+K-008,Baustoffe Quist & Co.,Aldervik,on-call,2016
+K-009,Tiefkühl-Logistik Frost,Tondern,frame,2017
+K-010,Werft Sanddorn,Aldervik,frame,2010
+K-011,Recycling Nordost,Wischhafen,on-call,2021
+K-012,Chemiepark Ellingen,Ellingen,frame,2015
+K-013,Futtermittel Hansen,Tondern,on-call,2022
+K-014,Kieswerk Brammer,Aldervik,on-call,2020
+K-015,Textilveredlung Marquardt,Ussel,frame,2013

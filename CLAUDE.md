@@ -85,7 +85,7 @@ Python 3.12+ is required. There is no separate build step — `pytest` and `ruff
 
 ## Test corpora
 
-Nine synthetic corpora live under `corpora/` (`corpora/<name>/{raw/, stages/?, README.md}`),
+Ten synthetic corpora live under `corpora/` (`corpora/<name>/{raw/, stages/?, README.md}`),
 runnable individually or together: **beverages** (the coffee+tea showcase), **kelvarra** (a
 coherent fictional world stated wrong about reality — graded that facts appear as stated, cited,
 never corrected), **leuchtfeuer** (a 3-year programme ingested in dated `stages/` waves that
@@ -102,7 +102,7 @@ chat export, a tweet thread, an interview, a job application, a forum thread, an
 grading attribution, "X said Y" ≠ "Y is true", in-thread reversal, and CV timelines), **gazette**
 (five PDF/markdown sources whose stdlib-generated PDFs grade `CITADEL_PDF_MODE` text-vs-images — a
 figure-only number and an image-only page absent in text mode, present in images mode — plus the
-academic-publications genre and references-are-not-sources), and **kontor** (binary Office documents — OOXML `.pptx`/`.docx`/`.xlsx` and legacy OLE `.doc`/`.ppt`/`.xls`, generated stdlib-only via `make_office.py` — the sole test of the Office text-extraction path (`extract.py` + `extract_ole.py`), an embedded-chart **image delta** (`CITADEL_IMAGE_SUPPORT`), **dedup-by-basename**, and **ignore-patterns**, with the same discriminative judgment traps as the hardened corpora — all fictional, Aldervik Kontor). **Each corpus carries its own committed,
+academic-publications genre and references-are-not-sources), and **kontor** (binary Office documents — OOXML `.pptx`/`.docx`/`.xlsx` and legacy OLE `.doc`/`.ppt`/`.xls`, generated stdlib-only via `make_office.py` — the sole test of the Office text-extraction path (`extract.py` + `extract_ole.py`), an embedded-chart **image delta** (`CITADEL_IMAGE_SUPPORT`), **dedup-by-basename**, and **ignore-patterns**, with the same discriminative judgment traps as the hardened corpora — all fictional, Aldervik Kontor), and **werkhof** (uniform enumerable sources — a 28-machine register, a 20-code fault catalogue, a 15-customer CSV, plus a service report — grading `Registry`-page completeness (no entry compressed away), per-row citations with locators, promotion past the granularity floor, a dated status supersession, and near-miss key discipline — all fictional, Werkhof Anlagenservice Brandt). **Each corpus carries its own committed,
 graded showcase wiki** at `corpora/<name>/wiki/` (its own nested `citadel.toml` marker,
 `meta.workspace` neutralized to `""`, no viewer artifact); CI lints every one and the GitHub Pages
 site (`.github/workflows/pages.yml`) builds a **gallery** with one offline viewer per corpus. Each
@@ -124,7 +124,7 @@ gitignored developer workspace (the checkout's `citadel.toml` marker still makes
 Two `.claude/skills/` skills close the loop between a change and its proof:
 
 - **verify-corpus** (`verify-corpus
-  <beverages|kelvarra|leuchtfeuer|pemberley|injection-resistance|clockwork|flurfunk|gazette|kontor|all>
+  <beverages|kelvarra|leuchtfeuer|pemberley|injection-resistance|clockwork|flurfunk|gazette|kontor|werkhof|all>
   [--grade-only]`) — the end-to-end corpus grader: ingests a corpus into a throwaway sandbox and
   grades the result against its hidden `ground-truth.md` by querying the wiki through citadel's own
   read tools like a user (retrieval-first), falling back to file greps only to tell a wiki-creation

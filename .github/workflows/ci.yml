@@ -81,8 +81,8 @@ jobs:
             [ -d "$d" ] || continue  # unmatched glob stays literal — skip it
             corpora+=("$(basename "$d")")
           done
-          if [ "${#corpora[@]}" -lt 9 ]; then
-            echo "::error::only ${#corpora[@]} corpora found under corpora/ — expected at least 9"
+          if [ "${#corpora[@]}" -lt 10 ]; then
+            echo "::error::only ${#corpora[@]} corpora found under corpora/ — expected at least 10"
             rc=1
           fi
           for c in ${corpora[@]+"${corpora[@]}"}; do
