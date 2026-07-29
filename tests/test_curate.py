@@ -180,6 +180,66 @@ def test_detector_flags_type_folder_mismatch_for_resort(tmp_citadel, seed_page):
     assert "resort" in _reasons_for(plan, "concepts/alice.md")
 
 
+def test_registry_type_routes_cleanly_for_resort(tmp_citadel, seed_page):
+    """`type: Registry` routes to `registries/` (okf.folder_for_type), so a registry page sitting
+    there is correctly sorted — while the same type mis-filed under `concepts/` is still planned
+    for a re-sort. Guards the type mapping landing together with the rules text: without it every
+    registry page would be flagged (and moved to misc/) each run."""
+    from citadel import curate
+
+    (tmp_citadel.raw / "inventory.md").write_text("machines\n", encoding="utf-8")
+    _seed_cited(
+        seed_page, "registries/machine-registry.md", "raw/inventory.md", type_="Registry", title="Machine registry"
+    )
+    _seed_cited(seed_page, "concepts/misfiled.md", "raw/inventory.md", type_="Registry", title="Misfiled")
+
+    plan = curate.build_plan()
+    assert "resort" not in _reasons_for(plan, "registries/machine-registry.md")
+    assert "resort" in _reasons_for(plan, "concepts/misfiled.md")
+
+
+def test_registry_length_guidance_splits_by_range_not_topic(tmp_citadel, seed_page):
+    """An over-threshold `Registry` page still trips page_length_hard, but its findings guidance
+    tells the agent to split by entry range/subclass into sibling registries — the generic
+    topic-split instruction would shred the rows across topic pages. A non-Registry page keeps
+    the generic guidance."""
+    from citadel import curate, store
+
+    (tmp_citadel.raw / "inventory.md").write_text("machines\n", encoding="utf-8")
+    rows = "".join(f"- **MX-{i:03d}** — machine {i}.[^s1]\n" for i in range(900))
+    seed_page(
+        "registries/machine-registry.md",
+        {
+            "type": "Registry",
+            "title": "Machine registry",
+            "description": "d",
+            "tags": ["t"],
+            "resource": "raw/inventory.md",
+        },
+        f"{rows}\n## Sources\n\n[^s1]: [raw/inventory.md](../../raw/inventory.md) - s\n",
+    )
+    long_body = "".join(f"Line {i} of a very long page.[^s1]\n\n" for i in range(900))
+    seed_page(
+        "concepts/huge.md",
+        {"type": "Concept", "title": "Huge", "description": "d", "tags": ["t"], "resource": "raw/inventory.md"},
+        f"{long_body}## Sources\n\n[^s1]: [raw/inventory.md](../../raw/inventory.md) - s\n",
+    )
+
+    plan = curate.build_plan()
+    pages = {p.rel_path: p for p in store.load()}
+    by_page = {item.page: item for item in plan.items}
+    assert "page_length_hard" in _reasons_for(plan, "registries/machine-registry.md")
+
+    registry_findings = curate._render_findings(
+        by_page["registries/machine-registry.md"], pages["registries/machine-registry.md"], {}
+    )
+    assert "entry range or subclass" in registry_findings
+    assert "Split it along its topics" not in registry_findings
+
+    concept_findings = curate._render_findings(by_page["concepts/huge.md"], pages["concepts/huge.md"], {})
+    assert "Split it along its topics" in concept_findings
+
+
 def test_reverify_candidates_are_prefiltered_to_sha_unchanged_sources(tmp_citadel, seed_page):
     """Fact re-verification is pre-filtered offline via manifest shas: a source whose bytes
     CHANGED is reconcile's job, a source that is GONE is delete's job — only sha-UNCHANGED tracked

@@ -165,9 +165,9 @@ recomputed from them in memory.
 **Three layers** (the README and `citadel/rules/schema.md` are authoritative):
 1. `raw/` — immutable sources the agent reads but never edits.
 2. `wiki/` — the LLM-owned OKF bundle: pages routed *by kind* into `concepts/`, `objects/`,
-   `systems/`, `persons/`, `organizations/`, `projects/`, `abbreviations/`, `misc/` (see
-   `okf.folder_for_type`), cross-linked with relative markdown links, each fact carrying a footnote
-   citation.
+   `systems/`, `persons/`, `organizations/`, `projects/`, `abbreviations/`, `registries/`, `misc/`
+   (see `okf.folder_for_type`), cross-linked with relative markdown links, each fact carrying a
+   footnote citation.
 3. `citadel/rules/` — the schema/rules tree, packaged with the wheel (index:
    `citadel/rules/README.md`):
    `schema.md` (format contract) + `core.md` (agent behavior) are read every session, plus one

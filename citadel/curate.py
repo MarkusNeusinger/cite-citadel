@@ -501,6 +501,22 @@ _REASON_GUIDANCE = {
     ),
 }
 
+_REGISTRY_LENGTH_GUIDANCE = (
+    "This Registry page is over the hard length threshold. Split it by entry range or subclass "
+    "into sibling `Registry` pages, the original becoming a short hub page linking the parts — "
+    "never a topic split, and never drop or compress entries: every row keeps its `[^sN]` marker "
+    "AND its `## Sources` definition (see `genres/registry.md`)."
+)
+
+
+def _reason_guidance(reason: str, page: Page) -> str:
+    """The per-reason instruction line for the findings checklist. A `Registry` page over the
+    length threshold must split by entry range into sibling registries — the generic topic-split
+    guidance would shred its rows across topic pages."""
+    if reason == REASON_PAGE_LENGTH and (page.type or "").strip().lower() == "registry":
+        return _REGISTRY_LENGTH_GUIDANCE
+    return _REASON_GUIDANCE.get(reason, "Review and repair per the rules.")
+
 
 def _render_findings(item: PlanItem, page: Page, inbound: dict[str, list[str]]) -> str:
     """The per-cluster findings checklist the agent reads BY PATH (never embedded in the prompt).
@@ -519,7 +535,7 @@ def _render_findings(item: PlanItem, page: Page, inbound: dict[str, list[str]]) 
         "## Detected issues (act on each ONLY where it genuinely holds against the sources)",
     ]
     for reason in item.reasons:
-        lines.append(f"- **{reason}** — {_REASON_GUIDANCE.get(reason, 'Review and repair per the rules.')}")
+        lines.append(f"- **{reason}** — {_reason_guidance(reason, page)}")
     lines += [
         "",
         "If the findings do not hold up against the pages and their cited raw files, make no edits "

@@ -34,6 +34,7 @@ does not**, so boundaries don't overlap.
 | `Organization` | `wiki/organizations/` | A specific, **named** company, institution, team, or group. (British spelling `Organisation` is accepted as an alias.) | A product it makes → `Object`/`System` |
 | `Project`      | `wiki/projects/`      | A specific, **named initiative/effort** with a goal and a lifecycle.                                        | The ongoing topic behind it → `Concept` |
 | `Abbreviation` | `wiki/abbreviations/` | A short form + its expansion (a glossary entry).                                                            | A full term with no acronym → `Concept` |
+| `Registry`     | `wiki/registries/`    | A **complete enumeration of like entries** captured row-by-row from one or more sources — a machine/asset inventory, product catalog, customer roster, error-code list. One page per collection, one cited row per entry (see `genres/registry.md`). | An entry with several independent cited facts → its own page of its kind, the row links to it; a to-do/action list → `## Open Points` (`genres/meeting-minutes.md`) |
 | anything else  | `wiki/misc/`          | A genuine leftover only: Note, Metric, Runbook, Event, Place. **Last resort, never a shortcut.**            | Anything that fits a row above |
 | `Entity` *(legacy)* | `wiki/entities/` | **Deprecated** — the old catch-all for "person, org, project, tool". Still routed so old pages keep working; do **not** produce it. Use `Object`/`Person`/`Organization`/`Project`/`System`. | — |
 
@@ -45,8 +46,9 @@ does not**, so boundaries don't overlap.
 4. A specific named initiative/effort with a goal and lifecycle? → **Project**
 5. An external software/IT system or service the source connects to or uses (DB, API, queue, SaaS, library)? → **System**
 6. A physical/engineered thing you could **touch** (product, assembly, component, part, material, device)? → **Object**
-7. A principle, method, phenomenon, or topic (not one specific named thing)? → **Concept**
-8. None of the above? → **misc**
+7. An enumerated collection of like entries captured row-by-row (an inventory, catalog, roster, code list)? → **Registry**
+8. A principle, method, phenomenon, or topic (not one specific named thing)? → **Concept**
+9. None of the above? → **misc**
 
 This split-by-kind is what fixes the old `Entity` overload: people, organizations, projects,
 software systems, and physical objects are five different shapes of page, and each has its own
@@ -305,6 +307,26 @@ each one self-documenting so **both** the short and long form are captured and a
   nothing defines it, do not guess** — leave the bare abbreviation in place; a wrong expansion is
   worse than a missing one. `citadel lint` lists abbreviations used across pages but never
   defined, so a human can fill the gaps.
+
+## Registries — enumerations captured completely
+
+A `Registry` page (routed to `wiki/registries/`) holds a **complete enumeration of like
+entries** — a machine inventory, an error-code catalog, a customer roster. The behavioral rules
+live in `genres/registry.md`; the format contract is:
+
+- The page opens with a **scope paragraph** stating what collection it covers and from which
+  source(s), cited — when the source states a total count, cite that too.
+- **One bullet = one entry = its own citation.** The bullet starts with the entry's **bold key**
+  (the source's own identifier verbatim — machine number, error code, customer ID — else the
+  name), then the entry's attributes: `- **HX-201** — heat exchanger, commissioned 1998.[^s2]`.
+- Each entry cites the **finest locator the format offers** (`lines A-B` for text; rows of one
+  spreadsheet sheet share that sheet's single `§ Sheet: X` marker — the sheet is the location —
+  with the covered keys named in the definition's free-text note).
+- An entry promoted to its own page (past the granularity floor, `core.md` § Restructuring)
+  keeps its row as **key + link + one-line gloss + its membership citation**; its facts live
+  only on the entry's page.
+- Title the page after the collection and its scope ("Machine registry — Aldervik plant") —
+  never a bare "Index" or "Catalog" (an *Index* title slugs to the reserved `index.md`).
 
 ## Wiki language
 
