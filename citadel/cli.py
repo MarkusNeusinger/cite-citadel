@@ -117,6 +117,15 @@ def build_parser() -> argparse.ArgumentParser:
         "happen by accident.",
     )
     p_ingest.add_argument(
+        "--retry",
+        action="store_true",
+        help="Retry everything stuck, without naming paths: re-run every FAILED source "
+        "(errored/timed-out/unreadable, from the failures catalog) that is still on disk, and "
+        "force-reconcile every ingested source that NO wiki page cites (it produced 0 entries — "
+        "the `NO PAGES` marker in `citadel status`). Prints the retry set first; refuses "
+        "explicit paths and --force (use those for a hand-picked re-read).",
+    )
+    p_ingest.add_argument(
         "--jobs",
         "-j",
         type=int,
@@ -413,12 +422,27 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     agent session per source, so forcing the ENTIRE corpus must never happen by accident — the
     flag alone is refused with exit 2, before ``ingest.ingest`` is ever called.
 
+    ``--retry`` is the no-typing complement: it computes its own bounded set —
+    ``ingest.retry_candidates()``, the failed sources still on disk plus the ingested ones no
+    wiki page cites — prints it, and runs those as a FORCED re-read. It therefore refuses
+    explicit paths and ``--force`` (exit 2): the point of the flag is that citadel picks the
+    set, and combining the two would blur which one wins. Nothing to retry is a clean exit 0.
+
     ``--jobs N`` is a usage error below 1 (exit 2, like ``--force`` without paths) rather than an
     exception out of the API layer; omitted, the run takes ``CITADEL_JOBS`` (default 1, serial)."""
     from . import config, ingest
 
     if args.jobs is not None and args.jobs < 1:
         print(f"error: --jobs must be at least 1 (got {args.jobs}); 1 means the serial default.", file=sys.stderr)
+        return 2
+
+    if args.retry and (args.paths or args.force):
+        print(
+            "error: --retry computes its own retry set (every failed source plus every ingested "
+            "source no wiki page cites) — combine no paths and no --force with it; use "
+            "`citadel ingest --force <paths>` for a hand-picked re-read instead.",
+            file=sys.stderr,
+        )
         return 2
 
     if args.force and not args.paths:
@@ -428,6 +452,24 @@ def cmd_ingest(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+
+    paths = args.paths or None
+    force = args.force
+    if args.retry:
+        failed, uncited = ingest.retry_candidates()
+        if not failed and not uncited:
+            print("Nothing to retry: no failed sources and every ingested source is cited by at least one page.")
+            return 0
+        if failed:
+            print(f"Retrying {len(failed)} failed source(s):")
+            for key in failed:
+                print(f"  - {config.display_key(key)}")
+        if uncited:
+            print(f"Force-reconciling {len(uncited)} ingested source(s) that no wiki page cites:")
+            for key in uncited:
+                print(f"  - {config.display_key(key)}")
+        paths = [str(config.source_path_for_key(key)) for key in failed + uncited]
+        force = True
 
     if args.verbose:
         config.LLM_VERBOSE = True
@@ -444,9 +486,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         # CITADEL_LLM_VERBOSE — not just the --verbose flag — also drops the spinner that would
         # otherwise clobber the streamed transcript.
         progress = ConsoleProgress(spinner=not config.LLM_VERBOSE)
-    report = ingest.ingest(
-        args.paths or None, progress=progress, full_rescan=args.full_rescan, force=args.force, jobs=args.jobs
-    )
+    report = ingest.ingest(paths, progress=progress, full_rescan=args.full_rescan, force=force, jobs=args.jobs)
     print(report.render())
     # Non-zero on a per-source error OR a structural problem left behind (a broken
     # cross-link the agent introduced) — so ingest gates the wiki's integrity in CI.

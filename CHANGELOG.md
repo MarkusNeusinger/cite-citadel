@@ -24,6 +24,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Zero-page and failed sources are visible — and retryable with one command.** A brand-new
+  source whose session "succeeds" with zero page changes used to be marked done and never looked
+  at again, indistinguishable from a healthy ingest. Now: the run report carries a WARNING section
+  (`IngestReport.no_pages`) plus a `log.md` line for each such source, the live progress renders
+  its `no changes` verdict in yellow, and `citadel status` marks every ingested source that NO
+  wiki page cites with `NO PAGES (nothing cites this source)` (also `"uncited"` in `--json`),
+  ending with a retry hint whenever anything is stuck. The new **`citadel ingest --retry`**
+  re-runs the whole stuck set without naming paths: every failed source still on disk (errored /
+  timed-out / unreadable — deliberate `duplicate` skips excluded) plus every ingested-but-uncited
+  source as a forced reconcile. It prints the computed set first, refuses `--force`/explicit
+  paths, and exits 0 cleanly when there is nothing to retry. The failed-run report also points at
+  the retry lane from its Errors section.
 - **`citadel doctor` warns when `CITADEL_INGEST_MODEL` shadows `COPILOT_MODEL`.** The copilot
   backend also reads its own `COPILOT_MODEL` env var, and the `--model` flag citadel passes
   overrides it. A user who points copilot at a BYOK provider (`COPILOT_PROVIDER_BASE_URL`, a

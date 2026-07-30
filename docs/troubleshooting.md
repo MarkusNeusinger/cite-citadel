@@ -109,7 +109,10 @@ CLI (see [configuration — Audio/video sources](configuration.md#audiovideo-sou
 
 - Run `citadel status` — the read-only per-source state table shows exactly what happened to each
   file: ingested, failed, skipped-duplicate, ignored (matched `CITADEL_IGNORE_PATTERNS`), oversized
-  (over `CITADEL_MAX_SOURCE_BYTES`), or pending.
+  (over `CITADEL_MAX_SOURCE_BYTES`), or pending. An ingested source that produced **zero entries**
+  (no wiki page cites it) is marked `NO PAGES`.
+- `citadel ingest --retry` re-runs everything stuck in one go: every failed source still on disk
+  plus every `NO PAGES` source (as a forced reconcile). No paths needed — it prints the set first.
 - Already-ingested sources are skipped by sha match — that's not a bug. To deliberately re-read one,
   use `citadel ingest --force <paths>`.
 - Watch a run live with `citadel ingest --verbose` (`-v`), or capture a full transcript per source

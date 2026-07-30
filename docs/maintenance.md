@@ -92,11 +92,32 @@ last verified it, the ordering `citadel refresh` works through — and what that
 cost when the backend reported it, e.g. `$0.05`), **failed** (with the reason and attempt
 count), **skipped-duplicate**, **ignored** (which pattern matched), **oversized** (past the
 `CITADEL_MAX_SOURCE_BYTES` discovery ceiling, with the size that explains it), or **pending** (not
-yet ingested — the next `citadel ingest` will pick it up). A `Recorded LLM cost` line above the table
+yet ingested — the next `citadel ingest` will pick it up). An ingested source that **no wiki page
+cites** — a session ran and was paid for, yet it produced zero entries — is marked
+`NO PAGES (nothing cites this source)` (`"uncited": true` in `--json`); the same condition is
+flagged at ingest time as a `WARNING — ingested but produced NO wiki changes` section on the run
+report and a yellow `no changes` verdict in the live progress. A `Recorded LLM cost` line above the table
 totals the per-source stamps (the maintenance-cost snapshot of the current corpus; `--json`
 carries it as `cost_usd_total`). It never runs an agent and never re-hashes
 sources, so it is always cheap to run. An MCP client gets the same table via the read-only
 `wiki_status` tool (see [mcp.md](mcp.md)).
+
+## Retry
+
+Everything stuck is retryable with one command:
+
+```bash
+citadel ingest --retry
+```
+
+It computes its own bounded set and prints it before running: every **failed** source still on
+disk (errored / timed-out / unreadable — a deliberate same-basename `duplicate` skip stays
+skipped), plus every **ingested source no wiki page cites** (the `NO PAGES` rows above), re-read
+as forced reconciles. Failed sources are also retried automatically on every normal `citadel
+ingest` run — `--retry` is how you retry them *now*, together with the zero-page sources that a
+normal run would never revisit (they are marked done in the manifest). It refuses explicit paths
+and `--force` (use `citadel ingest --force <paths>` for a hand-picked re-read) and exits 0 with
+`Nothing to retry` when the corpus is healthy.
 
 ## Rules
 

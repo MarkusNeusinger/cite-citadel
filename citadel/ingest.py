@@ -125,6 +125,12 @@ class IngestReport:
     # segment 1 ("raw/book.txt (segments 1-3 of 7 restored)") — see citadel/resume.py. Recorded
     # whether or not the resumed source then succeeded: the earlier work was reused either way.
     resumed: list[str] = field(default_factory=list)
+    # rel-keys of FRESH sources (a plain ingest — not a reconcile, not a delete cleanup) whose
+    # session succeeded but changed NOTHING: no page created, updated, or deleted. Suspicious by
+    # construction — a brand-new source that contributes zero facts is usually a session that
+    # under-delivered, yet it is marked done and never revisited on its own. Surfaced as a WARNING
+    # so it is easy to spot and retry (`citadel ingest --retry`, or `--force <path>`).
+    no_pages: list[str] = field(default_factory=list)
     # The wiki-history note from wikigit.autocommit ("wiki git: committed <sha>", or a warning
     # naming what was skipped and why) — empty when the history layer had nothing to say.
     wiki_git: str = ""
@@ -198,12 +204,23 @@ class IngestReport:
         if self.skipped:
             lines.append("Skipped (already ingested):")
             lines.extend(f"  - {p}" for p in self.skipped)
+        if self.no_pages:
+            lines.append("WARNING — ingested but produced NO wiki changes (no page created, updated, or deleted):")
+            lines.extend(f"  - {p}" for p in self.no_pages)
+            lines.append(
+                "  These sources are marked done and will not be revisited automatically. "
+                "Retry them with `citadel ingest --retry` (or `citadel ingest --force <path>`)."
+            )
         if self.broken_links:
             lines.append("WARNING — broken cross-links (run `citadel lint`):")
             lines.extend(f"  - {src} -> {tgt}" for src, tgt in self.broken_links)
         if self.errors:
             lines.append("Errors:")
             lines.extend(f"  - {e}" for e in self.errors)
+            lines.append(
+                "  Failed sources stay in the failures catalog (`citadel status` lists them) and are "
+                "retried on the next run — or right away with `citadel ingest --retry`."
+            )
         if self.wiki_git:
             lines.append(self.wiki_git)
         return "\n".join(lines)
@@ -2030,6 +2047,11 @@ class _SourceJob:
       asserts no reference survived and may legitimately empty the wiki).
     - ``sha_stat``: the (sha256, stat) discovery already took for the source, threaded into the
       failures catalog so an unchanged stuck source joins the stat quick check.
+    - ``warn_no_pages``: True for a FRESH source (a plain ingest of a new key, file or repo) —
+      a successful session that then changed NOTHING lands on ``report.no_pages`` as a warning.
+      Deliberately False for reconciles (an unchanged verdict is a legitimate outcome of
+      re-reading a source, and ``citadel refresh`` would otherwise flag its whole slice) and for
+      delete cleanups (empty means nothing cited the source — the expected case).
     """
 
     key: str
@@ -2039,6 +2061,7 @@ class _SourceJob:
     extra_check: Callable[[], list[str]] | None = None
     allow_emptying: bool = False
     sha_stat: tuple[str | None, os.stat_result | None] = (None, None)
+    warn_no_pages: bool = False
 
 
 @dataclass
@@ -2160,6 +2183,10 @@ def _record_source_run(run: _JobRun, emit, report: IngestReport, failures_dict, 
     report.pages_updated.extend(outcome.updated)
     report.pages_written.extend(outcome.created + outcome.updated)
     report.pages_deleted.extend(outcome.deleted)
+    if job.warn_no_pages and not (outcome.created or outcome.updated or outcome.deleted):
+        # A fresh source folded in with zero page changes: marked done below, so without this
+        # warning it would silently never contribute anything (see IngestReport.no_pages).
+        report.no_pages.append(job.key)
     # The manifest stamp covers every session whose work this promote landed — this run's plus
     # whatever an earlier run already paid for the segments a checkpoint restored — while
     # ``report.usage`` above stays strictly this run's spend, so nothing is double-counted
@@ -2511,6 +2538,48 @@ def _pending_session(
     if segment is not None:
         return llm.run_ingest_session(rel_key, kind=kind, segment=segment)
     return llm.run_ingest_session(rel_key, kind=kind)
+
+
+def retry_candidates() -> tuple[list[str], list[str]]:
+    """The source keys ``citadel ingest --retry`` re-runs, as ``(failed, uncited)``.
+
+    - ``failed``: every source in the failures catalog that is still on disk — errored / timed-out
+      / unreadable records alike (an unchanged unreadable file is re-evaluated for free, and a
+      fixed one — hydrated placeholder, re-exported document — now ingests). Deliberate skips
+      stay skipped: a same-basename ``duplicate`` record is a decision, not a failure, and a
+      ``curate`` record is keyed by a PAGE, not a source (``citadel curate --retry`` owns those).
+    - ``uncited``: every INGESTED source that no wiki page cites (the same
+      ``store.citing_pages_map`` verdict as the ``Referenced by`` column of
+      ``wiki/sources/index.md``, and ``citadel status``'s ``NO PAGES`` marker) — a session was
+      paid for, the source is marked done, and yet nothing in the wiki carries its facts. These
+      are re-run as FORCED reconciles.
+
+    Both lists are sorted and disjoint (a key can only be in one catalog); vanished files are
+    excluded — a retry cannot read what is not there (a vanished INGESTED source is the deletion
+    sweep's job, not a retry's). Read-only: computing candidates changes nothing. Best-effort
+    like ``status``'s marker: a wiki that cannot be traversed degrades to an empty ``uncited``
+    list instead of taking the recovery command down — the failed sources are still retried,
+    which is exactly the situation ``--retry`` exists for."""
+    failed: list[str] = []
+    for key, entry in sorted(failures.load().items()):
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("reason") in (failures.DUPLICATE, failures.CURATE):
+            continue
+        if config.source_path_for_key(key).exists():
+            failed.append(key)
+    manifest_dict = manifest.load()
+    uncited: list[str] = []
+    if manifest_dict:
+        try:
+            refs = store.citing_pages_map(list(manifest_dict))
+        except Exception:  # noqa: BLE001 - recovery must degrade, never crash on a broken wiki
+            refs = None
+        if refs is not None:
+            uncited = [
+                key for key in sorted(manifest_dict) if not refs.get(key) and config.source_path_for_key(key).exists()
+            ]
+    return failed, uncited
 
 
 @pagecache.bypass
@@ -3025,6 +3094,9 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             on_success=done,
             prepare_error="prepare audio transcript" if is_audio else "write source text",
             sha_stat=sha_stat,
+            # A brand-new key (not a reconcile of changed/forced bytes) that produces zero page
+            # changes is worth a warning — see _SourceJob.warn_no_pages.
+            warn_no_pages=rel_key not in changed_keys,
         )
 
     # Repo sources: each git repository under raw/ is folded in by ONE session reading a
@@ -3065,7 +3137,13 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             manifest.save(manifest_dict)
             report.processed.append(rjob.key)
 
-        return _SourceJob(key=rjob.key, build_sessions=build, on_success=done, prepare_error="build digest")
+        return _SourceJob(
+            key=rjob.key,
+            build_sessions=build,
+            on_success=done,
+            prepare_error="build digest",
+            warn_no_pages=rjob.kind == "repo",  # a fresh repo digest yielding nothing is suspicious
+        )
 
     # Deleted sources: a tracked source vanished from disk (full run only). If any page still
     # cites it, run a `kind="delete"` cleanup session that strips that provenance, gated by a
@@ -3161,6 +3239,12 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
                 f"ingest {report.processed} -> {len(report.pages_created)} created, "
                 f"{len(report.pages_updated)} updated, {len(report.pages_deleted)} deleted "
                 f"(model: {model})"
+            )
+        for key in report.no_pages:
+            store.append_log(
+                f"ingested {key} but the session produced no wiki changes (no page created, "
+                f"updated, or deleted); retry with `citadel ingest --retry` or "
+                f"`citadel ingest --force {key}`"
             )
         for old_key, new_key in report.moved:
             store.append_log(
