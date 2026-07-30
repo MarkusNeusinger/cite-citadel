@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from citadel import config, failures, ingest, llm, manifest, okf, resume, runlock, store
+from citadel import config, failures, ingest, ingest_sessions, llm, manifest, okf, resume, runlock, store
 
 
 def _paras(n: int) -> str:
@@ -157,7 +157,7 @@ def test_promote_failure_after_the_last_segment_resumes_with_no_sessions(
             raise OSError("share went away mid-promote")
         return real_promote(staging, live, **kwargs)
 
-    monkeypatch.setattr(ingest, "_promote", boom)
+    monkeypatch.setattr(ingest_sessions, "_promote", boom)
     fake_agent(side_effect=fake)
     assert ingest.ingest().processed == []
     assert resume.pending() == [resume.Pending("raw/big.txt", 3, 3)]  # all three segments banked

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from citadel import config, failures, ingest
+from citadel import config, failures, ingest, ingest_sessions
 
 
 def _paras(n: int) -> str:
@@ -158,13 +158,13 @@ def test_segments_fold_into_single_staging_and_promote_once(tmp_citadel, fake_ag
     (raw / "big.txt").write_text(_paras(6), encoding="utf-8")
 
     promotes: list[Path] = []
-    real_promote = ingest._promote
+    real_promote = ingest_sessions._promote
 
     def counting_promote(staging, live, **kwargs):
         promotes.append(Path(staging))
         return real_promote(staging, live, **kwargs)
 
-    monkeypatch.setattr(ingest, "_promote", counting_promote)
+    monkeypatch.setattr(ingest_sessions, "_promote", counting_promote)
 
     seen: list[dict] = []
 
