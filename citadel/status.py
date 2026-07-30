@@ -6,7 +6,8 @@ sits in —
 - **ingested** — folded into the wiki (with the importing model + the rules-tree hash it ran
   under, a ``(stale)`` flag when that hash predates the current rulebook — the ``curate
   --stale-rules`` signal — and the ``checked`` date a model last verified it, the ``citadel
-  refresh`` ordering);
+  refresh`` ordering; a ``NO PAGES`` marker calls out a source that NO wiki page cites — it was
+  ingested but produced zero entries, the ``citadel ingest --retry`` signal);
 - **failed** — unreadable / errored / timed-out, with the coarse reason and, for a stuck curate-
   style record, its attempt count;
 - **skipped-duplicate** — a same-basename twin skipped in favor of another format;
@@ -16,8 +17,9 @@ sits in —
 - **pending** — on disk under a raw root, not yet in the manifest or the failures catalog.
 
 Built from the manifest + the failures catalog + ONE stat-only discovery walk (reusing ingest's
-own walk so repo sources, multi-root layouts, and dead mounts behave identically). It NEVER
-re-hashes a byte — that is ingest's job — so it is cheap to run any time. The manifest/failures
+own walk so repo sources, multi-root layouts, and dead mounts behave identically) + one wiki
+traversal for the ``NO PAGES`` markers. It NEVER re-hashes a byte — that is ingest's job — so it
+is cheap to run any time. The manifest/failures
 files ARE the database; status only reads them. Read-only and defensive: a broken walk degrades to
 empty pending/ignored rather than raising.
 """
@@ -28,7 +30,7 @@ import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from . import config, failures, ingest, llm, manifest
+from . import config, failures, ingest, llm, manifest, store
 
 
 # How much of a (long) content hash / rules-version / commit id to show in the table.
@@ -60,6 +62,12 @@ class SourceState:
     tokens_in: int | None = None
     tokens_out: int | None = None
     aic: float | None = None
+    # True for an INGESTED source that NO wiki page cites (the ``Referenced by`` column of
+    # ``wiki/sources/index.md`` is empty for it): a session ran and was paid for, the source is
+    # marked done, yet it contributed zero entries to the wiki. Rendered as a ``NO PAGES`` marker
+    # and the `citadel ingest --retry` hint. Always False when the wiki could not be read (the
+    # marker must never fire on a load error).
+    uncited: bool = False
 
 
 @dataclass
@@ -121,6 +129,10 @@ class StatusReport:
                 # Stamped independently, so credits can outlive an unknown dollar figure — show
                 # them rather than silently dropping spend the corpus total already counts.
                 parts.append(f"{llm.format_aic(s.aic)} AIC")
+            if s.uncited:
+                # Loud on purpose: "ingested" reads as success, but nothing in the wiki cites
+                # this source — it produced zero entries.
+                parts.append("NO PAGES (nothing cites this source)")
             lines.append("  " + "  ".join(parts))
 
         lines.append(f"Failed ({len(self.failed)})")
@@ -151,13 +163,27 @@ class StatusReport:
         for key in self.pending:
             lines.append(f"  {key}")
 
+        # The one-line call to action: everything stuck — failed sources and the NO PAGES ones —
+        # is retryable with a single command, so say so instead of leaving the reader to collect
+        # paths for `--force` by hand.
+        uncited = sum(1 for s in self.ingested if s.uncited)
+        if self.failed or uncited:
+            bits = []
+            if self.failed:
+                bits.append(f"{len(self.failed)} failed source(s)")
+            if uncited:
+                bits.append(f"{uncited} NO PAGES source(s)")
+            lines.append("")
+            lines.append(f"Retry {' and '.join(bits)} with: citadel ingest --retry")
+
         return "\n".join(lines).rstrip() + "\n"
 
     def as_dict(self) -> dict:
         """The report as one JSON-ready dict (``citadel status --json``): the six buckets plus
         ``rules_version``, ``cost_usd_total`` and ``aic_total``, each source row a plain dict with only its None fields dropped —
-        ``attempts: 0`` / ``stale_rules: false`` stay explicit, so scripts get a predictable
-        shape for 'which sources failed and why' without scraping :meth:`render`'s table.
+        ``attempts: 0`` / ``stale_rules: false`` / ``uncited: false`` stay explicit, so scripts
+        get a predictable shape for 'which sources failed and why' (and which produced no pages)
+        without scraping :meth:`render`'s table.
         ``oversized`` carries ``{"key", "size_bytes"}`` objects rather than bare strings, since the
         size is the reason the row exists."""
 
@@ -262,6 +288,19 @@ def build_status() -> StatusReport:
                 aic=usage.get("aic"),
             )
         )
+
+    # Mark the ingested sources NO wiki page cites (the NO PAGES rows): one wiki traversal
+    # (store.citing_pages_map — the exact verdict behind sources/index.md's "Referenced by"
+    # column), best-effort like the walk: a wiki that cannot be read yields no markers rather
+    # than a failed status.
+    if report.ingested:
+        try:
+            refs = store.citing_pages_map([s.key for s in report.ingested])
+        except Exception:  # noqa: BLE001 - status is read-only and must degrade, never raise
+            refs = None
+        if refs is not None:
+            for row in report.ingested:
+                row.uncited = not refs.get(row.key)
 
     for key in sorted(failures_dict):
         entry = failures_dict[key]

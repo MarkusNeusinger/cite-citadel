@@ -233,7 +233,9 @@ class ConsoleProgress:
             changes.append(f"{updated} updated")
         if deleted:
             changes.append(f"{deleted} deleted")
-        tail = [(", ".join(changes), "") if changes else ("no changes", "dim")]
+        # "no changes" renders in YELLOW, not dim: a source that folded in without touching a
+        # single page is exactly the verdict worth a second look (see IngestReport.no_pages).
+        tail = [(", ".join(changes), "") if changes else ("no changes", "yellow")]
         tail.extend(usage_bits(usage, model))
         self._finish(source, self._verdict(index, total, "OK", "bold green", source, seconds, tail))
 

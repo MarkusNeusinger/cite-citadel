@@ -34,7 +34,11 @@ session, `--log-dir DIR` writes a transcript per source, `--quiet` drops the liv
 `--jobs N`/`-j` folds N sources in CONCURRENTLY (default 1 = serial; `CITADEL_JOBS`),
 `--full-rescan` distrusts the manifest's stat cache and re-hashes every tracked source,
 `--force <paths>` deliberately re-reads already-ingested sources as a reconcile — it requires
-explicit paths and is refused without them), `refresh [--limit N] [--min-age-days D] [--dry-run] [--jobs N]`
+explicit paths and is refused without them, `--retry` re-runs everything STUCK without naming
+paths: every failed source still on disk plus every ingested source no wiki page cites — the
+zero-entry sources the run report flags as `no_pages` and `status` marks `NO PAGES` — as forced
+reconciles; it refuses paths/`--force` and exits 0 when nothing is stuck),
+`refresh [--limit N] [--min-age-days D] [--dry-run] [--jobs N]`
 (the THIRD lifecycle: re-verify the least-recently-checked sources — ordered by the manifest's
 `ingested_at` stamp, oldest/stampless first — through forced reconcile sessions on an explicit
 per-run budget of N sources; the sustainable alternative to regenerating the wiki after a model
@@ -342,13 +346,15 @@ is scoped to that signature (flags actually passed + an auth-shaped message), so
 problem still fails instead of looping.
 
 **Status is the read-only corpus view** (`status.py`, `citadel status`): the manifest + failures
-catalog + one stat-only walk (never re-hashes) rendered as a per-source state table — ingested
+catalog + one stat-only walk (never re-hashes) + one wiki traversal rendered as a per-source state
+table — ingested
 (model + rules_version, `(stale)` when it predates the current rulebook, `checked YYYY-MM-DD` from
 the `ingested_at` stamp, the last session's cost when recorded, with copilot's AI credits shown
 beside the dollars they converted into — with `Recorded LLM cost` / `Recorded AI credits` corpus
-totals above the table), failed (reason, attempts),
+totals above the table, and a `NO PAGES (nothing cites this source)` marker on every ingested
+source the wiki does not cite — a paid session that produced zero entries), failed (reason, attempts),
 skipped-duplicate, ignored (pattern), oversized (over `CITADEL_MAX_SOURCE_BYTES`, with the size),
-pending.
+pending — closing with a `citadel ingest --retry` hint whenever anything is failed or uncited.
 
 **Other modules:** `okf.py` is the OKF format core (parse/dump, type→folder routing, link math, and
 the non-negotiable `safe_join` path guard — reuse it for any wiki-relative path). `grammar.py` is
