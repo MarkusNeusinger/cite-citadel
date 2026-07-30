@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from citadel import config, ingest, store
+from citadel import config, ingest, ingest_staging, store
 
 
 def test_failed_session_rolls_back(tmp_citadel, fake_agent, seed_page):
@@ -55,7 +55,7 @@ def test_robust_rmtree_retries_then_succeeds(tmp_path, monkeypatch):
     (victim / "sub").mkdir(parents=True)
     (victim / "sub" / "f.txt").write_text("x", encoding="utf-8")
 
-    real_rmtree = ingest.shutil.rmtree
+    real_rmtree = ingest_staging.shutil.rmtree
     state = {"n": 0}
 
     def flaky_rmtree(path, *args, **kwargs):
@@ -64,8 +64,8 @@ def test_robust_rmtree_retries_then_succeeds(tmp_path, monkeypatch):
             return  # first two attempts "fail" silently, leaving the tree in place
         return real_rmtree(path, *args, **kwargs)
 
-    monkeypatch.setattr(ingest.shutil, "rmtree", flaky_rmtree)
-    monkeypatch.setattr(ingest.time, "sleep", lambda *_: None)  # keep the retry loop instant
+    monkeypatch.setattr(ingest_staging.shutil, "rmtree", flaky_rmtree)
+    monkeypatch.setattr(ingest_staging.time, "sleep", lambda *_: None)  # keep the retry loop instant
 
     ingest._robust_rmtree(victim)
 
@@ -81,7 +81,7 @@ def test_robust_copy_file_retries_then_succeeds(tmp_path, monkeypatch):
     src.write_text("fresh content\n", encoding="utf-8")
     dst = tmp_path / "dst.md"
 
-    real_replace = ingest.os.replace
+    real_replace = ingest_staging.os.replace
     state = {"n": 0}
 
     def flaky_replace(a, b, *args, **kwargs):
@@ -90,8 +90,8 @@ def test_robust_copy_file_retries_then_succeeds(tmp_path, monkeypatch):
             raise OSError("share momentarily locked")  # first two attempts fail
         return real_replace(a, b, *args, **kwargs)
 
-    monkeypatch.setattr(ingest.os, "replace", flaky_replace)
-    monkeypatch.setattr(ingest.time, "sleep", lambda *_: None)  # keep the retry loop instant
+    monkeypatch.setattr(ingest_staging.os, "replace", flaky_replace)
+    monkeypatch.setattr(ingest_staging.time, "sleep", lambda *_: None)  # keep the retry loop instant
 
     ingest._robust_copy_file(src, dst, attempts=5)
 
@@ -113,8 +113,8 @@ def test_robust_copy_file_leaves_dst_untouched_on_permanent_failure(tmp_path, mo
     def always_fail(a, b, *args, **kwargs):
         raise OSError("share offline")
 
-    monkeypatch.setattr(ingest.os, "replace", always_fail)
-    monkeypatch.setattr(ingest.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(ingest_staging.os, "replace", always_fail)
+    monkeypatch.setattr(ingest_staging.time, "sleep", lambda *_: None)
 
     with pytest.raises(OSError):
         ingest._robust_copy_file(src, dst, attempts=3)
@@ -139,7 +139,7 @@ def test_rollback_survives_undeletable_wiki_on_network_share(tmp_citadel, fake_a
 
     # Simulate the worst case the old ignore_errors=True hid: the share never actually deletes
     # wiki/. Local temp dirs (the backup) still delete normally, so they pass through.
-    real_rmtree = ingest.shutil.rmtree
+    real_rmtree = ingest_staging.shutil.rmtree
     wiki_resolved = wiki.resolve()
 
     def undeletable_share(path, *args, **kwargs):
@@ -147,8 +147,8 @@ def test_rollback_survives_undeletable_wiki_on_network_share(tmp_citadel, fake_a
             return  # the share "fails" to delete and reports nothing
         return real_rmtree(path, *args, **kwargs)
 
-    monkeypatch.setattr(ingest.shutil, "rmtree", undeletable_share)
-    monkeypatch.setattr(ingest.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(ingest_staging.shutil, "rmtree", undeletable_share)
+    monkeypatch.setattr(ingest_staging.time, "sleep", lambda *_: None)
 
     def fake(rel_key, kind="ingest"):
         seed_page(
@@ -407,15 +407,15 @@ def test_failed_session_leaves_live_wiki_byte_identical(tmp_citadel, fake_agent,
 
     # The share "fails" to delete any directory under the live wiki's parent (staging cleanup),
     # exactly the flakiness that broke the old rollback. Local temp dirs still delete normally.
-    real_rmtree = ingest.shutil.rmtree
+    real_rmtree = ingest_staging.shutil.rmtree
 
     def flaky_rmtree(path, *args, **kwargs):
         if str(Path(path).resolve()).startswith(str(wiki.parent.resolve())):
             return  # share refuses the delete and reports nothing
         return real_rmtree(path, *args, **kwargs)
 
-    monkeypatch.setattr(ingest.shutil, "rmtree", flaky_rmtree)
-    monkeypatch.setattr(ingest.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(ingest_staging.shutil, "rmtree", flaky_rmtree)
+    monkeypatch.setattr(ingest_staging.time, "sleep", lambda *_: None)
 
     def fake(rel_key, kind="ingest"):
         seed_page(
@@ -473,7 +473,7 @@ def test_promote_is_non_destructive_on_copy_failure(tmp_path, monkeypatch):
     def boom(src, dst, *a, **k):
         raise OSError("share dropped mid-copy")
 
-    monkeypatch.setattr(ingest, "_robust_copy_file", boom)
+    monkeypatch.setattr(ingest_staging, "_robust_copy_file", boom)
 
     with pytest.raises(OSError):
         ingest._promote(staging, live)

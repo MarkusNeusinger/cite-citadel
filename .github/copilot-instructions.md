@@ -188,7 +188,14 @@ set) > otherwise none: `config.WORKSPACE_FOUND` is False, `WORKSPACE_ROOT` falls
 bare CWD, and every subcommand except `init` fails loud. The dev checkout carries a marker, so
 it is itself a workspace.
 
-**Ingest is the heart of the system** (`ingest.py` → `llm.py`). The flow per source:
+**Ingest is the heart of the system** (`ingest.py` → `llm.py`). Like `store.py`, `ingest.py` is
+an orchestrator + **facade** over three sibling modules split by responsibility — `ingest_scan.py`
+(the discovery walk, the guarded deletion sweep, source classification, and the file/repo
+partitions), `ingest_staging.py` (staging copies, snapshot/diff-by-hash, validate-and-restamp,
+rename-link repair, the robust file primitives, and the base-aware promote), and
+`ingest_sessions.py` (the all-or-nothing session runner, resume-checkpoint glue, and large-source
+pass planning) — with every `ingest._*` seam re-exported, so tests/`status`/`curate` keep
+addressing them through `ingest`. The flow per source:
 - `ingest.ingest()` partitions candidates into pending / already-ingested (sha match) / reorganized
   (moved-or-duplicate) / unreadable (binary; an all-NUL read is flagged as a cloud-only placeholder
   — Dropbox/OneDrive online-only — and never stat-cached as done, so it ingests once hydrated) /
@@ -291,7 +298,10 @@ comparable total while the un-derived credits stay stamped beside it (the retire
 opening `init.model` plus the
 closing `result.usage` token totals; None when nothing was reported - accounting is strictly
 passive and can never fail a session), which ingest sums per source into the manifest stamp and
-per run onto the reports. **The REPORTED model wins**: `config.model_label_for(reported)` stamps
+per run onto the reports. That passive accounting layer — `SessionUsage`, `combine_usage`, the
+cost/AIC formatters, and the per-backend envelope parsers — lives in `llm_usage.py`, fully
+re-exported through `llm` (so `llm.SessionUsage` etc. stay the addressable surface).
+**The REPORTED model wins**: `config.model_label_for(reported)` stamps
 the backend plus what actually ran, and falls back to the configured label only when the backend
 named nothing (an Ollama/proxy backend, or agy left on its own default), so the manifest never
 claims a model that never ran.
