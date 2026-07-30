@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-30
+
 ### Changed (breaking)
 
 - **The `gemini` backend is replaced by `agy` (Google's Antigravity CLI).** The Gemini CLI it
@@ -1015,7 +1017,8 @@ First public, pip-installable release (`pip install cite-citadel`), and the PyPI
 - Shared citation/link/fence parsing consolidated into `grammar.py`; viewer moved to a subpackage
   with a golden bundle test; Office/OLE extraction isolated.
 
-[Unreleased]: https://github.com/MarkusNeusinger/cite-citadel/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/MarkusNeusinger/cite-citadel/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/MarkusNeusinger/cite-citadel/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/MarkusNeusinger/cite-citadel/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/MarkusNeusinger/cite-citadel/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/MarkusNeusinger/cite-citadel/compare/v0.2.0...v0.3.0
