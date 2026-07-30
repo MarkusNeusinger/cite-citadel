@@ -184,9 +184,28 @@ def check_ingest_model() -> Check:
     Every supported backend honors ``--model``, so ``CITADEL_INGEST_MODEL`` is never inert any
     more (the pre-agy WARN this replaces): unset simply means "run the CLI's own default model",
     which is a legitimate, and common, setup. The recorded label is shown alongside because that
-    is what lands in the manifest and the wiki's Sources catalog."""
+    is what lands in the manifest and the wiki's Sources catalog.
+
+    One trap IS worth a WARN: the copilot backend also reads its own ``COPILOT_MODEL`` env var,
+    and the ``--model`` flag citadel passes OVERRIDES it. A user who points copilot at a BYOK
+    provider via ``COPILOT_PROVIDER_*``/``COPILOT_MODEL`` (a local Ollama-style endpoint) while a
+    stale ``CITADEL_INGEST_MODEL`` still names a model that provider does not serve gets an
+    instant per-source failure — so when both are set and disagree, name the shadowing here."""
     configured = (config.INGEST_MODEL or "").strip()
     detail = f"requesting {configured!r}" if configured else "unset - each CLI runs its own default model"
+    if configured and (config.LLM_CLI or "claude").strip().lower() == "copilot":
+        env_model = os.environ.get("COPILOT_MODEL", "").strip()
+        provider = os.environ.get("COPILOT_PROVIDER_BASE_URL", "").strip()
+        if env_model and env_model != configured:
+            return Check(
+                WARN,
+                "ingest model",
+                f"CITADEL_INGEST_MODEL={configured!r} shadows COPILOT_MODEL={env_model!r} - the --model"
+                " flag citadel passes overrides the env var, so sessions request"
+                f" {configured!r}"
+                + (f", which the BYOK provider at {provider!r} must actually serve" if provider else "")
+                + f". Set CITADEL_INGEST_MODEL={env_model} (or unset it) if the env var names the intended model",
+            )
     return Check(
         OK, "ingest model", f"{detail}; recorded as {config.ingest_model_label()!r} unless the session reports one"
     )

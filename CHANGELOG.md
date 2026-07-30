@@ -24,6 +24,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`citadel doctor` warns when `CITADEL_INGEST_MODEL` shadows `COPILOT_MODEL`.** The copilot
+  backend also reads its own `COPILOT_MODEL` env var, and the `--model` flag citadel passes
+  overrides it. A user who points copilot at a BYOK provider (`COPILOT_PROVIDER_BASE_URL`, a
+  local Ollama-style endpoint) and names the model in `COPILOT_MODEL` — while a stale
+  `CITADEL_INGEST_MODEL` in `.env` still names a model that provider does not serve — got an
+  instant per-source failure with no hint at the cause. The ingest-model check now WARNs when
+  both are set and disagree, naming the shadowing and the provider that must serve the
+  requested model.
+
 - **`Registry` pages — enumerable sources are captured completely.** A source that is (or
   contains) a uniform enumeration of like entries — a machine/asset inventory, an error-code
   catalog, a customer roster, a product/price list — now folds into ONE `type: Registry` page
@@ -95,6 +104,18 @@ All notable changes to this project are documented here. The format is based on
   WARNing when only a UNC spelling of the workspace is known).
 
 ### Fixed
+
+- **A failed copilot session now reports its actual error, not JSONL stream noise.** copilot
+  exits non-zero with an *empty* stderr; the message that names the fix — e.g. a BYOK
+  (Ollama-style) provider that does not serve the configured `CITADEL_INGEST_MODEL`
+  (*"Model '…' not found on provider at http://… (HTTP 404)"*) — travels as a `session.error`
+  event near the *end* of its `--output-format json` stdout stream, while the stream *opens* with
+  ephemeral MCP/skills status events. The failure reason citadel records (the run report, the
+  failures catalog, `citadel status`) was the first 500 characters of raw stdout — exactly that
+  opening noise — so the real error only surfaced in a `--log-dir` transcript. The `session.error`
+  message(s) are now extracted and preferred (collapsed onto one line, duplicates folded), which
+  also lets an auth-shaped copilot failure reach the hermetic-retry detection; a stream naming no
+  `session.error` keeps the old stderr-then-stdout truncation.
 
 - **A long absolute source key no longer floods the ingest console.** `config.display_key` collapsed
   a path to `raw/<below>` only when it matched a configured root as a string — so a Windows drive
