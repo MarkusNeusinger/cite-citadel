@@ -205,7 +205,7 @@ class IngestReport:
             lines.append("Skipped (already ingested):")
             lines.extend(f"  - {p}" for p in self.skipped)
         if self.no_pages:
-            lines.append("WARNING — ingested but produced NO wiki changes (0 pages created/updated):")
+            lines.append("WARNING — ingested but produced NO wiki changes (no page created, updated, or deleted):")
             lines.extend(f"  - {p}" for p in self.no_pages)
             lines.append(
                 "  These sources are marked done and will not be revisited automatically. "
@@ -2556,7 +2556,10 @@ def retry_candidates() -> tuple[list[str], list[str]]:
 
     Both lists are sorted and disjoint (a key can only be in one catalog); vanished files are
     excluded — a retry cannot read what is not there (a vanished INGESTED source is the deletion
-    sweep's job, not a retry's). Read-only: computing candidates changes nothing."""
+    sweep's job, not a retry's). Read-only: computing candidates changes nothing. Best-effort
+    like ``status``'s marker: a wiki that cannot be traversed degrades to an empty ``uncited``
+    list instead of taking the recovery command down — the failed sources are still retried,
+    which is exactly the situation ``--retry`` exists for."""
     failed: list[str] = []
     for key, entry in sorted(failures.load().items()):
         if not isinstance(entry, dict):
@@ -2568,10 +2571,14 @@ def retry_candidates() -> tuple[list[str], list[str]]:
     manifest_dict = manifest.load()
     uncited: list[str] = []
     if manifest_dict:
-        refs = store.citing_pages_map(list(manifest_dict))
-        uncited = [
-            key for key in sorted(manifest_dict) if not refs.get(key) and config.source_path_for_key(key).exists()
-        ]
+        try:
+            refs = store.citing_pages_map(list(manifest_dict))
+        except Exception:  # noqa: BLE001 - recovery must degrade, never crash on a broken wiki
+            refs = None
+        if refs is not None:
+            uncited = [
+                key for key in sorted(manifest_dict) if not refs.get(key) and config.source_path_for_key(key).exists()
+            ]
     return failed, uncited
 
 
@@ -3235,8 +3242,9 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             )
         for key in report.no_pages:
             store.append_log(
-                f"ingested {key} but the session produced no wiki changes (0 pages); "
-                "retry with `citadel ingest --retry` or `citadel ingest --force`"
+                f"ingested {key} but the session produced no wiki changes (no page created, "
+                f"updated, or deleted); retry with `citadel ingest --retry` or "
+                f"`citadel ingest --force {key}`"
             )
         for old_key, new_key in report.moved:
             store.append_log(

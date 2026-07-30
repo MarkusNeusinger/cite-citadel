@@ -119,6 +119,24 @@ def test_retry_candidates_empty_when_healthy(tmp_citadel, seed_page):
     assert ingest.retry_candidates() == ([], [])
 
 
+def test_retry_candidates_degrade_when_wiki_unreadable(tmp_citadel, monkeypatch):
+    """A wiki that cannot be traversed must not take the recovery command down: the uncited
+    detection degrades to empty (mirroring ``status``'s best-effort marker) and the failed
+    sources are still retried — the exact situation ``--retry`` exists for."""
+    from citadel import store
+
+    (tmp_citadel.raw / "bad.md").write_text("errored last run\n", encoding="utf-8")
+    _fail("raw/bad.md", failures.ERROR, "agent session failed")
+    (tmp_citadel.raw / "empty.md").write_text("tracked\n", encoding="utf-8")
+    _track("raw/empty.md", manifest.file_sha256(tmp_citadel.raw / "empty.md"))
+
+    def boom(*_a, **_k):
+        raise OSError("wiki dir unreadable")
+
+    monkeypatch.setattr(store, "citing_pages_map", boom)
+    assert ingest.retry_candidates() == (["raw/bad.md"], [])
+
+
 # --- citadel ingest --retry ----------------------------------------------------------------
 
 
