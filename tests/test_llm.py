@@ -9,6 +9,7 @@ real CLI is ever spawned.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -891,6 +892,93 @@ def test_run_session_nonzero_exit_raises(monkeypatch):
     with pytest.raises(RuntimeError) as exc:
         llm._run_session("copilot", ["copilot", "-p", "x"], None)
     assert "copilot" in str(exc.value)
+
+
+def test_run_session_copilot_failure_surfaces_the_session_error(monkeypatch):
+    """A failed copilot session exits non-zero with an EMPTY stderr; the real error (here a BYOK
+    Ollama-style provider that does not serve the configured model) travels as a session.error
+    event near the END of its JSONL stdout, while the stream OPENS with ephemeral MCP/skills
+    status events. The old raw ``(err or out)[:500]`` cut showed only that opening noise — the
+    failure reason must be the session.error message, collapsed onto one line. Stream is a
+    trimmed, anonymized but shape-faithful copy of a real failed session."""
+    stream = "\n".join(
+        [
+            json.dumps(
+                {
+                    "type": "session.mcp_server_status_changed",
+                    "data": {"serverName": "some-mcp-server", "status": "pending"},
+                    "ephemeral": True,
+                }
+            ),
+            json.dumps({"type": "session.skills_loaded", "data": {"skills": [{"description": "x" * 400}]}}),
+            json.dumps({"type": "assistant.turn_start", "data": {"turnId": "0"}}),
+            json.dumps(
+                {
+                    "type": "model.call_failure",
+                    "data": {"model": "small-model", "statusCode": 404, "failureKind": "api"},
+                    "ephemeral": True,
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "session.error",
+                    "data": {
+                        "errorType": "query",
+                        "message": "Model 'small-model' not found on provider at"
+                        " http://ollama.example:11434/v1 (HTTP 404).\n"
+                        "  Check that the model is available on your provider.",
+                        "statusCode": 404,
+                    },
+                }
+            ),
+            json.dumps({"type": "result", "exitCode": 1, "usage": {"premiumRequests": 0}}),
+        ]
+    )
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeProc(returncode=1, stdout=stream))
+    with pytest.raises(RuntimeError) as exc:
+        llm._run_session("copilot", ["copilot", "-p", "x"], None)
+    message = str(exc.value)
+    assert "Model 'small-model' not found on provider" in message
+    # The wrapped second line is collapsed into the same one-line reason, inside the 500-char cut.
+    assert "(HTTP 404). Check that the model is available on your provider." in message
+    assert "mcp_server_status_changed" not in message and "skills_loaded" not in message
+
+
+def test_run_session_copilot_failure_without_session_error_keeps_the_raw_fallback(monkeypatch):
+    """A non-zero copilot exit whose stream names no session.error keeps the pre-existing
+    stderr-then-stdout truncation, so no failure shape got LESS diagnostic."""
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeProc(returncode=1, stdout="", stderr="boom"))
+    with pytest.raises(RuntimeError, match="boom"):
+        llm._run_session("copilot", ["copilot", "-p", "x"], None)
+    stream = json.dumps({"type": "assistant.turn_start", "data": {"turnId": "0"}})
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeProc(returncode=1, stdout=stream))
+    with pytest.raises(RuntimeError, match="turn_start"):
+        llm._run_session("copilot", ["copilot", "-p", "x"], None)
+
+
+def test_error_from_copilot_jsonl_is_defensive():
+    """The stream is external input: junk shapes read as absent (None), duplicate messages fold
+    to one, and distinct messages join in order."""
+    assert llm._error_from_copilot_jsonl("") is None
+    assert llm._error_from_copilot_jsonl("plain text banner") is None
+    junk = "\n".join(
+        [
+            json.dumps({"type": "session.error"}),
+            json.dumps({"type": "session.error", "data": None}),
+            json.dumps({"type": "session.error", "data": {"message": "   "}}),
+            json.dumps({"type": "session.error", "data": {"message": 42}}),
+            json.dumps({"type": "other", "data": {"message": "not an error event"}}),
+        ]
+    )
+    assert llm._error_from_copilot_jsonl(junk) is None
+    repeated = "\n".join(
+        [
+            json.dumps({"type": "session.error", "data": {"message": "boom"}}),
+            json.dumps({"type": "session.error", "data": {"message": "boom"}}),
+            json.dumps({"type": "session.error", "data": {"message": "then this"}}),
+        ]
+    )
+    assert llm._error_from_copilot_jsonl(repeated) == "boom; then this"
 
 
 def test_run_session_empty_output_is_success_for_copilot(monkeypatch):

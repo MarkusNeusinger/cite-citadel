@@ -754,6 +754,29 @@ def _usage_from_copilot_jsonl(text: str) -> SessionUsage | None:
     )
 
 
+def _error_from_copilot_jsonl(text: str) -> str | None:
+    """The human-readable failure reason of a failed copilot session, from the ``session.error``
+    events of its ``--output-format json`` JSONL stream — None when the stream names none.
+
+    A failed copilot session exits non-zero with an EMPTY stderr: the message that names the fix
+    (a BYOK provider that does not serve the configured model, an exhausted quota) travels as a
+    ``session.error`` event near the END of the stdout stream, while the stream OPENS with
+    ephemeral MCP/skills status events. Truncating raw stdout as the failure reason therefore
+    showed exactly that opening noise — and hid an auth-shaped message from the hermetic-retry
+    detection with it. Whitespace is collapsed (copilot wraps its messages over indented lines)
+    and duplicate messages are folded, order preserved. Defensive like every stream reader:
+    junk shapes read as absent, never raise."""
+    messages: list[str] = []
+    for obj in _iter_jsonl(text):
+        if obj.get("type") != "session.error":
+            continue
+        data = obj.get("data")
+        message = data.get("message") if isinstance(data, dict) else None
+        if isinstance(message, str) and message.strip():
+            messages.append(" ".join(message.split()))
+    return "; ".join(dict.fromkeys(messages)) if messages else None
+
+
 def _usage_from_agy_stream(text: str) -> SessionUsage | None:
     """The model + token usage of an agy (Antigravity CLI) session, from its
     ``--output-format stream-json`` stream: the opening ``init`` event names the effective model,
@@ -1156,7 +1179,10 @@ def _run_session(
     # money was spent too, and it is carried on the exception exactly like claude's.
     usage = _usage_from_stream(cli, out)
     if returncode != 0:
-        message = f"the {cli!r} CLI failed (exit {returncode}): {(err or out)[:500]}"
+        # copilot fails with an empty stderr and the real error inside a session.error event at
+        # the END of its JSONL stdout, so prefer that message over the stream's opening noise.
+        detail = (_error_from_copilot_jsonl(out) if cli == "copilot" else None) or err or out
+        message = f"the {cli!r} CLI failed (exit {returncode}): {detail[:500]}"
         hint = _hermetic_auth_hint(cli, argv, message)
         error = RuntimeError(message + hint)
         error.hermetic_auth_failure = bool(hint)

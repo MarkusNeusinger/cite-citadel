@@ -168,6 +168,38 @@ def test_ingest_model_unset_says_the_cli_default_runs(monkeypatch):
     assert "own default" in c.detail
 
 
+def test_ingest_model_warns_when_it_shadows_copilot_model(monkeypatch):
+    """The BYOK trap: copilot pointed at a local Ollama-style provider via COPILOT_PROVIDER_*/
+    COPILOT_MODEL, while a stale CITADEL_INGEST_MODEL still names a model that provider does not
+    serve — citadel's --model flag overrides the env var, so every session dies on a provider
+    404. doctor must name the shadowing (and the provider, when one is configured)."""
+    monkeypatch.setattr(config, "LLM_CLI", "copilot", raising=False)
+    monkeypatch.setattr(config, "INGEST_MODEL", "small-model", raising=False)
+    monkeypatch.setenv("COPILOT_MODEL", "local-model:27b")
+    monkeypatch.setenv("COPILOT_PROVIDER_BASE_URL", "http://ollama.example:11434/v1")
+    c = doctor.check_ingest_model()
+    assert (c.status, c.name) == (doctor.WARN, "ingest model")
+    assert "small-model" in c.detail and "local-model:27b" in c.detail
+    assert "overrides" in c.detail
+    assert "http://ollama.example:11434/v1" in c.detail
+    # Without a BYOK provider the shadowing alone still warns, just without the provider note.
+    monkeypatch.delenv("COPILOT_PROVIDER_BASE_URL")
+    c = doctor.check_ingest_model()
+    assert c.status == doctor.WARN and "11434" not in c.detail
+
+
+def test_ingest_model_matching_copilot_model_stays_ok(monkeypatch):
+    """Agreement (or a non-copilot backend) is not a finding: the WARN is scoped to the copilot
+    backend with BOTH knobs set and disagreeing."""
+    monkeypatch.setattr(config, "LLM_CLI", "copilot", raising=False)
+    monkeypatch.setattr(config, "INGEST_MODEL", "local-model:27b", raising=False)
+    monkeypatch.setenv("COPILOT_MODEL", "local-model:27b")
+    assert doctor.check_ingest_model().status == doctor.OK
+    monkeypatch.setattr(config, "LLM_CLI", "claude", raising=False)
+    monkeypatch.setattr(config, "INGEST_MODEL", "small-model", raising=False)
+    assert doctor.check_ingest_model().status == doctor.OK
+
+
 # --- raw roots ---------------------------------------------------------------------------
 
 
