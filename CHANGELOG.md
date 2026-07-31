@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **`citadel ingest --reingest <paths>` — re-import an already-ingested source from scratch.**
+  `--force` runs a reconcile, which deliberately keeps the source's existing treatment (genre,
+  page structure) and only verifies/updates its facts — so a source first ingested under an old
+  rulebook or a weak model never gets re-thought, and "all ok, nothing new" is the correct
+  reconcile verdict even when a fresh read would organize it completely differently. `--reingest`
+  is the escape hatch: for each named tracked source it first runs a `kind="delete"` cleanup
+  session that strips the source's previous facts from the wiki (dropping its manifest entry),
+  then — in the same run, deletions always run first — ingests it as a brand-new source under the
+  current model, rules, and wiki state (fresh cross-links included). This replaces the manual
+  move-the-file-out / full ingest / move-it-back / ingest dance. A failed cleanup refuses the
+  fresh session for that source (nothing is written on top of the old facts), tracked repos take
+  the first-time `repo` brief over a full digest, and the flag requires explicit paths like
+  `--force` (exit 2 without them; `--force` and `--retry` refuse to combine with it). The
+  `tasks/delete.md` brief now covers the still-on-disk cleanup case.
+
 ## [0.6.0] - 2026-07-30
 
 ### Changed (breaking)

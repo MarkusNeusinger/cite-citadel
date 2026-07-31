@@ -171,6 +171,7 @@ class ConsoleProgress:
         deleted: int = 0,
         repos: int = 0,
         jobs: int = 1,
+        reingest: int = 0,
     ) -> None:
         bits = []
         if skipped:
@@ -179,6 +180,10 @@ class ConsoleProgress:
             bits.append(f"{moved} reorganized")
         if unreadable:
             bits.append(f"{unreadable} unreadable")
+        if reingest:
+            # --reingest: these sources run a cleanup job on top of their pending session; the
+            # extra jobs are folded into the overall total below.
+            bits.append(f"{reingest} re-imported fresh (old facts stripped first)")
         if pending == 0 and repos == 0 and deleted == 0:
             extra = f" ({', '.join(bits)})" if bits else ""
             self._print(Text(f"Nothing to ingest{extra}.", style="dim"))
@@ -201,7 +206,7 @@ class ConsoleProgress:
         headline = Text(f"Ingesting {' + '.join(counts)}{extra}", style="bold")
         if jobs > 1:
             headline.append(f"  [{jobs} at a time]", style="dim")
-        self._begin(pending + repos + deleted, headline)
+        self._begin(pending + repos + deleted + reingest, headline)
 
     def on_source_start(self, index: int, total: int, source: str) -> None:
         label = f"[{index}/{total}] {config.display_key(source)}"
