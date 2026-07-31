@@ -46,6 +46,8 @@ Row format:
 | VCB-002 | 2026-07-25 | 2026-07-25 | beverages | every factual sentence carries a footnote | wiki-generation | **haiku-only.** One uncited sentence survived the agent's own `citadel check` because it is inside a sentence the parser reads as cited: `concepts/coffee.md` — "The plant and its cultivation are dominated by two species: [Arabica and Robusta…". Lint's advisory `missing citations` caught it; `check` did not. Route: the `tasks/ingest.md` self-check step (re-read every paragraph for a trailing footnote), and worth asking whether this shape should be a `check` error rather than a lint advisory. | open |
 | VCB-003 | 2026-07-25 | 2026-07-25 | beverages | `[^llmN]` is for model-supplied facts only, never a shortcut | wiki-generation | **haiku-only.** 4 pages carry model-supplied facts (`concepts/caffeine.md`, `concepts/tea.md`, `objects/aurora-midnight.md`, `organizations/thornbury-lin.md`) where the sonnet showcase of the same corpus has none — the corpus is fully covered by its raw sources, so an `[^llmN]` here is a weaker model reaching for the LLM lane instead of the source. Not a provenance violation (the lane is honest and lint surfaces it), so a soft miss. Route: `citadel/rules/core.md`'s `[^llmN]` section — make "prefer dropping the claim over sourcing it to yourself" explicit. | open |
 | VCB-004 | 2026-07-25 | 2026-07-25 | beverages | dense cross-linking between related pages | wiki-generation | **Unattributed between model and `--jobs`.** 36 un-linked mentions where the committed sonnet showcase lints 0 (e.g. `concepts/tea.md → concepts/coffee.md`, `organizations/caffe-aurora.md → concepts/cold-brew.md`). Two candidate causes and this run cannot separate them: haiku links less densely, and `--jobs 4` means concurrent sessions cannot see each other's new pages (the documented, accepted cost of parallelism — `curate` is its designed cleanup). Route: re-run beverages on haiku with `--jobs 1` and diff this counter; only if serial haiku is also high is this a rules-lane miss rather than a parallelism trade-off. | open |
+| VCB-006 | 2026-07-31 | 2026-07-31 | leuchtfeuer | T4 intra-wave temporal supersession (decommission 30 Sep → 31 Jul 2026) | wiki-generation | The 8 Apr 2026 portal-minutes session recorded the brought-forward KOMET decommission (31 Jul 2026) on `projects/seagull-customer-portal.md` but left `projects/projekt-leuchtfeuer.md` still stating "switched off on 30 September 2026" as the live plan (cited to the 20 Mar go-live mail, ingested one session earlier in the same wave). Cross-PAGE supersession: the new source's session updated the page it landed on but did not hunt other pages asserting the now-old value. Route: `tasks/ingest.md` — when a new source supersedes a dated value, grep the whole wiki for the superseded value and update every page presenting it as current. | open |
+| VCB-007 | 2026-07-31 | 2026-07-31 | leuchtfeuer | style-profile quirks (§I, `CITADEL_STYLE_PROFILES=1`) | wiki-generation | Opinions all correctly attributed (O1/O2/O3 pass), but the persons pages carry no style-quirk entries — Vogelsang's nautical metaphors / "Fair winds" sign-off and Duszek's "—MD" are absent; the POD abbreviation (portal minutes) also has no expansion/page where WMS and MDE got both. Route: `genres/first-person.md` + the style-profile brief — spell out that sign-offs and recurring metaphors belong on the persons page when profiling is ON. | open |
 
 ## Resolved
 
@@ -58,6 +60,32 @@ Row format:
 *(Newest first. One `### <date> <corpus>` sub-block per grading run — mode, model, `rules_version`,
 verdict, and the `VCB-` ids the run touched, or `misses: none`. This `## Runs` heading stays
 singular; runs nest under it.)*
+
+### 2026-07-31 leuchtfeuer (grading PR #139 — `--reingest`, the reconcile fresh-eyes brief, the delete-brief reingest note)
+
+- **Mode:** Mode A in a scratch sandbox, full wave protocol (`stages/initial` → wave2 → wave3 with
+  the memo delete), then the NOOP re-run, a `--force` probe, and a live `--reingest` probe of the
+  PR's own feature on the heavily-cited kickoff minutes. Retrieval-first grade afterwards.
+- **Model:** `claude:claude-sonnet-5` (`CITADEL_INGEST_MODEL=sonnet`) · serial · wave 1 paid the
+  per-source hermetic-auth retry (container auth shape), waves 2-3 ran with `CITADEL_HERMETIC=0`.
+- **Result:** `check` + `lint` exit 0 after every wave AND after both probes. Wave kinds exactly as
+  scripted (6 ingest / 1 reconcile + 3 ingest + 5 NOOP / 1 delete + 3 ingest + 8 NOOP); idempotency
+  re-run zero sessions. **D1 delete propagation clean** (18k/02:00/memo-ref ∅ on all pages; €310k
+  survives attributed to Brandt; retraction recorded). C1/C2 planted values cited with honest
+  `[^llm]` correction notes; M1+M2 both flagged as callouts (2/2 stretch); Q1/Q2 attributed to the
+  original authors; O1/O2 attributed, O2 never retro-written as "was right"; S1 pilot/portal kept
+  apart and cross-linked; G1–G4 in English, cited to the German files; German-function-word grep
+  clean; TCO honestly bare; AP-1 a single `op-` thread. Retrieval battery **9/9 correct+cited**,
+  findability 8/9 in band (`rb-golive` rank 2 behind the pilot page — texture, above floor).
+- **PR #139 probes:** the `--force` probe under the new fresh-eyes reconcile brief found no missing
+  facts and no churn but **fixed three imprecise first-pass locators** (wrapped attendee lines) —
+  exactly the intended "more than verification" behavior with a faithful wiki still converging.
+  The `--reingest` probe ran delete-cleanup + fresh import in one run (report's "Re-ingested fresh"
+  section, manifest re-stamped, gates green) and the full battery passed on the post-reingest wiki.
+- **Misses:** VCB-006 (T4 cross-page supersession — the one temporal miss, on plain wave-3 ingest
+  sessions untouched by the PR's diff), VCB-007 (style-quirk capture). Verdict: **PASS** on the
+  delete/reconcile/reingest machinery under test; T4 recorded as the run's temporal miss with its
+  rules-lane route.
 
 ### 2026-07-29 werkhof (first run — the registry corpus, grading PR #134's Registry feature)
 

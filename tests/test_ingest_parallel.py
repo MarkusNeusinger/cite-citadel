@@ -393,7 +393,7 @@ def test_jobs_below_one_is_refused(tmp_citadel, fake_agent):
 def test_cli_jobs_is_threaded_through(tmp_citadel, monkeypatch, capsys):
     seen: dict = {}
 
-    def fake_ingest(paths=None, progress=None, full_rescan=False, force=False, jobs=None):
+    def fake_ingest(paths=None, progress=None, full_rescan=False, force=False, jobs=None, reingest=False):
         seen["jobs"] = jobs
         return ingest.IngestReport([], [], [], [])
 

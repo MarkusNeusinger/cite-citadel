@@ -23,7 +23,16 @@ def test_ingest_emits_progress_events(tmp_citadel, fake_agent, transformer_page)
     for expected in ("source_start", "source_done", "finalize", "done"):
         assert expected in names, f"missing event: {expected}"
     start = next(d for e, d in events if e == "start")
-    assert start == {"pending": 1, "skipped": 0, "moved": 0, "unreadable": 0, "deleted": 0, "repos": 0, "jobs": 1}
+    assert start == {
+        "pending": 1,
+        "skipped": 0,
+        "moved": 0,
+        "unreadable": 0,
+        "deleted": 0,
+        "repos": 0,
+        "jobs": 1,
+        "reingest": 0,
+    }
     done = next(d for e, d in events if e == "source_done")
     assert done["source"] == "raw/notes.md"
     assert done["index"] == 1 and done["total"] == 1
@@ -83,6 +92,8 @@ def test_mixed_run_progress_vocabulary_and_order_are_pinned(
         # `--jobs N`: the worker count the run was given, so the console can show how many sources
         # are in flight at once (rich gives each its own spinner row). 1 is the serial default.
         "jobs": 1,
+        # `--reingest` cleanup jobs on top of the pending sessions — 0 on every non-reingest run.
+        "reingest": 0,
     }
     # Deletions first, then files, then repos — and per-GROUP counters restarting at 1/1.
     assert [d["source"] for e, d in events if e == "source_start"] == ["raw/gone.md", "raw/note.md", "raw/svc"]

@@ -1,7 +1,9 @@
 # delete — strip a removed source's provenance
 
-The source was **removed from disk** and no longer exists. Do **NOT** try to open it. Remove the
-provenance that depended on it:
+The source was **removed from disk** and no longer exists — or is being **deliberately
+re-imported from scratch** (a reingest: the file may still sit on disk, but its previous facts
+must go so the fresh import that follows starts clean). Either way, do **NOT** try to open the
+source. Remove the provenance that depended on it:
 
 1. Search the wiki (Grep/Glob/Read) for every page that cites it: a `resource:` frontmatter field
    naming it, or a `[^sN]` footnote whose `## Sources` definition links to it (e.g.

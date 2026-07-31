@@ -117,6 +117,15 @@ def build_parser() -> argparse.ArgumentParser:
         "happen by accident.",
     )
     p_ingest.add_argument(
+        "--reingest",
+        action="store_true",
+        help="Re-import the given already-ingested sources FRESH: first a delete cleanup session "
+        "strips each source's previous facts from the wiki (its manifest entry is dropped), then "
+        "the same run ingests it as a brand-new source under the current model + rules — the "
+        "full re-think --force's reconcile deliberately avoids (reconcile keeps the existing "
+        "treatment). Costs two sessions per source. Requires explicit paths, like --force.",
+    )
+    p_ingest.add_argument(
         "--retry",
         action="store_true",
         help="Retry everything stuck, without naming paths: re-run every FAILED source "
@@ -422,11 +431,17 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     agent session per source, so forcing the ENTIRE corpus must never happen by accident — the
     flag alone is refused with exit 2, before ``ingest.ingest`` is ever called.
 
+    ``--reingest`` is force's bigger sibling — strip the named sources' previous facts (a delete
+    cleanup session each), then re-import them fresh in the same run. Same explicit-paths rule as
+    ``--force`` (exit 2 without them), and the two flags refuse each other: reconcile-in-place
+    and strip-and-re-import are different intents, and combining them would blur which one wins.
+
     ``--retry`` is the no-typing complement: it computes its own bounded set —
     ``ingest.retry_candidates()``, the failed sources still on disk plus the ingested ones no
     wiki page cites — prints it, and runs those as a FORCED re-read. It therefore refuses
-    explicit paths and ``--force`` (exit 2): the point of the flag is that citadel picks the
-    set, and combining the two would blur which one wins. Nothing to retry is a clean exit 0.
+    explicit paths, ``--force`` and ``--reingest`` (exit 2): the point of the flag is that
+    citadel picks the set, and combining them would blur which one wins. Nothing to retry is a
+    clean exit 0.
 
     ``--jobs N`` is a usage error below 1 (exit 2, like ``--force`` without paths) rather than an
     exception out of the API layer; omitted, the run takes ``CITADEL_JOBS`` (default 1, serial)."""
@@ -436,11 +451,21 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         print(f"error: --jobs must be at least 1 (got {args.jobs}); 1 means the serial default.", file=sys.stderr)
         return 2
 
-    if args.retry and (args.paths or args.force):
+    if args.retry and (args.paths or args.force or args.reingest):
         print(
             "error: --retry computes its own retry set (every failed source plus every ingested "
-            "source no wiki page cites) — combine no paths and no --force with it; use "
-            "`citadel ingest --force <paths>` for a hand-picked re-read instead.",
+            "source no wiki page cites) and cannot be combined with explicit paths, --force, or "
+            "--reingest; use `citadel ingest --force <paths>` (or `--reingest <paths>`) for a "
+            "hand-picked re-read instead.",
+            file=sys.stderr,
+        )
+        return 2
+
+    if args.force and args.reingest:
+        print(
+            "error: --force and --reingest are different intents — --force reconciles the "
+            "source's facts in place (keeping its existing treatment), --reingest strips them "
+            "and re-imports the source fresh. Pick one.",
             file=sys.stderr,
         )
         return 2
@@ -449,6 +474,15 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         print(
             "error: --force requires explicit paths (a forced re-read runs one agent session per "
             "source; name the files or directories to force, e.g. `citadel ingest --force raw/notes.md`).",
+            file=sys.stderr,
+        )
+        return 2
+
+    if args.reingest and not args.paths:
+        print(
+            "error: --reingest requires explicit paths (each source runs a delete cleanup "
+            "session plus a fresh ingest session; name the files or directories to re-import, "
+            "e.g. `citadel ingest --reingest raw/notes.md`).",
             file=sys.stderr,
         )
         return 2
@@ -486,7 +520,9 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         # CITADEL_LLM_VERBOSE — not just the --verbose flag — also drops the spinner that would
         # otherwise clobber the streamed transcript.
         progress = ConsoleProgress(spinner=not config.LLM_VERBOSE)
-    report = ingest.ingest(paths, progress=progress, full_rescan=args.full_rescan, force=force, jobs=args.jobs)
+    report = ingest.ingest(
+        paths, progress=progress, full_rescan=args.full_rescan, force=force, jobs=args.jobs, reingest=args.reingest
+    )
     print(report.render())
     # Non-zero on a per-source error OR a structural problem left behind (a broken
     # cross-link the agent introduced) — so ingest gates the wiki's integrity in CI.

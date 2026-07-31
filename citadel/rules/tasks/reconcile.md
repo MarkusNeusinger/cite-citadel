@@ -1,9 +1,22 @@
 # reconcile — re-fold a source the wiki already cites
 
 The wiki already holds facts derived from this source, and the source **changed since it was
-last ingested — or is being deliberately re-read** (a forced run: the source may be unchanged —
-re-verify the wiki's facts against it and apply the **current** rules, which may themselves have
-changed since the first ingest).
+last ingested — or is being deliberately re-read** (a forced run or a `citadel refresh`: the
+source may be unchanged — re-verify the wiki's facts against it and apply the **current** rules,
+which may themselves have changed since the first ingest).
+
+**A re-read is more than verification.** The wiki, the rules, and the model have all moved since
+this source was first ingested, so read the WHOLE source again with fresh eyes:
+
+- **Mine it for wiki-worthy facts the first ingest missed.** A fact the wiki does not carry is
+  genuinely new even when the source is unchanged — the first pass may simply have overlooked or
+  under-valued it. Add it, cited as usual.
+- **Cross-link against today's wiki.** Pages that did not exist at first ingest may now be the
+  right home or neighbor for this source's facts — search first (`core.md`), then link or merge
+  instead of leaving the old pages isolated.
+- **Remove what the source never supported.** The same rule as a fact the changed file no longer
+  supports: a claim cited to this source that the source does not actually state (a first-pass
+  misreading) loses this source's marker — and the sentence, if no other source remains.
 
 **Reconcile — do not merely append**, otherwise a corrected number leaves the stale one standing
 next to the new one:

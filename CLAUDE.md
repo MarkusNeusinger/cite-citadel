@@ -31,7 +31,12 @@ session, `--log-dir DIR` writes a transcript per source, `--quiet` drops the liv
 `--jobs N`/`-j` folds N sources in CONCURRENTLY (default 1 = serial; `CITADEL_JOBS`),
 `--full-rescan` distrusts the manifest's stat cache and re-hashes every tracked source,
 `--force <paths>` deliberately re-reads already-ingested sources as a reconcile — it requires
-explicit paths and is refused without them, `--retry` re-runs everything STUCK without naming
+explicit paths and is refused without them, `--reingest <paths>` goes one step further: each named
+tracked source is re-imported FRESH — a `kind="delete"` cleanup session strips its previous facts
+(manifest entry dropped), then the same run ingests it as a brand-new source under the current
+model + rules — the full re-think reconcile's keep-the-existing-treatment rule deliberately avoids
+(requires explicit paths like `--force`; the two flags and `--retry` refuse to combine; a failed
+cleanup blocks that source's fresh session), `--retry` re-runs everything STUCK without naming
 paths: every failed source still on disk plus every ingested source no wiki page cites — the
 zero-entry sources the run report flags as `no_pages` and `status` marks `NO PAGES` — as forced
 reconciles; it refuses paths/`--force` and exits 0 when nothing is stuck),
@@ -208,7 +213,13 @@ addressing them through `ingest`. The flow per source:
   `CITADEL_MAX_SOURCE_CHARS` is folded in over several passes (all against one staging copy — see
   the promote bullet below). `ingest --force <paths>` bypasses the sha short-circuit: the named
   sources land in pending as reconciles (a repo re-digests in full), and the manifest is re-stamped
-  with the current model + rules version.
+  with the current model + rules version. `ingest --reingest <paths>` rides force's partitioning
+  but re-imports fresh instead of reconciling: a delete-cleanup job per named tracked source runs
+  in the deletions group (always first), dropping the manifest key so the pending session plans the
+  plain ingest/image/audio/pdf kind of a new key (`repo` for a tracked repo — safe only because the
+  cleanup already stripped the pages a first-time brief would duplicate); a failed cleanup refuses
+  that source's fresh session, and the cleanup never prunes the transcript/pdftext caches (the
+  bytes are unchanged and about to be re-read).
 - **Discovery is incremental and deletion-safe**: one iterative `os.scandir`
   walk over every `CITADEL_RAW_DIRS` root keeps each file's stat; the **manifest doubles as the
   scan cache** (an entry's `size`/`mtime_ns`/`ctime_ns`/`hashed_at_ns` are a skip-hint — sha256

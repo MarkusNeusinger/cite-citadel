@@ -201,6 +201,32 @@ def test_ingest_force_without_paths_is_rejected(ingest_spy):
     assert not ingest_spy.called
 
 
+def test_ingest_reingest_flag_reaches_ingest(ingest_spy):
+    """``--reingest`` hands ``reingest=True`` through to ``ingest.ingest`` alongside the explicit
+    paths; without the flag the kwarg defaults to False."""
+    assert cli.main(["ingest", "--quiet", "raw/a.md"]) == 0
+    assert ingest_spy.kwargs["reingest"] is False
+    assert cli.main(["ingest", "--quiet", "--reingest", "raw/a.md"]) == 0
+    assert ingest_spy.kwargs["reingest"] is True
+    assert ingest_spy.paths == ["raw/a.md"]
+
+
+def test_ingest_reingest_without_paths_is_rejected(ingest_spy, capsys):
+    """Same explicit-paths rule as ``--force``, with sharper teeth (two sessions per source):
+    ``--reingest`` alone is refused with exit 2 before ``ingest.ingest`` is reached."""
+    assert cli.main(["ingest", "--quiet", "--reingest"]) == 2
+    assert not ingest_spy.called
+    assert "--reingest requires explicit paths" in capsys.readouterr().err
+
+
+def test_ingest_reingest_refuses_force_and_retry(ingest_spy, capsys):
+    """``--reingest`` and ``--force`` are different intents (strip-and-re-import vs reconcile in
+    place) and refuse each other; ``--retry`` computes its own set and refuses both."""
+    assert cli.main(["ingest", "--quiet", "--force", "--reingest", "raw/a.md"]) == 2
+    assert cli.main(["ingest", "--quiet", "--retry", "--reingest"]) == 2
+    assert not ingest_spy.called
+
+
 def test_ingest_source_error_exits_1(ingest_spy):
     ingest_spy.report = _report(errors=["raw/a.md: agent failed"])
     assert cli.main(["ingest", "--quiet"]) == 1

@@ -121,6 +121,11 @@ class IngestReport:
     # rel-keys of tracked sources that VANISHED from disk (a full run only): their provenance is
     # reconciled out of the wiki by a cleanup agent session, then the manifest key is dropped.
     sources_deleted: list[str] = field(default_factory=list)
+    # `--reingest` only: tracked sources whose previous facts were STRIPPED by a cleanup session
+    # (manifest key dropped) ahead of the fresh plain-ingest session the same run then ran for
+    # them — the deliberate re-think of an already-ingested source. The fresh session's own
+    # outcome lands in `processed`/`errors` like any other source's.
+    reingest_cleaned: list[str] = field(default_factory=list)
     # `--jobs N` only: sources whose session raced a CONCURRENT source's promote over the same page
     # and were therefore re-run serially afterwards (the re-run's own success/failure is reported
     # like any other source's). Surfaced because it is the one place parallel ingest costs money a
@@ -182,6 +187,9 @@ class IngestReport:
         if self.sources_deleted:
             lines.append("Sources removed (deleted from disk; citations reconciled out):")
             lines.extend(f"  - {s}" for s in self.sources_deleted)
+        if self.reingest_cleaned:
+            lines.append("Re-ingested fresh (previous facts stripped first, then imported as new):")
+            lines.extend(f"  - {s}" for s in self.reingest_cleaned)
         if self.resumed:
             lines.append("Resumed (continued from an earlier run's checkpoint):")
             lines.extend(f"  - {r}" for r in self.resumed)
@@ -606,6 +614,7 @@ def ingest(
     full_rescan: bool = False,
     force: bool = False,
     jobs: int | None = None,
+    reingest: bool = False,
 ) -> IngestReport:
     """Run one ingest. Exactly one source = one all-or-nothing agent job (a chunked source runs
     several ``llm.run_ingest_session`` passes inside that one job).
@@ -637,6 +646,20 @@ def ingest(
     ValueError (one agent session per source must never hit the whole corpus by accident; the
     CLI pre-empts it with the same message and a friendly exit 2), and a path-scoped run never
     sweeps deletions (``swept_roots=None`` below).
+
+    ``reingest`` (the ``--reingest`` flag) goes one deliberate step past ``force``: instead of
+    reconciling the named tracked sources around their existing treatment, each is re-imported
+    FRESH — first a ``kind="delete"`` cleanup session strips its previous facts from the wiki and
+    its manifest key is dropped, then (same run, deletions always run first) the source lands in
+    pending as a brand-new key and runs a plain ``kind="ingest"`` session (``kind="repo"`` for a
+    tracked repo — the cleanup already removed the pages a first-time brief would otherwise
+    duplicate). That is the escape hatch from reconcile's keep-the-existing-genre-treatment rule:
+    the source is re-thought from scratch against the CURRENT wiki and rules (e.g. after a model
+    upgrade or a new genre), at the cost of a cleanup session plus a full ingest session per
+    source. Like ``force`` it requires explicit paths (same ValueError here, same CLI exit 2) and
+    implies force's partitioning (sha short-circuit and dedup drop bypassed). If the cleanup
+    session fails, the fresh ingest for that source is refused (a per-source failure, retried by
+    re-running ``--reingest``) — new pages are never written on top of the old facts.
 
     Deletion detection is guarded (operational safety over
     thoroughness): candidates come from the walked-seen-set diff, each positively confirmed with
@@ -689,6 +712,14 @@ def ingest(
             "--force requires explicit paths (a forced re-read runs one agent session per "
             "source; name the files or directories to force, e.g. `citadel ingest --force raw/notes.md`)."
         )
+    if reingest and not paths:
+        # Same guard, sharper teeth: a reingest costs a cleanup session PLUS a full ingest
+        # session per source, so a whole-corpus reingest by accident is twice as expensive.
+        raise ValueError(
+            "--reingest requires explicit paths (each source runs a delete cleanup session plus "
+            "a fresh ingest session; name the files or directories to re-import, e.g. "
+            "`citadel ingest --reingest raw/notes.md`)."
+        )
 
     # ONE mutating run per workspace: the staging sweep, promote's prune, and the manifest/
     # failures saves are all destructive under concurrency (see runlock's module docstring).
@@ -698,11 +729,18 @@ def ingest(
         # Same place, same reason: under the exclusive lock, leftovers on disk belong to dead runs.
         # Age-based only — a checkpoint's own guards decide whether it is USABLE (see resume.sweep).
         resume.sweep()
-        return _ingest_run(paths, progress, full_rescan=full_rescan, force=force, jobs=workers)
+        return _ingest_run(paths, progress, full_rescan=full_rescan, force=force, jobs=workers, reingest=reingest)
 
 
-def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: bool, jobs: int = 1) -> IngestReport:
+def _ingest_run(
+    paths: list[str] | None, progress, *, full_rescan: bool, force: bool, jobs: int = 1, reingest: bool = False
+) -> IngestReport:
     """The body of :func:`ingest`, running under the exclusive workspace run lock."""
+
+    # A reingest rides force's partitioning wholesale (sha short-circuit and dedup drop bypassed,
+    # stat cache distrusted for the named paths); what it changes beyond force — the cleanup jobs
+    # and the fresh session kinds — is keyed off `reingest`/`reingest_keys` below.
+    force = force or reingest
 
     # `--jobs N` emits from WORKER threads (a source's start/done event fires where the work
     # happens), so the callback — which is whatever the caller passed — is serialized here. That
@@ -863,6 +901,22 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
     # one not yet tracked is brand new. Captured before the manifest is mutated below.
     pending_keys = {manifest.rel_key(p) for p in scan.pending}
     changed_keys = pending_keys & set(manifest_dict)
+    # --reingest: every named TRACKED source is re-imported fresh instead of reconciled — a
+    # delete-cleanup job (group 1, always before pending) strips its previous facts and drops its
+    # manifest key, and emptying changed_keys here makes its pending session plan the plain
+    # ingest/image/audio/pdf kind of a brand-new key. Tracked repos join reingest_keys below.
+    reingest_keys: set[str] = set()
+    if reingest:
+        reingest_keys = set(changed_keys)
+        changed_keys = set()
+        # A tracked repo (force gave it kind="repo-reconcile") is re-imported fresh the same way:
+        # cleanup first, then the FIRST-TIME brief over a full digest. kind="repo" is safe here
+        # precisely because the cleanup precedes it — the pages a first-time brief would
+        # otherwise duplicate are already stripped (contrast _partition_repos' force rule).
+        repo_pending = [
+            _RepoJob(path=r.path, key=r.key, kind="repo", old_commit=None) if r.old_commit else r for r in repo_pending
+        ]
+        reingest_keys.update(r.key for r in repo_pending if r.key in manifest_dict)
 
     # --- Reorganized sources: a file that only MOVED (or is a byte-for-byte duplicate) is
     # recognized and NOT re-ingested. For a real move (the old path is gone) repoint the wiki's
@@ -1000,6 +1054,9 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
         deleted=len(deleted_sources),
         repos=len(repo_pending),
         jobs=jobs,
+        # Each reingest source runs a cleanup JOB on top of its pending session — counted so the
+        # overall progress total matches the jobs that will actually run.
+        reingest=len(reingest_keys),
     )
 
     # --- The per-source jobs (the SourceJob loop): DELETION cleanups first, then files, then repos,
@@ -1034,6 +1091,15 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
         office = scan.office_text.get(src)
 
         def build() -> tuple[list, list[str], "_Resume | None"]:
+            # A reingest source may only run its fresh session on a wiki its cleanup actually
+            # cleaned: the cleanup job (group 1) pops the manifest key on success, so a key still
+            # tracked here means that cleanup failed — refuse rather than write new pages on top
+            # of the old facts (a per-source prepare failure; re-running --reingest retries both).
+            if rel_key in reingest_keys and rel_key in manifest_dict:
+                raise RuntimeError(
+                    "the delete cleanup for this reingest failed, so its previous facts are "
+                    "still in the wiki; fix that failure and re-run `citadel ingest --reingest`"
+                )
             # Plan the pass(es): an Office source materializes its extracted text to a temp .md
             # the agent reads; an audio/video source is transcribed HERE through the whisper seam
             # (content-addressed cache; a raise is a retryable per-source prepare_error, and the
@@ -1122,6 +1188,13 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
     # run-level ``force``), which re-digests in FULL (see _partition_repos).
     def _repo_job(rjob: _RepoJob) -> _SourceJob:
         def build() -> tuple[list, list[str], "_Resume | None"]:
+            # Same cleanup post-condition as _file_job's: a reingested repo whose cleanup failed
+            # (key still tracked) must not run the first-time brief on top of its old pages.
+            if rjob.key in reingest_keys and rjob.key in manifest_dict:
+                raise RuntimeError(
+                    "the delete cleanup for this reingest failed, so its previous facts are "
+                    "still in the wiki; fix that failure and re-run `citadel ingest --reingest`"
+                )
             only: list[str] | None = None
             change_summary: str | None = None
             if rjob.kind == "repo-reconcile" and rjob.old_commit and not force:
@@ -1166,8 +1239,10 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
     # cites it, run a `kind="delete"` cleanup session that strips that provenance, gated by a
     # post-condition that the wiki no longer references it (else the whole cleanup is rolled back
     # and retried next full run — the manifest key is dropped only on success). A deletion that
-    # nothing cites plans NO session and just loses its manifest key.
-    def _delete_job(key: str) -> _SourceJob:
+    # nothing cites plans NO session and just loses its manifest key. With ``reingest_cleanup``
+    # the SAME job strips a still-on-disk source ahead of its fresh re-import (`--reingest`); the
+    # bookkeeping differs only where the "source is gone" premise does not hold.
+    def _delete_job(key: str, reingest_cleanup: bool = False) -> _SourceJob:
         def build() -> tuple[list, list[str], "_Resume | None"]:
             if not store.find_raw_references(key):
                 return [], [], None  # nothing cites it: no cleanup session, just forget it below
@@ -1186,7 +1261,14 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             # this must NOT gate on the extension: a PDF routes by %PDF- MAGIC (is_pdf_file), so it
             # can be cached under any name, and an ext gate would orphan its plaintext extraction.
             del_sha = manifest.entry_sha(entry) if entry is not None else None
-            if entry is not None and not _sha_shared_by_other_entry(manifest_dict, del_sha, key):
+            # ... except on a reingest cleanup: the source still exists with the SAME bytes, and
+            # the fresh session moments away re-reads exactly the cached transcript/extraction —
+            # pruning here would throw away work the run is about to re-buy.
+            if (
+                not reingest_cleanup
+                and entry is not None
+                and not _sha_shared_by_other_entry(manifest_dict, del_sha, key)
+            ):
                 transcribe.prune_cached(del_sha)
                 pdftext.prune_cached(del_sha)
             # A resume checkpoint is KEY-addressed (not content-addressed like those two caches),
@@ -1196,7 +1278,10 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             manifest_dict.pop(key, None)
             failures.clear(failures_dict, key)
             manifest.save(manifest_dict)
-            report.sources_deleted.append(key)
+            if reingest_cleanup:
+                report.reingest_cleaned.append(key)
+            else:
+                report.sources_deleted.append(key)
 
         return _SourceJob(
             key=key,
@@ -1216,7 +1301,10 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
     # a later run with nothing pending would never rebuild the derived files.
     pending_interrupt: BaseException | None = None
     groups = (
-        [_delete_job(key) for key in deleted_sources],
+        # Reingest cleanups ride the deletion group, so the always-first ordering above holds for
+        # them too: a source's old facts are stripped before ANY pending session runs.
+        [_delete_job(key) for key in deleted_sources]
+        + [_delete_job(key, reingest_cleanup=True) for key in sorted(reingest_keys)],
         [_file_job(src) for src in scan.pending],
         [_repo_job(r) for r in repo_pending],
     )
@@ -1238,6 +1326,7 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
         or report.moved
         or report.unreadable
         or report.sources_deleted
+        or report.reingest_cleaned
         or repointed
         or failures_changed
         or pruned_ignored
@@ -1280,6 +1369,11 @@ def _ingest_run(paths: list[str] | None, progress, *, full_rescan: bool, force: 
             store.append_log(
                 f"raw source {key} was deleted from disk; reconciled its citations out of the "
                 "wiki and dropped it from the manifest"
+            )
+        for key in report.reingest_cleaned:
+            store.append_log(
+                f"reingest {key}: stripped its previous facts ahead of the fresh import "
+                "(deliberate re-read as a new source)"
             )
         # The wiki-history commit comes LAST, after the log/index/failures writes above, so one
         # commit captures the run's complete state. Best-effort by contract: the wiki is already
