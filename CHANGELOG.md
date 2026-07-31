@@ -23,6 +23,16 @@ All notable changes to this project are documented here. The format is based on
   `--force` (exit 2 without them; `--force` and `--retry` refuse to combine with it). The
   `tasks/delete.md` brief now covers the still-on-disk cleanup case.
 
+### Changed
+
+- **Forced/refresh reconciles now re-read with fresh eyes, not just re-verify.** The
+  `tasks/reconcile.md` brief (driving `ingest --force` and every `citadel refresh` session) now
+  explicitly instructs the agent that a re-read is more than verification: mine the unchanged
+  source for wiki-worthy facts the first ingest missed, cross-link against today's wiki (pages
+  that did not exist back then may now be the right home or neighbor), and strip claims the
+  source never actually supported — while still keeping the existing genre treatment (structure
+  churn stays `--reingest`'s job).
+
 ## [0.6.0] - 2026-07-30
 
 ### Changed (breaking)
