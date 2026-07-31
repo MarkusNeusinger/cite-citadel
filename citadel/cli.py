@@ -454,9 +454,9 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     if args.retry and (args.paths or args.force or args.reingest):
         print(
             "error: --retry computes its own retry set (every failed source plus every ingested "
-            "source no wiki page cites) — combine no paths, no --force and no --reingest with it; "
-            "use `citadel ingest --force <paths>` (or `--reingest <paths>`) for a hand-picked "
-            "re-read instead.",
+            "source no wiki page cites) and cannot be combined with explicit paths, --force, or "
+            "--reingest; use `citadel ingest --force <paths>` (or `--reingest <paths>`) for a "
+            "hand-picked re-read instead.",
             file=sys.stderr,
         )
         return 2
