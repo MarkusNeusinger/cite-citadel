@@ -259,7 +259,9 @@ def _checkpoint_delta(
     return changed, removed
 
 
-def _adopt_checkpoint(ctx: _Resume, staging: Path, live: Path, rel_key: str) -> tuple[list, list, list] | None:
+def _adopt_checkpoint(
+    ctx: _Resume, staging: Path, live: Path, rel_key: str, carried: list[str] | None = None
+) -> tuple[list, list, list] | None:
     """Replay ``ctx``'s checkpoint into the fresh ``staging`` copy and return the
     ``(created, updated, deleted)`` it landed there, or None when it must not be used.
 
@@ -275,7 +277,13 @@ def _adopt_checkpoint(ctx: _Resume, staging: Path, live: Path, rel_key: str) -> 
        fresh dangling link on an already-promoted wiki.
 
     Returning None is NEVER a source failure: the caller drops the checkpoint and restarts the
-    source at segment 1 in this same run, which is exactly the pre-resume behavior."""
+    source at segment 1 in this same run, which is exactly the pre-resume behavior.
+
+    ``carried`` collects the pre-existing page errors gate 2 forgave, so "forgive but still report"
+    holds here too: a page this replay restored and no later segment touches again would otherwise
+    have its inherited breakage validated once, waved through, and never surfaced. The caller merges
+    it only when the adoption SUCCEEDS — a refused replay is discarded whole, and its findings with
+    it."""
     with _redirect_wiki(staging):
         # Baseline the cross-links BEFORE the replay: staging is still a byte copy of live here, so
         # this is the set of breakages the wiki already lives with (which resume must not be blamed
@@ -291,7 +299,9 @@ def _adopt_checkpoint(ctx: _Resume, staging: Path, live: Path, rel_key: str) -> 
         # broken must not cost this source its checkpoint (and with it every paid segment) —
         # the replay is only ever refused for breakage the replay itself introduced.
         inherited = {page.rel_path: page for page in before_pages}
-        if _validate_and_restamp([rel for rel in written if rel.endswith(".md")], rel_key, inherited=inherited):
+        if _validate_and_restamp(
+            [rel for rel in written if rel.endswith(".md")], rel_key, inherited=inherited, carried=carried
+        ):
             return None
         if set(store.find_broken_links(store.load())) - before_broken:
             return None
@@ -422,7 +432,11 @@ def _run_agent_sessions(
         # start on a clean staging copy IN THIS RUN — never a failed source, never a wasted session.
         start_at = 0
         if resume_ctx is not None and resume_ctx.checkpoint is not None:
-            seeded = _adopt_checkpoint(resume_ctx, staging, live, rel_key)
+            # Collected into a LOCAL list, merged only if the replay is adopted: a refused
+            # checkpoint is discarded whole (staging included), so its findings describe a state
+            # this run never went on to promote.
+            replay_issues: list[str] = []
+            seeded = _adopt_checkpoint(resume_ctx, staging, live, rel_key, carried=replay_issues)
             if seeded is None:
                 resume.clear(rel_key)
                 resume_ctx.checkpoint = None
@@ -432,6 +446,7 @@ def _run_agent_sessions(
                 created, updated, deleted = list(seeded[0]), list(seeded[1]), list(seeded[2])
                 start_at = resume_ctx.checkpoint.completed
                 carried = dict(resume_ctx.checkpoint.usage)
+                carried_issues.extend(replay_issues)
                 resumed_note = f"{rel_key} (segments 1-{start_at} of {len(session_fns)} restored from checkpoint)"
         with _redirect_wiki(staging):
             prev_pages = store.load()

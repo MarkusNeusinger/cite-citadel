@@ -324,10 +324,11 @@ class _StallGuard:
 
     So: count CONSECUTIVE sources that were expected to change something (:attr:`_SourceJob
     .expects_changes` — a fresh source or a deletion cleanup that was planned because something
-    still cites the source) and did not, and trip once that reaches ``limit``. Any source that does
-    change something resets the count, because that is proof the agent works. Sources that carry no
-    evidence either way — a reconcile, a deletion nothing cited, a source that failed before its
-    session — neither count nor reset.
+    still cites the source) and did not, and trip once that reaches ``limit``. Any source whose
+    session CHANGED something resets the count — including a reconcile's — because that is proof the
+    agent works. Only the empty outcomes are read by job kind: an empty reconcile ("I re-read it; it
+    still says what the wiki says") is a legitimate verdict and no evidence in either direction, as
+    is a deletion nothing cited or a source that failed before its session ran.
 
     Tripping stops the run cleanly: nothing is rolled back (everything promoted stays promoted),
     untouched sources are simply never attempted, so they stay pending and the next run picks them
@@ -341,13 +342,23 @@ class _StallGuard:
 
     def note(self, job: "_SourceJob", outcome: "_SourceOutcome") -> None:
         """Fold one recorded outcome into the count. MAIN THREAD ONLY (called from
-        :func:`_record_source_run`), so it needs no lock even under ``--jobs N``."""
-        if self.limit <= 0 or self.tripped or not job.expects_changes or not outcome.ran_sessions:
+        :func:`_record_source_run`), so it needs no lock even under ``--jobs N``.
+
+        Counting and resetting are deliberately ASYMMETRIC about ``expects_changes``, because the
+        two directions need different evidence. An empty session only means "the agent is broken"
+        for a source that had work to do, so a reconcile's empty verdict is not counted. But a
+        session that CHANGED something is proof the agent works whatever the job kind was — so a
+        reconcile that did change pages resets the counter like any other source. Treating that
+        proof as no evidence would false-trip a mixed run, where a run's fresh sources and its
+        reconciles are interleaved in scan order."""
+        if self.limit <= 0 or self.tripped or not outcome.ran_sessions:
             return
         if outcome.created or outcome.updated or outcome.deleted:
             self.consecutive = 0
             self.first_key = ""
             return
+        if not job.expects_changes:
+            return  # an empty reconcile is a legitimate verdict: no evidence in either direction
         self.consecutive += 1
         if self.consecutive == 1:
             self.first_key = job.key

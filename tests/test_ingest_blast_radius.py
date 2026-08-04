@@ -157,6 +157,44 @@ def test_failed_delete_cleanup_no_longer_blocks_the_rest_of_the_run(tmp_citadel,
     assert "Another fact.[^s3]" in (cit.wiki / "concepts/topic.md").read_text(encoding="utf-8")
 
 
+def test_replayed_checkpoint_reports_its_inherited_issues(tmp_citadel, fake_agent, seed_page, monkeypatch):
+    """ "Forgive but still report" has to hold on the resume path too. A page a checkpoint replays,
+    and which no later segment touches again, is validated exactly once — inside the replay. If
+    that one validation forgives an inherited error without recording it, the problem is waved
+    through and never surfaced anywhere."""
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 120)
+    cit = tmp_citadel
+    (cit.raw / "kept.md").write_text("kept\n", encoding="utf-8")
+    (cit.raw / "big.txt").write_text(
+        "\n\n".join(f"Paragraph number {i} with some filler content about topic {i}." for i in range(6)),
+        encoding="utf-8",
+    )
+
+    # The damage is ALREADY in the live wiki — the chunked source only appends to that page, so the
+    # carve-out is what lets its segment 1 validate at all.
+    _seed_page_with_dangling_citation(seed_page, "concepts/topic.md")
+
+    # Run 1 appends on segment 1, then dies on segment 2 -> segment 1's delta is checkpointed.
+    def fail_at_two(rel_key, kind="ingest", read_path=None, segment=None):
+        if segment[0] == 1:
+            _append_fact("concepts/topic.md", "s3", rel_key)
+        if segment[0] == 2:
+            raise RuntimeError("segment 2 boom")
+
+    fake_agent(side_effect=fail_at_two)
+    ingest.ingest()
+
+    # Run 2 replays segment 1 and its later segments never touch that page again.
+    fake_agent()
+    report = ingest.ingest()
+
+    assert "raw/big.txt" in report.processed, "the replay must still be adopted, not refused"
+    assert report.resumed, "the checkpoint must have been replayed, not restarted from segment 1"
+    assert any("concepts/topic.md" in i and "vanished.md" in i for i in report.inherited_issues), (
+        "an inherited error forgiven inside the replay must still reach the report"
+    )
+
+
 # --- 2. a dead agent stops the run instead of billing the corpus ---------------------------
 
 
@@ -249,6 +287,50 @@ def test_a_working_agent_resets_the_stall_count(tmp_citadel, fake_agent, monkeyp
     assert agent.count == 9, "every source must be attempted"
     assert not report.stalled
     assert len(report.no_pages) == 6  # the empties are still surfaced, just not fatal
+
+
+def test_a_reconcile_that_changed_pages_resets_the_count(tmp_citadel, fake_agent, seed_page, monkeypatch):
+    """Counting and resetting are asymmetric about job kind, and this is the direction that is easy
+    to get wrong. An empty reconcile is no evidence (never counted) — but a reconcile that CHANGED
+    pages is proof the agent works, so it must reset the counter like any other source. Without
+    that, a mixed run of fresh sources and reconciles — which is what scan order produces — can
+    trip on an agent that has demonstrably just done work."""
+    monkeypatch.setattr(config, "STALL_LIMIT", 3)
+    cit = tmp_citadel
+    # One already-ingested source whose bytes then change -> a reconcile in the next run...
+    (cit.raw / "tracked.md").write_text("first version\n", encoding="utf-8")
+
+    def write_tracked_page(rel_key, kind="ingest", **kwargs):
+        page = Path(config.wiki_dir()) / "concepts/tracked.md"
+        page.parent.mkdir(parents=True, exist_ok=True)
+        page.write_text(
+            okf.dump(
+                {"type": "Concept", "title": "Tracked", "description": "d", "tags": ["x"], "resource": rel_key},
+                f"Version {len(page.read_text(encoding='utf-8')) if page.exists() else 0}.[^s1]\n\n"
+                f"## Sources\n\n[^s1]: [{rel_key}](../../{rel_key}) - s\n",
+            ),
+            encoding="utf-8",
+        )
+
+    fake_agent(side_effect=write_tracked_page)
+    ingest.ingest()
+    (cit.raw / "tracked.md").write_text("second version, changed\n", encoding="utf-8")
+
+    # ...interleaved with fresh sources the (broken-looking) agent leaves empty. Scan order is
+    # alphabetical, so the reconcile of `tracked.md` lands between the empty fresh sources.
+    for name in ("aaa.md", "bbb.md", "zzz.md"):
+        (cit.raw / name).write_text(f"fresh {name}\n", encoding="utf-8")
+
+    def empty_except_the_reconcile(rel_key, kind="ingest", **kwargs):
+        if kind == "reconcile":
+            write_tracked_page(rel_key, kind, **kwargs)  # this one really does change a page
+
+    agent = fake_agent(side_effect=empty_except_the_reconcile)
+    report = ingest.ingest()
+
+    assert ("raw/tracked.md", "reconcile") in agent.calls, "the changed source must reconcile"
+    assert not report.stalled, "a reconcile that changed pages is proof the agent works"
+    assert agent.count == 4, "every source must still be attempted"
 
 
 def test_reconcile_no_ops_never_trip_the_guard(tmp_citadel, fake_agent, monkeypatch):
