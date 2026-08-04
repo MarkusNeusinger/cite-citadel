@@ -23,6 +23,39 @@ All notable changes to this project are documented here. The format is based on
   `--force` (exit 2 without them; `--force` and `--retry` refuse to combine with it). The
   `tasks/delete.md` brief now covers the still-on-disk cleanup case.
 
+### Fixed
+
+- **One invalid page no longer fails every source that touches it.** Ingest validates each page an
+  agent session changed and rolls the whole source back on any error — which was blaming a source
+  for damage it inherited. If a page is *already* invalid when a session touches it (a failed
+  deletion cleanup left a dangling `[^sN]` behind, a raw file moved out from under a `resource`, a
+  hand edit landed), the next source that merely appends a fact to that page failed validation, was
+  rolled back in full, and failed again on every subsequent run: the session was paid for, nothing
+  was kept, and every source whose facts belonged on that page was stuck until a human found and
+  fixed it by hand. One broken page could take a whole corpus down. Validation now compares against
+  the page as the source *found* it: an error whose exact `(category, detail)` was already there is
+  not this source's damage — it is reported as a run warning (*pre-existing problems on pages this
+  run touched*) instead of failing the source. Every other error still fails it, so nothing a
+  session actually breaks can reach the live wiki. The same carve-out applies to the resume-replay
+  guard, so a poisoned page can no longer cost a chunked source its checkpoint (and with it every
+  paid segment).
+
+### Added
+
+- **`CITADEL_STALL_LIMIT` — stop a run whose agent has stopped working.** An agent CLI can fail in a
+  way that does not look like failure: it self-updates mid-run into a build that cannot launch its
+  own tools, a permission is revoked, a sandbox denies every subprocess. The session still exits
+  `0`, still reports the tokens it spent, and still returns an empty diff — so every existing guard
+  passes and the run bills a session for every remaining source while producing nothing. After 3
+  **consecutive** sources come back having changed no page at all (configurable; `0` disables), the
+  run now stops dispatching, reports why (*STOPPED EARLY*, with what to check), and leaves the
+  un-attempted sources pending for a plain re-run. Only sources that were expected to change
+  something count — a fresh source, or a deletion cleanup planned because something still cites the
+  source; a reconcile's "nothing changed" is a real verdict (what a healthy `citadel refresh` slice
+  looks like) and never counts, and any source that does change something resets the counter.
+  Applies to `--jobs N` runs too: queued sources are cancelled and in-flight ones finish and are
+  recorded normally.
+
 ### Changed
 
 - **Forced/refresh reconciles now re-read with fresh eyes, not just re-verify.** The

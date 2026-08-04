@@ -141,6 +141,16 @@ class IngestReport:
     # under-delivered, yet it is marked done and never revisited on its own. Surfaced as a WARNING
     # so it is easy to spot and retry (`citadel ingest --retry`, or `--force <path>`).
     no_pages: list[str] = field(default_factory=list)
+    # Validation errors that were ALREADY on a page when a source touched it — a dangling `[^sN]`
+    # a failed deletion cleanup left behind, a `resource` whose raw file moved, a hand edit. They
+    # did not fail the source that found them (it did not cause them — see
+    # ``_validate_and_restamp``'s ``inherited``), but they are real problems in the live wiki, so
+    # they are surfaced here rather than silently carried forward.
+    inherited_issues: list[str] = field(default_factory=list)
+    # Set when the run STOPPED EARLY because consecutive sources came back from the agent having
+    # changed nothing at all — the signature of a broken agent CLI, not of a corpus with nothing to
+    # say. Holds the human-readable reason; empty on every normal run.
+    stalled: str = ""
     # The wiki-history note from wikigit.autocommit ("wiki git: committed <sha>", or a warning
     # naming what was skipped and why) — empty when the history layer had nothing to say.
     wiki_git: str = ""
@@ -224,9 +234,18 @@ class IngestReport:
                 "  These sources are marked done and will not be revisited automatically. "
                 "Retry them with `citadel ingest --retry` (or `citadel ingest --force <path>`)."
             )
+        if self.inherited_issues:
+            lines.append("WARNING — pre-existing problems on pages this run touched (NOT caused by these sources):")
+            lines.extend(f"  - {i}" for i in self.inherited_issues)
+            lines.append(
+                "  These did not fail the sources that found them. Run `citadel lint` for the full "
+                "picture, and `citadel curate` to have them repaired."
+            )
         if self.broken_links:
             lines.append("WARNING — broken cross-links (run `citadel lint`):")
             lines.extend(f"  - {src} -> {tgt}" for src, tgt in self.broken_links)
+        if self.stalled:
+            lines.append(f"STOPPED EARLY — {self.stalled}")
         if self.errors:
             lines.append("Errors:")
             lines.extend(f"  - {e}" for e in self.errors)
@@ -273,6 +292,11 @@ class _SourceJob:
       Deliberately False for reconciles (an unchanged verdict is a legitimate outcome of
       re-reading a source, and ``citadel refresh`` would otherwise flag its whole slice) and for
       delete cleanups (empty means nothing cited the source — the expected case).
+    - ``expects_changes``: True when a session that changes NOTHING is evidence the agent is not
+      working, rather than a legitimate verdict — a fresh source (which has no facts in the wiki
+      yet) or a deletion cleanup that was only planned BECAUSE something still cites the source.
+      Feeds :class:`_StallGuard`. Reconciles are excluded for the same reason they are excluded
+      from ``warn_no_pages``: "nothing changed" is a real answer there.
     """
 
     key: str
@@ -283,6 +307,79 @@ class _SourceJob:
     allow_emptying: bool = False
     sha_stat: tuple[str | None, os.stat_result | None] = (None, None)
     warn_no_pages: bool = False
+    expects_changes: bool = False
+
+
+@dataclass
+class _StallGuard:
+    """Stops a run whose AGENT has stopped working, before it bills the whole corpus for nothing.
+
+    A source whose session runs to completion and changes not one page is normally just a warning
+    (``report.no_pages``). But when it happens to fresh source after fresh source, it is not a
+    corpus with nothing to say — it is the agent CLI failing in a way that does not look like
+    failure: a self-update mid-run that leaves the new binary unable to launch its own tools, a
+    revoked file-write permission, a sandbox that denies every subprocess. The session still exits
+    0, still reports tokens spent, and still returns an empty diff, so every existing guard passes
+    and the run marches through every remaining source at full price.
+
+    So: count CONSECUTIVE sources that were expected to change something (:attr:`_SourceJob
+    .expects_changes` — a fresh source or a deletion cleanup that was planned because something
+    still cites the source) and did not, and trip once that reaches ``limit``. Any source whose
+    session CHANGED something resets the count — including a reconcile's — because that is proof the
+    agent works. Only the empty outcomes are read by job kind: an empty reconcile ("I re-read it; it
+    still says what the wiki says") is a legitimate verdict and no evidence in either direction, as
+    is a deletion nothing cited or a source that failed before its session ran.
+
+    Tripping stops the run cleanly: nothing is rolled back (everything promoted stays promoted),
+    untouched sources are simply never attempted, so they stay pending and the next run picks them
+    up with no manifest entry to undo.
+    """
+
+    limit: int
+    consecutive: int = 0
+    tripped: bool = False
+    first_key: str = ""
+
+    def note(self, job: "_SourceJob", outcome: "_SourceOutcome") -> None:
+        """Fold one recorded outcome into the count. MAIN THREAD ONLY (called from
+        :func:`_record_source_run`), so it needs no lock even under ``--jobs N``.
+
+        Counting and resetting are deliberately ASYMMETRIC about ``expects_changes``, because the
+        two directions need different evidence. An empty session only means "the agent is broken"
+        for a source that had work to do, so a reconcile's empty verdict is not counted. But a
+        session that CHANGED something is proof the agent works whatever the job kind was — so a
+        reconcile that did change pages resets the counter like any other source. Treating that
+        proof as no evidence would false-trip a mixed run, where a run's fresh sources and its
+        reconciles are interleaved in scan order."""
+        if self.limit <= 0 or self.tripped or not outcome.ran_sessions:
+            return
+        if outcome.created or outcome.updated or outcome.deleted:
+            self.consecutive = 0
+            self.first_key = ""
+            return
+        if not job.expects_changes:
+            return  # an empty reconcile is a legitimate verdict: no evidence in either direction
+        self.consecutive += 1
+        if self.consecutive == 1:
+            self.first_key = job.key
+        if self.consecutive >= self.limit:
+            self.tripped = True
+
+    @property
+    def reason(self) -> str:
+        """The run report's ``stalled`` line — what tripped, and what to do about it."""
+        if not self.tripped:
+            return ""
+        return (
+            f"{self.consecutive} sources in a row came back from the agent with NO wiki changes "
+            f"(starting at {config.display_key(self.first_key)}). That is the signature of an agent "
+            "CLI that runs but cannot do its work — check `citadel doctor`, then run the CLI by hand "
+            "once to confirm it can still write files and launch tools (a self-update can silently "
+            "take that away mid-run). Remaining sources were NOT attempted, so no further sessions "
+            "were billed: they stay pending and a plain re-run picks them up. The empty ones above "
+            "were marked done and need `citadel ingest --retry`. Set CITADEL_STALL_LIMIT=0 to "
+            "disable this check."
+        )
 
 
 @dataclass
@@ -364,7 +461,7 @@ def _record_spend(outcome: _SourceOutcome, report: IngestReport) -> None:
         report.resumed.append(outcome.resumed_note)
 
 
-def _record_source_run(run: _JobRun, emit, report: IngestReport, failures_dict, model) -> None:
+def _record_source_run(run: _JobRun, emit, report: IngestReport, failures_dict, model, stall=None) -> None:
     """Book ONE finished attempt into the run's shared state — report lists, the persistent
     failures catalog, the job's success hook (manifest stamp + save), and the closing progress
     event. MAIN THREAD ONLY, so the manifest/failures/report writes stay single-threaded exactly as
@@ -372,7 +469,11 @@ def _record_source_run(run: _JobRun, emit, report: IngestReport, failures_dict, 
 
     Page changes reach the report only on success — a failed or interrupted source promotes
     nothing, so the report claims nothing for it. A ``conflict`` outcome never reaches here: the
-    driver re-runs that source serially first."""
+    driver re-runs that source serially first.
+
+    ``stall`` (the run's :class:`_StallGuard`) is fed every recorded outcome here, on the main
+    thread, so its counter needs no lock even under ``--jobs N``; the DRIVERS then check
+    ``stall.tripped`` to stop dispatching."""
     job, index, total = run.job, run.index, run.total
     sha, st = job.sha_stat
     if run.prepare_exc is not None:
@@ -400,10 +501,15 @@ def _record_source_run(run: _JobRun, emit, report: IngestReport, failures_dict, 
             seconds=outcome.seconds,
         )
         return
+    if stall is not None:
+        stall.note(job, outcome)
     report.pages_created.extend(outcome.created)
     report.pages_updated.extend(outcome.updated)
     report.pages_written.extend(outcome.created + outcome.updated)
     report.pages_deleted.extend(outcome.deleted)
+    for issue in outcome.carried_issues:
+        if issue not in report.inherited_issues:
+            report.inherited_issues.append(issue)
     if job.warn_no_pages and not (outcome.created or outcome.updated or outcome.deleted):
         # A fresh source folded in with zero page changes: marked done below, so without this
         # warning it would silently never contribute anything (see IngestReport.no_pages).
@@ -432,7 +538,7 @@ def _record_source_run(run: _JobRun, emit, report: IngestReport, failures_dict, 
 
 
 def _run_source_jobs(
-    jobs: list[_SourceJob], emit, report: IngestReport, failures_dict, model, workers: int = 1
+    jobs: list[_SourceJob], emit, report: IngestReport, failures_dict, model, workers: int = 1, stall=None
 ) -> BaseException | None:
     """Drive one GROUP of :class:`_SourceJob`s (deletion cleanups, files, or repos) through the
     ONE shared per-source loop: emit ``source_start``, plan the session(s), run them all-or-nothing
@@ -451,28 +557,35 @@ def _run_source_jobs(
     A ``BaseException`` (Ctrl+C) is RETURNED, not raised — the caller captures it, skips the
     remaining groups, finalizes the completed sources, and re-raises (the frozen
     capture-finalize-reraise pattern). The in-flight source was already rolled back by the
-    session runner's ``finally``."""
+    session runner's ``finally``.
+
+    ``stall`` (:class:`_StallGuard`) stops dispatching entirely once the agent has proven it is not
+    doing its work; the un-attempted sources stay pending for the next run."""
     if workers <= 1 or len(jobs) <= 1:
-        return _run_serially(list(enumerate(jobs, 1)), len(jobs), emit, report, failures_dict, model)
-    return _run_source_jobs_parallel(jobs, emit, report, failures_dict, model, workers)
+        return _run_serially(list(enumerate(jobs, 1)), len(jobs), emit, report, failures_dict, model, stall)
+    return _run_source_jobs_parallel(jobs, emit, report, failures_dict, model, workers, stall)
 
 
 def _run_serially(
-    numbered: list[tuple[int, _SourceJob]], total: int, emit, report: IngestReport, failures_dict, model
+    numbered: list[tuple[int, _SourceJob]], total: int, emit, report: IngestReport, failures_dict, model, stall=None
 ) -> BaseException | None:
     """Run ``(index, job)`` pairs one after another — the whole serial path, and the tail of the
     parallel one (a source whose promote raced another is re-run here, keeping its original
     index/total so the progress numbering stays honest)."""
     for index, job in numbered:
+        if stall is not None and stall.tripped:
+            # The agent is not doing its work: every further source would only buy another empty
+            # session. Stop BEFORE spawning it — the caller reports why and leaves the rest pending.
+            return None
         run = _attempt_source(job, index, total, emit, concurrent=False)
         if run.interrupt is not None:
             return run.interrupt
-        _record_source_run(run, emit, report, failures_dict, model)
+        _record_source_run(run, emit, report, failures_dict, model, stall)
     return None
 
 
 def _run_source_jobs_parallel(
-    jobs: list[_SourceJob], emit, report: IngestReport, failures_dict, model, workers: int
+    jobs: list[_SourceJob], emit, report: IngestReport, failures_dict, model, workers: int, stall=None
 ) -> BaseException | None:
     """Run one group's sources through a bounded thread pool, then re-run serially whichever of
     them raced another source's promote.
@@ -502,8 +615,11 @@ def _run_source_jobs_parallel(
 
     def attempt(index: int, job: _SourceJob) -> _JobRun | None:
         # A cancelled-too-late worker must not start a session: once the run is aborting, the only
-        # correct thing a queued source can do is nothing at all.
-        if abort.is_set():
+        # correct thing a queued source can do is nothing at all. The stall guard is read here as
+        # well as in the recording loop, and for the same reason it is read at all: a worker that
+        # picks up the next source in the window between the guard tripping and the main thread
+        # cancelling would otherwise buy one more session from an agent already known to be broken.
+        if abort.is_set() or (stall is not None and stall.tripped):
             return None
         return _attempt_source(job, index, total, emit, concurrent=True)
 
@@ -537,8 +653,17 @@ def _run_source_jobs_parallel(
                     conflicted.append((run.index, run.job))
                     emit("source_retry", index=run.index, total=total, source=run.job.key, seconds=run.outcome.seconds)
                     continue
-                _record_source_run(run, emit, report, failures_dict, model)
+                _record_source_run(run, emit, report, failures_dict, model, stall)
                 recorded.add(run.index)
+                if stall is not None and stall.tripped:
+                    # Same shape as the interrupt path, and for the same reason — there is no point
+                    # spending on work that cannot succeed — but it is NOT an interrupt: queued
+                    # sources are cancelled (their `attempt` returns before starting a session),
+                    # in-flight ones finish and are recorded normally, and the run ends cleanly with
+                    # everything already promoted intact.
+                    abort.set()
+                    for pending in submitted:
+                        pending.cancel()
         except BaseException as exc:  # noqa: BLE001 - Ctrl+C while waiting: stop dispatching
             interrupt = interrupt if interrupt is not None else exc
             abort.set()
@@ -561,7 +686,9 @@ def _run_source_jobs_parallel(
     if conflicted:
         # The serial tail: no other source can be promoting now, so these re-runs see the wiki the
         # winner left behind and merge into it — the result a serial run would have produced.
-        return _run_serially(sorted(conflicted, key=lambda pair: pair[0]), total, emit, report, failures_dict, model)
+        return _run_serially(
+            sorted(conflicted, key=lambda pair: pair[0]), total, emit, report, failures_dict, model, stall
+        )
     return None
 
 
@@ -1178,8 +1305,11 @@ def _ingest_run(
             prepare_error="prepare audio transcript" if is_audio else "write source text",
             sha_stat=sha_stat,
             # A brand-new key (not a reconcile of changed/forced bytes) that produces zero page
-            # changes is worth a warning — see _SourceJob.warn_no_pages.
+            # changes is worth a warning — see _SourceJob.warn_no_pages. It is also the evidence
+            # the stall guard counts: a fresh source has no facts in the wiki yet, so an empty
+            # session means the agent did not work, not that there was nothing to do.
             warn_no_pages=rel_key not in changed_keys,
+            expects_changes=rel_key not in changed_keys,
         )
 
     # Repo sources: each git repository under raw/ is folded in by ONE session reading a
@@ -1233,6 +1363,7 @@ def _ingest_run(
             on_success=done,
             prepare_error="build digest",
             warn_no_pages=rjob.kind == "repo",  # a fresh repo digest yielding nothing is suspicious
+            expects_changes=rjob.kind == "repo",
         )
 
     # Deleted sources: a tracked source vanished from disk (full run only). If any page still
@@ -1292,6 +1423,11 @@ def _ingest_run(
             # A delete cleanup MAY legitimately remove the last source's only page, leaving the
             # wiki empty — so the anti-emptying valve does not apply here.
             allow_emptying=True,
+            # A cleanup session is planned ONLY when something still cites the source, so it has
+            # work to do by construction: an empty diff means the agent did nothing (and the
+            # post-condition below is about to fail it). The empty-session case — a deletion
+            # nothing cited — carries ``ran_sessions=False`` and is never counted.
+            expects_changes=True,
         )
 
     # A Ctrl+C (or other BaseException) raised mid-loop is captured (returned by
@@ -1300,6 +1436,7 @@ def _ingest_run(
     # re-raised. Without this, the per-source-persisted manifest could outlive a stale index/log:
     # a later run with nothing pending would never rebuild the derived files.
     pending_interrupt: BaseException | None = None
+    stall = _StallGuard(limit=config.STALL_LIMIT)
     groups = (
         # Reingest cleanups ride the deletion group, so the always-first ordering above holds for
         # them too: a source's old facts are stripped before ANY pending session runs.
@@ -1309,8 +1446,11 @@ def _ingest_run(
         [_repo_job(r) for r in repo_pending],
     )
     for group in groups:
-        if pending_interrupt is None:
-            pending_interrupt = _run_source_jobs(group, emit, report, failures_dict, model, workers=jobs)
+        # A tripped stall guard skips the REMAINING groups too: the agent is what is broken, and it
+        # is no more able to fold in a repo than it was the last three files.
+        if pending_interrupt is None and not stall.tripped:
+            pending_interrupt = _run_source_jobs(group, emit, report, failures_dict, model, workers=jobs, stall=stall)
+    report.stalled = stall.reason
 
     if workspace_shifted and full_rescan:
         # The guard's advertised remedy must not loop: --full-rescan keeps the sweep refused

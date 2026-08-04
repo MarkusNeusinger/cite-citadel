@@ -1075,6 +1075,32 @@ def _jobs_setting() -> int:
 JOBS: int = _jobs_setting()
 
 
+def _stall_limit() -> int:
+    """Resolve ``CITADEL_STALL_LIMIT`` to a count >= 0 (0 = the check is off). A negative value is a
+    misconfiguration, not "off" spelled oddly: it falls back to the default and records a
+    :data:`CONFIG_WARNINGS` entry, so ``citadel doctor`` names it."""
+    value = _int_env("CITADEL_STALL_LIMIT", 3)
+    if value < 0:
+        CONFIG_WARNINGS.append(f"CITADEL_STALL_LIMIT={value} is not a count (>= 0) - using 3")
+        return 3
+    return value
+
+
+# How many CONSECUTIVE sources may come back from the agent having changed nothing at all before
+# ingest stops the run (0 disables the check). See ingest._StallGuard: an agent CLI can fail in a
+# way that does not look like failure — a self-update mid-run that leaves the new binary unable to
+# launch its own tools, a revoked permission, a sandbox denying every subprocess — and then every
+# session exits 0, reports its tokens, and returns an empty diff. Without a circuit breaker the run
+# marches through the whole corpus at full price and produces nothing.
+#
+# Only sources that were EXPECTED to change something count (a fresh source, or a deletion cleanup
+# planned because something still cites the source); a reconcile's "nothing changed" is a real
+# verdict and is neither counted nor treated as a reset. 3 is deliberately small: the failure this
+# guards against is total, not intermittent, so a healthy run essentially never reaches it, while a
+# broken one is stopped after three sessions instead of after the corpus.
+STALL_LIMIT: int = _stall_limit()
+
+
 def _page_cache_mode() -> str:
     """Resolve ``CITADEL_PAGE_CACHE`` to one of ``auto``/``on``/``off``, mirroring
     :func:`_pdf_text_mode`. Blank/unset and anything unrecognized mean ``auto``."""
