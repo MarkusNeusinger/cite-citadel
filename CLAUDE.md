@@ -259,8 +259,24 @@ addressing them through `ingest`. The flow per source:
   loop (`_SourceJob` + `_run_source_jobs`) — **deletions run first** so a delete cleanup strips a
   vanished source's stale provenance before any pending session touches a page that still cites it
   (else that pre-existing bad citation would fail the pending session's validation and roll it
-  back). This all-or-nothing + network-share-hardened machinery (`_robust_*`, `robust_mkdir`) is
-  load-bearing — don't simplify it away. **Bounded parallelism** (`--jobs N` / `CITADEL_JOBS`, default 1 = serial): the per-source staging
+  back). That ordering is a mitigation, not the guarantee: when the cleanup itself FAILS the bad
+  citation survives, so the all-or-nothing gate is **blame-scoped** — `_validate_and_restamp` takes
+  the wiki as the source FOUND it (`inherited`) and an error whose exact `(category, detail)` the
+  page already carried does not fail that source. Without this one broken page takes down every
+  source whose session touches it, forever, on every run (money spent, nothing kept, and no way out
+  but a hand edit). Every OTHER error still fails the source, so nothing a session actually breaks
+  reaches the live wiki; the inherited ones ride out on `report.inherited_issues` as a run warning
+  (and the same carve-out gates the resume replay, so a poisoned page cannot cost a chunked source
+  its checkpoint). This all-or-nothing + network-share-hardened machinery (`_robust_*`,
+  `robust_mkdir`) is load-bearing — don't simplify it away.
+  **A dead agent stops the run** (`_StallGuard`, `CITADEL_STALL_LIMIT`, default 3, 0 = off): a CLI
+  that self-updates mid-run into a build that cannot launch its own tools — or loses a permission —
+  keeps exiting 0, reporting tokens, and returning an empty diff, so every guard passes and the run
+  bills the whole corpus for nothing. N consecutive sources that were EXPECTED to change something
+  (`_SourceJob.expects_changes` — a fresh source, or a delete cleanup planned because something
+  still cites the source; a reconcile's "nothing changed" is a real verdict and never counts) and
+  did not stops dispatching, in both the serial and the `--jobs N` driver; un-attempted sources stay
+  pending for a plain re-run. **Bounded parallelism** (`--jobs N` / `CITADEL_JOBS`, default 1 = serial): the per-source staging
   copy IS the isolation primitive, so N sources run at once through the same `_SourceJob` loop —
   worker threads only plan/stage/run/promote, while every SHARED write (report, manifest, failures)
   stays on the main thread. One lock (`_LIVE_WIKI_LOCK`) guards the only two moments that touch the
@@ -542,7 +558,8 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   `CITADEL_REPO_SUPPORT`, `CITADEL_IMAGE_SUPPORT` (read images visually), `CITADEL_AUDIO_SUPPORT`
   (opt-in whisper transcript ingest for audio/video, with `CITADEL_WHISPER_CLI`/
   `CITADEL_WHISPER_MODEL`/`CITADEL_WHISPER_TIMEOUT` tuning the seam), `CITADEL_JOBS` (how many sources ingest folds in
-  concurrently; 1 = serial), `CITADEL_MAX_SOURCE_CHARS`
+  concurrently; 1 = serial), `CITADEL_STALL_LIMIT` (the broken-agent circuit breaker: stop the run
+  after N consecutive sources come back with no wiki changes; 0 = off), `CITADEL_MAX_SOURCE_CHARS`
   (large-source chunking threshold), `CITADEL_RESUME` (resume checkpoints for those chunked
   sources: continue at the segment an interrupted run died on instead of re-paying for the earlier
   ones; default on), `CITADEL_DEDUP_BY_BASENAME` (skip same-basename document

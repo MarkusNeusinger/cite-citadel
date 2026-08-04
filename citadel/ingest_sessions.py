@@ -73,6 +73,14 @@ class _SourceOutcome:
     # failure — the caller re-runs the source serially before the run ends, and only if THAT fails
     # does it become one.
     conflict: bool = False
+    # Validation errors a page this source touched ALREADY had before it did (see
+    # ``_validate_and_restamp``'s ``inherited``). They did not fail the source — it did not cause
+    # them — but they are true of the live wiki, so the caller surfaces them as a run warning
+    # rather than letting the carve-out hide them.
+    carried_issues: list[str] = field(default_factory=list)
+    # False only for a source that needed NO agent session at all (a deleted source nothing cites):
+    # "no changes" from such a source is the correct answer, not evidence that the agent is broken.
+    ran_sessions: bool = True
 
 
 @dataclass
@@ -272,13 +280,18 @@ def _adopt_checkpoint(ctx: _Resume, staging: Path, live: Path, rel_key: str) -> 
         # Baseline the cross-links BEFORE the replay: staging is still a byte copy of live here, so
         # this is the set of breakages the wiki already lives with (which resume must not be blamed
         # for, and must not repair).
-        before_broken = set(store.find_broken_links(store.load()))
+        before_pages = store.load()
+        before_broken = set(store.find_broken_links(before_pages))
         written = resume.replay(ctx.checkpoint, staging, live)
         if written is None:
             return None
         # Validate exactly what the replay put on disk (its return value, not the record's own
-        # list): a delta it could not apply in full has already refused above.
-        if _validate_and_restamp([rel for rel in written if rel.endswith(".md")], rel_key):
+        # list): a delta it could not apply in full has already refused above. The same
+        # inherited-damage carve-out the agent passes get: a page the live wiki already holds
+        # broken must not cost this source its checkpoint (and with it every paid segment) —
+        # the replay is only ever refused for breakage the replay itself introduced.
+        inherited = {page.rel_path: page for page in before_pages}
+        if _validate_and_restamp([rel for rel in written if rel.endswith(".md")], rel_key, inherited=inherited):
             return None
         if set(store.find_broken_links(store.load())) - before_broken:
             return None
@@ -373,7 +386,7 @@ def _run_agent_sessions(
     changes — before a staging copy is even made."""
     started = time.monotonic()
     if not session_fns:
-        return _SourceOutcome(True)
+        return _SourceOutcome(True, ran_sessions=False)
     live = config.wiki_dir()
     base: dict[str, str] | None = None
     staging: Path | None = None
@@ -385,6 +398,8 @@ def _run_agent_sessions(
     usage_parts: list[llm.SessionUsage | None] = []
     # What earlier runs already paid for the segments a checkpoint restores (see _SourceOutcome).
     carried: dict = {}
+    # Errors on pages this source touched that the wiki ALREADY had (see _SourceOutcome).
+    carried_issues: list[str] = []
     resumed_note = ""
 
     def clone() -> tuple[Path, dict[str, str] | None]:
@@ -421,6 +436,11 @@ def _run_agent_sessions(
         with _redirect_wiki(staging):
             prev_pages = store.load()
             prev = _hash_pages(prev_pages)
+            # The wiki as this source FOUND it, kept across every segment (``prev_pages`` is
+            # re-baselined per segment, so it stops answering "before this source" after the
+            # first). This is what tells damage the source caused from damage it inherited —
+            # a page created by segment 1 is absent here, so segment 2 owns it in full.
+            inherited = {page.rel_path: page for page in prev_pages}
             for i in range(start_at, len(session_fns)):
                 result = session_fns[i]()  # the agent edits the STAGING copy, never the live wiki
                 usage_parts.append(result if isinstance(result, llm.SessionUsage) else None)
@@ -428,7 +448,9 @@ def _run_agent_sessions(
                 after = _snapshot()
                 seg_created, seg_updated, seg_deleted = _diff(prev, after)
 
-                val_errors = _validate_and_restamp(seg_created + seg_updated, rel_key)
+                val_errors = _validate_and_restamp(
+                    seg_created + seg_updated, rel_key, inherited=inherited, carried=carried_issues
+                )
                 if val_errors:
                     return _SourceOutcome(
                         False,
@@ -497,6 +519,9 @@ def _run_agent_sessions(
             usage=llm.combine_usage(usage_parts),
             carried_usage=_usage_from_fields(carried),
             resumed_note=resumed_note,
+            # Only on the PROMOTED path: a rolled-back source left the live wiki untouched, so the
+            # problems it saw in staging are somebody else's report to make.
+            carried_issues=sorted(set(carried_issues)),
         )
     except _ConcurrentChange as exc:
         # Not a failure: the work was fine, the wiki simply moved under it (only reachable with

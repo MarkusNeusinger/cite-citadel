@@ -89,7 +89,22 @@ def _canonical_resource_key(resource: str, rel_key: str) -> str | None:
     return None
 
 
-def _validate_and_restamp(rel_paths: list[str], rel_key: str) -> list[str]:
+def _page_errors(rel_path: str, page: Page) -> set[tuple[str, str]]:
+    """The error-severity issues a page ALREADY carries, as exact ``(category, detail)`` pairs.
+
+    The unit of :func:`_validate_and_restamp`'s inherited-damage carve-out. Deliberately exact: a
+    dangling ``[^s1]`` to one missing file does not excuse a second one to a different file, and a
+    page that was missing ``tags`` before is not thereby allowed to lose its ``title`` too."""
+    return {
+        (issue.category, issue.detail)
+        for issue in validate.validate_page(rel_path, page.frontmatter, page.body)
+        if issue.severity == "error"
+    }
+
+
+def _validate_and_restamp(
+    rel_paths: list[str], rel_key: str, inherited: dict[str, Page] | None = None, carried: list[str] | None = None
+) -> list[str]:
     """Re-impose invariants on each changed page (``validate.validate_page``) and, if clean,
     canonicalize + re-stamp it through ``store.write_page`` (so the YAML is canonical, the
     ``type`` is enforced, and a fresh UTC ``timestamp`` is set even though the agent wrote the
@@ -98,7 +113,20 @@ def _validate_and_restamp(rel_paths: list[str], rel_key: str) -> list[str]:
     so an out-of-repo source the agent recorded as ``raw/<file>`` is repaired rather than failing the
     run. Returns one error string per error-severity validation issue; when any are returned the
     caller rolls the whole source back (all-or-nothing), so an invalid page never persists in the
-    wiki — the issues are surfaced in the report instead."""
+    wiki — the issues are surfaced in the report instead.
+
+    ``inherited`` (``{rel_path: page}`` as the wiki held it BEFORE this source's first session) is
+    what keeps that all-or-nothing rule from turning one broken page into a corpus-wide outage. A
+    page can already be invalid when a source touches it — a failed deletion cleanup leaves a
+    dangling ``[^sN]`` behind, a raw file is moved out from under a ``resource``, a hand edit lands
+    — and without this the NEXT source that merely appends a fact to that page inherits the blame,
+    is rolled back in full, and fails again on every run: the money is spent, nothing is kept, and
+    every source whose facts belong on that page is stuck until a human finds and fixes it.
+    So an error whose exact ``(category, detail)`` the page already had is not this source's
+    damage: it is reported through ``carried`` (an out-list the caller surfaces as a run warning,
+    and which ``citadel lint`` names in full) instead of failing the source. Every OTHER error still
+    fails it, so nothing this source actually broke can reach the live wiki — and the page is no
+    worse off than the copy already promoted there."""
     errors: list[str] = []
     for rel_path in sorted(set(rel_paths)):
         try:
@@ -114,6 +142,16 @@ def _validate_and_restamp(rel_paths: list[str], rel_key: str) -> list[str]:
             for issue in validate.validate_page(rel_path, page.frontmatter, page.body)
             if issue.severity == "error"
         ]
+        prior = (inherited or {}).get(rel_path)
+        if bad and prior is not None:
+            already = _page_errors(rel_path, prior)
+            if carried is not None:
+                carried.extend(
+                    f"{rel_path}: {issue.category}: {issue.detail}"
+                    for issue in bad
+                    if (issue.category, issue.detail) in already
+                )
+            bad = [issue for issue in bad if (issue.category, issue.detail) not in already]
         if bad:
             for issue in bad:
                 errors.append(f"{rel_key}: invalid page {rel_path}: {issue.category}: {issue.detail}")
