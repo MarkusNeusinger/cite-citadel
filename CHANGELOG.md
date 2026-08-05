@@ -6,7 +6,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-### Added
+### Changed
+
+- **A failed deletion cleanup now says how to repair what it left behind.** When a cleanup session
+  cannot strip a removed source's provenance, the run reports which pages still cite the vanished
+  file — but the footer under `Errors:` only offered the generic "it stays in the failures catalog
+  and is retried next run". That is not the whole story for this one failure: unlike every other
+  failed source (which is rolled back, leaving the wiki untouched), a failed cleanup leaves a real
+  defect behind — a dangling `[^sN]` to a file that no longer exists — and retrying the source does
+  not help while the agent is the thing that is broken. The report now adds a line naming the
+  offline tools that see and fix it: `citadel lint` (which lists it under *Fabricated/missing
+  sources* and exits 3) and `citadel curate`. Shown once per run however many cleanups failed, and
+  only for that failure kind.
 
 - **`citadel ingest --reingest <paths>` — re-import an already-ingested source from scratch.**
   `--force` runs a reconcile, which deliberately keeps the source's existing treatment (genre,
