@@ -267,7 +267,11 @@ addressing them through `ingest`. The flow per source:
   but a hand edit). Every OTHER error still fails the source, so nothing a session actually breaks
   reaches the live wiki; the inherited ones ride out on `report.inherited_issues` as a run warning
   (and the same carve-out gates the resume replay, so a poisoned page cannot cost a chunked source
-  its checkpoint). This all-or-nothing + network-share-hardened machinery (`_robust_*`,
+  its checkpoint). A failed cleanup is also the ONE failure that leaves a DEFECT rather than just
+  undone work — every other failed source is rolled back untouched — so it carries a
+  `_SourceJob.failure_hint` (surfaced once per run on `report.failure_hints`, under the errors
+  footer) naming the offline tools that see and repair the dangling `[^sN]`: `citadel lint` and
+  `citadel curate`. This all-or-nothing + network-share-hardened machinery (`_robust_*`,
   `robust_mkdir`) is load-bearing — don't simplify it away.
   **A dead agent stops the run** (`_StallGuard`, `CITADEL_STALL_LIMIT`, default 3, 0 = off): a CLI
   that self-updates mid-run into a build that cannot launch its own tools — or loses a permission —

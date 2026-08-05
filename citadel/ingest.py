@@ -147,6 +147,10 @@ class IngestReport:
     # ``_validate_and_restamp``'s ``inherited``), but they are real problems in the live wiki, so
     # they are surfaced here rather than silently carried forward.
     inherited_issues: list[str] = field(default_factory=list)
+    # Per-failure guidance for the failures where "it will be retried next run" is not the whole
+    # story, because the failed source left something behind in the live wiki (see
+    # ``_SourceJob.failure_hint``). Deduped, in first-seen order.
+    failure_hints: list[str] = field(default_factory=list)
     # Set when the run STOPPED EARLY because consecutive sources came back from the agent having
     # changed nothing at all — the signature of a broken agent CLI, not of a corpus with nothing to
     # say. Holds the human-readable reason; empty on every normal run.
@@ -253,6 +257,9 @@ class IngestReport:
                 "  Failed sources stay in the failures catalog (`citadel status` lists them) and are "
                 "retried on the next run — or right away with `citadel ingest --retry`."
             )
+            # ...but a retry is not the whole story when the failure left damage in the wiki.
+            for hint in self.failure_hints:
+                lines.append(f"  {hint}")
         if self.wiki_git:
             lines.append(self.wiki_git)
         return "\n".join(lines)
@@ -297,6 +304,10 @@ class _SourceJob:
       yet) or a deletion cleanup that was only planned BECAUSE something still cites the source.
       Feeds :class:`_StallGuard`. Reconciles are excluded for the same reason they are excluded
       from ``warn_no_pages``: "nothing changed" is a real answer there.
+    - ``failure_hint``: what the user should DO when THIS job fails, when the generic
+      "it will be retried" advice is not the whole story. Set only where a failed source leaves
+      something behind in the live wiki that a retry alone does not address — today just the
+      deletion cleanup. Surfaced once per run on ``report.failure_hints``.
     """
 
     key: str
@@ -308,6 +319,7 @@ class _SourceJob:
     sha_stat: tuple[str | None, os.stat_result | None] = (None, None)
     warn_no_pages: bool = False
     expects_changes: bool = False
+    failure_hint: str = ""
 
 
 @dataclass
@@ -490,6 +502,8 @@ def _record_source_run(run: _JobRun, emit, report: IngestReport, failures_dict, 
         # Nothing was promoted (the live wiki is untouched) and the source is NOT marked
         # done, so it is retried next run. Persist the failure for triage.
         report.errors.extend(outcome.errors)
+        if job.failure_hint and job.failure_hint not in report.failure_hints:
+            report.failure_hints.append(job.failure_hint)
         detail = outcome.errors[0] if outcome.errors else f"{job.key}: agent session failed"
         failures.record(failures_dict, job.key, failures.reason_for(detail), detail, model, sha=sha, st=st)
         emit(
@@ -1428,6 +1442,18 @@ def _ingest_run(
             # post-condition below is about to fail it). The empty-session case — a deletion
             # nothing cited — carries ``ran_sessions=False`` and is never counted.
             expects_changes=True,
+            # A failed cleanup is the ONE failure that leaves a defect in the live wiki rather than
+            # just leaving work undone: the pages named above keep citing a source file that no
+            # longer exists. The generic "it will be retried" advice does not cover that, and a
+            # retry only helps once the agent can actually do the work — so name the offline tools
+            # that see and fix the leftover, or the user is left with a dangling `[^sN]` and no
+            # idea it is there.
+            failure_hint=(
+                "A deletion cleanup failed, so the pages it names still cite a source file that no "
+                "longer exists. Other sources are no longer blocked by this, but it IS a defect in "
+                "the wiki: `citadel lint` lists it under 'Fabricated/missing sources' (exit 3) and "
+                "`citadel curate` repairs it."
+            ),
         )
 
     # A Ctrl+C (or other BaseException) raised mid-loop is captured (returned by
