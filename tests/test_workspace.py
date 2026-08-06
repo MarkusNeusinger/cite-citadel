@@ -345,6 +345,23 @@ def test_known_workspaces_list_is_capped(tmp_citadel, monkeypatch):
     assert roots[0] not in known  # the oldest root is the one dropped
 
 
+def test_save_moves_current_root_to_the_end_before_capping(tmp_citadel, monkeypatch):
+    """A current root already recorded mid-list is MOVED to the end, not left in place — else the
+    oldest-first cap could drop the very root that is writing the file and re-open the warning
+    ping-pong (Copilot review on PR #142)."""
+    monkeypatch.setattr(manifest, "_warned_workspaces", set())
+    current = tmp_citadel.root.resolve().as_posix()
+    others = [f"/mnt/old-mount-{i}/team-wiki" for i in range(manifest.MAX_KNOWN_WORKSPACES)]
+    payload = {"meta": {"format": 2, "workspace": others[-1], "workspaces": [current, *others]}, "sources": {}}
+    tmp_citadel.manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    manifest.save(manifest.load())
+
+    known = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))["meta"]["workspaces"]
+    assert known[-1] == current
+    assert len(known) == manifest.MAX_KNOWN_WORKSPACES
+
+
 def test_save_does_not_inherit_aliases_from_another_manifest(tmp_citadel, monkeypatch):
     """The parsed-meta stash is keyed by manifest PATH: a save into a different wiki than the one
     last loaded starts a fresh workspaces list instead of importing the other wiki's roots."""

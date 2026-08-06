@@ -351,10 +351,17 @@ class _StallGuard:
     consecutive: int = 0
     tripped: bool = False
     first_key: str = ""
+    # note() is called from WORKER threads under ``--jobs N`` (see below), so the counters get
+    # their own lock — the one shared-state exception to the main-thread-writes rule, taken
+    # deliberately: the guard must trip AT COMPLETION TIME, or it cannot stop dispatch in time.
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def note(self, job: "_SourceJob", outcome: "_SourceOutcome") -> None:
-        """Fold one recorded outcome into the count. MAIN THREAD ONLY (called from
-        :func:`_record_source_run`), so it needs no lock even under ``--jobs N``.
+        """Fold one completed outcome into the count. Thread-safe: the serial driver feeds it
+        from :func:`_record_source_run`, but the parallel driver feeds it from the WORKER the
+        moment its attempt completes — noting only when the main thread gets around to recording
+        would let a fast-failing (broken) agent drain the whole queue before the third empty
+        outcome is ever seen, which is precisely the corpus-wide bill the guard exists to stop.
 
         Counting and resetting are deliberately ASYMMETRIC about ``expects_changes``, because the
         two directions need different evidence. An empty session only means "the agent is broken"
@@ -363,19 +370,20 @@ class _StallGuard:
         reconcile that did change pages resets the counter like any other source. Treating that
         proof as no evidence would false-trip a mixed run, where a run's fresh sources and its
         reconciles are interleaved in scan order."""
-        if self.limit <= 0 or self.tripped or not outcome.ran_sessions:
-            return
-        if outcome.created or outcome.updated or outcome.deleted:
-            self.consecutive = 0
-            self.first_key = ""
-            return
-        if not job.expects_changes:
-            return  # an empty reconcile is a legitimate verdict: no evidence in either direction
-        self.consecutive += 1
-        if self.consecutive == 1:
-            self.first_key = job.key
-        if self.consecutive >= self.limit:
-            self.tripped = True
+        with self._lock:
+            if self.limit <= 0 or self.tripped or not outcome.ran_sessions:
+                return
+            if outcome.created or outcome.updated or outcome.deleted:
+                self.consecutive = 0
+                self.first_key = ""
+                return
+            if not job.expects_changes:
+                return  # an empty reconcile is a legitimate verdict: no evidence in either direction
+            self.consecutive += 1
+            if self.consecutive == 1:
+                self.first_key = job.key
+            if self.consecutive >= self.limit:
+                self.tripped = True
 
     @property
     def reason(self) -> str:
@@ -483,9 +491,11 @@ def _record_source_run(run: _JobRun, emit, report: IngestReport, failures_dict, 
     nothing, so the report claims nothing for it. A ``conflict`` outcome never reaches here: the
     driver re-runs that source serially first.
 
-    ``stall`` (the run's :class:`_StallGuard`) is fed every recorded outcome here, on the main
-    thread, so its counter needs no lock even under ``--jobs N``; the DRIVERS then check
-    ``stall.tripped`` to stop dispatching."""
+    ``stall`` (the run's :class:`_StallGuard`) is fed every recorded SUCCESSFUL outcome here by
+    the serial driver; the parallel driver passes ``stall=None`` and instead feeds the guard from
+    the WORKER the moment an attempt completes (see :func:`_run_source_jobs_parallel`) — recording
+    lags completion there, and a guard that trips only when the main thread catches up cannot stop
+    dispatch in time. The DRIVERS then check ``stall.tripped`` to stop dispatching."""
     job, index, total = run.job, run.index, run.total
     sha, st = job.sha_stat
     if run.prepare_exc is not None:
@@ -635,7 +645,16 @@ def _run_source_jobs_parallel(
         # cancelling would otherwise buy one more session from an agent already known to be broken.
         if abort.is_set() or (stall is not None and stall.tripped):
             return None
-        return _attempt_source(job, index, total, emit, concurrent=True)
+        run = _attempt_source(job, index, total, emit, concurrent=True)
+        # Feed the guard HERE, at completion time, not when the main thread records the result:
+        # with instant-failing sessions (the exact broken-agent signature the guard exists for)
+        # the workers would otherwise drain the whole queue before the main thread has recorded
+        # the third empty outcome — billing the corpus the guard was built to protect. Only the
+        # outcomes the recording path would note qualify: a successful, non-conflict attempt
+        # (a conflict is re-run serially and noted there; a failed source is no evidence).
+        if stall is not None and run.outcome is not None and run.outcome.ok and not run.outcome.conflict:
+            stall.note(job, run.outcome)
+        return run
 
     with futures.ThreadPoolExecutor(max_workers=min(workers, total), thread_name_prefix="citadel-ingest") as pool:
         submitted = [pool.submit(attempt, index, job) for index, job in enumerate(jobs, 1)]
@@ -667,7 +686,9 @@ def _run_source_jobs_parallel(
                     conflicted.append((run.index, run.job))
                     emit("source_retry", index=run.index, total=total, source=run.job.key, seconds=run.outcome.seconds)
                     continue
-                _record_source_run(run, emit, report, failures_dict, model, stall)
+                # stall=None: the worker already noted this outcome at completion time (above) —
+                # noting again here would double-count it.
+                _record_source_run(run, emit, report, failures_dict, model)
                 recorded.add(run.index)
                 if stall is not None and stall.tripped:
                     # Same shape as the interrupt path, and for the same reason — there is no point
@@ -1483,6 +1504,13 @@ def _ingest_run(
         # (safety frozen) but guarantees ONE end-of-run save, re-stamping the manifest meta with
         # the CURRENT workspace root — so the next run reads a matching stamp and the deletion
         # sweep is re-armed.
+        manifest.save(manifest_dict)
+    elif workspace_mismatch and not workspace_shifted and paths is None:
+        # The dual-mount counterpart: the stamp named another root but the key space held up
+        # (the sweep stayed armed), so this root legitimately worked the manifest. Guarantee ONE
+        # end-of-run save even when nothing else saved — meta.workspaces records the current
+        # root and the load-time warning keeps its promise that one completed `citadel ingest`
+        # run makes it stop, a no-op run included.
         manifest.save(manifest_dict)
 
     failures_changed = failures_dict != failures_before

@@ -444,9 +444,9 @@ def _check_workspace(meta: dict) -> None:
         f"    {current}\n"
         "Source keys may not line up (same share mounted at a different path?). Proceeding anyway;\n"
         "if this IS the same shared workspace reached through another mount, everything keeps\n"
-        "working (source keys are workspace-relative) and the next successful ingest/curate run\n"
-        "records this root so the warning stops. If you did NOT expect this, verify the workspace\n"
-        "before trusting change/deletion detection.",
+        "working (source keys are workspace-relative) and the next completed `citadel ingest`\n"
+        "run records this root so the warning stops. If you did NOT expect this, verify the\n"
+        "workspace before trusting change/deletion detection.",
         file=sys.stderr,
     )
 
@@ -563,15 +563,18 @@ def save(manifest: dict[str, Entry]) -> None:
     (sort_keys, indent=2, trailing newline). ``manifest`` is the flat sources dict the callers
     hold; the ``workspace`` stamp records WHICH workspace the keys are relative to, and
     ``workspaces`` accumulates every root that ever saved this manifest (the stashed previous
-    list + the previous writer's stamp + the current root, capped at
-    :data:`MAX_KNOWN_WORKSPACES`) — so a shared workspace's second mount is recognized from its
-    first mutating run onward instead of warning forever."""
+    list + the previous writer's stamp + the current root moved to the end, capped oldest-first
+    at :data:`MAX_KNOWN_WORKSPACES`) — so a shared workspace's second mount is recognized from
+    its first completed ingest run onward instead of warning forever (ingest guarantees one
+    end-of-run save whenever the run started under a dual-mount stamp mismatch, so even a
+    nothing-changed run records its root)."""
     path = config.manifest_path()
     config.robust_mkdir(path.parent)
     current = _workspace_stamp()
-    known = _known_workspaces(_stashed_meta())
-    if not any(_same_root(current, k) for k in known):
-        known.append(current)
+    # The current root always goes to the END (an existing entry is moved, not duplicated), so
+    # the oldest-first cap below can never drop the root that is writing this very file.
+    known = [k for k in _known_workspaces(_stashed_meta()) if not _same_root(current, k)]
+    known.append(current)
     meta = {"format": MANIFEST_FORMAT, "workspace": current, "workspaces": known[-MAX_KNOWN_WORKSPACES:]}
     text = json.dumps({"meta": meta, "sources": manifest}, sort_keys=True, indent=2) + "\n"
     config.atomic_write_text(path, text)
