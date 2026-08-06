@@ -104,18 +104,31 @@ def resolve_cli_name(cli: str | None) -> str:
 
 
 def _resolve_cli(cli: str) -> str:
-    """Return an executable path for the chosen CLI or raise a clear RuntimeError."""
-    override = os.environ.get(_CLI_PATH_ENV.get(cli, ""), "").strip()
+    """Return an executable path for the chosen CLI or raise a clear RuntimeError.
+
+    A set-but-unresolvable ``*_CLI_PATH`` override gets its OWN error naming the variable and its
+    value: the generic "not found on PATH" reads as a PATH problem, which sends the user
+    debugging the wrong thing entirely — the classic case being a workspace ``.env`` on a SHARED
+    drive that carries one machine's absolute CLI path onto every other machine that mounts it."""
+    env_name = _CLI_PATH_ENV.get(cli, "")
+    override = os.environ.get(env_name, "").strip()
     binary = override or _CLI_DEFAULT_BIN.get(cli, cli)
     path = shutil.which(binary)
     if path:
         return path
     if os.path.isabs(binary) and os.access(binary, os.X_OK):
         return binary
+    if override:
+        raise RuntimeError(
+            f"{env_name} is set to {override!r}, but that is not an executable file on this "
+            f"machine, so the {cli!r} CLI cannot be launched. Fix or remove the override "
+            f"(mind that a workspace .env on a shared drive applies to EVERY machine that "
+            f"mounts it — keep machine-specific paths in the shell environment instead)."
+        )
     raise RuntimeError(
         f"the {cli!r} CLI was not found on PATH. Install it and log in "
         f"(for claude: run `claude` once and `/login`), or set CITADEL_LLM_CLI to a "
-        f"CLI you have, or point {_CLI_PATH_ENV.get(cli, 'the path env var')} at "
+        f"CLI you have, or point {env_name or 'the path env var'} at "
         f"the binary."
     )
 

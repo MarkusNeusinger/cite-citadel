@@ -167,13 +167,12 @@ def check_agent_cli() -> Check:
         return Check(FAIL, "agent CLI", str(exc))
     try:
         path = llm._resolve_cli(cli)
-    except RuntimeError:
-        return Check(
-            WARN,
-            "agent CLI",
-            f"{cli!r} not on PATH - ingest will fail until it is installed and logged in "
-            f"(or set CITADEL_LLM_CLI / *_CLI_PATH)",
-        )
+    except RuntimeError as exc:
+        # Surface the resolver's OWN diagnosis: it distinguishes "not installed" from "a
+        # *_CLI_PATH override points at a path that does not exist on this machine" (the
+        # shared-.env trap) — collapsing both into one generic PATH complaint sent users
+        # debugging the wrong thing.
+        return Check(WARN, "agent CLI", f"{cli!r} cannot be launched - ingest will fail until this is fixed: {exc}")
     return Check(OK, "agent CLI", f"{cli!r} -> {path}")
 
 

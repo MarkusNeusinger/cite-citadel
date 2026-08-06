@@ -744,6 +744,33 @@ def test_the_retired_gemini_backend_is_refused_with_a_migration_hint():
     assert llm.resolve_cli_name(None) == "claude"
 
 
+def test_resolve_cli_names_a_bad_path_override(monkeypatch):
+    """A set-but-unresolvable *_CLI_PATH override raises an error naming the VARIABLE and its
+    value — never the generic 'not found on PATH', which reads as a PATH problem and (in a
+    shared workspace whose .env carries another machine's absolute CLI path) sends the user
+    debugging the wrong machine's environment."""
+    monkeypatch.setenv("COPILOT_CLI_PATH", "/mnt/other-machine/tools/copilot")
+    with pytest.raises(RuntimeError) as exc:
+        llm._resolve_cli("copilot")
+    msg = str(exc.value)
+    assert "COPILOT_CLI_PATH" in msg and "/mnt/other-machine/tools/copilot" in msg
+    assert "shared drive" in msg  # the .env-on-a-network-share trap is called out
+    assert "not found on PATH" not in msg
+
+
+def test_resolve_cli_without_override_keeps_the_install_hint(monkeypatch):
+    """With NO override set, a missing binary still gets the install/log-in guidance naming the
+    override variable as one of the fixes."""
+    import shutil as _shutil
+
+    monkeypatch.delenv("COPILOT_CLI_PATH", raising=False)
+    monkeypatch.setattr(_shutil, "which", lambda binary: None)
+    with pytest.raises(RuntimeError) as exc:
+        llm._resolve_cli("copilot")
+    msg = str(exc.value)
+    assert "not found on PATH" in msg and "COPILOT_CLI_PATH" in msg
+
+
 # --- hermetic sessions: the probe-gated isolation flag (CITADEL_HERMETIC) -------------------
 #
 # The flag is appended only when the installed binary ADVERTISES it in --help (seeded via the
