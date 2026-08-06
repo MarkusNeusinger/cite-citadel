@@ -275,6 +275,92 @@ def test_manifest_matching_workspace_stays_silent(tmp_citadel, monkeypatch, caps
     assert capsys.readouterr().err == ""
 
 
+# --- known-workspaces alias list (the shared-workspace / dual-mount story) -------------------
+
+
+def test_manifest_save_accumulates_known_workspaces(tmp_citadel, monkeypatch):
+    """save() records every root that ever saved the manifest in meta.workspaces: loading a
+    manifest stamped by ANOTHER mount and saving from THIS one keeps that root alongside the
+    current one — two colleagues mounting one share at different paths recognize each other
+    from each side's first mutating run onward."""
+    monkeypatch.setattr(manifest, "_warned_workspaces", set())
+    other = "/mnt/colleague-mount/team-wiki"
+    payload = {"meta": {"format": 2, "workspace": other}, "sources": {"raw/a.md": "h"}}
+    tmp_citadel.manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    manifest.save(manifest.load())
+
+    data = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))
+    current = tmp_citadel.root.resolve().as_posix()
+    assert data["meta"]["workspace"] == current
+    assert data["meta"]["workspaces"] == [other, current]
+
+
+def test_known_workspace_root_stays_silent_and_unmismatched(tmp_citadel, monkeypatch, capsys):
+    """A manifest stamped by the OTHER mount of a shared workspace that already knows this root
+    (meta.workspaces) loads with NO warning, and the mismatch probe reads it as matching — so
+    ingest's hard guard and doctor both treat the recorded dual mount as this workspace."""
+    monkeypatch.setattr(manifest, "_warned_workspaces", set())
+    current = tmp_citadel.root.resolve().as_posix()
+    other = "/mnt/colleague-mount/team-wiki"
+    payload = {"meta": {"format": 2, "workspace": other, "workspaces": [other, current]}, "sources": {"raw/a.md": "h"}}
+    tmp_citadel.manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert manifest.load() == {"raw/a.md": "h"}
+    assert capsys.readouterr().err == ""
+    assert manifest.stamped_workspace_mismatch() is None
+
+
+def test_unknown_root_still_mismatches_despite_workspaces_list(tmp_citadel, monkeypatch):
+    """A workspaces list that does NOT contain the current root changes nothing: the stamp still
+    mismatches, so the hard guard's key-space check still decides whether the sweep is safe."""
+    monkeypatch.setattr(manifest, "_warned_workspaces", set())
+    payload = {
+        "meta": {
+            "format": 2,
+            "workspace": "/mnt/mount-a/team-wiki",
+            "workspaces": ["/mnt/mount-a/team-wiki", "/mnt/mount-b/team-wiki"],
+        },
+        "sources": {},
+    }
+    tmp_citadel.manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    manifest.load()
+    assert manifest.stamped_workspace_mismatch() == "/mnt/mount-a/team-wiki"
+
+
+def test_known_workspaces_list_is_capped(tmp_citadel, monkeypatch):
+    """meta.workspaces retains at most MAX_KNOWN_WORKSPACES roots — oldest dropped first, the
+    current root always kept (it is appended last)."""
+    monkeypatch.setattr(manifest, "_warned_workspaces", set())
+    roots = [f"/mnt/old-mount-{i}/team-wiki" for i in range(manifest.MAX_KNOWN_WORKSPACES + 3)]
+    payload = {"meta": {"format": 2, "workspace": roots[-1], "workspaces": roots}, "sources": {}}
+    tmp_citadel.manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    manifest.save(manifest.load())
+
+    known = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))["meta"]["workspaces"]
+    assert len(known) == manifest.MAX_KNOWN_WORKSPACES
+    assert known[-1] == tmp_citadel.root.resolve().as_posix()
+    assert roots[0] not in known  # the oldest root is the one dropped
+
+
+def test_save_does_not_inherit_aliases_from_another_manifest(tmp_citadel, monkeypatch):
+    """The parsed-meta stash is keyed by manifest PATH: a save into a different wiki than the one
+    last loaded starts a fresh workspaces list instead of importing the other wiki's roots."""
+    monkeypatch.setattr(manifest, "_warned_workspaces", set())
+    foreign = {"meta": {"format": 2, "workspace": "/mnt/foreign-mount/team-wiki"}, "sources": {}}
+    tmp_citadel.manifest_path.write_text(json.dumps(foreign), encoding="utf-8")
+    manifest.load()  # the stash now holds the foreign meta, keyed to THIS manifest path
+
+    second = tmp_citadel.root / "second-wiki" / ".citadel_ingested.json"
+    monkeypatch.setattr(config, "MANIFEST_PATH", second)
+    manifest.save({})
+
+    data = json.loads(second.read_text(encoding="utf-8"))
+    assert data["meta"]["workspaces"] == [tmp_citadel.root.resolve().as_posix()]
+
+
 # --- workspace-root .env loading -----------------------------------------------------------
 
 

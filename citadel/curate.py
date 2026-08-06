@@ -11,9 +11,12 @@ Two layers, the Wikipedia-bot model, with **no persisted queue** — the wiki IS
    ``rules_version_drift`` (a page whose source was ingested under an older effective-rules hash),
    ``page_length_hard`` (over :data:`config.CURATE_PAGE_HARD_LINES` — lint only warns at the soft
    one), ``contradiction`` (an unresolved ``> [!CONTRADICTION]`` callout), ``orphan`` (an island),
-   ``llm_drift`` (a page dominated by ``[^llm]`` facts with little ``[^sN]`` grounding), and
+   ``llm_drift`` (a page dominated by ``[^llm]`` facts with little ``[^sN]`` grounding),
    ``resort`` (a page whose ``type`` routes to a different folder than the one it sits in, via
-   :func:`okf.folder_for_type`), and ``reverify`` (a sampled fact re-verification pass). Fact
+   :func:`okf.folder_for_type`), ``bad_source`` (a ``[^sN]`` citation that does not verify —
+   lint's "Fabricated/missing sources", e.g. the dangling citations a FAILED deletion cleanup
+   leaves behind, via :func:`validate.source_issues`), and ``reverify`` (a sampled fact
+   re-verification pass). Fact
    re-verification is pre-filtered offline through the manifest shas (:func:`reverify_candidates`):
    a CHANGED source is reconcile's job, a GONE source is delete's job — only sha-unchanged sources
    need the agent's entailment pass, and :func:`build_plan` samples just :data:`REVERIFY_SAMPLE_K`
@@ -47,7 +50,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import config, failures, grammar, ingest, lint, llm, manifest, okf, pagecache, runlock, store, wikigit
+from . import config, failures, grammar, ingest, lint, llm, manifest, okf, pagecache, runlock, store, validate, wikigit
 from .okf import Page
 
 
@@ -55,6 +58,7 @@ from .okf import Page
 
 REASON_PAGE_LENGTH = "page_length_hard"
 REASON_RESORT = "resort"
+REASON_BAD_SOURCE = "bad_source"
 REASON_CONTRADICTION = "contradiction"
 REASON_RULES_DRIFT = "rules_version_drift"
 REASON_LLM_DRIFT = "llm_drift"
@@ -63,11 +67,14 @@ REASON_REVERIFY = "reverify"
 REASON_ORPHAN = "orphan"
 
 # Deterministic cluster ordering for --limit: structural fixes that change a page's identity/shape
-# first (split, re-sort), then the contradiction/grounding repairs, then the advisory linking pass.
-# A cluster's priority is the rank of its MOST urgent reason; ties break on the page rel_path.
+# first (split, re-sort), then the provenance repairs (a dangling citation is a lint FAIL — e.g.
+# what a failed deletion cleanup leaves behind, which ingest's failure hint sends HERE to fix),
+# then the contradiction/grounding repairs, then the advisory linking pass. A cluster's priority
+# is the rank of its MOST urgent reason; ties break on the page rel_path.
 _REASON_ORDER = [
     REASON_PAGE_LENGTH,
     REASON_RESORT,
+    REASON_BAD_SOURCE,
     REASON_CONTRADICTION,
     REASON_RULES_DRIFT,
     REASON_LLM_DRIFT,
@@ -90,6 +97,14 @@ REVERIFY_SAMPLE_K = 3
 # facts both outnumber its raw-grounded (``[^sN]``) facts AND reach this floor (so a single stray
 # ``[^llm]`` note on a well-cited page is not flagged).
 _LLM_DRIFT_MIN = 2
+
+
+def _detail_line(detail: str, limit: int = 240) -> str:
+    """One console-safe line out of a recorded failure detail: whitespace/newlines collapsed,
+    clipped at ``limit`` chars — a validation error can quote page content, and the report is a
+    summary, not the catalog."""
+    flat = " ".join(str(detail).split())
+    return flat if len(flat) <= limit else flat[: limit - 3] + "..."
 
 
 # --- the plan -------------------------------------------------------------------------------
@@ -137,6 +152,10 @@ class CurateReport:
     applied: list[str] = field(default_factory=list)
     noop: list[str] = field(default_factory=list)
     failed: list[str] = field(default_factory=list)
+    # WHY each failed cluster failed, keyed by anchor page — the same detail the failures catalog
+    # records, surfaced in render() so "Failed (rolled back): N" is never a dead end the user has
+    # to go read wiki/.citadel_failures.json to explain.
+    failed_details: dict[str, str] = field(default_factory=dict)
     skipped: list[str] = field(default_factory=list)
     # The wiki-history note from wikigit.autocommit — empty when the history layer had nothing to say.
     wiki_git: str = ""
@@ -158,6 +177,16 @@ class CurateReport:
             lines.append(f"{label}: {len(group)}")
             for page in group:
                 lines.append(f"  - {page}")
+                detail = self.failed_details.get(page, "") if group is self.failed else ""
+                if detail:
+                    lines.append(f"      {_detail_line(detail)}")
+        if self.failed:
+            lines.append("")
+            lines.append(
+                "Failure reasons are also recorded in the failures catalog beside the wiki; "
+                "a cluster that keeps failing is skipped after "
+                f"{ATTEMPT_CAP} attempts until `citadel curate --retry`."
+            )
         described = self.usage.describe() if self.usage is not None else ""
         if described:
             lines.append("")
@@ -388,6 +417,14 @@ def build_plan(
             add(rel_path, REASON_LLM_DRIFT)
         if _is_type_folder_mismatch(page):
             add(rel_path, REASON_RESORT)
+        # bad_source: a [^sN] citation that does not verify — a definition linking a raw file
+        # that does not exist (lint's "Fabricated/missing sources", a structural FAIL), a bare
+        # definition, or an undefined marker. The most common cause is a FAILED deletion
+        # cleanup's dangling citations, whose ingest failure hint names curate as the repair
+        # tool — this detector is what makes that promise true. Reuses validate.source_issues,
+        # the same predicate lint and `citadel check` run, so all three agree by construction.
+        if validate.source_issues(rel_path, page.body):
+            add(rel_path, REASON_BAD_SOURCE)
 
     items: list[PlanItem] = []
     skipped: list[str] = []
@@ -470,6 +507,16 @@ _REASON_GUIDANCE = {
     REASON_RESORT: (
         "This page's `type` routes to a different folder than the one it sits in. Move it to the "
         "folder its `type` names (see `schema.md` § OKF types), carrying every citation."
+    ),
+    REASON_BAD_SOURCE: (
+        "A `[^sN]` citation on this page does not verify: its `## Sources` definition links to a "
+        "raw file that does not exist, or a marker/definition is malformed. If the raw file was "
+        "renamed or moved, repoint the definition to where it lives now (check the cited raw "
+        "folder first). If the source is genuinely gone, treat its facts exactly like a deleted "
+        "source's (`tasks/delete.md`): drop a fact whose ONLY source it was — sentence, marker, "
+        "and definition — keep a fact another `[^sN]` still grounds (removing only the dead "
+        "marker + definition), and delete a page left with no cited source, repointing inbound "
+        "links (`core.md` § Restructuring). Never invent a replacement source or fact."
     ),
     REASON_CONTRADICTION: (
         "This page carries a `> [!CONTRADICTION]` callout with no resolution. Add a labeled `[^llmN]` "
@@ -565,14 +612,16 @@ def _cluster_attempts(failures_dict: dict, page: str) -> int:
     return int(entry.get("attempts", 0)) if isinstance(entry, dict) else 0
 
 
-def _record_cluster_failure(failures_dict: dict, page: str, outcome, model: str) -> None:
+def _record_cluster_failure(failures_dict: dict, page: str, outcome, model: str) -> str:
     """Persist a failed curate cluster in the failures catalog keyed by the PAGE rel_path, with an
     ADDITIVE ``attempts`` counter (increment-per-run). Never auto-retried; capped by
-    :data:`ATTEMPT_CAP`."""
+    :data:`ATTEMPT_CAP`. Returns the recorded detail so the run report can surface the SAME
+    reason it persisted."""
     attempts = _cluster_attempts(failures_dict, page) + 1
     detail = outcome.errors[0] if outcome.errors else f"{page}: curate session failed"
     failures.record(failures_dict, page, failures.CURATE, detail, model)
     failures_dict[page]["attempts"] = attempts
+    return detail
 
 
 def _page_text(rel_path: str) -> str | None:
@@ -744,7 +793,7 @@ def curate(
                 report.usage = llm.combine_usage([report.usage, outcome.usage])
                 if not outcome.ok:
                     report.failed.append(page_rel)
-                    _record_cluster_failure(failures_dict, page_rel, outcome, model)
+                    report.failed_details[page_rel] = _record_cluster_failure(failures_dict, page_rel, outcome, model)
                     emit("cluster_failed", index=index, total=len(plan.items), page=page_rel)
                     continue
 

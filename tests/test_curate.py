@@ -115,6 +115,38 @@ def test_detector_flags_out_of_range_locator(tmp_citadel, seed_page):
     assert curate.REASON_LOCATOR in _reasons_for(plan, "concepts/topic.md")
 
 
+def test_detector_flags_bad_source_citation(tmp_citadel, seed_page):
+    """A page whose ``[^sN]`` definition links a raw file that does not exist (lint's
+    "Fabricated/missing sources" — e.g. the dangling citations a FAILED deletion cleanup leaves
+    behind) is planned under REASON_BAD_SOURCE, with repair guidance in the findings. This is
+    what makes ingest's failure hint ("citadel lint and citadel curate can repair the dangling
+    [^sN]") true: without the detector, curate never saw the defect."""
+    from citadel import curate, store
+
+    _seed_cited(seed_page, "concepts/dangling.md", "raw/gone.md")  # raw/gone.md is never written
+
+    plan = curate.build_plan()
+    assert "concepts/dangling.md" in _plan_pages(plan)
+    assert curate.REASON_BAD_SOURCE in _reasons_for(plan, "concepts/dangling.md")
+
+    # ... and the findings checklist carries the repair guidance for the agent.
+    item = next(i for i in plan.items if i.page == "concepts/dangling.md")
+    pages = {p.rel_path: p for p in store.load()}
+    findings = curate._render_findings(item, pages["concepts/dangling.md"], {})
+    assert "bad_source" in findings and "does not exist" in findings
+
+
+def test_detector_ignores_healthy_citations(tmp_citadel, seed_page):
+    """A page whose citation resolves to a real raw file is NOT flagged as bad_source."""
+    from citadel import curate
+
+    (tmp_citadel.raw / "notes.md").write_text("body\n", encoding="utf-8")
+    _seed_cited(seed_page, "concepts/healthy.md", "raw/notes.md")
+
+    plan = curate.build_plan()
+    assert curate.REASON_BAD_SOURCE not in _reasons_for(plan, "concepts/healthy.md")
+
+
 def test_detector_flags_unresolved_contradiction(tmp_citadel, seed_page):
     """A page carrying a `> [!CONTRADICTION]` callout with no resolution line is planned for a
     curate pass (attempt a confident resolution, per schema.md § Contradictions)."""
@@ -383,6 +415,24 @@ def test_cluster_failed_validate_reverts_and_records_failure(tmp_citadel, seed_p
     stuck = failures.load()
     assert "concepts/alice.md" in stuck
     assert stuck["concepts/alice.md"].get("attempts", 0) >= 1
+
+
+def test_failed_cluster_reason_is_surfaced_in_the_report(tmp_citadel, seed_page, fake_agent):
+    """WHY a cluster failed is rendered in the curate report itself — the same detail recorded in
+    the failures catalog — so 'Failed (rolled back): N' is never a dead end the user must go read
+    the catalog file to explain."""
+    from citadel import curate
+
+    _seed_resort_cluster(tmp_citadel, seed_page)
+    fake_agent(pages={"concepts/alice.md": "garbage with no frontmatter and no citations"})
+
+    report = curate.curate()
+    assert "concepts/alice.md" in report.failed
+    detail = report.failed_details["concepts/alice.md"]
+    assert detail  # the recorded reason travels on the report, not just into the catalog
+    rendered = report.render()
+    assert curate._detail_line(detail) in rendered
+    assert "--retry" in rendered  # the escape-hatch hint rides along when anything failed
 
 
 def test_failed_cluster_is_attempt_capped_across_runs(tmp_citadel, seed_page, fake_agent):
