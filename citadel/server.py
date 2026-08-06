@@ -434,7 +434,7 @@ def wiki_capture(text: str, source: str = "", topic: str = "") -> str:
 
 
 @mcp.tool(annotations=_annotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True))
-def wiki_ingest(paths: list[str] | None = None) -> str:
+def wiki_ingest(paths: list[str] | None = None, guidance: str = "") -> str:
     """Trigger ingest of new/changed raw files (default: all of raw/).
 
     Folds freshly-dropped sources into the wiki on demand; idempotent via the
@@ -443,17 +443,38 @@ def wiki_ingest(paths: list[str] | None = None) -> str:
     configured LLM CLI is missing or not logged in, that surfaces as a
     per-source error inside the returned report (or a clear error string) —
     the tool never raises out.
+
+    ``guidance`` is an optional free-text steer for this run's agent sessions
+    (e.g. "create one machine registry from the maintenance lists"), the twin
+    of ``citadel ingest --guidance``: appended to each source-reading session's
+    prompt, steering routing and emphasis WITHIN the rules (it can never
+    override the citation/provenance rules; max 2000 chars).
     """
-    from . import ingest
+    from . import config, ingest
 
     if not _MUTATIONS_ENABLED:
         return _READ_ONLY_REFUSAL.format(tool="wiki_ingest")
+    guidance = (guidance or "").strip()
+    if len(guidance) > config.GUIDANCE_MAX_CHARS:
+        return (
+            f"error: guidance is {len(guidance)} chars (max {config.GUIDANCE_MAX_CHARS}); "
+            "a run steer is a couple of sentences — put anything longer in the workspace "
+            "rules/local.md, which every session already reads."
+        )
+    # The server is long-lived: scope the steer to THIS call, then restore, so one caller's
+    # guidance can never leak into a later wiki_ingest (or a concurrent run's prompt).
+    previous = config.INGEST_GUIDANCE
+    if guidance:
+        config.INGEST_GUIDANCE = guidance
     try:
         report = ingest.ingest(paths)
     except RuntimeError as e:  # e.g. missing API key
         return f"error: {e}"
     except Exception as e:  # never raise out of the tool
         return f"error: ingest failed: {e}"
+    finally:
+        if guidance:
+            config.INGEST_GUIDANCE = previous
     return report.render()
 
 

@@ -188,6 +188,28 @@ def test_ingest_force_flag_reaches_ingest(ingest_spy):
     assert ingest_spy.paths == ["raw/a.md"]
 
 
+def test_ingest_guidance_flag_sets_the_config_steer(ingest_spy, monkeypatch):
+    """``--guidance`` lands in ``config.INGEST_GUIDANCE`` (read at call time by the prompt
+    builder), overriding an env-set steer; an explicit ``--guidance ""`` disables the env steer
+    for this run — the same convention as ``--log-dir ""``."""
+    monkeypatch.setattr(config, "INGEST_GUIDANCE", "from-env", raising=False)
+    assert cli.main(["ingest", "--quiet"]) == 0
+    assert config.INGEST_GUIDANCE == "from-env"  # no flag: the env steer stands
+    assert cli.main(["ingest", "--quiet", "--guidance", "create one machine registry"]) == 0
+    assert config.INGEST_GUIDANCE == "create one machine registry"
+    assert cli.main(["ingest", "--quiet", "--guidance", ""]) == 0
+    assert config.INGEST_GUIDANCE == ""
+
+
+def test_ingest_guidance_over_the_cap_is_rejected(ingest_spy, capsys):
+    """A steer past GUIDANCE_MAX_CHARS is a usage error (exit 2) before ``ingest.ingest`` is ever
+    called — the prompt must stay argv-safe; a document-sized steer belongs in rules/local.md."""
+    rc = cli.main(["ingest", "--quiet", "--guidance", "x" * (config.GUIDANCE_MAX_CHARS + 1)])
+    assert rc == 2
+    assert not ingest_spy.called
+    assert "rules/local.md" in capsys.readouterr().err
+
+
 def test_ingest_force_without_paths_is_rejected(ingest_spy):
     """The SAFER semantics are pinned here: ``citadel ingest --force`` with NO explicit paths is refused with a
     non-zero exit and ``ingest.ingest`` is never called. Forcing the ENTIRE corpus would re-run

@@ -600,6 +600,29 @@ def test_ingest_generic_error_becomes_error_string(tmp_citadel, monkeypatch):
     assert out == "error: ingest failed: kaboom"
 
 
+def test_ingest_guidance_is_scoped_to_the_call(tmp_citadel, monkeypatch):
+    """The optional ``guidance`` argument (the twin of ``ingest --guidance``) steers exactly ONE
+    call: the run sees it as ``config.INGEST_GUIDANCE``, it is restored afterwards even when the
+    run fails (the server is long-lived — one caller's steer must never leak into the next), and
+    an over-cap steer is refused as an error string before any session is spawned."""
+    from citadel import config, ingest
+
+    seen: list[str] = []
+
+    def spy(*args, **kwargs):
+        seen.append(config.INGEST_GUIDANCE)
+        raise RuntimeError("stop here")
+
+    monkeypatch.setattr(ingest, "ingest", spy)
+    monkeypatch.setattr(config, "INGEST_GUIDANCE", "", raising=False)
+    assert server.wiki_ingest(guidance="create one machine registry") == "error: stop here"
+    assert seen == ["create one machine registry"]
+    assert config.INGEST_GUIDANCE == ""  # restored after the call
+    out = server.wiki_ingest(guidance="x" * (config.GUIDANCE_MAX_CHARS + 1))
+    assert out.startswith("error: guidance is")
+    assert len(seen) == 1  # the over-cap call never reached ingest
+
+
 # --- wiki_lint ----------------------------------------------------------------------------
 
 

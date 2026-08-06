@@ -38,7 +38,7 @@ next to the new one:
   ingest — existing `## Open Points` threads, `## Change Log` sections, registry row lists,
   style-profile sections. Keep maintaining that treatment (per the matching genre briefs) instead
   of reclassifying the source and churning its pages. Treatment-keeping covers what **exists** —
-  content the changed source newly ADDED still gets fresh genre judgment (an appendix that now
+  content the changed source **newly added** still gets fresh genre judgment (an appendix that now
   enumerates machines becomes a `Registry` page, `genres/registry.md`). Dated thread bullets are
   **append-only history — a reconcile never rewrites or deletes one**; a correction is a new
   dated bullet (`genres/meeting-minutes.md`).
