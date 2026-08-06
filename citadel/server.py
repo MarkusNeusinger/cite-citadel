@@ -29,6 +29,8 @@ Run via ``citadel serve`` or ``python -m citadel.server``.
 
 from __future__ import annotations
 
+import threading
+
 from mcp.server.fastmcp import FastMCP
 
 
@@ -433,8 +435,11 @@ def wiki_capture(text: str, source: str = "", topic: str = "") -> str:
         return f"error: capture failed: {e}"
 
 
+_INGEST_LOCK = threading.Lock()  # serializes wiki_ingest (see the guidance note inside)
+
+
 @mcp.tool(annotations=_annotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True))
-def wiki_ingest(paths: list[str] | None = None, guidance: str = "") -> str:
+def wiki_ingest(paths: list[str] | None = None, guidance: str | None = None) -> str:
     """Trigger ingest of new/changed raw files (default: all of raw/).
 
     Folds freshly-dropped sources into the wiki on demand; idempotent via the
@@ -448,23 +453,32 @@ def wiki_ingest(paths: list[str] | None = None, guidance: str = "") -> str:
     (e.g. "create one machine registry from the maintenance lists"), the twin
     of ``citadel ingest --guidance``: appended to each source-reading session's
     prompt, steering routing and emphasis WITHIN the rules (it can never
-    override the citation/provenance rules; max 2000 chars).
+    override the citation/provenance rules; max 2000 chars). Omitted/None, an
+    env-set ``CITADEL_INGEST_GUIDANCE`` steer stands; an explicit ``""``
+    disables that env steer for this one call (the ``--guidance ""``
+    convention).
     """
     from . import config, ingest
 
     if not _MUTATIONS_ENABLED:
         return _READ_ONLY_REFUSAL.format(tool="wiki_ingest")
-    guidance = (guidance or "").strip()
-    if len(guidance) > config.GUIDANCE_MAX_CHARS:
+    if guidance is not None:
+        guidance = " ".join(guidance.split())  # one line, like the CLI flag — the prompt is line-shaped
+    effective = guidance if guidance is not None else config.INGEST_GUIDANCE
+    if len(effective) > config.GUIDANCE_MAX_CHARS:
         return (
-            f"error: guidance is {len(guidance)} chars (max {config.GUIDANCE_MAX_CHARS}); "
+            f"error: guidance is {len(effective)} chars (max {config.GUIDANCE_MAX_CHARS}); "
             "a run steer is a couple of sentences — put anything longer in the workspace "
             "rules/local.md, which every session already reads."
         )
-    # The server is long-lived: scope the steer to THIS call, then restore, so one caller's
-    # guidance can never leak into a later wiki_ingest (or a concurrent run's prompt).
+    # The steer rides on the process-wide config attribute the prompt builder reads (worker
+    # threads under --jobs must see it, which rules out a ContextVar), so wiki_ingest calls are
+    # SERIALIZED: without this, a second call could stomp the first run's steer mid-run. Fail
+    # loud instead of queueing — ingest's own workspace run lock has the same semantics.
+    if not _INGEST_LOCK.acquire(blocking=False):
+        return "error: another wiki_ingest run is already in progress in this server; retry when it finishes."
     previous = config.INGEST_GUIDANCE
-    if guidance:
+    if guidance is not None:
         config.INGEST_GUIDANCE = guidance
     try:
         report = ingest.ingest(paths)
@@ -473,8 +487,8 @@ def wiki_ingest(paths: list[str] | None = None, guidance: str = "") -> str:
     except Exception as e:  # never raise out of the tool
         return f"error: ingest failed: {e}"
     finally:
-        if guidance:
-            config.INGEST_GUIDANCE = previous
+        config.INGEST_GUIDANCE = previous
+        _INGEST_LOCK.release()
     return report.render()
 
 

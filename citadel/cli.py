@@ -522,18 +522,22 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     if args.log_dir is not None:
         config.LLM_LOG_DIR = args.log_dir
     # Same convention for --guidance: an explicit `--guidance ""` disables an env-set steer for
-    # this run. The cap keeps the prompt argv-safe (it travels as a -p argument on the
-    # copilot/agy backends); a steer that long belongs in rules/local.md, not on a flag.
+    # this run. Collapsed to one line (the prompt bullet is line-shaped), and the cap is checked
+    # on the EFFECTIVE steer — flag or CITADEL_INGEST_GUIDANCE alike — because the cap exists to
+    # keep the prompt argv-safe (it travels as a -p argument on the copilot/agy backends) and an
+    # env-set oversize steer would hit that exact limit; a steer that long belongs in
+    # rules/local.md, not on a flag.
+    guidance = " ".join(args.guidance.split()) if args.guidance is not None else config.INGEST_GUIDANCE
+    if len(guidance) > config.GUIDANCE_MAX_CHARS:
+        source = "--guidance" if args.guidance is not None else "CITADEL_INGEST_GUIDANCE"
+        print(
+            f"error: {source} is {len(guidance)} chars (max {config.GUIDANCE_MAX_CHARS}); a run "
+            "steer is a couple of sentences — put anything longer in the workspace "
+            "rules/local.md, which every session already reads.",
+            file=sys.stderr,
+        )
+        return 2
     if args.guidance is not None:
-        guidance = args.guidance.strip()
-        if len(guidance) > config.GUIDANCE_MAX_CHARS:
-            print(
-                f"error: --guidance is {len(guidance)} chars (max {config.GUIDANCE_MAX_CHARS}); "
-                "a run steer is a couple of sentences — put anything longer in the workspace "
-                "rules/local.md, which every session already reads.",
-                file=sys.stderr,
-            )
-            return 2
         config.INGEST_GUIDANCE = guidance
 
     progress = None

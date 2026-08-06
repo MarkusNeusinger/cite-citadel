@@ -954,8 +954,10 @@ WIKI_LANG: str = os.environ.get("CITADEL_WIKI_LANG", "").strip() or "en"
 # override the citation/grounding/off-limits rules, and the prompt says so. Usually set per run
 # via `citadel ingest --guidance` (which overrides this env value; the flag caps it at
 # GUIDANCE_MAX_CHARS to keep the prompt argv-safe). PERMANENT house rules belong in the
-# workspace rules/local.md instead — this knob is the one-shot steer.
-INGEST_GUIDANCE: str = os.environ.get("CITADEL_INGEST_GUIDANCE", "").strip()
+# workspace rules/local.md instead — this knob is the one-shot steer. Whitespace (newlines
+# included) is collapsed to single spaces at every entry point — env here, the CLI flag, the MCP
+# argument — because the prompt bullet the steer lands on is line-shaped.
+INGEST_GUIDANCE: str = " ".join(os.environ.get("CITADEL_INGEST_GUIDANCE", "").split())
 
 # The --guidance length cap (characters). The prompt must stay tiny (it travels on argv for the
 # copilot/agy backends — the WinError 206 fix), so a run steer is a couple of sentences, not a

@@ -17,10 +17,13 @@ All notable changes to this project are documented here. The format is based on
   source-reading session's prompt as an operator-guidance bullet. Guidance steers routing and
   emphasis WITHIN the rules — the prompt says explicitly that it never overrides the citation,
   grounding, or off-limits rules — and it never reaches delete-cleanup or curate sessions, which
-  have no source to steer. Capped at 2000 chars (the prompt must stay argv-safe; anything longer
-  belongs in `rules/local.md`), `--guidance ""` disables an env-set steer for one run, and the
-  steer joins the resume checkpoint's identity so a chunked source interrupted under one guidance
-  is never continued under another.
+  have no source to steer. Capped at 2000 chars on the EFFECTIVE steer, flag or env alike (the
+  prompt must stay argv-safe; anything longer belongs in `rules/local.md`), collapsed to one line
+  (the prompt bullet is line-shaped), `--guidance ""` disables an env-set steer for one run (the
+  MCP argument mirrors that: omitted lets the env steer stand, `""` disables it, and calls are
+  serialized so one caller's steer can never bleed into another's run), and the steer joins the
+  resume checkpoint's identity so a chunked source interrupted under one guidance is never
+  continued under another.
 
 ### Changed
 
