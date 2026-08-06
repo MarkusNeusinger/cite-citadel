@@ -10,6 +10,11 @@ what already exists.
   file instead (a PDF, Office file, image, or git repo; the run instruction says which applies).
 - Apply the matching **genre briefs** (`core.md` § Genres) — judged from the content you just
   read.
+- **Enumeration check.** If the source — or any section of it (a table, an appendix, a bulleted
+  inventory) — lists like entries, that section is registry material (`genres/registry.md`):
+  captured row-by-row on a `Registry` page, never scattered as loose facts. And when the source
+  mentions a **keyed entity** (a machine number, an error code, a customer ID), check
+  `registries/` first — an existing row is that fact's home.
 - **Pre-write dedup.** Before writing a canonical, headline fact, search the wiki for it: if the
   same fact already lives on a page, add your `[^sN]` marker beside the existing statement there
   (`schema.md` § Per-fact provenance) instead of restating the fact on another page.

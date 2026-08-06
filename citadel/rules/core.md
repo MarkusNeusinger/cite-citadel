@@ -92,6 +92,9 @@ genre briefs; each begins with one line saying when it applies. After reading th
 
 - Read and follow every brief that matches — **none, one, or several** (an emailed status update
   is both `email` and `meeting-minutes` material; genres compose).
+- A genre can match a **part** of the source: a prose report whose appendix enumerates like
+  entries is prose PLUS that enumeration — the list-shaped section still gets its brief's
+  treatment (`genres/registry.md`). Judge sections as well as the whole.
 - A source matching no brief simply follows the core + schema + task rules.
 - When in doubt whether a genre applies, don't force it — the core rules are always safe.
 

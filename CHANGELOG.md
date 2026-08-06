@@ -8,6 +8,21 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Registry creation triggers more reliably.** The `Registry` rules (shipped in 0.6.0) fired
+  cleanly on sources that ARE enumerations, but three gaps let real-world registries silently not
+  happen: an enumeration **embedded** in a prose source (a table, an appendix, a price list at the
+  end of an offer) could miss the genre judgment because the source as a whole doesn't "read like"
+  a catalog; the ingest task brief never asked the enumeration question at all; and reconcile's
+  "keep the existing genre treatment" read as if a NEW appendix in a changed source may not become
+  a registry. The rules tree now closes all three, with no code change: `core.md` § Genres states
+  that a genre can match a *part* of the source, `tasks/ingest.md` gains an explicit
+  **enumeration check** (list-shaped sections are registry material; a mentioned keyed entity is
+  looked up in `registries/` first), `tasks/reconcile.md` clarifies that treatment-keeping covers
+  existing content while newly added content gets fresh genre judgment, and `genres/registry.md`
+  spells out the section-level trigger plus a new **"Any source maintains the rows"** section —
+  a status change, a new member, or a promotion can come from any source that mentions a keyed
+  entity, so rows stop forking into loose facts on topic pages.
+
 - **A failed deletion cleanup now says how to repair what it left behind.** When a cleanup session
   cannot strip a removed source's provenance, the run reports which pages still cite the vanished
   file — but the footer under `Errors:` only offered the generic "it stays in the failures catalog

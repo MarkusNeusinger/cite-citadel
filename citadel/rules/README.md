@@ -29,7 +29,7 @@ files changes how the wiki is built — **with no code change**; treat them as p
 | `genres/chat.md` | Workplace-chat exports: timestamped attribution, decisions reverse in-thread (live fact = end state), terse decisions still count, banter stays out | agent judgment |
 | `genres/transcript.md` | Multi-speaker spoken word: per-speaker attribution, unlabeled speakers stay roles, no invented precision | agent judgment |
 | `genres/cv.md` | CVs/applications: everything is self-reported and attributed, claims vs corroborating evidence | agent judgment |
-| `genres/registry.md` | Enumerable-entry sources (inventories, catalogs, rosters, code lists): one `Registry` page per collection, one cited row per entry, complete — promotion past the granularity floor | agent judgment |
+| `genres/registry.md` | Enumerable-entry sources OR sections (inventories, catalogs, rosters, code lists — a table/appendix inside a prose source counts): one `Registry` page per collection, one cited row per entry, complete — promotion past the granularity floor, rows maintained by every source that mentions a member | agent judgment |
 
 The two axes are decided by two different parties: a **format** is structurally detectable, so
 the *code* selects the format brief (repo markers, image/Office/audio extensions, PDF); a **genre** is
