@@ -351,7 +351,9 @@ claims a model that never ran.
 **Curate is the second wiki lifecycle** (`curate.py`, `citadel curate`). It has **no persisted
 queue — the plan is recomputed from offline detectors every run** (the wiki IS the database):
 `rules_version_drift`, `page_length_hard`, `contradiction`, `orphan`, `llm_drift`, `resort`
-(type↔folder mismatch via `okf.folder_for_type`), and `locator` (from `lint.check_locators`);
+(type↔folder mismatch via `okf.folder_for_type`), `bad_source` (a `[^sN]` citation that does not
+verify, via `validate.source_issues` — e.g. the dangling citations a failed deletion cleanup
+leaves, closing ingest's failure-hint loop), and `locator` (from `lint.check_locators`);
 fact re-verification is pre-filtered offline through manifest shas (`reverify_candidates` — changed
 = reconcile's job, gone = delete's job). Each planned page CLUSTER (page + cited raw files + link
 neighbors) runs ONE staged `kind="curate"` session over ingest's existing staging machinery, its
@@ -423,7 +425,9 @@ staging redirect can never be served the live wiki), `write_page`/`delete_page` 
 `manifest.py` tracks idempotency in
 `wiki/.citadel_ingested.json` (per source: sha256 or git commit + importing model + the last
 session's backend-reported `cost_usd`/`tokens_in`/`tokens_out`, carried across moves/re-stamps
-like `ingested_at`). `failures.py`
+like `ingested_at`; `meta.workspaces` accumulates every workspace root that ever saved the
+manifest, so a SHARED workspace — one share mounted at different paths by different machines —
+is recognized instead of warned about once each mount has run one mutating command). `failures.py`
 persists the sources that could NOT be ingested (`wiki/.citadel_failures.json`: unreadable /
 errored / timed-out, with a reason), surfaced by `store` under a "Could not ingest" section of
 `sources/index.md`. `repo.py` builds the digest for git-repo sources. `extract.py` pulls text from

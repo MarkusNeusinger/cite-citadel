@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -778,6 +779,65 @@ def test_workspace_mismatch_with_resolvable_keys_warns_and_proceeds(tmp_citadel,
     assert report.sources_deleted == ["raw/gone.md"]  # the sweep itself is NOT refused
     data = tmp_citadel.read_manifest()
     assert "raw/a.md" in data and "raw/b.md" in data
+
+
+def test_dual_mount_noop_run_records_current_root(tmp_citadel, fake_agent, monkeypatch, capsys):
+    """An ingest run that changes NOTHING still records the current root when it started under a
+    dual-mount stamp mismatch — the guaranteed end-of-run save that makes the load-time warning's
+    promise ('one completed `citadel ingest` run and it stops') true even for a no-op run. The
+    next load then stays silent."""
+    monkeypatch.setattr(manifest, "_warned_workspaces", set())
+    src = tmp_citadel.raw / "a.md"
+    src.write_text("content\n", encoding="utf-8")
+    old = time.time() - 7 * 24 * 3600
+    os.utime(src, (old, old))  # an old mtime keeps the entry out of the racy-timestamp window
+    entry = manifest.make_entry(manifest.file_sha256(src), "claude:sonnet")
+    entry.update(manifest.stat_fields(src.stat()))  # warm stat cache: the quick check skips clean
+    stamp = "/mnt/colleague-mount/team-wiki"
+    _write_stamped_manifest(tmp_citadel, {"raw/a.md": entry}, stamp)
+    fake_agent(side_effect=_fake_session)
+
+    report = ingest.ingest()
+    assert report.skipped == ["raw/a.md"]  # a true no-op: nothing processed, nothing deleted
+    assert report.processed == [] and report.sources_deleted == []
+
+    meta = json.loads(tmp_citadel.manifest_path.read_text(encoding="utf-8"))["meta"]
+    current = Path(config.WORKSPACE_ROOT).resolve().as_posix()
+    assert meta["workspace"] == current
+    assert stamp in meta["workspaces"] and current in meta["workspaces"]
+
+    monkeypatch.setattr(manifest, "_warned_workspaces", set())
+    capsys.readouterr()
+    manifest.load()
+    assert "WARNING" not in capsys.readouterr().err  # this mount is known now — silence
+
+
+def test_recorded_dual_mount_is_recognized_no_warning_no_guard(tmp_citadel, fake_agent, monkeypatch, capsys):
+    """A stamp mismatch whose CURRENT root is recorded in ``meta.workspaces`` is a KNOWN dual
+    mount — the same shared workspace reached through another path. No warning, no mismatch, and
+    the hard guard never engages: even with most keys gone from disk (files genuinely deleted on
+    the share), the deletion sweep proceeds exactly as under a matching stamp."""
+    monkeypatch.setattr(manifest, "_warned_workspaces", set())
+    sources = {
+        "raw/gone-one.md": manifest.make_entry("aa" * 32, "claude:sonnet"),
+        "raw/gone-two.md": manifest.make_entry("bb" * 32, "claude:sonnet"),
+    }
+    stamp = "/mnt/colleague-mount/team-wiki"
+    current = Path(config.WORKSPACE_ROOT).resolve().as_posix()
+    tmp_citadel.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    data = {
+        "meta": {"format": manifest.MANIFEST_FORMAT, "workspace": stamp, "workspaces": [stamp, current]},
+        "sources": sources,
+    }
+    tmp_citadel.manifest_path.write_text(json.dumps(data, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    fake_agent(side_effect=_fake_session)
+
+    report = ingest.ingest()
+    assert "WARNING" not in capsys.readouterr().err
+    assert not any("workspace" in e.lower() for e in report.errors)
+    assert set(report.sources_deleted) == set(sources)  # the sweep stays armed
+    after = tmp_citadel.read_manifest()
+    assert "raw/gone-one.md" not in after and "raw/gone-two.md" not in after
 
 
 # --- 7. --full-rescan -------------------------------------------------------------------------

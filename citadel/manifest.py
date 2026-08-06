@@ -3,7 +3,8 @@
 A tiny committed JSON file wiki/.citadel_ingested.json:
 
     {
-      "meta": {"format": 2, "workspace": "<abs posix workspace root>"},
+      "meta": {"format": 2, "workspace": "<abs posix workspace root>",
+               "workspaces": ["<every root that ever saved this manifest>", ...]},
       "sources": {
         "raw/notes.md": {"sha256": "<hex>", "model": "claude:sonnet", "rules_version": "<hex>"},
         ...
@@ -44,7 +45,11 @@ to a harmless rehash, never to a missed change, because a recorded-but-mismatchi
 forces the rehash and the sha decides).
 
 :func:`load` returns the FLAT sources dict — callers never see ``meta`` — and :func:`save` stamps
-``meta`` with the CURRENT workspace root. A legacy flat manifest (pre-workspace, no meta) is read
+``meta`` with the CURRENT workspace root plus ``workspaces``, the accumulated list of every root
+that ever saved this manifest. That list is what makes a SHARED workspace first-class: the same
+share mounted at different paths by different machines (a drive letter vs a UNC path, a DFS
+namespace vs the direct server) is recognized instead of warned about, once each mount has run
+one mutating command. A legacy flat manifest (pre-workspace, no meta) is read
 as sources-only and upgraded to the stamped form on the next save; greenfield, no migration
 tooling. A bare-sha-string entry value is likewise still read (it simply
 carries no model). No DB.
@@ -353,17 +358,61 @@ def _workspace_stamp() -> str:
     return config._safe_resolve(Path(config.WORKSPACE_ROOT)).as_posix()
 
 
+# How many known workspace roots ``meta.workspaces`` retains (oldest dropped first). Small on
+# purpose: the list exists to recognize a handful of stable mounts of ONE shared workspace (two
+# colleagues reaching the same share through different paths), not to log a history.
+MAX_KNOWN_WORKSPACES = 8
+
+
 # The ``meta`` section of the most recently load()ed / inspect()ed manifest ({} when the file was
-# missing, corrupt, or a legacy flat mapping). ONE json parse serves both the read itself and the
-# stamped-workspace probe (:func:`stamped_workspace_mismatch`) — ingest's, which must read the stamp
-# as it was BEFORE this run's saves re-stamp the file, and doctor's.
+# missing, corrupt, or a legacy flat mapping) plus the manifest path it was parsed FROM. ONE json
+# parse serves the read itself, the stamped-workspace probe (:func:`stamped_workspace_mismatch`) —
+# ingest's, which must read the stamp as it was BEFORE this run's saves re-stamp the file, and
+# doctor's — and :func:`save`'s known-workspaces merge. The path guard keeps a stash from one wiki
+# from ever leaking into another's save (tests re-point ``config.*`` freely within one process).
 _last_meta: dict = {}
+_last_meta_path: str = ""
+
+
+def _stashed_meta() -> dict:
+    """The stashed ``meta`` when it belongs to the CURRENT manifest path, else {} — the one
+    accessor :func:`save` and :func:`stamped_workspace_mismatch` read the stash through."""
+    return _last_meta if _last_meta_path == str(config.manifest_path()) else {}
 
 
 def _stamped_workspace(meta: dict) -> str:
     """The workspace stamp recorded in a manifest ``meta`` section ("" when absent) — the one
     extraction both the load-time warning and the mismatch probe read."""
     return str(meta.get("workspace") or "")
+
+
+def _same_root(a: str, b: str) -> bool:
+    """Whether two workspace stamps name the same root modulo SPELLING — separator direction and,
+    on Windows, character case (``config._path_id``'s normalization). A pure string comparison
+    that never touches the filesystem: two genuinely different mounts of one share (a DFS
+    namespace vs the direct server path) do NOT match here — recognizing those is the known-roots
+    list's job (:func:`_known_workspaces`)."""
+    return a == b or config._path_id(a) == config._path_id(b)
+
+
+def _known_workspaces(meta: dict) -> list[str]:
+    """Every workspace root recorded as having legitimately worked this manifest: the
+    ``meta.workspaces`` list plus the writer's own ``meta.workspace`` stamp (a pre-alias manifest
+    carries only the latter). Strings only, deduped via :func:`_same_root`, order-preserving."""
+    known: list[str] = []
+    raw = meta.get("workspaces")
+    for item in (*(raw if isinstance(raw, list) else ()), _stamped_workspace(meta)):
+        if isinstance(item, str) and item and not any(_same_root(item, k) for k in known):
+            known.append(item)
+    return known
+
+
+def _is_known_workspace(meta: dict) -> bool:
+    """True when the CURRENT workspace root is one this manifest already knows — the dual-mount
+    case made first-class: the same shared workspace reached through a different path (a drive
+    letter vs a UNC share, a DFS namespace vs the direct server) stops being "suspicious" once a
+    mutating run from that path has stamped it into ``meta.workspaces``."""
+    return any(_same_root(_workspace_stamp(), k) for k in _known_workspaces(meta))
 
 
 # Stamped roots already warned about, so one mismatching manifest warns ONCE per process instead
@@ -373,16 +422,19 @@ _warned_workspaces: set[str] = set()
 
 def _check_workspace(meta: dict) -> None:
     """Print ONE prominent stderr warning when the manifest was stamped by a workspace rooted
-    somewhere else. A warning, NOT an error: the same share can legitimately be mounted at
-    different paths (a Windows drive letter vs a WSL /mnt path), so a mismatch is suspicious but
-    must not block. The HARD workspace-identity guard lives in ingest (the "key-space
-    stability"): when the stamp mismatches AND the manifest's relative keys do not resolve on
-    disk (a nested marker / moved checkout re-keyed the world, not just a dual mount), the
-    deletion sweep is REFUSED with an actionable error — see
-    :func:`stamped_workspace_mismatch` and the guard in :func:`citadel.ingest.ingest`."""
+    somewhere else that this manifest does NOT already know (:func:`_is_known_workspace` — a
+    root recorded in ``meta.workspaces`` warns never: two colleagues mounting one share at
+    different paths each warn exactly once, until their first mutating run records their root).
+    A warning, NOT an error: the same share can legitimately be mounted at different paths (a
+    Windows drive letter vs a WSL /mnt path), so a mismatch is suspicious but must not block.
+    The HARD workspace-identity guard lives in ingest (the "key-space stability"): when the
+    stamp mismatches AND the manifest's relative keys do not resolve on disk (a nested marker /
+    moved checkout re-keyed the world, not just a dual mount), the deletion sweep is REFUSED
+    with an actionable error — see :func:`stamped_workspace_mismatch` and the guard in
+    :func:`citadel.ingest.ingest`."""
     stamped = _stamped_workspace(meta)
     current = _workspace_stamp()
-    if not stamped or stamped == current or stamped in _warned_workspaces:
+    if not stamped or _same_root(stamped, current) or _is_known_workspace(meta) or stamped in _warned_workspaces:
         return
     _warned_workspaces.add(stamped)
     print(
@@ -391,7 +443,10 @@ def _check_workspace(meta: dict) -> None:
         f"but the current workspace root is\n"
         f"    {current}\n"
         "Source keys may not line up (same share mounted at a different path?). Proceeding anyway;\n"
-        "verify the workspace before trusting change/deletion detection.",
+        "if this IS the same shared workspace reached through another mount, everything keeps\n"
+        "working (source keys are workspace-relative) and the next completed `citadel ingest`\n"
+        "run records this root so the warning stops. If you did NOT expect this, verify the\n"
+        "workspace before trusting change/deletion detection.",
         file=sys.stderr,
     )
 
@@ -423,8 +478,8 @@ def load() -> dict[str, Entry]:
     see ``meta``, but it is stashed for :func:`stamped_workspace_mismatch`) and a legacy flat
     mapping (read as sources-only; upgraded on the next save). A stamped workspace differing
     from the current one triggers one stderr warning."""
-    global _last_meta
-    _last_meta = {}
+    global _last_meta, _last_meta_path
+    _last_meta, _last_meta_path = {}, str(config.manifest_path())
     data, _error = _read()
     if not isinstance(data, dict):
         return {}
@@ -452,8 +507,8 @@ def inspect() -> tuple[int | None, int, str | None]:
     into ``_last_meta`` so a following :func:`stamped_workspace_mismatch` reads the SAME parse (no
     second read). Unlike :func:`load` it does NOT emit the dual-mount stderr warning — a probe stays
     silent."""
-    global _last_meta
-    _last_meta = {}
+    global _last_meta, _last_meta_path
+    _last_meta, _last_meta_path = {}, str(config.manifest_path())
     data, error = _read()
     if error is not None or not isinstance(data, dict):
         return None, 0, error
@@ -476,9 +531,12 @@ def stamped_workspace_mismatch() -> str | None:
     file — so call it right after ``load()``/``inspect()`` and before anything ``save()``s (a save
     re-stamps the FILE with the CURRENT root, and a later load would then read the fresh stamp).
     Ingest's workspace-identity hard guard reads this to decide whether the manifest's key space can
-    be trusted for a deletion sweep."""
-    stamped = _stamped_workspace(_last_meta)
-    if not stamped or stamped == _workspace_stamp():
+    be trusted for a deletion sweep. A current root the manifest already KNOWS
+    (:func:`_is_known_workspace` — it saved this manifest before) reads as matching: a recorded
+    dual mount is this workspace, not a shifted one."""
+    meta = _stashed_meta()
+    stamped = _stamped_workspace(meta)
+    if not stamped or _same_root(stamped, _workspace_stamp()) or _is_known_workspace(meta):
         return None
     return stamped
 
@@ -501,13 +559,24 @@ def workspace_rekeyed(manifest: dict[str, Entry]) -> bool:
 
 
 def save(manifest: dict[str, Entry]) -> None:
-    """Write ``{"meta": {format, workspace}, "sources": manifest}`` to MANIFEST_PATH
+    """Write ``{"meta": {format, workspace, workspaces}, "sources": manifest}`` to MANIFEST_PATH
     (sort_keys, indent=2, trailing newline). ``manifest`` is the flat sources dict the callers
-    hold; the workspace stamp records WHICH workspace the keys are relative to."""
+    hold; the ``workspace`` stamp records WHICH workspace the keys are relative to, and
+    ``workspaces`` accumulates every root that ever saved this manifest (the stashed previous
+    list + the previous writer's stamp + the current root moved to the end, capped oldest-first
+    at :data:`MAX_KNOWN_WORKSPACES`) — so a shared workspace's second mount is recognized from
+    its first completed ingest run onward instead of warning forever (ingest guarantees one
+    end-of-run save whenever the run started under a dual-mount stamp mismatch, so even a
+    nothing-changed run records its root)."""
     path = config.manifest_path()
     config.robust_mkdir(path.parent)
-    data = {"meta": {"format": MANIFEST_FORMAT, "workspace": _workspace_stamp()}, "sources": manifest}
-    text = json.dumps(data, sort_keys=True, indent=2) + "\n"
+    current = _workspace_stamp()
+    # The current root always goes to the END (an existing entry is moved, not duplicated), so
+    # the oldest-first cap below can never drop the root that is writing this very file.
+    known = [k for k in _known_workspaces(_stashed_meta()) if not _same_root(current, k)]
+    known.append(current)
+    meta = {"format": MANIFEST_FORMAT, "workspace": current, "workspaces": known[-MAX_KNOWN_WORKSPACES:]}
+    text = json.dumps({"meta": meta, "sources": manifest}, sort_keys=True, indent=2) + "\n"
     config.atomic_write_text(path, text)
 
 
