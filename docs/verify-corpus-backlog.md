@@ -61,6 +61,30 @@ Row format:
 verdict, and the `VCB-` ids the run touched, or `misses: none`. This `## Runs` heading stays
 singular; runs nest under it.)*
 
+### 2026-08-06 werkhof (regression run for PR #143 — the sharpened Registry creation triggers)
+
+- **Mode:** Mode A into a scratch sandbox (`CITADEL_RAW_DIR` at the corpus `raw/`), grading that the
+  sharpened rules (section-level genre trigger in `core.md`, the ingest-brief enumeration check, the
+  reconcile new-content carve-out, `genres/registry.md`'s "Any source maintains the rows") do not
+  regress the registry corpus. Full answer-key walk afterwards, retrieval-first.
+- **Model:** `claude:claude-sonnet-5` (`CITADEL_INGEST_MODEL=sonnet`) · serial · `rules_version
+  f6db490a45dc` · every source paid the per-source hermetic-auth retry (container auth shape) ·
+  $3.49 recorded, 4 processed, 0 errors.
+- **Result:** `check` exit 0, `lint` exit 0 (advisories: 3 undefined abbreviations HX/PV/N2 — N2 is
+  the vessel nozzle designation, texture). All three collections again `type: Registry` under
+  `registries/` with **28/28 machines, 20/20 fault codes, 15/15 customers**, one `[^sN]` per row
+  (`lines A-B` on the register, `line N` per code/CSV row; locator issues 0). The stated "all 28"
+  total cited in the scope line. Promotion: PV-014 + HX-201 → `objects/`, Nordwerk (K-007) →
+  `organizations/`, rows reduced to key + link + gloss; WB-320/CT-430 stayed rows. HX-201's
+  out-of-service supersession landed as a dated `## Change Log` pair (register "in service" 
+  2026-01-15 kept beside the 2026-06-12 outage); E-142/E-412 and HX-201/HX-210 never conflated;
+  E-155's deprecation row survives with the E-310 hand-over; Petersen/Albers attributed; the three
+  done-able report items are `## Open Points` threads; CSV treated as data (0 `[^llm]` pages).
+  Retrieval: `KP-011`, `E-420`, `K-009` each rank 1. Registries ↔ promoted pages ↔ fault catalogue
+  fully cross-linked.
+- **Verdict:** PASS on every guarantee — the sharpened creation triggers keep werkhof's registry
+  behavior intact. `misses: none`.
+
 ### 2026-07-31 leuchtfeuer (grading PR #139 — `--reingest`, the reconcile fresh-eyes brief, the delete-brief reingest note)
 
 - **Mode:** Mode A in a scratch sandbox, full wave protocol (`stages/initial` → wave2 → wave3 with

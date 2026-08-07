@@ -1,11 +1,15 @@
 # registry — enumerable-entry sources (inventories, catalogs, rosters, code lists)
 
-Applies when the source is — or contains — a **uniform enumeration of like entries** whose value
-lies in being complete: a machine/asset inventory, a product catalog or price list, a customer or
-contact roster, an error-code / problem-type table, a server or license inventory, a bill of
-materials. Test: *the entries share one attribute shape, and a reader would ask "is X on the
-list?"*. When that test holds, the enumeration is captured completely on a `Registry` page —
-this brief says how.
+Applies when the source is — **or contains** — a **uniform enumeration of like entries** whose
+value lies in being complete: a machine/asset inventory, a product catalog or price list, a
+customer or contact roster, an error-code / problem-type table, a server or license inventory, a
+bill of materials. Test: *the entries share one attribute shape, and a reader would ask "is X on
+the list?"*. Run that test on every **list-shaped section** — a table, an appendix, a bulleted
+inventory, a repeated stanza block — not only on the source as a whole: a prose report whose
+appendix lists 20 machines is prose PLUS a registry, and the appendix alone triggers this brief.
+When the test holds, the enumeration is captured completely on a `Registry` page — this brief
+says how. It also applies when the wiki **already holds a registry** covering an entity this
+source mentions (§ Any source maintains the rows), even if this source enumerates nothing.
 
 ## Completeness over compression
 
@@ -64,6 +68,24 @@ one-line gloss + its membership citation**:
 ```
 
 The facts move to the entry's page and live ONLY there — never duplicated on the row.
+
+## Any source maintains the rows
+
+A registry is maintained by **every source that mentions a member**, not only by re-reads of the
+enumerating source. Before routing facts about a **keyed entity** — a machine number, an error
+code, a customer/license/asset ID — check `registries/` for a registry whose collection covers
+it:
+
+- A **status or attribute change** this source states updates the row, cited to this source (the
+  superseded value survives as a dated `## Change Log` line — § Rows change over time).
+- A **member the registry lacks** gets a new row cited to this source. The scope paragraph's
+  stated total stays as its source stated it (it is that source's claim); the extra row stands
+  beside it.
+- An entity **past the granularity floor** still gets its own page (§ Promotion) — the row keeps
+  the key + link + gloss.
+
+Never fork the collection: facts about a listed member belong on its row (or its promoted page),
+never as loose facts on a topic page where a search for the key will miss them.
 
 ## Rows change over time
 

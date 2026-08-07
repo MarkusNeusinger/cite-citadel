@@ -42,7 +42,11 @@ model + rules — the full re-think reconcile's keep-the-existing-treatment rule
 cleanup blocks that source's fresh session), `--retry` re-runs everything STUCK without naming
 paths: every failed source still on disk plus every ingested source no wiki page cites — the
 zero-entry sources the run report flags as `no_pages` and `status` marks `NO PAGES` — as forced
-reconciles; it refuses paths/`--force` and exits 0 when nothing is stuck),
+reconciles; it refuses paths/`--force` and exits 0 when nothing is stuck, `--guidance TEXT` hands
+this ONE run a free-text steer ("create one machine registry from the maintenance lists") appended
+to each source-reading session's prompt — within the rules, never overriding citations; max 2000
+chars, `CITADEL_INGEST_GUIDANCE` is the env twin, the MCP `wiki_ingest` takes it as a per-call
+argument, and the steer joins the resume checkpoint identity),
 `refresh [--limit N] [--min-age-days D] [--dry-run] [--jobs N]`
 (the THIRD lifecycle: re-verify the least-recently-checked sources — ordered by the manifest's
 `ingested_at` stamp, oldest/stampless first — through forced reconcile sessions on an explicit
@@ -580,6 +584,9 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   bytes is skipped at discovery — never hashed, never tracked, but reported; 0 = no limit, the
   default; an explicitly named path always wins), `CITADEL_WIKI_LANG`
   (target language of all wiki prose, default `en`; verbatim quotes stay original),
+  `CITADEL_INGEST_GUIDANCE` (free-text steer appended to each source-reading session's prompt —
+  usually passed per run as `ingest --guidance` instead; permanent house rules belong in
+  `rules/local.md`),
   `CITADEL_PDF_MODE` (`text` | `images` — whether the agent also reads a PDF's figures),
   `CITADEL_PDF_TEXT` (`auto` | `1` | `0` — the pypdf text-layer pre-pass; auto = on when pypdf
   imports, which it does by default; `0` forces agent-native reading),

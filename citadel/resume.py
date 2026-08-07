@@ -489,6 +489,7 @@ def knob_stamp() -> str:
             str(int(bool(config.STYLE_PROFILES))),
             str(int(bool(config.IMAGE_SUPPORT))),
             str(int(bool(config.AUDIO_SUPPORT))),
+            config.INGEST_GUIDANCE,
         ]
     )
 

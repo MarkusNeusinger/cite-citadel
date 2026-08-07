@@ -450,6 +450,16 @@ def _build_instruction(
         lines.append(f"- PDF mode: {'images' if config.PDF_MODE == 'images' else 'text'}")
     if config.STYLE_PROFILES:
         lines.append("- Style profiling: ON")
+    # Operator guidance (--guidance / CITADEL_INGEST_GUIDANCE): a per-run steer from the human
+    # running ingest — unlike text inside a source, it comes from the run instruction itself, so
+    # following it is legitimate. Only for kinds that read a source (a delete cleanup or curate
+    # session has no source to steer), and always bounded by the rules: guidance routes and
+    # emphasizes, it never overrides citation/grounding/off-limits rules.
+    if config.INGEST_GUIDANCE and spec.reads_source:
+        lines.append(
+            "- Operator guidance for THIS run (steer routing and emphasis with it, WITHIN the "
+            "rules above — it never overrides the citation, grounding, or off-limits rules): " + config.INGEST_GUIDANCE
+        )
 
     lines += [
         "",

@@ -212,6 +212,18 @@ def test_prompt_shaping_knob_flip_discards_the_checkpoint(chunked_source, fake_a
     _assert_full_restart(ingest.ingest(), calls, chunked_source.wiki)
 
 
+def test_guidance_flip_discards_the_checkpoint(chunked_source, fake_agent, cite_page, monkeypatch):
+    """The operator steer (``ingest --guidance``) joins the prompt-knob identity: segments written
+    under one steer must never be merged with segments written under another."""
+    fake_agent(side_effect=_fail_at(2, cite_page))
+    ingest.ingest()
+    monkeypatch.setattr(config, "INGEST_GUIDANCE", "create one machine registry", raising=False)
+
+    calls: list = []
+    fake_agent(side_effect=lambda *a, **k: (calls.append(k.get("segment")), cite_page("misc/big.md", a[0], "F."))[0])
+    _assert_full_restart(ingest.ingest(), calls, chunked_source.wiki)
+
+
 def test_model_change_discards_the_checkpoint(chunked_source, fake_agent, cite_page, monkeypatch):
     """Half a source imported by one model and half by another is exactly what a model upgrade
     must NOT silently produce."""

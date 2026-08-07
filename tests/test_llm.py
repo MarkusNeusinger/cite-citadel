@@ -489,6 +489,20 @@ def test_style_profiles_knob_gates_the_style_line(tmp_citadel, monkeypatch):
     assert "Style profiling: ON" in llm._build_instruction("raw/notes.md")
 
 
+def test_guidance_knob_gates_the_operator_guidance_line(tmp_citadel, monkeypatch):
+    """CITADEL_INGEST_GUIDANCE / `ingest --guidance`: absent by default; when set, the steer is
+    appended verbatim as an operator-guidance bullet that states the rules still bind — and only
+    for kinds that READ a source (a delete cleanup has no source to steer)."""
+    assert "Operator guidance" not in llm._build_instruction("raw/notes.md")
+    monkeypatch.setattr(config, "INGEST_GUIDANCE", "create one machine registry from the maintenance lists")
+    prompt = llm._build_instruction("raw/notes.md")
+    assert "Operator guidance" in prompt
+    assert "create one machine registry from the maintenance lists" in prompt
+    assert "never overrides" in prompt  # steering, not rule-breaking
+    assert "Operator guidance" in llm._build_instruction("raw/notes.md", "reconcile")
+    assert "Operator guidance" not in llm._build_instruction("raw/notes.md", "delete")
+
+
 def test_fallback_date_bullet_uses_the_source_files_own_date(tmp_citadel):
     """genres/meeting-minutes.md § Dates: the run instruction gives the source file's own date as
     the fallback when the content states no date. A phantom key yields no bullet."""

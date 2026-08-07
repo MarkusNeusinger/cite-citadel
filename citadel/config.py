@@ -948,6 +948,22 @@ WHISPER_TIMEOUT: int = _int_env("CITADEL_WHISPER_TIMEOUT", 3600)
 # offline language detection).
 WIKI_LANG: str = os.environ.get("CITADEL_WIKI_LANG", "").strip() or "en"
 
+# Free-text operator guidance for the sessions of ONE ingest run ("create one machine registry
+# from the maintenance lists", "focus on the 2026 figures"): appended to each source-reading
+# session's prompt as its own bullet. Steering only — the rules still bind; guidance can never
+# override the citation/grounding/off-limits rules, and the prompt says so. Usually set per run
+# via `citadel ingest --guidance` (which overrides this env value; the flag caps it at
+# GUIDANCE_MAX_CHARS to keep the prompt argv-safe). PERMANENT house rules belong in the
+# workspace rules/local.md instead — this knob is the one-shot steer. Whitespace (newlines
+# included) is collapsed to single spaces at every entry point — env here, the CLI flag, the MCP
+# argument — because the prompt bullet the steer lands on is line-shaped.
+INGEST_GUIDANCE: str = " ".join(os.environ.get("CITADEL_INGEST_GUIDANCE", "").split())
+
+# The --guidance length cap (characters). The prompt must stay tiny (it travels on argv for the
+# copilot/agy backends — the WinError 206 fix), so a run steer is a couple of sentences, not a
+# document; anything longer belongs in rules/local.md.
+GUIDANCE_MAX_CHARS: int = 2000
+
 # PDF reading mode (formats/pdf.md): "text" (default) ingests the body text only; "images"
 # additionally has the agent LOOK AT the pages' figures/diagrams/charts and capture what they
 # show. Anything unrecognized falls back to text. The knob only selects which mode the run

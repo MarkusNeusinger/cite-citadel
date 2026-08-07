@@ -188,6 +188,34 @@ def test_ingest_force_flag_reaches_ingest(ingest_spy):
     assert ingest_spy.paths == ["raw/a.md"]
 
 
+def test_ingest_guidance_flag_sets_the_config_steer(ingest_spy, monkeypatch):
+    """``--guidance`` lands in ``config.INGEST_GUIDANCE`` (read at call time by the prompt
+    builder), overriding an env-set steer; an explicit ``--guidance ""`` disables the env steer
+    for this run — the same convention as ``--log-dir ""``."""
+    monkeypatch.setattr(config, "INGEST_GUIDANCE", "from-env", raising=False)
+    assert cli.main(["ingest", "--quiet"]) == 0
+    assert config.INGEST_GUIDANCE == "from-env"  # no flag: the env steer stands
+    assert cli.main(["ingest", "--quiet", "--guidance", "create one\nmachine registry"]) == 0
+    assert config.INGEST_GUIDANCE == "create one machine registry"  # newlines collapsed: line-shaped
+    assert cli.main(["ingest", "--quiet", "--guidance", ""]) == 0
+    assert config.INGEST_GUIDANCE == ""
+
+
+def test_ingest_guidance_over_the_cap_is_rejected(ingest_spy, monkeypatch, capsys):
+    """A steer past GUIDANCE_MAX_CHARS is a usage error (exit 2) before ``ingest.ingest`` is ever
+    called — the prompt must stay argv-safe; a document-sized steer belongs in rules/local.md.
+    The cap guards the EFFECTIVE steer: the flag and an env-set CITADEL_INGEST_GUIDANCE alike."""
+    monkeypatch.setattr(config, "INGEST_GUIDANCE", "", raising=False)
+    oversize = "x" * (config.GUIDANCE_MAX_CHARS + 1)
+    assert cli.main(["ingest", "--quiet", "--guidance", oversize]) == 2
+    assert "--guidance" in capsys.readouterr().err
+    assert config.INGEST_GUIDANCE == ""  # the error path never mutates the config steer
+    monkeypatch.setattr(config, "INGEST_GUIDANCE", oversize, raising=False)
+    assert cli.main(["ingest", "--quiet"]) == 2
+    assert "CITADEL_INGEST_GUIDANCE" in capsys.readouterr().err
+    assert not ingest_spy.called
+
+
 def test_ingest_force_without_paths_is_rejected(ingest_spy):
     """The SAFER semantics are pinned here: ``citadel ingest --force`` with NO explicit paths is refused with a
     non-zero exit and ``ingest.ingest`` is never called. Forcing the ENTIRE corpus would re-run
