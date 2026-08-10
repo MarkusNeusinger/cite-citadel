@@ -224,6 +224,19 @@ def test_guidance_flip_discards_the_checkpoint(chunked_source, fake_agent, cite_
     _assert_full_restart(ingest.ingest(), calls, chunked_source.wiki)
 
 
+def test_related_source_budget_flip_discards_the_checkpoint(chunked_source, fake_agent, cite_page, monkeypatch):
+    """The related-source budget (``CITADEL_RELATED_SOURCES``) is a prompt knob like the rest:
+    segments folded in with other sources consultable must never be merged with segments folded in
+    without them — the two see a different corpus."""
+    fake_agent(side_effect=_fail_at(2, cite_page))
+    ingest.ingest()
+    monkeypatch.setattr(config, "RELATED_SOURCES", 0, raising=False)
+
+    calls: list = []
+    fake_agent(side_effect=lambda *a, **k: (calls.append(k.get("segment")), cite_page("misc/big.md", a[0], "F."))[0])
+    _assert_full_restart(ingest.ingest(), calls, chunked_source.wiki)
+
+
 def test_model_change_discards_the_checkpoint(chunked_source, fake_agent, cite_page, monkeypatch):
     """Half a source imported by one model and half by another is exactly what a model upgrade
     must NOT silently produce."""

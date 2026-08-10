@@ -349,8 +349,10 @@ def _build_instruction(
        the extracted-images ``media/`` folder with its file names (only an Office source that
        carried embedded images), the segment position, the source file's own date as the
        content-date fallback, the target wiki language (``CITADEL_WIKI_LANG``), the PDF mode
-       (``CITADEL_PDF_MODE``, PDF sources only), and the style-profiling switch
-       (``CITADEL_STYLE_PROFILES``, only when ON);
+       (``CITADEL_PDF_MODE``, PDF sources only), the style-profiling switch
+       (``CITADEL_STYLE_PROFILES``, only when ON), and the related-source budget
+       (``CITADEL_RELATED_SOURCES``, source-reading kinds only — how many OTHER raw files this
+       session may consult, per ``core.md`` § Related sources);
     3. the operational invariants ingest enforces mechanically: the off-limits generated files,
        and the run-``citadel check``-before-finishing gate.
 
@@ -450,11 +452,27 @@ def _build_instruction(
         lines.append(f"- PDF mode: {'images' if config.PDF_MODE == 'images' else 'text'}")
     if config.STYLE_PROFILES:
         lines.append("- Style profiling: ON")
+    # Related-source budget (CITADEL_RELATED_SOURCES): how many OTHER raw files this session may
+    # open when its own source uses something it never explains — a term/code/reference that only
+    # resolves next to a file the wiki already holds. The NUMBER is the code-invariant part and
+    # belongs in the frame; WHEN a lookup is warranted, how to find the right file, and the duty to
+    # cite the consulted file live in the rules (core.md § Related sources). Only for kinds that
+    # read a source, and only when the budget is non-zero — a 0 budget names nothing, so the rules
+    # section's "without that bullet, read only your own source" leaves the session unchanged.
+    if config.RELATED_SOURCES > 0 and spec.reads_source:
+        lines.append(
+            f"- Related-source budget: {config.RELATED_SOURCES} — at most this many OTHER raw "
+            "files may be consulted in THIS session to resolve something the source above does "
+            "not explain, each cited for whatever is taken from it (see `core.md` § Related "
+            "sources); the source above stays the source of record"
+        )
     # Operator guidance (--guidance / CITADEL_INGEST_GUIDANCE): a per-run steer from the human
     # running ingest — unlike text inside a source, it comes from the run instruction itself, so
-    # following it is legitimate. Only for kinds that read a source (a delete cleanup or curate
-    # session has no source to steer), and always bounded by the rules: guidance routes and
-    # emphasizes, it never overrides citation/grounding/off-limits rules.
+    # following it is legitimate. Only for kinds that read a source (a delete cleanup has no source
+    # to steer; curate's own steer, `citadel curate --guidance`, travels in the cluster's FINDINGS
+    # file — curate's designated instruction channel — so it lands as a listed finding rather than
+    # a second instruction competing with the improve-or-NOOP rule). Always bounded by the rules:
+    # guidance routes and emphasizes, it never overrides citation/grounding/off-limits rules.
     if config.INGEST_GUIDANCE and spec.reads_source:
         lines.append(
             "- Operator guidance for THIS run (steer routing and emphasis with it, WITHIN the "

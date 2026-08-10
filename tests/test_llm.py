@@ -503,6 +503,23 @@ def test_guidance_knob_gates_the_operator_guidance_line(tmp_citadel, monkeypatch
     assert "Operator guidance" not in llm._build_instruction("raw/notes.md", "delete")
 
 
+def test_related_source_budget_bullet_is_gated_by_the_knob(tmp_citadel, monkeypatch):
+    """CITADEL_RELATED_SOURCES names the per-session ceiling on consulting OTHER raw files in the
+    run instruction (the number is the code-invariant part; when/how/cite-it live in core.md §
+    Related sources). Present by default for kinds that READ a source, gone at 0 — so a 0 budget
+    leaves the prompt exactly as it was before the knob existed — and never on delete/curate, which
+    read no source."""
+    prompt = llm._build_instruction("raw/notes.md")
+    assert "Related-source budget: 3" in prompt
+    assert "core.md` § Related sources" in prompt
+    assert "Related-source budget" in llm._build_instruction("raw/notes.md", "reconcile")
+    assert "Related-source budget" not in llm._build_instruction("raw/notes.md", "delete")
+    assert "Related-source budget" not in llm._build_instruction("concepts/x.md", "curate", read_path="findings.md")
+
+    monkeypatch.setattr(config, "RELATED_SOURCES", 0)
+    assert "Related-source budget" not in llm._build_instruction("raw/notes.md")
+
+
 def test_fallback_date_bullet_uses_the_source_files_own_date(tmp_citadel):
     """genres/meeting-minutes.md § Dates: the run instruction gives the source file's own date as
     the fallback when the content states no date. A phantom key yields no bullet."""

@@ -98,6 +98,38 @@ genre briefs; each begins with one line saying when it applies. After reading th
 - A source matching no brief simply follows the core + schema + task rules.
 - When in doubt whether a genre applies, don't force it — the core rules are always safe.
 
+## Related sources — when your source does not explain itself
+
+Sources arrive one at a time; knowledge does not. A term, code, abbreviation, product name, or
+bare reference your source uses but never explains may only become meaningful next to **another**
+raw file — and the resulting fact ("HAL-7 is the Hallenkran in bay 7, out of service since March")
+is exactly the kind the wiki exists for.
+
+When your run instruction names a **related-source budget**, you may open up to that many OTHER
+raw files in this session to close such a gap. **No budget bullet, no lookup:** read only your own
+source.
+
+- **Only for a concrete gap.** A named thing your source leaves unexplained *and* the wiki's pages
+  do not already resolve — check the wiki first; if a page already explains it, link to that page
+  and you are done. Curiosity is not a gap: a source that explains itself needs nothing.
+- **Find the file through the wiki.** The wiki is the index into `raw/`: search it for the term,
+  and the page that explains it names its raw file in the `## Sources` definitions — that file is
+  your candidate. Failing that, look for an obviously related file name or folder in the raw tree.
+- **Spend the budget on the FEWEST, most promising files** and stop at it, whether or not the gap
+  closed. Never sweep the raw tree, never open a file "to see what is in it", and never let a
+  lookup pull you into a second one.
+- **What you take, you cite to the file it came from.** A fact from a consulted file gets its own
+  `[^sN]` marker and its own `## Sources` definition naming **that** file (with a locator) — never
+  your source of record's marker. A fact that only holds because two files say different halves of
+  it cites **both**.
+- **Take the resolving detail, not the file.** The consulted source has (or will get) its own
+  ingest session — folding its contents in here would duplicate that work under the wrong
+  provenance. Do not edit, re-verify, or remove facts that other sources already put on the pages
+  you touch.
+- **A gap that stays open stays open.** If the lookup does not resolve it, record what your source
+  says, as it says it, and leave the rest — an `## Open Points` thread if the genre brief calls for
+  one. Never guess a meaning to fill the gap.
+
 ## Restructuring — keep the wiki clean as it grows
 
 Route each piece of information to the page where it best **fits**, and reorganize existing pages

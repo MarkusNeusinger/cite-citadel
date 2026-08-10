@@ -356,6 +356,137 @@ def test_stale_rules_selects_only_stale_stamped_sources_pages(tmp_citadel, seed_
     assert "concepts/new.md" not in pages
 
 
+# --- the operator steer: `curate --guidance TEXT [paths]` ------------------------------------
+
+
+def test_guidance_plans_the_named_pages_no_detector_needed(tmp_citadel, seed_page, monkeypatch):
+    """`curate --guidance "…" <paths>`: the human IS the finding. A page every detector considers
+    clean is planned under `operator_guidance` when it is named on the command line — that is the
+    whole point (a badly named page trips no offline detector). Without the steer the same paths
+    only FILTER the detector plan, so a clean page stays unplanned."""
+    from citadel import curate
+
+    (tmp_citadel.raw / "notes.md").write_text("body\n", encoding="utf-8")
+    # The link keeps both pages out of the orphan detector: the plan below must come from the steer.
+    _seed_cited(seed_page, "concepts/topic.md", "raw/notes.md", title="Topic", trailer="See [Other](other.md).")
+    _seed_cited(seed_page, "concepts/other.md", "raw/notes.md", title="Other")
+
+    assert _plan_pages(curate.curate(["concepts/topic.md"], dry_run=True).plan) == set()
+
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", "retitle these to '<machine no> <model>'", raising=False)
+    report = curate.curate(["concepts/topic.md"], dry_run=True)
+    assert _plan_pages(report.plan) == {"concepts/topic.md"}
+    assert _reasons_for(report.plan, "concepts/topic.md") == {curate.REASON_OPERATOR}
+
+
+def test_guidance_without_paths_never_fans_out_over_the_wiki(tmp_citadel, seed_page, fake_agent, monkeypatch):
+    """A steer with NO paths rides along on the detector plan — it never plans a clean page. One
+    paid session per page of a whole clean wiki is exactly what must not happen by accident."""
+    from citadel import curate
+
+    agent = fake_agent()
+    (tmp_citadel.raw / "notes.md").write_text("body\n", encoding="utf-8")
+    _seed_cited(seed_page, "concepts/topic.md", "raw/notes.md", title="Topic", trailer="See [Other](other.md).")
+    _seed_cited(seed_page, "concepts/other.md", "raw/notes.md", title="Other")
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", "merge everything", raising=False)
+
+    report = curate.curate()
+    assert report.plan.items == [] and agent.count == 0
+
+
+def test_guidance_reaches_the_cluster_findings_file(tmp_citadel, seed_page, fake_agent, monkeypatch):
+    """The steer travels in the per-cluster FINDINGS file (curate's designated instruction channel,
+    read by path), together with the frame that bounds it: structure yes, facts and provenance
+    never. The cluster's cited raw sources are named there too — a retitle is decided against the
+    sources, not the page's own wording."""
+    from pathlib import Path
+
+    from citadel import curate
+
+    seen: list[str] = []
+
+    def capture(*_args, **kwargs):
+        seen.append(Path(kwargs["read_path"]).read_text(encoding="utf-8"))
+
+    (tmp_citadel.raw / "notes.md").write_text("body\n", encoding="utf-8")
+    _seed_cited(seed_page, "concepts/topic.md", "raw/notes.md", title="Topic")
+    fake_agent(side_effect=capture)
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", "move the machine pages into registries/", raising=False)
+
+    curate.curate(["concepts/topic.md"])
+    assert len(seen) == 1
+    findings = seen[0]
+    assert "Operator guidance for THIS run" in findings
+    assert "move the machine pages into registries/" in findings
+    assert "raw/notes.md" in findings  # the cluster's cited sources, to be re-read
+    assert "re-attributed" in findings  # the frame: a steer can never change what the wiki SAYS
+    assert curate.REASON_OPERATOR in findings
+
+
+def test_findings_carry_no_operator_section_without_a_steer(tmp_citadel, seed_page):
+    """Default off: with no steer configured the findings file is byte-for-byte the pre-feature
+    checklist — no empty section, no dangling heading."""
+    from citadel import curate, store
+
+    (tmp_citadel.raw / "notes.md").write_text("body\n", encoding="utf-8")
+    _seed_cited(seed_page, "concepts/topic.md", "raw/notes.md", title="Topic")
+    pages = {page.rel_path: page for page in store.load()}
+    item = curate.PlanItem(page="concepts/topic.md", reasons=[curate.REASON_ORPHAN])
+
+    assert "Operator guidance" not in curate._render_findings(item, pages["concepts/topic.md"], {})
+
+
+def test_paths_select_by_folder_and_glob_and_report_what_matched_nothing(tmp_citadel, seed_page, monkeypatch):
+    """A structural steer usually applies to a FAMILY of pages, so a path argument may be a folder
+    or a glob as well as one page. An argument that matches nothing is reported on the run report
+    — under a steer, a typo'd path would otherwise read as "the wiki is clean"."""
+    from citadel import curate
+
+    (tmp_citadel.raw / "notes.md").write_text("body\n", encoding="utf-8")
+    for slug in ("m-1", "m-2"):
+        _seed_cited(seed_page, f"registries/{slug}.md", "raw/notes.md", type_="Registry", title=slug)
+    _seed_cited(seed_page, "concepts/topic.md", "raw/notes.md", title="Topic")
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", "retitle them", raising=False)
+
+    assert _plan_pages(curate.curate(["registries/"], dry_run=True).plan) == {"registries/m-1.md", "registries/m-2.md"}
+    assert _plan_pages(curate.curate(["registries/m-*.md"], dry_run=True).plan) == {
+        "registries/m-1.md",
+        "registries/m-2.md",
+    }
+
+    report = curate.curate(["concepts/typo.md"], dry_run=True)
+    assert report.plan.items == [] and report.unmatched == ["concepts/typo.md"]
+    assert "concepts/typo.md" in report.render()
+
+
+def test_scope_is_applied_before_the_limit(tmp_citadel, seed_page, monkeypatch):
+    """--limit N counts the SCOPED plan ("the first N of what I asked for"), not the first N of the
+    whole wiki filtered afterwards — which would silently curate nothing."""
+    from citadel import curate
+
+    (tmp_citadel.raw / "notes.md").write_text("body\n", encoding="utf-8")
+    for slug in ("a", "b", "c"):
+        _seed_cited(seed_page, f"concepts/{slug}.md", "raw/notes.md", title=slug.upper())
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", "tighten the titles", raising=False)
+
+    report = curate.curate(["concepts/c.md"], dry_run=True, limit=1)
+    assert _plan_pages(report.plan) == {"concepts/c.md"}
+
+
+def test_stale_rules_never_drops_an_explicitly_guided_page(tmp_citadel, seed_page, monkeypatch):
+    """--stale-rules is a selector over the DETECTOR plan; an explicitly named page under a steer is
+    an instruction and survives it."""
+    from citadel import curate
+
+    (tmp_citadel.raw / "notes.md").write_text("body\n", encoding="utf-8")
+    _seed_cited(seed_page, "concepts/topic.md", "raw/notes.md", title="Topic")
+    _track("raw/notes.md", manifest.file_sha256(tmp_citadel.raw / "notes.md"), config.rules_version())
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", "re-sort", raising=False)
+
+    report = curate.curate(["concepts/topic.md"], dry_run=True, stale_rules=True)
+    assert _plan_pages(report.plan) == {"concepts/topic.md"}
+
+
 # --- the cluster session: staging diff decides NOOP / applied / failed (one _SourceJob) -----
 
 

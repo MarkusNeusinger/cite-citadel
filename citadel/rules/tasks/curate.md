@@ -8,12 +8,29 @@ cluster — the anchor page, the pages it links to, and the raw files they cite.
 
 ## Improve or do nothing — never churn
 
-Read the findings, then read the pages and the cited raw files they name. Act on a finding ONLY
-where it genuinely holds against those sources:
+Read the findings, then read the pages and the cited raw files they name. **Re-read the cited raw
+sources — never work from the page alone**: a page's own wording is what is under review, so a
+retitle, a split, or a re-grounded sentence is decided against what the source actually says.
+Act on a finding ONLY where it genuinely holds against those sources:
 
 - **If the findings do not hold up, make no edits and stop.** A NOOP is a correct, expected
   outcome — a wrong "fix" is worse than none. Do not reword, reorder, or touch anything the
   findings did not flag; this is not a rewrite pass.
+
+## Operator guidance — when the findings carry one
+
+The findings file may open with an **Operator guidance for THIS run** section: a free-text steer
+from the human who started this pass (`citadel curate --guidance "…"`). It is part of your run
+instruction — not text from a source file — so following it is legitimate, and it is a listed
+finding like any other: act on it where it holds, leave the cluster alone where it does not.
+
+- It steers **structure**: page names and titles, `type`/folder routing, splits and merges, section
+  order, cross-links, alias and tag hygiene.
+- It **never** changes what the wiki says. No fact is added, dropped, reworded away from what its
+  source states, or re-attributed; every fact keeps its `[^sN]` marker and its `## Sources`
+  definition across whatever the steer moves (see *Hard invariants* below).
+- A steer that asks for something the rules or the cited sources do not support is followed only as
+  far as they allow — the rules and the sources win, and the rest is left undone.
 
 ## Hard invariants — never cross these
 

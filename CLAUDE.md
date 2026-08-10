@@ -49,8 +49,11 @@ argument, and the steer joins the resume checkpoint identity),
 `ingested_at` stamp, oldest/stampless first — through forced reconcile sessions on an explicit
 per-run budget of N sources; the sustainable alternative to regenerating the wiki after a model
 upgrade), `curate [--dry-run] [--limit N] [--stale-rules]
-[--diff PATH] [--retry]` (the SECOND lifecycle: improve EXISTING pages — re-sort/split/re-ground/resolve
-contradictions/fix locators — against a recomputed findings checklist), `status` (read-only
+[--diff PATH] [--retry] [--guidance TEXT] [paths…]` (the SECOND lifecycle: improve EXISTING pages —
+re-sort/split/re-ground/resolve
+contradictions/fix locators — against a recomputed findings checklist; `--guidance` is the curate
+twin of ingest's steer — STRUCTURAL only, carried in the cluster's findings file, and the paths it
+names (a page, a folder, a glob) are curated even when no detector flagged them), `status` (read-only
 per-source state table: ingested / failed / skipped-duplicate / ignored / oversized / pending; MCP twin
 `wiki_status`), `doctor`
 (read-only setup health check — OK/WARN/FAIL lines for workspace / rules / config-parse fallbacks /
@@ -368,6 +371,16 @@ counter (default cap 2, never auto-retried until an explicit retry). `--dry-run`
 with zero sessions; `--limit`/`--stale-rules` shape it; `--diff PATH` writes a per-page change
 report; `--retry` re-includes attempt-capped clusters (the explicit retry that bypasses the cap);
 curate sessions run under `CITADEL_CURATE_MODEL` (falling back to the ingest model).
+`--guidance TEXT` (env `CITADEL_CURATE_GUIDANCE`, the shared 2000-char cap) is the lifecycle's own
+operator steer, and it rides a DIFFERENT channel than ingest's prompt bullet: the text is rendered
+into every cluster's findings file — curate's designated instruction channel — so the
+improve-or-NOOP rule reads it as a listed finding instead of a competing instruction. The
+positional `paths` (a page rel_path, a FOLDER, or a glob — `_select_pages`, applied inside
+`build_plan` BEFORE `--limit`, unmatched args surfaced on `report.unmatched`) are, under a steer,
+the ask itself: each named page is planned under the `operator_guidance` reason (ordered FIRST — a
+human ask outranks a detection) even when every detector considers it clean, which is the whole
+point (a badly named page trips no offline detector). A steer with NO paths only rides along on the
+detector plan — fanning one out over a clean wiki would be one paid session per page.
 
 **Refresh is the third lifecycle** (`refresh.py`, `citadel refresh`): budget-controlled
 re-verification of existing SOURCES, so an aging wiki is brought up to the current model + rules a
@@ -583,7 +596,12 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   (target language of all wiki prose, default `en`; verbatim quotes stay original),
   `CITADEL_INGEST_GUIDANCE` (free-text steer appended to each source-reading session's prompt —
   usually passed per run as `ingest --guidance` instead; permanent house rules belong in
-  `rules/local.md`),
+  `rules/local.md`), `CITADEL_CURATE_GUIDANCE` (its curate twin — STRUCTURAL only, carried in the
+  cluster findings file, usually passed as `curate --guidance "…" <paths>`),
+  `CITADEL_RELATED_SOURCES` (how many OTHER raw sources one source-reading session may consult to
+  resolve a term/code/reference its own source never explains — found through the wiki, cited to
+  the file it came from, `core.md` § Related sources; a per-session ceiling named in the run
+  instruction so an ingest can never sweep the raw tree, default 3, 0 = never look),
   `CITADEL_PDF_MODE` (`text` | `images` — whether the agent also reads a PDF's figures),
   `CITADEL_PDF_TEXT` (`auto` | `1` | `0` — the pypdf text-layer pre-pass; auto = on when pypdf
   imports, which it does by default; `0` forces agent-native reading),

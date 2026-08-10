@@ -479,9 +479,10 @@ def knob_stamp() -> str:
 
     Each of these changes what the agent WRITES without touching the rules tree: the wiki's target
     language, persona/style capture, whether a PDF's figures are read, whether an Office source's
-    embedded images came along. Flipping one between runs and then merging the new segments into
-    the old ones would produce a page cluster no single run could — half English, half German —
-    so a flip invalidates the checkpoint like any other identity change."""
+    embedded images came along, how many OTHER sources a session may consult. Flipping one between
+    runs and then merging the new segments into the old ones would produce a page cluster no single
+    run could — half English, half German — so a flip invalidates the checkpoint like any other
+    identity change."""
     return "|".join(
         [
             config.WIKI_LANG,
@@ -490,6 +491,7 @@ def knob_stamp() -> str:
             str(int(bool(config.IMAGE_SUPPORT))),
             str(int(bool(config.AUDIO_SUPPORT))),
             config.INGEST_GUIDANCE,
+            str(config.RELATED_SOURCES),
         ]
     )
 

@@ -8,6 +8,41 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`citadel curate --guidance "…" [paths…]` — tell curate what you want changed.** The offline
+  detectors find structural problems, but some things only a person sees: pages named
+  inconsistently, a family that belongs in `registries/`, a split that reads better the other way
+  round. None of them trip a detector, so there was no way to ask for them short of hand-editing
+  the wiki. The curate lifecycle now takes the same steer ingest does (`--guidance TEXT`, env
+  `CITADEL_CURATE_GUIDANCE`, the shared 2000-char cap and the `--guidance ""` convention), and
+  `citadel curate` gained the positional **paths** the API always supported — a page, a **folder**
+  (`registries/`), or a **glob** (`registries/machine-*.md`). Two things make it useful rather than
+  merely present: the steer travels in each cluster's **findings checklist** — curate's own
+  instruction channel — so it lands as a listed finding instead of a second instruction competing
+  with the improve-or-NOOP rule; and pages named under a steer are **planned even when every
+  detector considers them clean** (the new `operator_guidance` reason code, ordered first: a human
+  ask outranks a detection). A steer with no paths only rides along on the detector plan — fanning
+  one out over a clean wiki would be one paid session per page — and a path that matches nothing is
+  reported instead of silently doing nothing. The bound is explicit in the rules
+  (`tasks/curate.md` § Operator guidance): a steer directs **structure** — naming, titles,
+  `type`/folder routing, splits, merges, section order, cross-links — and can never change what the
+  wiki says. No fact is added, dropped, reworded away from what its source states, or
+  re-attributed; every fact keeps its `[^sN]` marker and its `## Sources` definition through
+  whatever the steer moves, and the cluster's cited raw sources are re-read first, so a retitle
+  follows the spelling the sources themselves use.
+- **Sessions may consult a bounded number of RELATED sources** (`CITADEL_RELATED_SOURCES`, default
+  3; `0` turns it off). Sources arrive one at a time; knowledge does not. A fault report saying
+  "HAL-7 down since March" is nearly worthless while the machine register that defines HAL-7 sits
+  unread two files away — and the fact that joins them ("the Hallenkran in bay 7 has been out of
+  service since March") is exactly what the wiki exists for. A source-reading session is now told a
+  per-session budget of OTHER raw files it may open to resolve something its own source uses but
+  never explains, and `core.md` § Related sources bounds the lookup: only for a concrete unexplained
+  term the wiki's pages do not already resolve; the candidate is found **through the wiki** (the
+  page that explains it names its raw file in `## Sources`); the fewest, most promising files, then
+  stop at the budget — never a sweep of the raw tree; anything taken **cites the file it came
+  from** (a fact resting on two sources cites both), never the source of record's marker; and the
+  consulted source is not folded in wholesale, since it has its own ingest session. The budget joins
+  the resume checkpoint's identity, so a chunked source interrupted under one budget is never
+  continued under another.
 - **`citadel ingest --guidance "…"` — steer a run's sessions with one sentence.** The rules tree
   says how the wiki is built in general, and the workspace `rules/local.md` holds permanent house
   rules — but there was no way to hand ONE run a steer like "create one machine registry from the

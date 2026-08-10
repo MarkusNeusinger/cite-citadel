@@ -4,7 +4,8 @@
 
     citadel init [DIR]           # scaffold a workspace (citadel.toml marker, .env, raw/, wiki/)
     citadel ingest [paths ...]   # fold raw/ (or explicit paths) into the wiki
-    citadel curate [--dry-run] [--limit N] [--stale-rules] [--diff PATH] [--retry]  # improve existing pages
+    citadel curate [--dry-run] [--limit N] [--stale-rules] [--diff PATH] [--retry]
+                   [--guidance TEXT] [paths ...]   # improve existing pages
     citadel refresh [--limit N] [--min-age-days D] [--dry-run]  # re-verify the least-recently-checked sources
     citadel status               # per-source corpus state (ingested/failed/skipped/ignored/pending; mirrors wiki_status)
     citadel doctor               # read-only environment/setup health check (OK/WARN/FAIL lines)
@@ -183,6 +184,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Write a per-page change report (unified diffs) for this run to PATH.",
     )
     p_curate.add_argument("--retry", action="store_true", help="Include attempt-capped clusters in this run.")
+    p_curate.add_argument(
+        "--guidance",
+        default=None,
+        metavar="TEXT",
+        help="Free-text steer for this run's curate sessions (e.g. \"retitle the machine pages to "
+        "'<machine no> <model>' and move them into registries/\"), written into every cluster's "
+        "findings checklist. A STRUCTURAL steer only — naming, typing, routing, splitting, "
+        "merging, cross-linking; it can never change, add, or re-attribute a fact. Naming PATHS "
+        "alongside it curates exactly those pages, even ones no detector flagged. Overrides "
+        "CITADEL_CURATE_GUIDANCE; max 2000 chars.",
+    )
+    p_curate.add_argument(
+        "paths",
+        nargs="*",
+        help="Restrict the run to these pages: a page path (concepts/x.md), a FOLDER (registries/) "
+        "or a glob (registries/machine-*.md). Without --guidance they filter the detector plan; "
+        "with it they are the ask itself, so each named page gets a curate session.",
+    )
     p_curate.set_defaults(func=cmd_curate)
 
     p_refresh = sub.add_parser(
@@ -429,6 +448,32 @@ def cmd_init(args: argparse.Namespace) -> int:
     return 0
 
 
+def _effective_guidance(flag: str | None, env_value: str, env_name: str) -> tuple[str, str | None]:
+    """Resolve one lifecycle's ``--guidance`` flag against its env twin, returning
+    ``(steer, error message or None)`` — the ONE owner of the convention both ``ingest`` and
+    ``curate`` follow:
+
+    - the flag wins when given, and an explicit ``--guidance ""`` DISABLES an env-set steer for
+      this run (the same convention as ``--log-dir ""``); omitting it keeps the env value;
+    - whitespace, newlines included, collapses to single spaces (a steer is line-shaped: ingest's
+      lands on a prompt bullet, curate's on a findings line);
+    - the length cap is checked on the EFFECTIVE steer — flag or env alike — because the cap exists
+      to keep an agent invocation argv-safe (the prompt travels as a ``-p`` argument on the
+      copilot/agy backends) and an env-set oversize steer would hit that exact limit; a steer that
+      long belongs in ``rules/local.md``, which every session already reads."""
+    from . import config
+
+    guidance = " ".join(flag.split()) if flag is not None else env_value
+    if len(guidance) > config.GUIDANCE_MAX_CHARS:
+        source = "--guidance" if flag is not None else env_name
+        return guidance, (
+            f"error: {source} is {len(guidance)} chars (max {config.GUIDANCE_MAX_CHARS}); a run "
+            "steer is a couple of sentences — put anything longer in the workspace "
+            "rules/local.md, which every session already reads."
+        )
+    return guidance, None
+
+
 def cmd_ingest(args: argparse.Namespace) -> int:
     """Run an ingest pass (with live progress unless --quiet); 1 if any source errored.
 
@@ -521,21 +566,9 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     # — the documented override — rather than silently falling through to CITADEL_LLM_LOG_DIR.
     if args.log_dir is not None:
         config.LLM_LOG_DIR = args.log_dir
-    # Same convention for --guidance: an explicit `--guidance ""` disables an env-set steer for
-    # this run. Collapsed to one line (the prompt bullet is line-shaped), and the cap is checked
-    # on the EFFECTIVE steer — flag or CITADEL_INGEST_GUIDANCE alike — because the cap exists to
-    # keep the prompt argv-safe (it travels as a -p argument on the copilot/agy backends) and an
-    # env-set oversize steer would hit that exact limit; a steer that long belongs in
-    # rules/local.md, not on a flag.
-    guidance = " ".join(args.guidance.split()) if args.guidance is not None else config.INGEST_GUIDANCE
-    if len(guidance) > config.GUIDANCE_MAX_CHARS:
-        source = "--guidance" if args.guidance is not None else "CITADEL_INGEST_GUIDANCE"
-        print(
-            f"error: {source} is {len(guidance)} chars (max {config.GUIDANCE_MAX_CHARS}); a run "
-            "steer is a couple of sentences — put anything longer in the workspace "
-            "rules/local.md, which every session already reads.",
-            file=sys.stderr,
-        )
+    guidance, error = _effective_guidance(args.guidance, config.INGEST_GUIDANCE, "CITADEL_INGEST_GUIDANCE")
+    if error:
+        print(error, file=sys.stderr)
         return 2
     if args.guidance is not None:
         config.INGEST_GUIDANCE = guidance
@@ -559,13 +592,29 @@ def cmd_ingest(args: argparse.Namespace) -> int:
 
 def cmd_curate(args: argparse.Namespace) -> int:
     """Run one curate pass and print the report. ``--dry-run`` recomputes
-    the plan and runs zero sessions; ``--limit``/``--stale-rules`` shape the plan; ``--diff`` writes a
-    change report; ``--retry`` includes attempt-capped clusters (maps to ``curate(force=True)``).
+    the plan and runs zero sessions; ``--limit``/``--stale-rules``/the positional paths shape the
+    plan; ``--diff`` writes a change report; ``--retry`` includes attempt-capped clusters (maps to
+    ``curate(force=True)``); ``--guidance`` is this run's structural steer, landing in every
+    cluster's findings checklist — and, together with paths, planning exactly those pages.
     Returns 1 when a cluster failed its gate (surfaced for CI), else 0."""
-    from . import curate
+    from . import config, curate
+
+    # Same convention as `ingest --guidance`: an explicit `--guidance ""` disables an env-set steer
+    # for this run, and the cap is checked on the EFFECTIVE steer (flag or env alike).
+    guidance, error = _effective_guidance(args.guidance, config.CURATE_GUIDANCE, "CITADEL_CURATE_GUIDANCE")
+    if error:
+        print(error, file=sys.stderr)
+        return 2
+    if args.guidance is not None:
+        config.CURATE_GUIDANCE = guidance
 
     report = curate.curate(
-        dry_run=args.dry_run, limit=args.limit, stale_rules=args.stale_rules, diff=args.diff, force=args.retry
+        args.paths or None,
+        dry_run=args.dry_run,
+        limit=args.limit,
+        stale_rules=args.stale_rules,
+        diff=args.diff,
+        force=args.retry,
     )
     print(report.render())
     return 1 if report.failed else 0
