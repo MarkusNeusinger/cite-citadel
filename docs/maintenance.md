@@ -29,10 +29,55 @@ Flags:
 | Flag | What it does |
 |------|--------------|
 | `--dry-run` | Recompute and print the plan only; run zero agent sessions, leave the wiki untouched. |
-| `--limit N` | Curate at most the first N clusters of the plan. |
+| `--limit N` | Curate at most the first N clusters of the plan (of the *scoped* plan when paths are given). |
 | `--stale-rules` | Restrict the plan to pages whose source was ingested under an older rulebook. |
 | `--diff PATH` | Write a per-page change report (unified diffs) for this run to PATH. |
 | `--retry` | Include attempt-capped clusters in this run (see below). |
+| `--guidance TEXT` | This run's structural steer (see below). |
+| `paths…` | Restrict the run to these pages: a page (`concepts/x.md`), a **folder** (`registries/`), or a **glob** (`registries/machine-*.md`). |
+
+### Telling curate what you want changed
+
+The detectors find *structural* problems, but some things only a person can see: several pages named
+inconsistently, a split that would read better the other way round, a family of pages that belongs
+in `registries/`. `citadel curate --guidance "…"` is how you say so:
+
+```bash
+# curate exactly these pages under a steer — even though no detector flagged them
+citadel curate --guidance "retitle these to '<machine no> <model>' and move them into registries/" registries/
+citadel curate --guidance "merge the three fault-code pages into one Registry" --dry-run registries/fault-*.md
+```
+
+The steer is written into every cluster's findings checklist, which is what the agent works
+through — so it lands as a listed finding, not as a second instruction competing with curate's
+improve-or-NOOP rule. Two boundaries make it safe to use freely:
+
+- **Structure only.** It directs naming, titles, `type`/folder routing, splits, merges, section
+  order, and cross-links. It can never change what the wiki *says*: no fact is added, dropped,
+  reworded away from what its source states, or re-attributed, and every fact carries its `[^sN]`
+  marker and its `## Sources` definition through whatever the steer moves. The cluster's cited raw
+  sources are re-read first — a retitle follows the spelling the *sources* use.
+- **Named paths are the ask.** With paths, each named page gets a session even if every detector
+  considers it clean (reason code `operator_guidance`). Without paths, the steer only rides along
+  on the pages the detectors already planned — fanning one out over a whole clean wiki would be one
+  paid session per page. A path that matches nothing is reported on the run report rather than
+  silently doing nothing.
+
+A structural ask is usually one instruction over many pages — *"key these by product, not by
+project"* re-pivots a whole folder — but curate runs one session per page. So each guided cluster's
+checklist also **names the other pages this run carries the same steer to**, and says they run in
+sequence: a page one session creates may be extended by the next, instead of three sessions
+answering the same instruction with three near-duplicate pages.
+
+Renames are the edit most likely to strand an inbound link, so a cluster whose result would leave a
+cross-link pointing at a page that no longer exists is **failed and rolled back whole** — the live
+wiki keeps the version it had, and the failure says which link broke. (Links that were already
+dangling before the run do not count against the cluster; those are what `citadel lint` reports and
+what a later curate pass repairs.)
+
+`--dry-run` first is the cheap way to see exactly which pages a folder or glob resolves to. Set
+`CITADEL_CURATE_GUIDANCE` instead of passing the flag if you want the same steer for several runs;
+permanent house rules belong in `rules/local.md`, which every session already reads.
 
 A cluster that fails is recorded with an `attempts` counter and retried on the next run — but only
 up to **2 attempts**; after that it is skipped ("attempt-capped") so one stubborn page can't burn

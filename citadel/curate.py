@@ -13,7 +13,10 @@ Two layers, the Wikipedia-bot model, with **no persisted queue** — the wiki IS
    one), ``contradiction`` (an unresolved ``> [!CONTRADICTION]`` callout), ``orphan`` (an island),
    ``llm_drift`` (a page dominated by ``[^llm]`` facts with little ``[^sN]`` grounding),
    ``resort`` (a page whose ``type`` routes to a different folder than the one it sits in, via
-   :func:`okf.folder_for_type`), ``bad_source`` (a ``[^sN]`` citation that does not verify —
+   :func:`okf.folder_for_type`), ``operator_guidance`` (not a detection at all: the pages a human
+   NAMED on the command line under a ``curate --guidance "…"`` steer — the one reason code a person
+   supplies, so a structural ask lands even on pages every detector considers clean),
+   ``bad_source`` (a ``[^sN]`` citation that does not verify —
    lint's "Fabricated/missing sources", e.g. the dangling citations a FAILED deletion cleanup
    leaves behind, via :func:`validate.source_issues`), and ``reverify`` (a sampled fact
    re-verification pass). Fact
@@ -43,6 +46,7 @@ from __future__ import annotations
 
 import contextlib
 import difflib
+import fnmatch
 import os
 import shutil
 import tempfile
@@ -56,6 +60,7 @@ from .okf import Page
 
 # --- reason codes + ordering ----------------------------------------------------------------
 
+REASON_OPERATOR = "operator_guidance"
 REASON_PAGE_LENGTH = "page_length_hard"
 REASON_RESORT = "resort"
 REASON_BAD_SOURCE = "bad_source"
@@ -66,12 +71,15 @@ REASON_LOCATOR = "locator"
 REASON_REVERIFY = "reverify"
 REASON_ORPHAN = "orphan"
 
-# Deterministic cluster ordering for --limit: structural fixes that change a page's identity/shape
-# first (split, re-sort), then the provenance repairs (a dangling citation is a lint FAIL — e.g.
-# what a failed deletion cleanup leaves behind, which ingest's failure hint sends HERE to fix),
-# then the contradiction/grounding repairs, then the advisory linking pass. A cluster's priority
-# is the rank of its MOST urgent reason; ties break on the page rel_path.
+# Deterministic cluster ordering for --limit: what the HUMAN explicitly asked for first (a
+# `--guidance` steer on named pages is an instruction, not a detection), then the structural fixes
+# that change a page's identity/shape (split, re-sort), then the provenance repairs (a dangling
+# citation is a lint FAIL — e.g. what a failed deletion cleanup leaves behind, which ingest's
+# failure hint sends HERE to fix), then the contradiction/grounding repairs, then the advisory
+# linking pass. A cluster's priority is the rank of its MOST urgent reason; ties break on the page
+# rel_path.
 _REASON_ORDER = [
+    REASON_OPERATOR,
     REASON_PAGE_LENGTH,
     REASON_RESORT,
     REASON_BAD_SOURCE,
@@ -92,6 +100,11 @@ ATTEMPT_CAP = 2
 # small and deterministic: each run re-checks the K stalest, most-linked sha-unchanged-cited pages,
 # so a large corpus re-verifies over many runs without a per-run token blow-up.
 REVERIFY_SAMPLE_K = 3
+
+# How many sibling anchors a guided cluster's findings name before the list is elided. The line
+# exists so parallel sessions of ONE instruction converge on each other's pages, which the first
+# handful already conveys; a folder-wide steer must not paste 300 paths into every checklist.
+_SIBLINGS_SHOWN = 20
 
 # The `[^sN]`-drift outlier rule: a page counts as drifted when its model-supplied (``[^llm]``)
 # facts both outnumber its raw-grounded (``[^sN]``) facts AND reach this floor (so a single stray
@@ -157,6 +170,10 @@ class CurateReport:
     # to go read wiki/.citadel_failures.json to explain.
     failed_details: dict[str, str] = field(default_factory=dict)
     skipped: list[str] = field(default_factory=list)
+    # Path arguments that named no page (a typo, a folder with no pages, a glob that matched
+    # nothing). Surfaced instead of dropped: under a `--guidance` steer a mistyped path would
+    # otherwise read as "the wiki is clean", and the run the human asked for silently never ran.
+    unmatched: list[str] = field(default_factory=list)
     # The wiki-history note from wikigit.autocommit — empty when the history layer had nothing to say.
     wiki_git: str = ""
     # What this run's cluster sessions cost, summed over every session that reported usage —
@@ -166,6 +183,9 @@ class CurateReport:
 
     def render(self) -> str:
         lines = ["Curate report", "=============", ""]
+        if self.unmatched:
+            lines.append(f"Matched no page (nothing was curated for these): {', '.join(self.unmatched)}")
+            lines.append("")
         lines.append(self.plan.render())
         lines.append("")
         for label, group in (
@@ -353,13 +373,26 @@ def build_plan(
     limit: int | None = None,
     failures_dict: dict | None = None,
     force: bool = False,
+    scope: set[str] | None = None,
+    guided: bool = False,
 ) -> Plan:
     """Recompute the curate work list from the wiki + manifest (NO persisted queue). Every detector
     is offline and reuses shared grammar/store/okf. One :class:`PlanItem` per flagged page,
     aggregating all its reason codes, ordered deterministically (:func:`_priority`, then rel_path).
 
+    ``scope`` (the resolved page set of the CLI's optional path arguments) restricts the plan to
+    those anchors — applied BEFORE ``limit``, so ``--limit N`` means "the first N of what I asked
+    for" rather than "N of the whole wiki, then filtered to nothing".
+
+    ``guided`` marks those scoped pages as an explicit operator ask (``curate --guidance TEXT
+    <paths>``): each gets :data:`REASON_OPERATOR` on top of whatever the detectors found, so a page
+    no detector flagged is still planned — the human, not a detector, is the finding. It needs a
+    ``scope``: a steer with no paths merely rides along on the detector plan (every findings file
+    carries it), because fanning one out over a whole clean wiki would be one paid session per page.
+
     ``stale_rules`` narrows the plan to pages whose source was ingested under an OLDER effective-rules
-    hash (the ``--stale-rules`` selector) — a page carrying only other reasons is dropped. ``limit``
+    hash (the ``--stale-rules`` selector) — a page carrying only other reasons is dropped, except an
+    explicitly guided one (a named page is an instruction, not a detection). ``limit``
     keeps the first N clusters of that ordered plan (``--limit``).
 
     ``failures_dict`` (loaded when omitted) supplies the per-cluster attempt counts: a cluster at or
@@ -426,10 +459,21 @@ def build_plan(
         if validate.source_issues(rel_path, page.body):
             add(rel_path, REASON_BAD_SOURCE)
 
+    # The operator ask: pages named on the command line under a `--guidance` steer are planned
+    # whether or not a detector flagged them — the steer IS their finding, rendered into the
+    # cluster's checklist by _render_findings. Only for pages that actually exist (a path that
+    # matches nothing is reported by the caller, never silently invented into the plan).
+    if guided and scope:
+        known = {page.rel_path for page in pages}
+        for rel_path in scope & known:
+            add(rel_path, REASON_OPERATOR)
+
     items: list[PlanItem] = []
     skipped: list[str] = []
     for rel_path, reasons in reasons_by_page.items():
-        if stale_rules and REASON_RULES_DRIFT not in reasons:
+        if scope is not None and rel_path not in scope:
+            continue
+        if stale_rules and REASON_RULES_DRIFT not in reasons and REASON_OPERATOR not in reasons:
             continue
         if not force and _cluster_attempts(failures_dict, rel_path) >= ATTEMPT_CAP:
             skipped.append(rel_path)
@@ -499,6 +543,16 @@ def _link_neighbors(page: Page, inbound: dict[str, list[str]]) -> list[str]:
 
 
 _REASON_GUIDANCE = {
+    REASON_OPERATOR: (
+        "The human running this pass asked for a specific change to this cluster — see the "
+        "**Operator guidance for THIS run** section above and carry it out here where it applies. "
+        "It is a STRUCTURAL "
+        "steer: how pages are named, typed, routed, split, merged, and cross-linked. Re-read this "
+        "cluster's cited raw sources first (a retitle follows the sources' own spelling, `core.md` "
+        "§ Restructuring), and carry every fact across unchanged — same wording, same `[^sN]` "
+        "marker, same `## Sources` definition. Where the steer does not fit this page, leave it "
+        "untouched."
+    ),
     REASON_PAGE_LENGTH: (
         "This page is over the hard length threshold. Split it along its topics into focused pages — "
         "every fact keeping its `[^sN]` marker AND its `## Sources` definition — then delete the "
@@ -565,10 +619,33 @@ def _reason_guidance(reason: str, page: Page) -> str:
     return _REASON_GUIDANCE.get(reason, "Review and repair per the rules.")
 
 
-def _render_findings(item: PlanItem, page: Page, inbound: dict[str, list[str]]) -> str:
+_OPERATOR_GUIDANCE_FRAME = (
+    "This steer comes from the human who started this curate run — it is part of the run "
+    "instruction, not text from a source file, so following it is legitimate. It directs "
+    "STRUCTURE: page names and titles, `type`/folder routing, splits, merges, section order, and "
+    "cross-links. It can never change what the wiki SAYS: no fact is added, reworded away from "
+    "what its source states, dropped, or re-attributed, and every fact keeps its `[^sN]` marker "
+    "and its `## Sources` definition (`tasks/curate.md` § Hard invariants). Where it asks for "
+    "something the rules or the cited sources do not support, follow the rules and the sources; "
+    "where it does not fit this cluster, leave the pages untouched."
+)
+
+
+def _render_findings(
+    item: PlanItem, page: Page, inbound: dict[str, list[str]], guided_run: list[str] | None = None
+) -> str:
     """The per-cluster findings checklist the agent reads BY PATH (never embedded in the prompt).
-    Names the anchor, its cited raw sources, its direct link neighbors, and one concrete instruction
-    per detected reason. The `tasks/curate.md` brief governs how to act on it (improve-or-NOOP)."""
+    Names the anchor, its cited raw sources, its direct link neighbors, the run's operator guidance
+    when one was given (``curate --guidance`` — curate's steer travels HERE rather than in the
+    prompt frame, so the improve-or-NOOP rule reads it as a listed finding), and one concrete
+    instruction per detected reason. The `tasks/curate.md` brief governs how to act on it.
+
+    ``guided_run`` is every anchor this run carries the SAME steer to. A structural ask is routinely
+    one instruction over many pages ("key these by product, not by project"), but curate runs one
+    session per cluster — so without this each session is blind to the other N-1 and would answer
+    the same instruction independently, which is how one re-pivot ends up as three near-duplicate
+    product pages. Naming the siblings (and that they run in sequence) is what makes the sessions
+    converge on the pages an earlier one already created."""
     cited = _cited_source_keys(page)
     neighbors = _link_neighbors(page, inbound)
     lines = [
@@ -579,8 +656,27 @@ def _render_findings(item: PlanItem, page: Page, inbound: dict[str, list[str]]) 
         f"- Cited raw sources: {', '.join(cited) if cited else '(none)'}",
         f"- Direct link neighbors: {', '.join(neighbors) if neighbors else '(none)'}",
         "",
-        "## Detected issues (act on each ONLY where it genuinely holds against the sources)",
     ]
+    if config.CURATE_GUIDANCE:
+        # The steer is QUOTED as a blockquote: it is one line by construction (whitespace is
+        # collapsed at every entry point), so a `>` prefix is enough to keep whatever markdown a
+        # human typed into it — a stray `##`, a list marker — from restructuring the checklist it
+        # is quoted inside.
+        steer = f"> {config.CURATE_GUIDANCE}"
+        lines += ["## Operator guidance for THIS run", "", steer, "", _OPERATOR_GUIDANCE_FRAME, ""]
+        others = [rel for rel in (guided_run or []) if rel != item.page]
+        if others:
+            shown = ", ".join(others[:_SIBLINGS_SHOWN])
+            more = f", … ({len(others)} in total)" if len(others) > _SIBLINGS_SHOWN else ""
+            lines += [
+                "The same steer is being carried out on these other pages in this run, one session "
+                f"each, in sequence: {shown}{more}. So a page you create here may be EXTENDED by a "
+                "later one, and a page an earlier one already created may exist — search the wiki "
+                "before creating anything and merge into what is there (`core.md` § Restructuring), "
+                "so one instruction produces one set of pages instead of one per session.",
+                "",
+            ]
+    lines.append("## Detected issues (act on each ONLY where it genuinely holds against the sources)")
     for reason in item.reasons:
         lines.append(f"- **{reason}** — {_reason_guidance(reason, page)}")
     lines += [
@@ -591,7 +687,9 @@ def _render_findings(item: PlanItem, page: Page, inbound: dict[str, list[str]]) 
     return "\n".join(lines) + "\n"
 
 
-def _write_findings(item: PlanItem, page: Page, inbound: dict[str, list[str]]) -> tuple[str, str]:
+def _write_findings(
+    item: PlanItem, page: Page, inbound: dict[str, list[str]], guided_run: list[str] | None = None
+) -> tuple[str, str]:
     """Materialize the cluster findings to a fresh temp ``.md`` for the agent to READ, returning
     ``(read_path, tmpdir)``; the caller removes ``tmpdir`` after the session. ``read_path`` is
     rendered through the same :func:`config.rel_or_abs_posix` discipline as every other prepared
@@ -599,11 +697,46 @@ def _write_findings(item: PlanItem, page: Page, inbound: dict[str, list[str]]) -
     tmpdir = tempfile.mkdtemp(prefix="okf_curate_")
     out = Path(tmpdir) / "findings.md"
     try:
-        out.write_text(_render_findings(item, page, inbound), encoding="utf-8")
+        out.write_text(_render_findings(item, page, inbound, guided_run), encoding="utf-8")
     except OSError:
         shutil.rmtree(tmpdir, ignore_errors=True)
         raise
     return config.rel_or_abs_posix(out), tmpdir
+
+
+def _broken_link_targets(pages: list[Page] | None = None) -> set[str]:
+    """The wiki-relative link TARGETS that currently resolve to no page (from the shared
+    :func:`store.find_broken_links`) — the unit the cluster gate below compares.
+
+    Targets, not ``(page, target)`` pairs: a cluster MOVES pages, so a link that was already
+    dangling would look brand new the moment the page carrying it is renamed, and blaming a cluster
+    for damage it inherited is exactly what ``_validate_and_restamp``'s carve-out exists to
+    prevent."""
+    return {target for _page, target in store.find_broken_links(pages)}
+
+
+def _no_new_broken_links(baseline: set[str]):
+    """The per-cluster post-condition, riding ingest's existing ``extra_check`` seam (the one a
+    deletion cleanup uses to assert no reference to the removed source survived): refuse to promote
+    a cluster whose edit leaves a cross-link pointing at a page that does not exist — unless the
+    wiki already had that target dangling.
+
+    Renaming, re-routing and merging pages is what a curate pass — and above all a `--guidance`
+    steer — asks for, and a rename is the one edit that reliably strands inbound links. The
+    mechanical `ingest._repair_renames` net only fires when the page KEEPS its title, which a
+    RETITLE by definition does not; without this gate a steered rename promotes cleanly and the
+    live wiki carries the dangling link until someone runs `citadel lint`. The check runs while the
+    wiki is still redirected at STAGING (``extra_check`` is called before the promote), so a
+    refusal rolls the whole cluster back and the live wiki is left exactly as it was."""
+
+    def check() -> list[str]:
+        return [
+            f"broken link to {target} after the cluster edit — a renamed, re-routed or merged page "
+            "must have its inbound links repointed (core.md § Restructuring)"
+            for target in sorted(_broken_link_targets() - baseline)
+        ]
+
+    return check
 
 
 def _cluster_attempts(failures_dict: dict, page: str) -> int:
@@ -685,23 +818,47 @@ def _write_diff_report(diff_path: str, before: dict[str, str], after: dict[str, 
     Path(diff_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _select_pages(pages: list[Page], paths: list[str] | None) -> set[str] | None:
-    """Normalize an optional ``paths`` scope to the set of page rel_paths it names, or None for the
-    whole wiki. A path may be a rel_path (``concepts/x.md``) or an absolute/OS path under the wiki."""
+def _select_pages(pages: list[Page], paths: list[str] | None) -> tuple[set[str] | None, list[str]]:
+    """Normalize an optional ``paths`` scope to ``(the page rel_paths it names, the arguments that
+    matched nothing)`` — ``(None, [])`` for the whole wiki. Each argument may be:
+
+    - one page — a rel_path (``concepts/x.md``) or an absolute/OS path under the wiki;
+    - a FOLDER — ``registries`` / ``registries/`` / an absolute wiki subdirectory: every page under
+      it (recursively);
+    - a GLOB over rel_paths — ``registries/machine-*.md``, ``**/fault*.md``.
+
+    Folders and globs exist for the guided pass (``curate --guidance "…" registries/``): the pages a
+    naming/structure steer applies to are usually a folder or a family, and naming each one by hand
+    is exactly the work the steer is meant to save. Unmatched arguments are RETURNED, not dropped —
+    a typo'd path under a steer would otherwise silently produce a clean "nothing to do" run."""
     if not paths:
-        return None
+        return None, []
     wiki_root = config.wiki_dir().resolve()
     known = {p.rel_path for p in pages}
     wanted: set[str] = set()
+    unmatched: list[str] = []
     for arg in paths:
         rel = arg.replace("\\", "/")
         with contextlib.suppress(OSError, ValueError):
             resolved = Path(arg).resolve()
             if resolved.is_relative_to(wiki_root):
-                rel = resolved.relative_to(wiki_root).as_posix()
+                rel = resolved.relative_to(wiki_root).as_posix() if resolved != wiki_root else ""
+        rel = rel.strip("/")
         if rel in known:
             wanted.add(rel)
-    return wanted
+            continue
+        # A folder prefix ("" = the whole wiki, for an explicit path to the wiki root itself), then
+        # a glob. Both are matched against the loaded rel_paths, never the filesystem, so a page
+        # store skips (index.md, dotfiles) can never be selected.
+        prefix = f"{rel}/" if rel else ""  # "" only for the wiki root itself: every page is under it
+        under = {rel_path for rel_path in known if rel_path.startswith(prefix)}
+        if not under and any(ch in rel for ch in "*?["):
+            under = {rel_path for rel_path in known if fnmatch.fnmatch(rel_path, rel)}
+        if under:
+            wanted |= under
+        else:
+            unmatched.append(arg)
+    return wanted, unmatched
 
 
 @pagecache.bypass
@@ -722,7 +879,12 @@ def curate(
       byte-for-byte untouched (the wiki IS the database — nothing to persist).
     - ``limit`` / ``stale_rules``: passed to :func:`build_plan` (cap the plan / narrow it to
       stale-rules pages).
-    - ``paths``: restrict the plan to the named pages (a rel_path or a wiki-relative file path).
+    - ``paths``: restrict the plan to the pages they name — a rel_path, a wiki-relative file path,
+      a FOLDER, or a glob (:func:`_select_pages`); applied before ``limit``. Under a
+      ``config.CURATE_GUIDANCE`` steer they are also the operator ask itself: each named page is
+      planned even when no detector flagged it (:data:`REASON_OPERATOR`), and the steer is rendered
+      into every cluster's findings file. A steer with NO paths only rides along on the detector
+      plan — one paid session per page of a clean wiki is never implied.
     - ``diff``: write a per-page change report to this path (:func:`_write_diff_report`).
     - ``force``: bypass the per-cluster attempt cap (an explicit retry of stuck clusters).
 
@@ -741,18 +903,23 @@ def curate(
 
     pages = store.load()
     failures_dict = failures.load()
-    # build_plan already applies the attempt cap: capped clusters land in plan.skipped, not items,
-    # so plan.items is exactly what will run (nothing to re-check in the loop).
-    plan = build_plan(pages, stale_rules=stale_rules, limit=limit, failures_dict=failures_dict, force=force)
-    scope = _select_pages(pages, paths)
-    if scope is not None:
-        plan = Plan(
-            items=[item for item in plan.items if item.page in scope],
-            skipped=[page for page in plan.skipped if page in scope],
-        )
+    scope, unmatched = _select_pages(pages, paths)
+    # build_plan already applies the scope, the operator ask and the attempt cap: capped clusters
+    # land in plan.skipped, not items, so plan.items is exactly what will run (nothing to re-check
+    # in the loop), and --limit counts the SCOPED plan.
+    plan = build_plan(
+        pages,
+        stale_rules=stale_rules,
+        limit=limit,
+        failures_dict=failures_dict,
+        force=force,
+        scope=scope,
+        guided=bool(config.CURATE_GUIDANCE),
+    )
 
     report = CurateReport(plan=plan)
     report.skipped = list(plan.skipped)
+    report.unmatched = unmatched
     if dry_run:
         emit("plan", clusters=len(plan.items))
         return report
@@ -770,6 +937,11 @@ def curate(
         for page_rel in plan.skipped:
             emit("cluster_skipped", page=page_rel)
 
+        # Every anchor this run carries the SAME steer to: named in each guided cluster's findings
+        # so the one-session-per-cluster split does not turn one instruction into N independent
+        # answers (see _render_findings).
+        guided_run = [item.page for item in plan.items if REASON_OPERATOR in item.reasons]
+
         with _curate_model_active():
             model = config.ingest_model_label()
             for index, item in enumerate(plan.items, 1):
@@ -779,12 +951,15 @@ def curate(
                 if page is None:  # vanished since the plan was computed (nothing to curate)
                     continue
                 emit("cluster_start", index=index, total=len(plan.items), page=page_rel)
-                read_path, tmpdir = _write_findings(item, page, inbound)
+                read_path, tmpdir = _write_findings(item, page, inbound, guided_run)
+                # The link-graph baseline is the LIVE wiki as this cluster finds it — recomputed
+                # per cluster, since an earlier cluster's promote may have changed it.
+                baseline = _broken_link_targets()
                 try:
                     session = [
                         lambda pr=page_rel, rp=read_path: llm.run_ingest_session(pr, kind="curate", read_path=rp)
                     ]
-                    outcome = ingest._run_agent_sessions(session, page_rel)
+                    outcome = ingest._run_agent_sessions(session, page_rel, extra_check=_no_new_broken_links(baseline))
                 finally:
                     shutil.rmtree(tmpdir, ignore_errors=True)
 

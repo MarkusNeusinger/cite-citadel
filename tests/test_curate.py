@@ -356,6 +356,345 @@ def test_stale_rules_selects_only_stale_stamped_sources_pages(tmp_citadel, seed_
     assert "concepts/new.md" not in pages
 
 
+# --- the operator steer: `curate --guidance TEXT [paths]` ------------------------------------
+
+
+def test_guidance_plans_the_named_pages_no_detector_needed(tmp_citadel, seed_page, monkeypatch):
+    """`curate --guidance "…" <paths>`: the human IS the finding. A page every detector considers
+    clean is planned under `operator_guidance` when it is named on the command line — that is the
+    whole point (a badly named page trips no offline detector). Without the steer the same paths
+    only FILTER the detector plan, so a clean page stays unplanned."""
+    from citadel import curate
+
+    (tmp_citadel.raw / "notes.md").write_text("body\n", encoding="utf-8")
+    # The link keeps both pages out of the orphan detector: the plan below must come from the steer.
+    _seed_cited(seed_page, "concepts/topic.md", "raw/notes.md", title="Topic", trailer="See [Other](other.md).")
+    _seed_cited(seed_page, "concepts/other.md", "raw/notes.md", title="Other")
+
+    assert _plan_pages(curate.curate(["concepts/topic.md"], dry_run=True).plan) == set()
+
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", "retitle these to '<machine no> <model>'", raising=False)
+    report = curate.curate(["concepts/topic.md"], dry_run=True)
+    assert _plan_pages(report.plan) == {"concepts/topic.md"}
+    assert _reasons_for(report.plan, "concepts/topic.md") == {curate.REASON_OPERATOR}
+
+
+def test_guidance_without_paths_never_fans_out_over_the_wiki(tmp_citadel, seed_page, fake_agent, monkeypatch):
+    """A steer with NO paths rides along on the detector plan — it never plans a clean page. One
+    paid session per page of a whole clean wiki is exactly what must not happen by accident."""
+    from citadel import curate
+
+    agent = fake_agent()
+    (tmp_citadel.raw / "notes.md").write_text("body\n", encoding="utf-8")
+    _seed_cited(seed_page, "concepts/topic.md", "raw/notes.md", title="Topic", trailer="See [Other](other.md).")
+    _seed_cited(seed_page, "concepts/other.md", "raw/notes.md", title="Other")
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", "merge everything", raising=False)
+
+    report = curate.curate()
+    assert report.plan.items == [] and agent.count == 0
+
+
+def test_guidance_reaches_the_cluster_findings_file(tmp_citadel, seed_page, fake_agent, monkeypatch):
+    """The steer travels in the per-cluster FINDINGS file (curate's designated instruction channel,
+    read by path), together with the frame that bounds it: structure yes, facts and provenance
+    never. The cluster's cited raw sources are named there too — a retitle is decided against the
+    sources, not the page's own wording."""
+    from pathlib import Path
+
+    from citadel import curate
+
+    seen: list[str] = []
+
+    def capture(*_args, **kwargs):
+        seen.append(Path(kwargs["read_path"]).read_text(encoding="utf-8"))
+
+    (tmp_citadel.raw / "notes.md").write_text("body\n", encoding="utf-8")
+    _seed_cited(seed_page, "concepts/topic.md", "raw/notes.md", title="Topic")
+    fake_agent(side_effect=capture)
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", "move the machine pages into registries/", raising=False)
+
+    curate.curate(["concepts/topic.md"])
+    assert len(seen) == 1
+    findings = seen[0]
+    assert "Operator guidance for THIS run" in findings
+    assert "move the machine pages into registries/" in findings
+    assert "raw/notes.md" in findings  # the cluster's cited sources, to be re-read
+    assert "re-attributed" in findings  # the frame: a steer can never change what the wiki SAYS
+    assert curate.REASON_OPERATOR in findings
+
+
+def test_findings_carry_no_operator_section_without_a_steer(tmp_citadel, seed_page):
+    """Default off: with no steer configured the findings file is byte-for-byte the pre-feature
+    checklist — no empty section, no dangling heading."""
+    from citadel import curate, store
+
+    (tmp_citadel.raw / "notes.md").write_text("body\n", encoding="utf-8")
+    _seed_cited(seed_page, "concepts/topic.md", "raw/notes.md", title="Topic")
+    pages = {page.rel_path: page for page in store.load()}
+    item = curate.PlanItem(page="concepts/topic.md", reasons=[curate.REASON_ORPHAN])
+
+    assert "Operator guidance" not in curate._render_findings(item, pages["concepts/topic.md"], {})
+
+
+def test_paths_select_by_folder_and_glob_and_report_what_matched_nothing(tmp_citadel, seed_page, monkeypatch):
+    """A structural steer usually applies to a FAMILY of pages, so a path argument may be a folder
+    or a glob as well as one page. An argument that matches nothing is reported on the run report
+    — under a steer, a typo'd path would otherwise read as "the wiki is clean"."""
+    from citadel import curate
+
+    (tmp_citadel.raw / "notes.md").write_text("body\n", encoding="utf-8")
+    for slug in ("m-1", "m-2"):
+        _seed_cited(seed_page, f"registries/{slug}.md", "raw/notes.md", type_="Registry", title=slug)
+    _seed_cited(seed_page, "concepts/topic.md", "raw/notes.md", title="Topic")
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", "retitle them", raising=False)
+
+    assert _plan_pages(curate.curate(["registries/"], dry_run=True).plan) == {"registries/m-1.md", "registries/m-2.md"}
+    assert _plan_pages(curate.curate(["registries/m-*.md"], dry_run=True).plan) == {
+        "registries/m-1.md",
+        "registries/m-2.md",
+    }
+
+    report = curate.curate(["concepts/typo.md"], dry_run=True)
+    assert report.plan.items == [] and report.unmatched == ["concepts/typo.md"]
+    assert "concepts/typo.md" in report.render()
+
+
+def test_scope_is_applied_before_the_limit(tmp_citadel, seed_page, monkeypatch):
+    """--limit N counts the SCOPED plan ("the first N of what I asked for"), not the first N of the
+    whole wiki filtered afterwards — which would silently curate nothing."""
+    from citadel import curate
+
+    (tmp_citadel.raw / "notes.md").write_text("body\n", encoding="utf-8")
+    for slug in ("a", "b", "c"):
+        _seed_cited(seed_page, f"concepts/{slug}.md", "raw/notes.md", title=slug.upper())
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", "tighten the titles", raising=False)
+
+    report = curate.curate(["concepts/c.md"], dry_run=True, limit=1)
+    assert _plan_pages(report.plan) == {"concepts/c.md"}
+
+
+def test_stale_rules_never_drops_an_explicitly_guided_page(tmp_citadel, seed_page, monkeypatch):
+    """--stale-rules is a selector over the DETECTOR plan; an explicitly named page under a steer is
+    an instruction and survives it."""
+    from citadel import curate
+
+    (tmp_citadel.raw / "notes.md").write_text("body\n", encoding="utf-8")
+    _seed_cited(seed_page, "concepts/topic.md", "raw/notes.md", title="Topic")
+    _track("raw/notes.md", manifest.file_sha256(tmp_citadel.raw / "notes.md"), config.rules_version())
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", "re-sort", raising=False)
+
+    report = curate.curate(["concepts/topic.md"], dry_run=True, stale_rules=True)
+    assert _plan_pages(report.plan) == {"concepts/topic.md"}
+
+
+def test_guided_retitle_moves_the_page_and_keeps_every_citation(tmp_citadel, seed_page, fake_agent, monkeypatch):
+    """The steer's headline use case, end to end: a badly named page is RETITLED and re-routed
+    into another folder. No detector flags a bad name, so this run exists only because a human
+    asked — and the restructure must obey the invariant that makes it safe: the fact travels
+    unchanged with its `[^sN]` marker AND its `## Sources` definition, the old file is gone, and the
+    neighbor's inbound link follows the page (`core.md` § Restructuring). The promote is
+    all-or-nothing, so `applied` means the result passed the same gate `citadel check` runs."""
+    from citadel import curate, store
+
+    wiki, raw = tmp_citadel.wiki, tmp_citadel.raw
+    (raw / "register.md").write_text("HAL-7 is the Hallenkran in bay 7.\n", encoding="utf-8")
+    _seed_cited(seed_page, "concepts/m-1.md", "raw/register.md", title="Maschine 1", body_fact="HAL-7 stands in bay 7.")
+    _seed_cited(seed_page, "concepts/hall.md", "raw/register.md", title="Hall", trailer="See [Maschine 1](./m-1.md).")
+
+    def retitle(*_args, **_kwargs):
+        """What the agent does under the steer: write the renamed page (carrying the fact and its
+        citation verbatim), delete the old file, repoint the inbound link."""
+        seed_page(
+            "registries/hal-7.md",
+            {
+                "type": "Registry",
+                "title": "HAL-7 Hallenkran",
+                "description": "d",
+                "tags": ["t"],
+                "resource": "raw/register.md",
+            },
+            "HAL-7 stands in bay 7.[^s1]\n\n## Sources\n\n"
+            "[^s1]: [raw/register.md](../../raw/register.md) - s (ingested 2026-06-21)\n",
+        )
+        (config.wiki_dir() / "concepts" / "m-1.md").unlink()
+        hall = config.wiki_dir() / "concepts" / "hall.md"
+        hall.write_text(
+            hall.read_text(encoding="utf-8").replace("(./m-1.md)", "(../registries/hal-7.md)"), encoding="utf-8"
+        )
+
+    fake_agent(side_effect=retitle)
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", "retitle the machine pages to '<machine no> <model>'", raising=False)
+
+    report = curate.curate(["concepts/m-1.md"])
+
+    assert report.applied == ["concepts/m-1.md"] and report.failed == []
+    assert not (wiki / "concepts" / "m-1.md").exists()
+    renamed = (wiki / "registries" / "hal-7.md").read_text(encoding="utf-8")
+    assert "HAL-7 stands in bay 7.[^s1]" in renamed  # the fact and its marker, unchanged
+    assert "[^s1]: [raw/register.md](../../raw/register.md)" in renamed  # ... and its definition
+    assert "(../registries/hal-7.md)" in (wiki / "concepts" / "hall.md").read_text(encoding="utf-8")
+    assert store.find_broken_links() == []  # the link graph survived the move
+
+
+def test_guided_repivot_regroups_projects_into_product_pages(tmp_citadel, seed_page, fake_agent, monkeypatch):
+    """The steer's hardest restructure: RE-PIVOT the wiki's axis. The source lists projects (each
+    with its product and location), so ingest built one page per PROJECT — the only shape the
+    source itself suggests. The owner wants the wiki keyed by PRODUCT instead, each product page
+    carrying its projects and their locations. No detector can want that: both shapes are
+    structurally clean, and which one is USEFUL is exactly the judgment only the owner has.
+
+    What must survive the regrouping is the per-fact provenance (`schema.md`): every fact keeps its
+    own `[^sN]` marker AND its `## Sources` definition WITH its line locator, so a fact that moves
+    from a project page to a product page still points at the line of the source it came from. The
+    hub page's links follow the pages, and two projects sharing a product MERGE into one page —
+    curate runs one session per cluster serially, so the second session sees (and extends) what the
+    first one promoted."""
+    from pathlib import Path
+
+    from citadel import curate, store
+
+    wiki, raw = tmp_citadel.wiki, tmp_citadel.raw
+    (raw / "projects.md").write_text(
+        "Project Alpha - product Kran-X - location Bremen\n"
+        "Project Beta - product Kran-X - location Hamburg\n"
+        "Project Gamma - product Foerderband-Y - location Bremen\n",
+        encoding="utf-8",
+    )
+
+    def _project(slug: str, title: str, fact: str, line: int) -> None:
+        seed_page(
+            f"projects/{slug}.md",
+            {"type": "Project", "title": title, "description": "d", "tags": ["t"], "resource": "raw/projects.md"},
+            f"{fact}[^s1]\n\n## Sources\n\n"
+            f"[^s1]: [raw/projects.md](../../raw/projects.md), lines {line}-{line} - s (ingested 2026-06-21)\n",
+        )
+
+    _project("alpha", "Alpha", "Alpha builds Kran-X at Bremen.", 1)
+    _project("beta", "Beta", "Beta builds Kran-X at Hamburg.", 2)
+    _project("gamma", "Gamma", "Gamma builds Foerderband-Y at Bremen.", 3)
+    # A hub page links all three, so none of them is an orphan: the plan below comes from the steer
+    # alone — and the hub's links have to follow the pages the re-pivot dissolves.
+    seed_page(
+        "concepts/portfolio.md",
+        {"type": "Concept", "title": "Portfolio", "description": "d", "tags": ["t"], "resource": "raw/projects.md"},
+        "The portfolio spans [Alpha](../projects/alpha.md), [Beta](../projects/beta.md) and "
+        "[Gamma](../projects/gamma.md).[^s1]\n\n## Sources\n\n"
+        "[^s1]: [raw/projects.md](../../raw/projects.md) - s (ingested 2026-06-21)\n",
+    )
+
+    def _product_page(slug: str, title: str, fact: str, line: int) -> None:
+        seed_page(
+            f"objects/{slug}.md",
+            {"type": "Object", "title": title, "description": "d", "tags": ["t"], "resource": "raw/projects.md"},
+            f"{fact}[^s1]\n\n## Sources\n\n"
+            f"[^s1]: [raw/projects.md](../../raw/projects.md), lines {line}-{line} - s (ingested 2026-06-21)\n",
+        )
+
+    def _repoint(old: str, new: str) -> None:
+        hub = config.wiki_dir() / "concepts" / "portfolio.md"
+        hub.write_text(hub.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
+
+    findings_seen: dict[str, str] = {}
+
+    def repivot(*args, **kwargs):
+        """One session per cluster, in plan order — what the agent does under the steer."""
+        anchor = args[0]
+        findings_seen[anchor] = Path(kwargs["read_path"]).read_text(encoding="utf-8")
+        if anchor == "projects/alpha.md":
+            _product_page("kran-x", "Kran-X", "Alpha builds Kran-X at Bremen.", 1)
+            _repoint("[Alpha](../projects/alpha.md)", "[Kran-X](../objects/kran-x.md)")
+        elif anchor == "projects/beta.md":
+            # MERGE into the page the previous cluster promoted: Beta's fact carries its own
+            # marker + definition, so both projects stay individually cited on one product page.
+            target = config.wiki_dir() / "objects" / "kran-x.md"
+            text = target.read_text(encoding="utf-8")
+            text = text.replace("\n## Sources", "\nBeta builds Kran-X at Hamburg.[^s2]\n\n## Sources")
+            text = text.rstrip("\n") + (
+                "\n[^s2]: [raw/projects.md](../../raw/projects.md), lines 2-2 - s (ingested 2026-06-21)\n"
+            )
+            target.write_text(text, encoding="utf-8")
+            _repoint("[Beta](../projects/beta.md)", "[Kran-X](../objects/kran-x.md)")
+        else:
+            _product_page("foerderband-y", "Foerderband-Y", "Gamma builds Foerderband-Y at Bremen.", 3)
+            _repoint("[Gamma](../projects/gamma.md)", "[Foerderband-Y](../objects/foerderband-y.md)")
+        (config.wiki_dir() / anchor).unlink()
+
+    fake_agent(side_effect=repivot)
+    monkeypatch.setattr(
+        config,
+        "CURATE_GUIDANCE",
+        "organise these by PRODUCT, not by project: one page per product listing its projects and locations",
+        raising=False,
+    )
+
+    report = curate.curate(["projects/"])
+
+    assert report.applied == ["projects/alpha.md", "projects/beta.md", "projects/gamma.md"]
+    assert report.failed == []
+    assert not (wiki / "projects").exists() or not list((wiki / "projects").glob("*.md"))
+
+    kran = (wiki / "objects" / "kran-x.md").read_text(encoding="utf-8")
+    assert "Alpha builds Kran-X at Bremen.[^s1]" in kran  # both projects merged onto ONE product page
+    assert "Beta builds Kran-X at Hamburg.[^s2]" in kran
+    assert "lines 1-1" in kran and "lines 2-2" in kran  # ... each keeping its own line locator
+    band = (wiki / "objects" / "foerderband-y.md").read_text(encoding="utf-8")
+    assert "Gamma builds Foerderband-Y at Bremen.[^s1]" in band and "lines 3-3" in band
+
+    hub = (wiki / "concepts" / "portfolio.md").read_text(encoding="utf-8")
+    assert "../projects/" not in hub  # the hub follows the re-pivot
+    assert store.find_broken_links() == []
+    assert lint.check_locators(store.load()) == []  # the moved locators still resolve
+
+    # What lets the three independent sessions converge instead of each inventing its own product
+    # page: every guided cluster's checklist names the OTHER anchors this run carries the same
+    # steer to (never itself), and says they run in sequence.
+    alpha_findings = findings_seen["projects/alpha.md"]
+    assert "projects/beta.md, projects/gamma.md" in alpha_findings
+    assert "# Curate findings — projects/alpha.md" in alpha_findings
+    assert "each, in sequence: projects/alpha.md" not in alpha_findings  # the anchor is not its own sibling
+    assert "search the wiki before creating anything" in alpha_findings
+
+
+def test_guided_restructure_that_breaks_a_link_is_rolled_back(tmp_citadel, seed_page, fake_agent, monkeypatch):
+    """The other half of the same use case: a rename is the operation most likely to leave a
+    dangling link behind, and a steer makes renames common. A cluster whose promote WOULD introduce
+    a broken cross-link is failed and rolled back whole — the live wiki is left exactly as it was,
+    rather than carrying the damage until someone runs `citadel lint`."""
+    from citadel import curate, store
+
+    wiki, raw = tmp_citadel.wiki, tmp_citadel.raw
+    (raw / "register.md").write_text("HAL-7 is the Hallenkran in bay 7.\n", encoding="utf-8")
+    _seed_cited(seed_page, "concepts/m-1.md", "raw/register.md", title="Maschine 1")
+    _seed_cited(seed_page, "concepts/hall.md", "raw/register.md", title="Hall", trailer="See [Maschine 1](./m-1.md).")
+    before = (wiki / "concepts" / "m-1.md").read_text(encoding="utf-8")
+
+    def retitle_forgetting_the_link(*_args, **_kwargs):
+        seed_page(
+            "registries/hal-7.md",
+            {
+                "type": "Registry",
+                "title": "HAL-7 Hallenkran",
+                "description": "d",
+                "tags": ["t"],
+                "resource": "raw/register.md",
+            },
+            "A sourced fact.[^s1]\n\n## Sources\n\n"
+            "[^s1]: [raw/register.md](../../raw/register.md) - s (ingested 2026-06-21)\n",
+        )
+        (config.wiki_dir() / "concepts" / "m-1.md").unlink()  # concepts/hall.md still links here
+
+    fake_agent(side_effect=retitle_forgetting_the_link)
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", "retitle the machine pages", raising=False)
+
+    report = curate.curate(["concepts/m-1.md"])
+
+    assert report.failed == ["concepts/m-1.md"] and report.applied == []
+    assert "broken" in report.failed_details["concepts/m-1.md"].lower()
+    assert (wiki / "concepts" / "m-1.md").read_text(encoding="utf-8") == before  # rolled back whole
+    assert not (wiki / "registries" / "hal-7.md").exists()
+    assert store.find_broken_links() == []
+
+
 # --- the cluster session: staging diff decides NOOP / applied / failed (one _SourceJob) -----
 
 

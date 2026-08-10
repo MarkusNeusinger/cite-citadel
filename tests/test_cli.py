@@ -201,6 +201,59 @@ def test_ingest_guidance_flag_sets_the_config_steer(ingest_spy, monkeypatch):
     assert config.INGEST_GUIDANCE == ""
 
 
+def test_curate_guidance_flag_sets_the_config_steer_and_forwards_paths(monkeypatch, capsys):
+    """`citadel curate --guidance` mirrors ingest's convention on the SECOND lifecycle: the flag
+    lands in ``config.CURATE_GUIDANCE`` (read at call time when the findings are rendered),
+    overrides the env twin, collapses newlines, and an explicit `--guidance ""` disables the env
+    steer for this run. The positional paths reach ``curate.curate`` as its first argument — under
+    a steer they are the ask itself, so they must not be dropped."""
+    from citadel import curate as curate_mod
+
+    class _Report:
+        failed: list[str] = []
+
+        def render(self) -> str:
+            return ""
+
+    seen: list[tuple] = []
+    monkeypatch.setattr(curate_mod, "curate", lambda *a, **k: (seen.append((a, k)), _Report())[1])
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", "from-env", raising=False)
+
+    assert cli.main(["curate", "--dry-run"]) == 0
+    assert config.CURATE_GUIDANCE == "from-env"  # no flag: the env steer stands
+    assert seen[-1][0] == (None,)  # no paths -> the whole wiki
+
+    assert cli.main(["curate", "--guidance", "retitle the\nmachine pages", "registries/"]) == 0
+    assert config.CURATE_GUIDANCE == "retitle the machine pages"  # newlines collapsed
+    assert seen[-1][0] == (["registries/"],)
+
+    assert cli.main(["curate", "--guidance", ""]) == 0
+    assert config.CURATE_GUIDANCE == ""
+    # The ingest steer is a SEPARATE knob — one lifecycle's steer never leaks into the other.
+    assert cli.main(["curate", "--guidance", "curate-only"]) == 0
+    assert config.INGEST_GUIDANCE != "curate-only"
+
+
+def test_curate_guidance_over_the_cap_is_rejected(monkeypatch, capsys):
+    """The shared cap guards the EFFECTIVE curate steer too (flag or CITADEL_CURATE_GUIDANCE),
+    refused as a usage error before any session is planned."""
+    from citadel import curate as curate_mod
+
+    def boom(*_a, **_k):  # never reached: the cap check runs first
+        raise AssertionError("curate must not run with an over-cap steer")
+
+    monkeypatch.setattr(curate_mod, "curate", boom)
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", "", raising=False)
+    oversize = "x" * (config.GUIDANCE_MAX_CHARS + 1)
+
+    assert cli.main(["curate", "--guidance", oversize]) == 2
+    assert "--guidance" in capsys.readouterr().err
+    assert config.CURATE_GUIDANCE == ""  # the error path never mutates the config steer
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", oversize, raising=False)
+    assert cli.main(["curate"]) == 2
+    assert "CITADEL_CURATE_GUIDANCE" in capsys.readouterr().err
+
+
 def test_ingest_guidance_over_the_cap_is_rejected(ingest_spy, monkeypatch, capsys):
     """A steer past GUIDANCE_MAX_CHARS is a usage error (exit 2) before ``ingest.ingest`` is ever
     called — the prompt must stay argv-safe; a document-sized steer belongs in rules/local.md.

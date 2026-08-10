@@ -959,10 +959,32 @@ WIKI_LANG: str = os.environ.get("CITADEL_WIKI_LANG", "").strip() or "en"
 # argument — because the prompt bullet the steer lands on is line-shaped.
 INGEST_GUIDANCE: str = " ".join(os.environ.get("CITADEL_INGEST_GUIDANCE", "").split())
 
-# The --guidance length cap (characters). The prompt must stay tiny (it travels on argv for the
-# copilot/agy backends — the WinError 206 fix), so a run steer is a couple of sentences, not a
-# document; anything longer belongs in rules/local.md.
+# Free-text operator guidance for ONE curate run ("the machine pages are named inconsistently —
+# retitle them '<machine no> <model>'", "merge the three fault-code pages into one registry"): the
+# twin of INGEST_GUIDANCE for the SECOND lifecycle, set per run via `citadel curate --guidance`.
+# It travels in the per-cluster FINDINGS file (curate's designated instruction channel — the
+# checklist the agent reads by path), not in the prompt frame, so the improve-or-NOOP rule sees the
+# steer as a listed finding instead of a second, competing instruction. Deliberately SEPARATE from
+# INGEST_GUIDANCE: one steers how new sources are folded in, the other how existing pages are
+# reorganized, and inheriting either into the other lifecycle would apply a stale steer.
+# Structure only — a steer can never change, add, or re-attribute a fact (curate.md § Operator
+# guidance says so), and naming pages with it plans them even when no detector flagged them.
+CURATE_GUIDANCE: str = " ".join(os.environ.get("CITADEL_CURATE_GUIDANCE", "").split())
+
+# The --guidance length cap (characters), shared by both steers. The prompt must stay tiny (it
+# travels on argv for the copilot/agy backends — the WinError 206 fix), so a run steer is a couple
+# of sentences, not a document; anything longer belongs in rules/local.md.
 GUIDANCE_MAX_CHARS: int = 2000
+
+# How many OTHER raw sources one source-reading session may consult to resolve something its own
+# source does not explain (an undefined term, code, abbreviation, or reference that only makes
+# sense beside a file the wiki already holds). Sources arrive one at a time but knowledge does not,
+# so a small, explicit budget lets a session close that gap — cited to the file it came from
+# (core.md § Related sources) — while keeping a session from sweeping the whole raw tree: the
+# number is named in the run instruction, and the rules make it a per-session ceiling on a
+# last-resort lookup, not an invitation. 0 turns it off (read only your own source, the
+# pre-budget behavior). Negatives clamp to 0.
+RELATED_SOURCES: int = max(0, _int_env("CITADEL_RELATED_SOURCES", 3))
 
 # PDF reading mode (formats/pdf.md): "text" (default) ingests the body text only; "images"
 # additionally has the agent LOOK AT the pages' figures/diagrams/charts and capture what they
