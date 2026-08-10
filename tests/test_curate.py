@@ -536,6 +536,125 @@ def test_guided_retitle_moves_the_page_and_keeps_every_citation(tmp_citadel, see
     assert store.find_broken_links() == []  # the link graph survived the move
 
 
+def test_guided_repivot_regroups_projects_into_product_pages(tmp_citadel, seed_page, fake_agent, monkeypatch):
+    """The steer's hardest restructure: RE-PIVOT the wiki's axis. The source lists projects (each
+    with its product and location), so ingest built one page per PROJECT — the only shape the
+    source itself suggests. The owner wants the wiki keyed by PRODUCT instead, each product page
+    carrying its projects and their locations. No detector can want that: both shapes are
+    structurally clean, and which one is USEFUL is exactly the judgment only the owner has.
+
+    What must survive the regrouping is the per-fact provenance (`schema.md`): every fact keeps its
+    own `[^sN]` marker AND its `## Sources` definition WITH its line locator, so a fact that moves
+    from a project page to a product page still points at the line of the source it came from. The
+    hub page's links follow the pages, and two projects sharing a product MERGE into one page —
+    curate runs one session per cluster serially, so the second session sees (and extends) what the
+    first one promoted."""
+    from pathlib import Path
+
+    from citadel import curate, store
+
+    wiki, raw = tmp_citadel.wiki, tmp_citadel.raw
+    (raw / "projects.md").write_text(
+        "Project Alpha - product Kran-X - location Bremen\n"
+        "Project Beta - product Kran-X - location Hamburg\n"
+        "Project Gamma - product Foerderband-Y - location Bremen\n",
+        encoding="utf-8",
+    )
+
+    def _project(slug: str, title: str, fact: str, line: int) -> None:
+        seed_page(
+            f"projects/{slug}.md",
+            {"type": "Project", "title": title, "description": "d", "tags": ["t"], "resource": "raw/projects.md"},
+            f"{fact}[^s1]\n\n## Sources\n\n"
+            f"[^s1]: [raw/projects.md](../../raw/projects.md), lines {line}-{line} - s (ingested 2026-06-21)\n",
+        )
+
+    _project("alpha", "Alpha", "Alpha builds Kran-X at Bremen.", 1)
+    _project("beta", "Beta", "Beta builds Kran-X at Hamburg.", 2)
+    _project("gamma", "Gamma", "Gamma builds Foerderband-Y at Bremen.", 3)
+    # A hub page links all three, so none of them is an orphan: the plan below comes from the steer
+    # alone — and the hub's links have to follow the pages the re-pivot dissolves.
+    seed_page(
+        "concepts/portfolio.md",
+        {"type": "Concept", "title": "Portfolio", "description": "d", "tags": ["t"], "resource": "raw/projects.md"},
+        "The portfolio spans [Alpha](../projects/alpha.md), [Beta](../projects/beta.md) and "
+        "[Gamma](../projects/gamma.md).[^s1]\n\n## Sources\n\n"
+        "[^s1]: [raw/projects.md](../../raw/projects.md) - s (ingested 2026-06-21)\n",
+    )
+
+    def _product_page(slug: str, title: str, fact: str, line: int) -> None:
+        seed_page(
+            f"objects/{slug}.md",
+            {"type": "Object", "title": title, "description": "d", "tags": ["t"], "resource": "raw/projects.md"},
+            f"{fact}[^s1]\n\n## Sources\n\n"
+            f"[^s1]: [raw/projects.md](../../raw/projects.md), lines {line}-{line} - s (ingested 2026-06-21)\n",
+        )
+
+    def _repoint(old: str, new: str) -> None:
+        hub = config.wiki_dir() / "concepts" / "portfolio.md"
+        hub.write_text(hub.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
+
+    findings_seen: dict[str, str] = {}
+
+    def repivot(*args, **kwargs):
+        """One session per cluster, in plan order — what the agent does under the steer."""
+        anchor = args[0]
+        findings_seen[anchor] = Path(kwargs["read_path"]).read_text(encoding="utf-8")
+        if anchor == "projects/alpha.md":
+            _product_page("kran-x", "Kran-X", "Alpha builds Kran-X at Bremen.", 1)
+            _repoint("[Alpha](../projects/alpha.md)", "[Kran-X](../objects/kran-x.md)")
+        elif anchor == "projects/beta.md":
+            # MERGE into the page the previous cluster promoted: Beta's fact carries its own
+            # marker + definition, so both projects stay individually cited on one product page.
+            target = config.wiki_dir() / "objects" / "kran-x.md"
+            text = target.read_text(encoding="utf-8")
+            text = text.replace("\n## Sources", "\nBeta builds Kran-X at Hamburg.[^s2]\n\n## Sources")
+            text = text.rstrip("\n") + (
+                "\n[^s2]: [raw/projects.md](../../raw/projects.md), lines 2-2 - s (ingested 2026-06-21)\n"
+            )
+            target.write_text(text, encoding="utf-8")
+            _repoint("[Beta](../projects/beta.md)", "[Kran-X](../objects/kran-x.md)")
+        else:
+            _product_page("foerderband-y", "Foerderband-Y", "Gamma builds Foerderband-Y at Bremen.", 3)
+            _repoint("[Gamma](../projects/gamma.md)", "[Foerderband-Y](../objects/foerderband-y.md)")
+        (config.wiki_dir() / anchor).unlink()
+
+    fake_agent(side_effect=repivot)
+    monkeypatch.setattr(
+        config,
+        "CURATE_GUIDANCE",
+        "organise these by PRODUCT, not by project: one page per product listing its projects and locations",
+        raising=False,
+    )
+
+    report = curate.curate(["projects/"])
+
+    assert report.applied == ["projects/alpha.md", "projects/beta.md", "projects/gamma.md"]
+    assert report.failed == []
+    assert not (wiki / "projects").exists() or not list((wiki / "projects").glob("*.md"))
+
+    kran = (wiki / "objects" / "kran-x.md").read_text(encoding="utf-8")
+    assert "Alpha builds Kran-X at Bremen.[^s1]" in kran  # both projects merged onto ONE product page
+    assert "Beta builds Kran-X at Hamburg.[^s2]" in kran
+    assert "lines 1-1" in kran and "lines 2-2" in kran  # ... each keeping its own line locator
+    band = (wiki / "objects" / "foerderband-y.md").read_text(encoding="utf-8")
+    assert "Gamma builds Foerderband-Y at Bremen.[^s1]" in band and "lines 3-3" in band
+
+    hub = (wiki / "concepts" / "portfolio.md").read_text(encoding="utf-8")
+    assert "../projects/" not in hub  # the hub follows the re-pivot
+    assert store.find_broken_links() == []
+    assert lint.check_locators(store.load()) == []  # the moved locators still resolve
+
+    # What lets the three independent sessions converge instead of each inventing its own product
+    # page: every guided cluster's checklist names the OTHER anchors this run carries the same
+    # steer to (never itself), and says they run in sequence.
+    alpha_findings = findings_seen["projects/alpha.md"]
+    assert "projects/beta.md, projects/gamma.md" in alpha_findings
+    assert "# Curate findings — projects/alpha.md" in alpha_findings
+    assert "each, in sequence: projects/alpha.md" not in alpha_findings  # the anchor is not its own sibling
+    assert "search the wiki before creating anything" in alpha_findings
+
+
 def test_guided_restructure_that_breaks_a_link_is_rolled_back(tmp_citadel, seed_page, fake_agent, monkeypatch):
     """The other half of the same use case: a rename is the operation most likely to leave a
     dangling link behind, and a steer makes renames common. A cluster whose promote WOULD introduce

@@ -29,6 +29,13 @@ All notable changes to this project are documented here. The format is based on
   re-attributed; every fact keeps its `[^sN]` marker and its `## Sources` definition through
   whatever the steer moves, and the cluster's cited raw sources are re-read first, so a retitle
   follows the spelling the sources themselves use.
+- **Each guided cluster knows which other pages the same steer is being carried out on.** A
+  structural ask is routinely one instruction over many pages ("key these by product, not by
+  project" re-pivots a whole folder), but curate runs one session per cluster — so without this each
+  session answered the same instruction blind to the other N-1, which is how one re-pivot becomes
+  three near-duplicate product pages. A guided cluster's findings now name the run's other guided
+  anchors (elided past 20) and say they run in sequence, so a page one session creates is extended
+  by the next instead of re-invented.
 - **A curate cluster can no longer promote a broken cross-link.** Renaming and merging pages is what
   curate is for — and a `--guidance` steer makes renames the common case — but a rename is the one
   edit that reliably strands inbound links, and the mechanical rename-repair net only fires when the

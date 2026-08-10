@@ -384,6 +384,10 @@ the ask itself: each named page is planned under the `operator_guidance` reason 
 human ask outranks a detection) even when every detector considers it clean, which is the whole
 point (a badly named page trips no offline detector). A steer with NO paths only rides along on the
 detector plan — fanning one out over a clean wiki would be one paid session per page.
+A guided cluster's findings also name the run's OTHER guided anchors (elided past `_SIBLINGS_SHOWN`)
+and say they run in sequence: a structural ask is one instruction over many pages, but curate runs
+one session per cluster, so without it each session answers the same instruction blind to the others
+(one re-pivot becoming N near-duplicate pages).
 Because a steer makes RENAMES common and a rename is the one edit that reliably strands inbound
 links — the mechanical `ingest._repair_renames` net fires only when the page KEEPS its title, which
 a retitle by definition does not — every cluster session runs under a **no-new-broken-links**

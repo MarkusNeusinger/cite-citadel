@@ -101,6 +101,11 @@ ATTEMPT_CAP = 2
 # so a large corpus re-verifies over many runs without a per-run token blow-up.
 REVERIFY_SAMPLE_K = 3
 
+# How many sibling anchors a guided cluster's findings name before the list is elided. The line
+# exists so parallel sessions of ONE instruction converge on each other's pages, which the first
+# handful already conveys; a folder-wide steer must not paste 300 paths into every checklist.
+_SIBLINGS_SHOWN = 20
+
 # The `[^sN]`-drift outlier rule: a page counts as drifted when its model-supplied (``[^llm]``)
 # facts both outnumber its raw-grounded (``[^sN]``) facts AND reach this floor (so a single stray
 # ``[^llm]`` note on a well-cited page is not flagged).
@@ -626,12 +631,21 @@ _OPERATOR_GUIDANCE_FRAME = (
 )
 
 
-def _render_findings(item: PlanItem, page: Page, inbound: dict[str, list[str]]) -> str:
+def _render_findings(
+    item: PlanItem, page: Page, inbound: dict[str, list[str]], guided_run: list[str] | None = None
+) -> str:
     """The per-cluster findings checklist the agent reads BY PATH (never embedded in the prompt).
     Names the anchor, its cited raw sources, its direct link neighbors, the run's operator guidance
     when one was given (``curate --guidance`` — curate's steer travels HERE rather than in the
     prompt frame, so the improve-or-NOOP rule reads it as a listed finding), and one concrete
-    instruction per detected reason. The `tasks/curate.md` brief governs how to act on it."""
+    instruction per detected reason. The `tasks/curate.md` brief governs how to act on it.
+
+    ``guided_run`` is every anchor this run carries the SAME steer to. A structural ask is routinely
+    one instruction over many pages ("key these by product, not by project"), but curate runs one
+    session per cluster — so without this each session is blind to the other N-1 and would answer
+    the same instruction independently, which is how one re-pivot ends up as three near-duplicate
+    product pages. Naming the siblings (and that they run in sequence) is what makes the sessions
+    converge on the pages an earlier one already created."""
     cited = _cited_source_keys(page)
     neighbors = _link_neighbors(page, inbound)
     lines = [
@@ -650,6 +664,18 @@ def _render_findings(item: PlanItem, page: Page, inbound: dict[str, list[str]]) 
         # is quoted inside.
         steer = f"> {config.CURATE_GUIDANCE}"
         lines += ["## Operator guidance for THIS run", "", steer, "", _OPERATOR_GUIDANCE_FRAME, ""]
+        others = [rel for rel in (guided_run or []) if rel != item.page]
+        if others:
+            shown = ", ".join(others[:_SIBLINGS_SHOWN])
+            more = f", … ({len(others)} in total)" if len(others) > _SIBLINGS_SHOWN else ""
+            lines += [
+                "The same steer is being carried out on these other pages in this run, one session "
+                f"each, in sequence: {shown}{more}. So a page you create here may be EXTENDED by a "
+                "later one, and a page an earlier one already created may exist — search the wiki "
+                "before creating anything and merge into what is there (`core.md` § Restructuring), "
+                "so one instruction produces one set of pages instead of one per session.",
+                "",
+            ]
     lines.append("## Detected issues (act on each ONLY where it genuinely holds against the sources)")
     for reason in item.reasons:
         lines.append(f"- **{reason}** — {_reason_guidance(reason, page)}")
@@ -661,7 +687,9 @@ def _render_findings(item: PlanItem, page: Page, inbound: dict[str, list[str]]) 
     return "\n".join(lines) + "\n"
 
 
-def _write_findings(item: PlanItem, page: Page, inbound: dict[str, list[str]]) -> tuple[str, str]:
+def _write_findings(
+    item: PlanItem, page: Page, inbound: dict[str, list[str]], guided_run: list[str] | None = None
+) -> tuple[str, str]:
     """Materialize the cluster findings to a fresh temp ``.md`` for the agent to READ, returning
     ``(read_path, tmpdir)``; the caller removes ``tmpdir`` after the session. ``read_path`` is
     rendered through the same :func:`config.rel_or_abs_posix` discipline as every other prepared
@@ -669,7 +697,7 @@ def _write_findings(item: PlanItem, page: Page, inbound: dict[str, list[str]]) -
     tmpdir = tempfile.mkdtemp(prefix="okf_curate_")
     out = Path(tmpdir) / "findings.md"
     try:
-        out.write_text(_render_findings(item, page, inbound), encoding="utf-8")
+        out.write_text(_render_findings(item, page, inbound, guided_run), encoding="utf-8")
     except OSError:
         shutil.rmtree(tmpdir, ignore_errors=True)
         raise
@@ -909,6 +937,11 @@ def curate(
         for page_rel in plan.skipped:
             emit("cluster_skipped", page=page_rel)
 
+        # Every anchor this run carries the SAME steer to: named in each guided cluster's findings
+        # so the one-session-per-cluster split does not turn one instruction into N independent
+        # answers (see _render_findings).
+        guided_run = [item.page for item in plan.items if REASON_OPERATOR in item.reasons]
+
         with _curate_model_active():
             model = config.ingest_model_label()
             for index, item in enumerate(plan.items, 1):
@@ -918,7 +951,7 @@ def curate(
                 if page is None:  # vanished since the plan was computed (nothing to curate)
                     continue
                 emit("cluster_start", index=index, total=len(plan.items), page=page_rel)
-                read_path, tmpdir = _write_findings(item, page, inbound)
+                read_path, tmpdir = _write_findings(item, page, inbound, guided_run)
                 # The link-graph baseline is the LIVE wiki as this cluster finds it — recomputed
                 # per cluster, since an earlier cluster's promote may have changed it.
                 baseline = _broken_link_targets()

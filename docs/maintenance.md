@@ -63,6 +63,12 @@ improve-or-NOOP rule. Two boundaries make it safe to use freely:
   paid session per page. A path that matches nothing is reported on the run report rather than
   silently doing nothing.
 
+A structural ask is usually one instruction over many pages — *"key these by product, not by
+project"* re-pivots a whole folder — but curate runs one session per page. So each guided cluster's
+checklist also **names the other pages this run carries the same steer to**, and says they run in
+sequence: a page one session creates may be extended by the next, instead of three sessions
+answering the same instruction with three near-duplicate pages.
+
 Renames are the edit most likely to strand an inbound link, so a cluster whose result would leave a
 cross-link pointing at a page that no longer exists is **failed and rolled back whole** — the live
 wiki keeps the version it had, and the failure says which link broke. (Links that were already
