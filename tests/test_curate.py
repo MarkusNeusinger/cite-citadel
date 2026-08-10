@@ -487,6 +487,95 @@ def test_stale_rules_never_drops_an_explicitly_guided_page(tmp_citadel, seed_pag
     assert _plan_pages(report.plan) == {"concepts/topic.md"}
 
 
+def test_guided_retitle_moves_the_page_and_keeps_every_citation(tmp_citadel, seed_page, fake_agent, monkeypatch):
+    """The steer's headline use case, end to end: a badly named page is RETITLED and re-routed
+    into another folder. No detector flags a bad name, so this run exists only because a human
+    asked — and the restructure must obey the invariant that makes it safe: the fact travels
+    unchanged with its `[^sN]` marker AND its `## Sources` definition, the old file is gone, and the
+    neighbor's inbound link follows the page (`core.md` § Restructuring). The promote is
+    all-or-nothing, so `applied` means the result passed the same gate `citadel check` runs."""
+    from citadel import curate, store
+
+    wiki, raw = tmp_citadel.wiki, tmp_citadel.raw
+    (raw / "register.md").write_text("HAL-7 is the Hallenkran in bay 7.\n", encoding="utf-8")
+    _seed_cited(seed_page, "concepts/m-1.md", "raw/register.md", title="Maschine 1", body_fact="HAL-7 stands in bay 7.")
+    _seed_cited(seed_page, "concepts/hall.md", "raw/register.md", title="Hall", trailer="See [Maschine 1](./m-1.md).")
+
+    def retitle(*_args, **_kwargs):
+        """What the agent does under the steer: write the renamed page (carrying the fact and its
+        citation verbatim), delete the old file, repoint the inbound link."""
+        seed_page(
+            "registries/hal-7.md",
+            {
+                "type": "Registry",
+                "title": "HAL-7 Hallenkran",
+                "description": "d",
+                "tags": ["t"],
+                "resource": "raw/register.md",
+            },
+            "HAL-7 stands in bay 7.[^s1]\n\n## Sources\n\n"
+            "[^s1]: [raw/register.md](../../raw/register.md) - s (ingested 2026-06-21)\n",
+        )
+        (config.wiki_dir() / "concepts" / "m-1.md").unlink()
+        hall = config.wiki_dir() / "concepts" / "hall.md"
+        hall.write_text(
+            hall.read_text(encoding="utf-8").replace("(./m-1.md)", "(../registries/hal-7.md)"), encoding="utf-8"
+        )
+
+    fake_agent(side_effect=retitle)
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", "retitle the machine pages to '<machine no> <model>'", raising=False)
+
+    report = curate.curate(["concepts/m-1.md"])
+
+    assert report.applied == ["concepts/m-1.md"] and report.failed == []
+    assert not (wiki / "concepts" / "m-1.md").exists()
+    renamed = (wiki / "registries" / "hal-7.md").read_text(encoding="utf-8")
+    assert "HAL-7 stands in bay 7.[^s1]" in renamed  # the fact and its marker, unchanged
+    assert "[^s1]: [raw/register.md](../../raw/register.md)" in renamed  # ... and its definition
+    assert "(../registries/hal-7.md)" in (wiki / "concepts" / "hall.md").read_text(encoding="utf-8")
+    assert store.find_broken_links() == []  # the link graph survived the move
+
+
+def test_guided_restructure_that_breaks_a_link_is_rolled_back(tmp_citadel, seed_page, fake_agent, monkeypatch):
+    """The other half of the same use case: a rename is the operation most likely to leave a
+    dangling link behind, and a steer makes renames common. A cluster whose promote WOULD introduce
+    a broken cross-link is failed and rolled back whole — the live wiki is left exactly as it was,
+    rather than carrying the damage until someone runs `citadel lint`."""
+    from citadel import curate, store
+
+    wiki, raw = tmp_citadel.wiki, tmp_citadel.raw
+    (raw / "register.md").write_text("HAL-7 is the Hallenkran in bay 7.\n", encoding="utf-8")
+    _seed_cited(seed_page, "concepts/m-1.md", "raw/register.md", title="Maschine 1")
+    _seed_cited(seed_page, "concepts/hall.md", "raw/register.md", title="Hall", trailer="See [Maschine 1](./m-1.md).")
+    before = (wiki / "concepts" / "m-1.md").read_text(encoding="utf-8")
+
+    def retitle_forgetting_the_link(*_args, **_kwargs):
+        seed_page(
+            "registries/hal-7.md",
+            {
+                "type": "Registry",
+                "title": "HAL-7 Hallenkran",
+                "description": "d",
+                "tags": ["t"],
+                "resource": "raw/register.md",
+            },
+            "A sourced fact.[^s1]\n\n## Sources\n\n"
+            "[^s1]: [raw/register.md](../../raw/register.md) - s (ingested 2026-06-21)\n",
+        )
+        (config.wiki_dir() / "concepts" / "m-1.md").unlink()  # concepts/hall.md still links here
+
+    fake_agent(side_effect=retitle_forgetting_the_link)
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", "retitle the machine pages", raising=False)
+
+    report = curate.curate(["concepts/m-1.md"])
+
+    assert report.failed == ["concepts/m-1.md"] and report.applied == []
+    assert "broken" in report.failed_details["concepts/m-1.md"].lower()
+    assert (wiki / "concepts" / "m-1.md").read_text(encoding="utf-8") == before  # rolled back whole
+    assert not (wiki / "registries" / "hal-7.md").exists()
+    assert store.find_broken_links() == []
+
+
 # --- the cluster session: staging diff decides NOOP / applied / failed (one _SourceJob) -----
 
 

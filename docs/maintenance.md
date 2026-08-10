@@ -63,6 +63,12 @@ improve-or-NOOP rule. Two boundaries make it safe to use freely:
   paid session per page. A path that matches nothing is reported on the run report rather than
   silently doing nothing.
 
+Renames are the edit most likely to strand an inbound link, so a cluster whose result would leave a
+cross-link pointing at a page that no longer exists is **failed and rolled back whole** — the live
+wiki keeps the version it had, and the failure says which link broke. (Links that were already
+dangling before the run do not count against the cluster; those are what `citadel lint` reports and
+what a later curate pass repairs.)
+
 `--dry-run` first is the cheap way to see exactly which pages a folder or glob resolves to. Set
 `CITADEL_CURATE_GUIDANCE` instead of passing the flag if you want the same steer for several runs;
 permanent house rules belong in `rules/local.md`, which every session already reads.

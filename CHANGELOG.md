@@ -29,6 +29,17 @@ All notable changes to this project are documented here. The format is based on
   re-attributed; every fact keeps its `[^sN]` marker and its `## Sources` definition through
   whatever the steer moves, and the cluster's cited raw sources are re-read first, so a retitle
   follows the spelling the sources themselves use.
+- **A curate cluster can no longer promote a broken cross-link.** Renaming and merging pages is what
+  curate is for — and a `--guidance` steer makes renames the common case — but a rename is the one
+  edit that reliably strands inbound links, and the mechanical rename-repair net only fires when the
+  page KEEPS its title, which a *retitle* by definition does not. So a steered rename used to
+  promote cleanly and leave the wiki carrying a dangling link until someone ran `citadel lint`.
+  Every cluster session now runs under a no-new-broken-links post-condition (ingest's existing
+  `extra_check` seam, so it is checked against staging BEFORE the promote): a cluster whose edit
+  leaves a cross-link pointing at a page that does not exist is failed and rolled back whole.
+  Compared by dangling target against a per-cluster baseline of the live wiki, never by
+  `(page, target)` pair — a cluster moves pages, so a link that was already dangling would look
+  brand new the moment its page is renamed, and inherited damage never fails a cluster.
 - **Sessions may consult a bounded number of RELATED sources** (`CITADEL_RELATED_SOURCES`, default
   3; `0` turns it off). Sources arrive one at a time; knowledge does not. A fault report saying
   "HAL-7 down since March" is nearly worthless while the machine register that defines HAL-7 sits

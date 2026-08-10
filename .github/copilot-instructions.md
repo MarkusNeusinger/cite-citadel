@@ -384,6 +384,15 @@ the ask itself: each named page is planned under the `operator_guidance` reason 
 human ask outranks a detection) even when every detector considers it clean, which is the whole
 point (a badly named page trips no offline detector). A steer with NO paths only rides along on the
 detector plan — fanning one out over a clean wiki would be one paid session per page.
+Because a steer makes RENAMES common and a rename is the one edit that reliably strands inbound
+links — the mechanical `ingest._repair_renames` net fires only when the page KEEPS its title, which
+a retitle by definition does not — every cluster session runs under a **no-new-broken-links**
+post-condition (`_no_new_broken_links`, riding ingest's existing `extra_check` seam, so it is
+checked against STAGING before the promote): a cluster whose edit leaves a cross-link pointing at a
+page that does not exist is failed and rolled back whole. Compared by dangling TARGET against a
+per-cluster baseline of the live wiki, never by `(page, target)` pair — a cluster MOVES pages, so a
+pre-existing dangling link would otherwise look brand new the moment its page is renamed (the same
+blame-scoping `_validate_and_restamp`'s inherited carve-out exists for).
 
 **Refresh is the third lifecycle** (`refresh.py`, `citadel refresh`): budget-controlled
 re-verification of existing SOURCES, so an aging wiki is brought up to the current model + rules a

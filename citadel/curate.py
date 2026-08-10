@@ -676,6 +676,41 @@ def _write_findings(item: PlanItem, page: Page, inbound: dict[str, list[str]]) -
     return config.rel_or_abs_posix(out), tmpdir
 
 
+def _broken_link_targets(pages: list[Page] | None = None) -> set[str]:
+    """The wiki-relative link TARGETS that currently resolve to no page (from the shared
+    :func:`store.find_broken_links`) — the unit the cluster gate below compares.
+
+    Targets, not ``(page, target)`` pairs: a cluster MOVES pages, so a link that was already
+    dangling would look brand new the moment the page carrying it is renamed, and blaming a cluster
+    for damage it inherited is exactly what ``_validate_and_restamp``'s carve-out exists to
+    prevent."""
+    return {target for _page, target in store.find_broken_links(pages)}
+
+
+def _no_new_broken_links(baseline: set[str]):
+    """The per-cluster post-condition, riding ingest's existing ``extra_check`` seam (the one a
+    deletion cleanup uses to assert no reference to the removed source survived): refuse to promote
+    a cluster whose edit leaves a cross-link pointing at a page that does not exist — unless the
+    wiki already had that target dangling.
+
+    Renaming, re-routing and merging pages is what a curate pass — and above all a `--guidance`
+    steer — asks for, and a rename is the one edit that reliably strands inbound links. The
+    mechanical `ingest._repair_renames` net only fires when the page KEEPS its title, which a
+    RETITLE by definition does not; without this gate a steered rename promotes cleanly and the
+    live wiki carries the dangling link until someone runs `citadel lint`. The check runs while the
+    wiki is still redirected at STAGING (``extra_check`` is called before the promote), so a
+    refusal rolls the whole cluster back and the live wiki is left exactly as it was."""
+
+    def check() -> list[str]:
+        return [
+            f"broken link to {target} after the cluster edit — a renamed, re-routed or merged page "
+            "must have its inbound links repointed (core.md § Restructuring)"
+            for target in sorted(_broken_link_targets() - baseline)
+        ]
+
+    return check
+
+
 def _cluster_attempts(failures_dict: dict, page: str) -> int:
     """The recorded curate attempt count for a cluster's anchor page (0 when never failed)."""
     entry = failures_dict.get(page)
@@ -884,11 +919,14 @@ def curate(
                     continue
                 emit("cluster_start", index=index, total=len(plan.items), page=page_rel)
                 read_path, tmpdir = _write_findings(item, page, inbound)
+                # The link-graph baseline is the LIVE wiki as this cluster finds it — recomputed
+                # per cluster, since an earlier cluster's promote may have changed it.
+                baseline = _broken_link_targets()
                 try:
                     session = [
                         lambda pr=page_rel, rp=read_path: llm.run_ingest_session(pr, kind="curate", read_path=rp)
                     ]
-                    outcome = ingest._run_agent_sessions(session, page_rel)
+                    outcome = ingest._run_agent_sessions(session, page_rel, extra_check=_no_new_broken_links(baseline))
                 finally:
                     shutil.rmtree(tmpdir, ignore_errors=True)
 
