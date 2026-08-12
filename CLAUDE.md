@@ -237,7 +237,11 @@ addressing them through `ingest`. The flow per source:
   path inside it is refused too, and the run-start migration sweep clears any already-self-ingested
   key), and files over `CITADEL_MAX_SOURCE_BYTES` (the size complement to the name-matching ignore
   globs — skipped from the walk's own stat, so a 10 GB sensor dump is never opened, let alone
-  hashed; reported, never silent, and off by default). Deletion candidates
+  hashed; reported, never silent, and off by default). A third filter applies to FILES only, when
+  configured: the `CITADEL_INCLUDE_PATTERNS` **allowlist** (`_is_included_name` — "read only `.pdf`
+  and `.txt`"), checked after the ignore globs (deny beats allow) and before the stat, so a
+  filtered file is neither hashed nor classified; directories and repo dirs are never matched (an
+  allowlist of `*.pdf` matching directories would prune every sub-folder). Deletion candidates
   come from the walked-seen-set diff and each is positively **confirmed with `.exists()`**; any
   walk error aborts the whole sweep, an unreachable root contributes no candidates, keys under no
   configured root are logged and never swept, and a workspace-identity mismatch whose keys do not
@@ -424,6 +428,8 @@ beside the dollars they converted into — with `Recorded LLM cost` / `Recorded 
 totals above the table, and a `NO PAGES (nothing cites this source)` marker on every ingested
 source the wiki does not cite — a paid session that produced zero entries), failed (reason, attempts),
 skipped-duplicate, ignored (pattern), oversized (over `CITADEL_MAX_SOURCE_BYTES`, with the size),
+not-included (outside `CITADEL_INCLUDE_PATTERNS` — the row is hidden entirely when no allowlist is
+configured, but the JSON key is always there),
 pending — closing with a `citadel ingest --retry` hint whenever anything is failed or uncited.
 
 **Other modules:** `okf.py` is the OKF format core (parse/dump, type→folder routing, link math, and
@@ -583,7 +589,11 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   ASCII-only progress output, read-only-bit clearing, and network-share retry loops all fix real
   Windows/SMB failures.
 - Config knobs live in the workspace-root `.env` (auto-loaded, gitignored; template:
-  `citadel/templates/env.example`): `CITADEL_LLM_CLI`,
+  `citadel/templates/env.example`). The format has no multi-line values, so ONE line is one setting
+  and a list knob takes ONE comma-separated line; a key assigned twice keeps only its FIRST line
+  (first-wins, the same rule that lets the real environment override the file) and the repeat is
+  recorded in `config.CONFIG_WARNINGS`, which `citadel doctor`'s config check shows. Knobs:
+  `CITADEL_LLM_CLI`,
   `CITADEL_INGEST_MODEL` (passed as `--model` to EVERY backend - claude, copilot and agy all
   honor it; unset (the default) means "run the CLI's own default model"),
   `CITADEL_CURATE_MODEL` (model for `citadel curate` sessions; falls back to
@@ -601,8 +611,16 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   (large-source chunking threshold), `CITADEL_RESUME` (resume checkpoints for those chunked
   sources: continue at the segment an interrupted run died on instead of re-paying for the earlier
   ones; default on), `CITADEL_DEDUP_BY_BASENAME` (skip same-basename document
-  duplicates), `CITADEL_IGNORE_PATTERNS` (OS/junk-file globs skipped at discovery — `Thumbs.db`,
-  `desktop.ini`, `~$` locks, …; a `+` prefix extends the built-in defaults),
+  duplicates), `CITADEL_IGNORE_PATTERNS` (the BLOCKLIST: OS/junk-file globs skipped at discovery —
+  `Thumbs.db`, `desktop.ini`, `~$` locks, …; a `+` marker extends the built-in defaults, written
+  once in front of the value or per entry — either way it never survives into the glob),
+  `CITADEL_INCLUDE_PATTERNS` (its ALLOWLIST twin: when set, only files whose NAME matches are read
+  ("in raw/, read only `.pdf` and `.txt`") — extensions (`.pdf`), globs (`*.pdf`) or exact names,
+  case-insensitive; the blocklist still wins, an explicit path still wins over both, directories and
+  repo sources are never matched, and an already-ingested source that falls outside a narrowed
+  allowlist keeps its pages instead of reading as deleted — the sweep's `.exists()` confirm. What it
+  filtered out is reported: ingest's `Not included` section, `citadel status`' bucket, and a
+  `citadel doctor` line that WARNs when the allowlist admits nothing),
   `CITADEL_MAX_SOURCE_BYTES` (the SIZE complement to those globs: a raw file bigger than this many
   bytes is skipped at discovery — never hashed, never tracked, but reported; 0 = no limit, the
   default; an explicitly named path always wins), `CITADEL_WIKI_LANG`

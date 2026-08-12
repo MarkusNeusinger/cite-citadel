@@ -196,15 +196,27 @@ def workspace_mechanism() -> str:
     return _resolve_workspace_with_mechanism()[1]
 
 
+# Keys the workspace `.env` assigned MORE THAN ONCE, in first-seen order. Recorded by
+# :func:`_load_dotenv` (which runs before CONFIG_WARNINGS exists) and folded into that list below.
+_DOTENV_DUPLICATE_KEYS: list[str] = []
+
+
 def _load_dotenv(root: Path) -> None:
     """If ``root/.env`` exists, set any ``KEY=VALUE`` whose KEY is not already
     in ``os.environ``. Ignores blank / ``#`` lines, strips surrounding quotes.
-    Best-effort; never raises."""
+    Best-effort; never raises.
+
+    One line is one setting: a key assigned twice keeps its FIRST line and the later ones are
+    dropped (the same first-wins rule that lets a real environment variable override the file).
+    That is easy to trip over on the list-valued settings — a list of globs reads like something
+    you extend line by line — so a repeated key is recorded for :data:`CONFIG_WARNINGS` rather
+    than silently swallowed. The list settings take ONE line, comma-separated."""
     env_path = root / ".env"
     try:
         text = env_path.read_text(encoding="utf-8")
     except (OSError, ValueError):
         return
+    seen: set[str] = set()
     for raw_line in text.splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
@@ -215,7 +227,12 @@ def _load_dotenv(root: Path) -> None:
             continue
         key, _, value = line.partition("=")
         key = key.strip()
-        if not key or key in os.environ:
+        if not key:
+            continue
+        if key in seen and key not in _DOTENV_DUPLICATE_KEYS:
+            _DOTENV_DUPLICATE_KEYS.append(key)
+        seen.add(key)
+        if key in os.environ:
             continue
         value = value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
@@ -291,6 +308,14 @@ def _split_list_env(value: str) -> list[str]:
 # so an import-time ValueError would take down every command — including doctor, the one tool
 # built to diagnose exactly this class of misconfiguration.
 CONFIG_WARNINGS: list[str] = []
+
+# The `.env` was already parsed above, so its duplicate-key findings are folded in as soon as the
+# list exists — a setting written on several lines silently keeps only the first one.
+for _dup in _DOTENV_DUPLICATE_KEYS:
+    CONFIG_WARNINGS.append(
+        f"{_dup} is assigned more than once in .env - only the FIRST line is used. A list setting "
+        "takes ONE line with comma-separated entries (e.g. CITADEL_INCLUDE_PATTERNS=.pdf,.txt)"
+    )
 
 
 def _int_env(key: str, default: int) -> int:
@@ -1291,22 +1316,102 @@ _DEFAULT_IGNORE_PATTERNS: tuple[str, ...] = (
 )
 
 
+def _split_pattern_env(value: str) -> tuple[bool, list[str]]:
+    """Split a glob-list env value into ``(extend, patterns)``, absorbing the ``+`` marker.
+
+    The marker says "ADD to the built-in defaults instead of replacing them", and it is written
+    ONCE in front of the whole value (``+*.bak,~backup*`` — the documented spelling). Users
+    reasonably read the list as N independent additions and write a ``+`` on every entry
+    (``+*.bak,+~backup*``), or spread the setting over several lines each carrying one; both are
+    accepted here and mean exactly the same thing, because the alternative is silent breakage — a
+    stray ``+`` would otherwise survive into the glob and only ever match a file whose name
+    literally starts with ``+``.
+
+    So: the marker counts wherever it appears, and it is stripped from every entry that carries it.
+    A pattern that must match a real leading ``+`` writes it as a character class (``[+]draft.md``),
+    which fnmatch reads as a literal and this splitter leaves alone."""
+    entries = _split_list_env(value)
+    extend = any(entry.startswith("+") for entry in entries)
+    cleaned = [entry[1:].strip() if entry.startswith("+") else entry for entry in entries]
+    return extend, [entry for entry in cleaned if entry]
+
+
 def _resolve_ignore_patterns() -> list[str]:
-    """Build the effective ignore list from the built-in defaults and ``CITADEL_IGNORE_PATTERNS``
-    (split by the shared :func:`_split_list_env`): unset/blank keeps the defaults; a value with a
-    leading ``+`` is ADDED to them (e.g. ``+*.bak,~backup*``); any other value REPLACES them (set
-    it to a pattern that matches nothing to effectively disable — though ignoring these is almost
-    always wanted)."""
+    """Build the effective ignore list (the BLOCKLIST) from the built-in defaults and
+    ``CITADEL_IGNORE_PATTERNS`` (split by the shared :func:`_split_pattern_env`): unset/blank keeps
+    the defaults; a value carrying a ``+`` marker is ADDED to them (e.g. ``+*.bak,~backup*``); any
+    other value REPLACES them (set it to a pattern that matches nothing to effectively disable —
+    though ignoring these is almost always wanted).
+
+    Its allowlist counterpart is :func:`_resolve_include_patterns`; when both are configured the
+    blocklist wins (deny beats allow — see :func:`ingest_scan._is_included_name`)."""
     raw = os.environ.get("CITADEL_IGNORE_PATTERNS", "").strip()
     if not raw:
         return list(_DEFAULT_IGNORE_PATTERNS)
-    if raw.startswith("+"):
-        return list(_DEFAULT_IGNORE_PATTERNS) + _split_list_env(raw[1:])
-    return _split_list_env(raw)
+    extend, patterns = _split_pattern_env(raw)
+    return list(_DEFAULT_IGNORE_PATTERNS) + patterns if extend else patterns
 
 
 # Read at call time by ingest's discovery walk (tests monkeypatch this list directly).
 IGNORE_PATTERNS: list[str] = _resolve_ignore_patterns()
+
+_GLOB_CHARS = ("*", "?", "[")
+
+
+def _normalize_include_pattern(entry: str) -> list[str]:
+    """One ``CITADEL_INCLUDE_PATTERNS`` entry as the basename glob(s) it actually means.
+
+    The knob exists to be written the way people say it out loud — "only read PDFs and text files"
+    — so the two spellings that are not globs at all are translated instead of silently matching
+    nothing:
+
+    - ``.pdf`` (a bare extension) -> ``*.pdf``;
+    - ``pdf`` (an extension without its dot) -> ``*.pdf`` **and** the literal name ``pdf``, since a
+      bare word is genuinely ambiguous (``Makefile`` is a real, extensionless filename) and
+      admitting one file too many is the harmless direction for an allowlist.
+
+    Anything already carrying a glob character, or holding a dot inside it (``notes.md``), is taken
+    verbatim as an exact/globbed basename match."""
+    if any(ch in entry for ch in _GLOB_CHARS):
+        return [entry]
+    if entry.startswith(".") and entry.count(".") == 1:
+        return ["*" + entry]
+    if "." not in entry:
+        return [f"*.{entry}", entry]
+    return [entry]
+
+
+def _resolve_include_patterns() -> list[str]:
+    """The discovery ALLOWLIST from ``CITADEL_INCLUDE_PATTERNS``: when set, a raw file is only
+    discovered if its NAME matches one of these globs ("in raw/, read only .pdf and .txt").
+    Unset/blank (the default) returns an empty list, which admits everything — the behavior citadel
+    has always had.
+
+    Entries are normalized by :func:`_normalize_include_pattern` and deduped; a leading ``+`` is
+    tolerated and ignored (this knob has no built-in defaults to extend, and a user who just wrote
+    an ignore list should not be punished for carrying the habit over). A pattern holding a path
+    separator can never match — matching is per FILE NAME, exactly like the ignore globs — so it is
+    recorded as a config warning rather than silently admitting nothing."""
+    raw = os.environ.get("CITADEL_INCLUDE_PATTERNS", "").strip()
+    if not raw:
+        return []
+    _extend, entries = _split_pattern_env(raw)
+    patterns: list[str] = []
+    for entry in entries:
+        if "/" in entry or "\\" in entry:
+            CONFIG_WARNINGS.append(
+                f"CITADEL_INCLUDE_PATTERNS entry {entry!r} contains a path separator - patterns are "
+                "matched against file NAMES only, so this one can never match (use e.g. '*.pdf')"
+            )
+        for pattern in _normalize_include_pattern(entry):
+            if pattern not in patterns:
+                patterns.append(pattern)
+    return patterns
+
+
+# Read at call time by ingest's discovery walk (tests monkeypatch this list directly). Empty =
+# no allowlist = every file is a candidate.
+INCLUDE_PATTERNS: list[str] = _resolve_include_patterns()
 
 
 # The model a source was ingested with is recorded in two layers, and only one of them is a fact:

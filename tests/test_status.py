@@ -175,3 +175,21 @@ def test_oversized_file_is_its_own_bucket_not_pending(tmp_citadel, monkeypatch):
     assert "raw/real.md" in report.pending
     assert "raw/dump.tdms  4.0 KB" in report.render()
     assert report.as_dict()["oversized"] == [{"key": "raw/dump.tdms", "size_bytes": 4096}]
+
+
+def test_allowlist_filtered_file_is_its_own_bucket_not_pending(tmp_citadel, monkeypatch):
+    """A file outside ``CITADEL_INCLUDE_PATTERNS`` is not pending (ingest will never pick it up)
+    and not failed — it gets its own bucket, naming the allowlist that explains it. The bucket is
+    hidden entirely when no allowlist is configured, so the default table is unchanged."""
+    (tmp_citadel.raw / "sheet.xlsx").write_bytes(b"PK\x03\x04")
+    (tmp_citadel.raw / "real.md").write_text("real\n", encoding="utf-8")
+
+    assert "Not included" not in status.build_status().render()  # no allowlist -> no row at all
+
+    monkeypatch.setattr(config, "INCLUDE_PATTERNS", ["*.md"], raising=False)
+    report = status.build_status()
+    assert report.not_included == ["raw/sheet.xlsx"]
+    assert "raw/sheet.xlsx" not in report.pending
+    assert "raw/real.md" in report.pending
+    assert "Not included (1) - CITADEL_INCLUDE_PATTERNS = *.md" in report.render()
+    assert report.as_dict()["not_included"] == ["raw/sheet.xlsx"]

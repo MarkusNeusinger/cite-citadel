@@ -417,6 +417,22 @@ def test_dotenv_missing_file_is_a_noop(tmp_path):
     config._load_dotenv(tmp_path / "no-such-workspace")  # must not raise
 
 
+def test_dotenv_repeated_key_keeps_the_first_line_and_is_recorded(tmp_path, monkeypatch):
+    """One line is one setting: a key written on several lines keeps only the FIRST. That bites on
+    the list settings (a list of globs reads like something you extend line by line), so the
+    repeat is recorded for the config warnings `citadel doctor` shows instead of vanishing."""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / ".env").write_text("CITADEL_WS_TEST4=+*.bak\nCITADEL_WS_TEST4=+~backup*\n", encoding="utf-8")
+    _reserve_env(monkeypatch, "CITADEL_WS_TEST4")
+    monkeypatch.setattr(config, "_DOTENV_DUPLICATE_KEYS", [], raising=False)
+
+    config._load_dotenv(ws)
+
+    assert os.environ["CITADEL_WS_TEST4"] == "+*.bak"  # first wins, as it always has
+    assert config._DOTENV_DUPLICATE_KEYS == ["CITADEL_WS_TEST4"]
+
+
 # --- packaged rules resolve from any CWD ---------------------------------------------------
 
 

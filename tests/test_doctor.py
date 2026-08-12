@@ -250,6 +250,41 @@ def test_raw_roots_ok_when_excluded_primary_raw_is_empty(tmp_citadel, monkeypatc
     assert "1 walked raw root(s) reachable" in c.detail
 
 
+# --- include patterns (the discovery allowlist) ----------------------------------------------
+
+
+def test_include_patterns_ok_when_unset(tmp_citadel, monkeypatch):
+    """No allowlist is the default: OK, and it says so rather than implying a filter is running."""
+    monkeypatch.setattr(config, "INCLUDE_PATTERNS", [], raising=False)
+    c = doctor.check_include_patterns()
+    assert c.status == doctor.OK
+    assert "no allowlist configured" in c.detail
+
+
+def test_include_patterns_ok_reports_what_it_admits(tmp_citadel, monkeypatch):
+    """A working allowlist reports the globs in force and the split it produces, so 'why is only
+    half my raw/ ingested?' is answerable before spending a session."""
+    (tmp_citadel.raw / "paper.pdf").write_bytes(b"%PDF-1.4\n")
+    (tmp_citadel.raw / "sheet.xlsx").write_bytes(b"PK\x03\x04")
+    monkeypatch.setattr(config, "INCLUDE_PATTERNS", ["*.pdf"], raising=False)
+
+    c = doctor.check_include_patterns()
+    assert c.status == doctor.OK
+    assert "*.pdf" in c.detail and "1 file(s) admitted, 1 filtered out" in c.detail
+
+
+def test_include_patterns_warn_when_it_admits_nothing(tmp_citadel, monkeypatch):
+    """The one quiet failure of this knob: a typo'd allowlist filters the whole corpus away and
+    every ingest then reports a clean run over nothing. Doctor calls it out."""
+    (tmp_citadel.raw / "paper.pdf").write_bytes(b"%PDF-1.4\n")
+    monkeypatch.setattr(config, "INCLUDE_PATTERNS", ["*.pdff"], raising=False)
+
+    c = doctor.check_include_patterns()
+    assert c.status == doctor.WARN
+    assert "admits NO file" in c.detail
+    assert "match file NAMES" in c.detail
+
+
 # --- wiki placement ------------------------------------------------------------------------
 
 
@@ -791,6 +826,7 @@ def test_run_emits_the_full_check_inventory(tmp_citadel, monkeypatch):
         "agent CLI",
         "ingest model",
         "raw roots",
+        "include patterns",
         "wiki placement",
         "child paths",
         "manifest",

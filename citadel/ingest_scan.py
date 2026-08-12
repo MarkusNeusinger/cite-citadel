@@ -65,6 +65,27 @@ def _is_ignored_name(name: str) -> bool:
     return any(fnmatch.fnmatchcase(lowered, pattern.lower()) for pattern in config.IGNORE_PATTERNS)
 
 
+def _is_included_name(name: str) -> bool:
+    """True if ``name`` (a FILE basename) is admitted by the configured ALLOWLIST
+    (``config.INCLUDE_PATTERNS``, matched case-insensitively) — the inverse of
+    :func:`_is_ignored_name`: that one names what to keep OUT of a raw tree, this one names the
+    only thing to let IN ("in raw/, read only .pdf and .txt").
+
+    An empty list — the default — admits everything, which is citadel's original behavior. The two
+    filters compose as deny-beats-allow: :func:`_scan_tree` applies the ignore globs first, so
+    whitelisting ``*.db`` does not resurrect ``Thumbs.db``.
+
+    Deliberately FILES only. A directory is never matched (an allowlist of ``*.pdf`` would
+    otherwise prune every sub-folder and find nothing), and neither is a repo source — a git repo
+    is folded in as ONE digest, not as the files it holds, so a file-name allowlist has nothing to
+    say about it. Read at call time so tests/env can override the list."""
+    patterns = config.INCLUDE_PATTERNS
+    if not patterns:
+        return True
+    lowered = name.lower()
+    return any(fnmatch.fnmatchcase(lowered, pattern.lower()) for pattern in patterns)
+
+
 def _is_wiki_internal(path: Path) -> bool:
     """True when ``path`` is at or under the LIVE wiki directory — the generated, LLM-owned layer,
     which is never a raw source.
@@ -164,6 +185,10 @@ class _Walk:
     # (path, size) for files skipped by the CITADEL_MAX_SOURCE_BYTES ceiling — never hashed, never
     # ingested, but reported, so a size skip is visible instead of silent.
     oversized: list[tuple[Path, int]] = field(default_factory=list)
+    # Files the CITADEL_INCLUDE_PATTERNS allowlist kept out of discovery — never hashed, never
+    # ingested. Counted on the run report (and in `citadel status`) so an allowlist that admits
+    # nothing reads as a filter, not as an empty raw tree.
+    not_included: list[Path] = field(default_factory=list)
     # Directories skipped because they ARE (or are inside) the wiki — a raw root that sits above
     # the wiki dir. Reported once per run so the exclusion is visible, never inferred as absence.
     excluded_wiki: list[Path] = field(default_factory=list)
@@ -176,6 +201,7 @@ def _scan_tree(root: Path, walk: _Walk) -> None:
 
     Skip rules: hidden names (leading ``.``), OS/junk ignore globs (:func:`_is_ignored_name`), the
     wiki directory itself (:func:`_is_wiki_internal` — the generated layer is never a source), files
+    outside the optional allowlist (:func:`_is_included_name`), files
     over the size ceiling (:func:`_exceeds_size_cap`), and — with repo support on — no descending
     into a git repository (collected as one repo source instead). Any other file type in any
     sub-folder is picked up; ``follow_symlinks=False`` throughout, so a symlinked directory is never
@@ -224,6 +250,12 @@ def _scan_tree(root: Path, walk: _Walk) -> None:
                     else:
                         subdirs.append(path)
                 elif entry.is_file(follow_symlinks=False):
+                    # The allowlist is checked BEFORE the stat: a filtered-out file is not a
+                    # source at all, so it is neither hashed nor reported as oversized — it is
+                    # simply not part of this raw tree as far as citadel is concerned.
+                    if not _is_included_name(name):
+                        walk.not_included.append(path)
+                        continue
                     st = entry.stat(follow_symlinks=False)
                     # The size ceiling is applied HERE, on the stat the walk already took: an
                     # oversized file is never opened, never hashed, and never classified — which
@@ -241,7 +273,8 @@ def _scan_tree(root: Path, walk: _Walk) -> None:
 def _discover_walk(paths: list[str] | None) -> _Walk:
     """Resolve requested paths (or default to every configured raw root, ``config.RAW_DIRS``)
     into one :class:`_Walk`. A requested file path is stat'ed and taken as-is (even a hidden name,
-    an ignore-matched one, or one over the size ceiling — explicit wins, as before; one that is
+    an ignore-matched one, one the allowlist does not admit, or one over the size ceiling —
+    explicit wins, as before; one that is
     missing or not a regular file is silently dropped, replacing the old per-candidate
     ``is_file()``); a requested directory contributes its whole subtree — unless it is itself a repo
     source, which :func:`_discover_repos` handles. Roots are de-duplicated by resolved path.

@@ -57,6 +57,7 @@ from .ingest_scan import (
     _RepoJob,
 )
 from .ingest_scan import _is_ignored_name as _is_ignored_name
+from .ingest_scan import _is_included_name as _is_included_name
 from .ingest_scan import _is_ingestible as _is_ingestible
 from .ingest_scan import _is_repo_source as _is_repo_source
 from .ingest_scan import _is_wiki_internal as _is_wiki_internal
@@ -82,6 +83,12 @@ from .ingest_staging import _robust_copy_file as _robust_copy_file
 from .ingest_staging import _robust_rmtree as _robust_rmtree
 from .ingest_staging import _staging_prefix as _staging_prefix
 from .ingest_staging import _sweep_stale_staging
+
+
+# How many allowlist-filtered files the run report lists by name before collapsing the rest into a
+# count. An allowlist is normally the SMALL half of a raw tree, so the excluded side can be tens of
+# thousands of files — a full dump would bury the report it is a footnote of.
+_NOT_INCLUDED_SHOWN = 10
 
 
 @dataclass
@@ -118,6 +125,11 @@ class IngestReport:
     # CITADEL_MAX_SOURCE_BYTES — never hashed, never ingested, and (like an ignore-pattern match)
     # never recorded in the manifest or the failures catalog. Reported so a size skip is visible.
     oversized: list[tuple[str, int]] = field(default_factory=list)
+    # rel-keys of files the CITADEL_INCLUDE_PATTERNS allowlist kept out of discovery ("read only
+    # .pdf and .txt"). Like an ignore match: never hashed, never ingested, never recorded in the
+    # manifest or the failures catalog — but reported, because an allowlist filtering the whole
+    # tree away must be legible as a filter rather than as an empty raw/.
+    not_included: list[str] = field(default_factory=list)
     # rel-keys of tracked sources that VANISHED from disk (a full run only): their provenance is
     # reconciled out of the wiki by a cleanup agent session, then the manifest key is dropped.
     sources_deleted: list[str] = field(default_factory=list)
@@ -222,6 +234,15 @@ class IngestReport:
         if self.oversized:
             lines.append(f"Oversized (over CITADEL_MAX_SOURCE_BYTES = {_human_bytes(config.MAX_SOURCE_BYTES)}):")
             lines.extend(f"  - {key} ({_human_bytes(size)})" for key, size in self.oversized)
+        if self.not_included:
+            # An allowlist can filter out a whole drive, so the report shows a sample, not a dump.
+            lines.append(
+                f"Not included ({len(self.not_included)} file(s) outside CITADEL_INCLUDE_PATTERNS = "
+                f"{', '.join(config.INCLUDE_PATTERNS) or '(none)'}):"
+            )
+            lines.extend(f"  - {key}" for key in self.not_included[:_NOT_INCLUDED_SHOWN])
+            if len(self.not_included) > _NOT_INCLUDED_SHOWN:
+                lines.append(f"  - ... +{len(self.not_included) - _NOT_INCLUDED_SHOWN} more")
         if self.duplicates:
             lines.append("Skipped as duplicate (same basename as another format that was ingested):")
             lines.extend(f"  - {dropped} (kept {kept})" for dropped, kept in self.duplicates)
@@ -1057,6 +1078,21 @@ def _ingest_run(
             f"NOTE: {len(report.oversized)} file(s) skipped by CITADEL_MAX_SOURCE_BYTES "
             f"({_human_bytes(config.MAX_SOURCE_BYTES)}); raise it (or name a path explicitly) to "
             "ingest them:\n  " + "\n  ".join(listed),
+            file=sys.stderr,
+        )
+    # The allowlist's own note. It fires on every run it filters anything, deliberately: unlike the
+    # other exclusions this one is easy to get wrong in a way that looks like nothing to do (a typo
+    # in CITADEL_INCLUDE_PATTERNS silently empties the corpus), so the count and the effective
+    # patterns are always in front of the user.
+    report.not_included = sorted(manifest.rel_key(p) for p in walk.not_included)
+    if report.not_included:
+        listed = report.not_included[:_NOT_INCLUDED_SHOWN]
+        if len(report.not_included) > len(listed):
+            listed = listed + [f"... +{len(report.not_included) - len(listed)} more"]
+        print(
+            f"NOTE: {len(report.not_included)} file(s) skipped by CITADEL_INCLUDE_PATTERNS "
+            f"({', '.join(config.INCLUDE_PATTERNS) or '(none)'}) - only matching file names are "
+            "read; widen it (or name a path explicitly) to ingest them:\n  " + "\n  ".join(listed),
             file=sys.stderr,
         )
     # A pending source whose key is ALREADY tracked is a re-ingest of changed bytes (reconcile);

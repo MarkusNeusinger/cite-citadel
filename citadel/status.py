@@ -14,6 +14,8 @@ sits in —
 - **ignored** — an OS/junk file matched by ``CITADEL_IGNORE_PATTERNS``;
 - **oversized** — on disk under a raw root but past the ``CITADEL_MAX_SOURCE_BYTES`` ceiling, so
   discovery skips it (never hashed, never tracked);
+- **not included** — on disk under a raw root but outside the ``CITADEL_INCLUDE_PATTERNS``
+  allowlist ("read only ``.pdf``/``.txt``"), shown only when such an allowlist is configured;
 - **pending** — on disk under a raw root, not yet in the manifest or the failures catalog.
 
 Built from the manifest + the failures catalog + ONE stat-only discovery walk (reusing ingest's
@@ -35,6 +37,10 @@ from . import config, failures, ingest, llm, manifest, store
 
 # How much of a (long) content hash / rules-version / commit id to show in the table.
 _ID_WIDTH = 12
+
+# How many allowlist-filtered keys the table lists before collapsing the rest into a count (the
+# excluded side of an allowlist is normally the big half of the tree — see ingest's twin).
+_NOT_INCLUDED_SHOWN = 10
 
 
 @dataclass
@@ -81,6 +87,9 @@ class StatusReport:
     ignored: list[str] = field(default_factory=list)
     # (key, size_bytes) for files the CITADEL_MAX_SOURCE_BYTES ceiling keeps out of discovery.
     oversized: list[tuple[str, int]] = field(default_factory=list)
+    # Keys the CITADEL_INCLUDE_PATTERNS allowlist keeps out of discovery ("read only .pdf/.txt").
+    # Empty whenever no allowlist is configured, which is the default.
+    not_included: list[str] = field(default_factory=list)
     pending: list[str] = field(default_factory=list)
     rules_version: str = ""
 
@@ -159,6 +168,16 @@ class StatusReport:
         for key, size in self.oversized:
             lines.append(f"  {key}  {ingest._human_bytes(size)}")
 
+        # Only shown when an allowlist is configured: with none (the default) the bucket is empty
+        # and a permanent "Not included (0)" row would be noise on every status call.
+        if self.not_included:
+            patterns = ", ".join(config.INCLUDE_PATTERNS) or "(none)"
+            lines.append(f"Not included ({len(self.not_included)}) - CITADEL_INCLUDE_PATTERNS = {patterns}")
+            for key in self.not_included[:_NOT_INCLUDED_SHOWN]:
+                lines.append(f"  {key}")
+            if len(self.not_included) > _NOT_INCLUDED_SHOWN:
+                lines.append(f"  ... +{len(self.not_included) - _NOT_INCLUDED_SHOWN} more")
+
         lines.append(f"Pending ({len(self.pending)})")
         for key in self.pending:
             lines.append(f"  {key}")
@@ -179,7 +198,7 @@ class StatusReport:
         return "\n".join(lines).rstrip() + "\n"
 
     def as_dict(self) -> dict:
-        """The report as one JSON-ready dict (``citadel status --json``): the six buckets plus
+        """The report as one JSON-ready dict (``citadel status --json``): the seven buckets plus
         ``rules_version``, ``cost_usd_total`` and ``aic_total``, each source row a plain dict with only its None fields dropped —
         ``attempts: 0`` / ``stale_rules: false`` / ``uncited: false`` stay explicit, so scripts
         get a predictable shape for 'which sources failed and why' (and which produced no pages)
@@ -204,6 +223,9 @@ class StatusReport:
             "skipped_duplicate": [row(s) for s in self.skipped_duplicate],
             "ignored": list(self.ignored),
             "oversized": [{"key": key, "size_bytes": size} for key, size in self.oversized],
+            # Always present (empty without an allowlist), so a script never has to branch on the
+            # knob being configured; render() hides the empty case, JSON keeps the shape stable.
+            "not_included": list(self.not_included),
             "pending": list(self.pending),
         }
 
@@ -215,20 +237,22 @@ def _is_stale_rules(entry, current_rules_version: str) -> bool:
     return recorded is not None and recorded != current_rules_version
 
 
-def _walk_state() -> tuple[set[str], list[tuple[str, int]]]:
+def _walk_state() -> tuple[set[str], list[tuple[str, int]], list[str]]:
     """ONE stat-only discovery walk (ingest's own — no hashing, repo-aware, dead-mount-safe), read
-    for the two things status needs from disk: every source key visible under the raw roots RIGHT
-    NOW (files plus repo dirs), and the ``(key, size)`` pairs the ``CITADEL_MAX_SOURCE_BYTES``
-    ceiling kept out of it. Defensive: any walk failure degrades to empty (pending/oversized simply
+    for the three things status needs from disk: every source key visible under the raw roots RIGHT
+    NOW (files plus repo dirs), the ``(key, size)`` pairs the ``CITADEL_MAX_SOURCE_BYTES``
+    ceiling kept out of it, and the keys the ``CITADEL_INCLUDE_PATTERNS`` allowlist kept out.
+    Defensive: any walk failure degrades to empty (pending/oversized/not-included simply
     show nothing) rather than raising."""
     try:
         walk = ingest._discover_walk(None)
     except OSError:
-        return set(), []
+        return set(), [], []
     keys = {manifest.rel_key(path) for path, _st in walk.files}
     keys |= {manifest.rel_key(path) for path in walk.repos}
     oversized = sorted((manifest.rel_key(path), size) for path, size in walk.oversized)
-    return keys, oversized
+    not_included = sorted(manifest.rel_key(path) for path in walk.not_included)
+    return keys, oversized, not_included
 
 
 def _ignored_names() -> list[str]:
@@ -324,8 +348,9 @@ def build_status() -> StatusReport:
             report.failed.append(row)
 
     tracked = set(manifest_dict) | set(failures_dict)
-    present, oversized = _walk_state()
+    present, oversized, not_included = _walk_state()
     report.pending = sorted(key for key in present if key not in tracked)
     report.oversized = oversized
+    report.not_included = not_included
     report.ignored = _ignored_names()
     return report

@@ -8,6 +8,48 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`CITADEL_INCLUDE_PATTERNS` — an allowlist for discovery ("in `raw/`, read only `.pdf` and
+  `.txt`").** Deciding what citadel reads was a one-sided affair: `CITADEL_IGNORE_PATTERNS` could
+  name what to keep out, so a raw root that mostly holds files you do *not* want folded in had to be
+  described backwards — every unwanted extension enumerated, and a new one silently ingested until
+  someone noticed. The new knob says it forwards instead: when set, a file is discovered only if its
+  **name** matches one of its case-insensitive globs. Written the way people say it — `.pdf`, `.txt`
+  — or as real globs (`*.pdf`, `report-*.md`) or exact names (`notes.md`); a bare `pdf` is read as
+  both `*.pdf` and the literal name, because `Makefile` is also a real filename. Filtered files cost
+  exactly what an ignore match costs: skipped from the walk's own `stat`, never opened, never
+  hashed, never recorded in the manifest or the failures catalog. The two lists compose as
+  **deny-beats-allow** (whitelisting `*.db` does not resurrect `Thumbs.db`), and the escapes that
+  matter stay open — an explicitly named path (`citadel ingest one-off.docx`) is ingested regardless,
+  directories and git-repo sources are never matched (a repo is folded in as one digest, not as its
+  files), and narrowing the allowlist over an existing corpus is **not** a deletion: the sweep
+  confirms every candidate with `.exists()`, so excluded sources keep their pages and simply stop
+  being re-checked.
+- **What an allowlist filters out is visible, not inferred.** A filter that quietly empties the
+  corpus is the one way this knob fails, and it fails looking like success — ingest finds no sources
+  and reports a clean run. So the exclusion is reported at all three layers: a `Not included` section
+  on the run report (and a stderr note naming the patterns in force), a `Not included` bucket in
+  `citadel status` (`not_included` in `--json`, always present; the table row is hidden when no
+  allowlist is configured), and a new `citadel doctor` **include patterns** check that says how many
+  files the allowlist admits versus filters out — and WARNs when it admits nothing while files are
+  there to admit, naming the usual causes (a typo, or a path-shaped pattern like `reports/*.pdf`
+  when matching is per file name).
+
+### Fixed
+
+- **The `+` in a pattern list is understood wherever you write it.** `CITADEL_IGNORE_PATTERNS`'
+  extend-marker was only honored in front of the *whole* value, so the equally natural
+  `+*.bak,+~backup*` — one `+` per entry, the way a list of independent additions reads — left the
+  stray `+` inside every pattern but the first, and those then matched only filenames literally
+  starting with `+`. Nothing said so. The marker now counts wherever it appears and is stripped from
+  every entry that carries it; a pattern that must match a real leading `+` writes it as a character
+  class (`[+]draft.md`), which fnmatch already reads as a literal.
+- **A `.env` key assigned twice no longer loses its second half in silence.** The format has no
+  multi-line values, so one line is one setting and the first assignment wins — reasonable, but
+  invisible exactly where it bites: a list of globs reads like something you extend line by line.
+  Repeated keys are now recorded as config warnings, which `citadel doctor`'s config check prints,
+  and both the `.env` template and `docs/configuration.md` state the rule (one line, comma-separated)
+  next to the settings it applies to.
+
 - **`citadel curate --guidance "…" [paths…]` — tell curate what you want changed.** The offline
   detectors find structural problems, but some things only a person sees: pages named
   inconsistently, a family that belongs in `registries/`, a split that reads better the other way
