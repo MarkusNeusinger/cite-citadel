@@ -310,11 +310,15 @@ def _split_list_env(value: str) -> list[str]:
 CONFIG_WARNINGS: list[str] = []
 
 # The `.env` was already parsed above, so its duplicate-key findings are folded in as soon as the
-# list exists — a setting written on several lines silently keeps only the first one.
+# list exists — a setting written on several lines silently keeps only the first one. The wording
+# says "occurrence in .env" rather than "line is used" because the file is not always what wins: a
+# variable already set in the real environment overrides the whole file, so ALL of its lines are
+# ignored. Either way the later lines do nothing, which is what the reader needs to know.
 for _dup in _DOTENV_DUPLICATE_KEYS:
     CONFIG_WARNINGS.append(
-        f"{_dup} is assigned more than once in .env - only the FIRST line is used. A list setting "
-        "takes ONE line with comma-separated entries (e.g. CITADEL_INCLUDE_PATTERNS=.pdf,.txt)"
+        f"{_dup} is assigned more than once in .env - only the FIRST occurrence is considered (and "
+        "none of them when the variable is already set in the environment). A list setting takes "
+        "ONE line with comma-separated entries (e.g. CITADEL_INCLUDE_PATTERNS=.pdf,.txt)"
     )
 
 
