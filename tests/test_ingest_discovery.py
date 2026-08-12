@@ -159,6 +159,151 @@ def test_ignore_patterns_config_resolution(monkeypatch):
     assert config._resolve_ignore_patterns() == ["only.this", "*.foo"]
 
 
+def test_ignore_patterns_accept_a_per_entry_plus_marker(monkeypatch):
+    """The `+` extend-marker counts wherever it is written: once in front of the whole value (the
+    documented spelling) or on every entry (the way a list of independent additions reads). Either
+    way it is stripped from the glob, so a stray `+` can never survive into a pattern that then
+    only matches names literally starting with `+`."""
+    monkeypatch.setenv("CITADEL_IGNORE_PATTERNS", "+*.bak,+~backup*")
+    extended = config._resolve_ignore_patterns()
+    assert extended[: len(config._DEFAULT_IGNORE_PATTERNS)] == list(config._DEFAULT_IGNORE_PATTERNS)
+    assert extended[len(config._DEFAULT_IGNORE_PATTERNS) :] == ["*.bak", "~backup*"]
+
+    # A `+` on a LATER entry alone still means extend (the user's intent is unambiguous).
+    monkeypatch.setenv("CITADEL_IGNORE_PATTERNS", "*.bak,+~backup*")
+    mixed = config._resolve_ignore_patterns()
+    assert mixed[len(config._DEFAULT_IGNORE_PATTERNS) :] == ["*.bak", "~backup*"]
+
+    # A literal leading `+` is still expressible as a character class, which the splitter leaves be.
+    monkeypatch.setenv("CITADEL_IGNORE_PATTERNS", "[+]draft.md")
+    assert config._resolve_ignore_patterns() == ["[+]draft.md"]
+
+
+def test_include_patterns_config_resolution(monkeypatch):
+    """CITADEL_INCLUDE_PATTERNS (the ALLOWLIST): unset means no allowlist; `.pdf`/`pdf` are read as
+    extensions, a real glob is taken verbatim, a stray `+` is tolerated, and entries are deduped."""
+    monkeypatch.delenv("CITADEL_INCLUDE_PATTERNS", raising=False)
+    assert config._resolve_include_patterns() == []
+
+    monkeypatch.setenv("CITADEL_INCLUDE_PATTERNS", ".pdf, .txt \n")
+    assert config._resolve_include_patterns() == ["*.pdf", "*.txt"]
+
+    # A bare word is ambiguous (`Makefile` is a real filename), so BOTH readings are admitted.
+    monkeypatch.setenv("CITADEL_INCLUDE_PATTERNS", "pdf")
+    assert config._resolve_include_patterns() == ["*.pdf", "pdf"]
+
+    monkeypatch.setenv("CITADEL_INCLUDE_PATTERNS", "*.pdf,+*.txt,*.pdf,notes.md")
+    assert config._resolve_include_patterns() == ["*.pdf", "*.txt", "notes.md"]
+
+
+def test_include_patterns_warn_on_a_path_shaped_entry(monkeypatch):
+    """A pattern holding a path separator can never match (matching is per file NAME), so it is
+    recorded as a config warning — `citadel doctor`'s config line — instead of silently admitting
+    nothing."""
+    monkeypatch.setattr(config, "CONFIG_WARNINGS", [], raising=False)
+    monkeypatch.setenv("CITADEL_INCLUDE_PATTERNS", "reports/*.pdf")
+    config._resolve_include_patterns()
+    assert any("CITADEL_INCLUDE_PATTERNS" in w and "reports/*.pdf" in w for w in config.CONFIG_WARNINGS)
+
+
+def test_discovery_allowlist_reads_only_matching_file_types(tmp_citadel, monkeypatch):
+    """With an allowlist configured, discovery walks the whole tree but keeps ONLY the matching
+    files — the "in raw/, read only .pdf and .txt" ask. Sub-folders are still descended into (an
+    allowlist matches files, never directories), and what it filtered out is recorded on the walk."""
+    raw = tmp_citadel.raw
+    (raw / "paper.pdf").write_bytes(b"%PDF-1.4\ntext\n")
+    (raw / "notes.txt").write_text("keep me\n", encoding="utf-8")
+    (raw / "sheet.xlsx").write_bytes(b"PK\x03\x04binary")
+    (raw / "sub").mkdir()
+    (raw / "sub" / "deep.pdf").write_bytes(b"%PDF-1.4\ndeep\n")
+    (raw / "sub" / "readme.md").write_text("skip me\n", encoding="utf-8")
+
+    monkeypatch.setattr(config, "INCLUDE_PATTERNS", ["*.pdf", "*.txt"], raising=False)
+    walk = ingest._discover_walk(None)
+    kept = {str(p.relative_to(raw)).replace("\\", "/") for p, _st in walk.files}
+    filtered = {str(p.relative_to(raw)).replace("\\", "/") for p in walk.not_included}
+    assert kept == {"paper.pdf", "notes.txt", "sub/deep.pdf"}
+    assert filtered == {"sheet.xlsx", "sub/readme.md"}
+
+
+def test_allowlist_matching_is_case_insensitive_and_empty_admits_everything(monkeypatch):
+    """`.PDF` and `.pdf` are one thing (Windows filenames vary), and an unset allowlist admits
+    every name — the default behavior citadel has always had."""
+    monkeypatch.setattr(config, "INCLUDE_PATTERNS", ["*.pdf"], raising=False)
+    assert ingest._is_included_name("Report.PDF")
+    assert ingest._is_included_name("report.pdf")
+    assert not ingest._is_included_name("report.docx")
+
+    monkeypatch.setattr(config, "INCLUDE_PATTERNS", [], raising=False)
+    assert ingest._is_included_name("anything.whatever")
+
+
+def test_ignore_patterns_beat_the_allowlist(tmp_citadel, monkeypatch):
+    """Deny beats allow: whitelisting `*.db` does not resurrect `Thumbs.db`, because the ignore
+    globs are applied first."""
+    raw = tmp_citadel.raw
+    (raw / "Thumbs.db").write_bytes(b"\x00junk")
+    (raw / "records.db").write_bytes(b"real-ish\n")
+
+    monkeypatch.setattr(config, "INCLUDE_PATTERNS", ["*.db"], raising=False)
+    kept = {str(p.relative_to(raw)).replace("\\", "/") for p in ingest._candidates(None)}
+    assert kept == {"records.db"}
+
+
+def test_allowlist_is_bypassed_by_an_explicitly_named_path(tmp_citadel, monkeypatch):
+    """Explicit always wins, exactly as it does for the ignore globs and the size ceiling: naming a
+    file on the command line ingests it even when the allowlist would not admit it."""
+    raw = tmp_citadel.raw
+    (raw / "one-off.docx").write_bytes(b"PK\x03\x04")
+    monkeypatch.setattr(config, "INCLUDE_PATTERNS", ["*.pdf"], raising=False)
+
+    assert ingest._candidates(None) == []
+    assert [p.name for p in ingest._candidates([str(raw / "one-off.docx")])] == ["one-off.docx"]
+
+
+def test_allowlist_ingest_reports_what_it_filtered_out(tmp_citadel, fake_agent, transformer_page, monkeypatch):
+    """An allowlist run ingests only the admitted files and REPORTS the filtered ones — an empty
+    corpus must read as a filter, not as "nothing to do". The filtered files stay untracked: no
+    manifest entry, no failure record."""
+    raw = tmp_citadel.raw
+    fake_agent(transformer_page)
+    (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
+    (raw / "sheet.xlsx").write_bytes(b"PK\x03\x04binary")
+    monkeypatch.setattr(config, "INCLUDE_PATTERNS", ["*.md"], raising=False)
+
+    report = ingest.ingest()
+
+    assert report.processed == ["raw/notes.md"]
+    assert report.not_included == ["raw/sheet.xlsx"]
+    assert "raw/sheet.xlsx" not in manifest.load()
+    assert "raw/sheet.xlsx" not in failures.load()
+    assert "Not included (1 file(s) outside CITADEL_INCLUDE_PATTERNS" in report.render()
+
+
+def test_allowlist_never_reads_an_ingested_source_as_deleted(tmp_citadel, fake_agent, transformer_page, monkeypatch):
+    """Narrowing the allowlist after a corpus is ingested must not look like mass deletion. The
+    excluded files are still on disk, and the deletion sweep only ever CONFIRMS a candidate with
+    ``.exists()`` — so they keep their manifest entries and their wiki pages, they just stop being
+    re-checked (the same contract the size ceiling has)."""
+    raw = tmp_citadel.raw
+    agent = fake_agent(transformer_page)
+    (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
+    # Distinct bytes: identical content would be recognized as a duplicate, not a second source.
+    (raw / "memo.txt").write_text("Attention is all you need, apparently.\n", encoding="utf-8")
+    first = ingest.ingest()
+    assert set(first.processed) == {"raw/notes.md", "raw/memo.txt"}
+
+    # "From now on, read only .md" — memo.txt is excluded from discovery, but never deleted.
+    monkeypatch.setattr(config, "INCLUDE_PATTERNS", ["*.md"], raising=False)
+    agent.reset()
+    second = ingest.ingest()
+
+    assert second.sources_deleted == []
+    assert agent.count == 0  # nothing re-ingested, nothing cleaned up
+    assert "raw/memo.txt" in manifest.load()
+    assert second.not_included == ["raw/memo.txt"]
+
+
 def test_is_ignored_name_is_case_insensitive(monkeypatch):
     """Matching a basename against the ignore globs is case-insensitive (Windows filenames vary),
     and only fires for configured patterns."""

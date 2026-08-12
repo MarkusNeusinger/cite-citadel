@@ -11,6 +11,34 @@ line) means "unset" and keeps the default, and a value that doesn't parse (a non
 unrecognized boolean/mode token) falls back to the default — `citadel doctor`'s config check names
 every such fallback. Booleans accept `1/true/yes/on` and `0/false/no/off`.
 
+### Writing a list setting in `.env`
+
+Several knobs take a **list** (`CITADEL_INCLUDE_PATTERNS`, `CITADEL_IGNORE_PATTERNS`,
+`CITADEL_RAW_DIRS`, `CITADEL_HTTP_ALLOWED_HOSTS`, `CITADEL_HTTP_ALLOWED_ORIGINS`). The `.env` format
+has no multi-line values,
+so **one line is one setting**, entries separated by commas:
+
+```sh
+CITADEL_INCLUDE_PATTERNS=.pdf,.txt,*.md
+```
+
+Repeating the key on a second line does **not** extend it — the first assignment wins and the rest
+are dropped (the same first-wins rule that lets a real environment variable override the file).
+`citadel doctor`'s config check warns when a key is assigned twice, so the silent half of your list
+is never a mystery:
+
+```sh
+CITADEL_IGNORE_PATTERNS=+*.bak
+CITADEL_IGNORE_PATTERNS=+~backup*   # ignored — only the first line is read
+```
+
+The `+` in `CITADEL_IGNORE_PATTERNS` is a **marker, not part of a pattern**: it means "add to the
+built-in defaults instead of replacing them". Write it once in front of the whole value
+(`+*.bak,~backup*`) or on every entry (`+*.bak,+~backup*`) — both mean the same thing, and it is
+always stripped before the glob is matched. (A pattern that must match a real leading `+` writes it
+as a character class: `[+]draft.md`.) Only `CITADEL_IGNORE_PATTERNS` has built-in defaults to
+extend; elsewhere a stray `+` is simply tolerated and ignored.
+
 > **Source of truth:** [`citadel/templates/env.example`](../citadel/templates/env.example) — the
 > commented template `citadel init` writes. Keep this page in sync with it when a knob changes.
 
@@ -129,7 +157,8 @@ prerequisite. **Set it to `0` if every session fails on authentication while the
 | `CITADEL_MAX_SOURCE_CHARS` | `300000` | A source longer than this is ingested over several sequential passes that merge into earlier pages. `0` disables chunking. Images — and PDFs without an extracted text layer — are never chunked. |
 | `CITADEL_RESUME` | `1` | Resume checkpoints for those chunked sources: each completed segment banks the delta it produced (`.citadel_resume/` next to the wiki), so a run that dies at segment N continues there next time instead of re-buying segments 1…N-1. Promotion stays all-or-nothing — nothing partial ever reaches the wiki — and every guard (changed source/model/rules/knobs, a page changed underneath, a replay that no longer validates) falls back to a full restart. `0` turns it off; only chunked sources ever write one. |
 | `CITADEL_DEDUP_BY_BASENAME` | `1` | When several same-folder files share a basename and are all export formats (e.g. `report.pptx` + `report.pdf`), ingest one (PDF → modern Office → legacy) and record the rest as skipped duplicates. |
-| `CITADEL_IGNORE_PATTERNS` | (built-in OS/junk globs) | Case-insensitive globs skipped at discovery (`Thumbs.db`, `.DS_Store`, `~$` locks, editor swap/backup files). A comma/newline list **replaces** the defaults; a `+` prefix **extends** them. |
+| `CITADEL_INCLUDE_PATTERNS` | *(unset — every file)* | The discovery **allowlist**: when set, a raw file is read only if its **name** matches one of these case-insensitive globs — "in `raw/`, read only `.pdf` and `.txt`". Everything else is skipped exactly like an ignore match (never hashed, never ingested, never recorded in the manifest or the failures catalog) but stays **visible**: the run report's *Not included* section, `citadel status`' *Not included* bucket, and a `citadel doctor` line that WARNs when the allowlist admits nothing. Write extensions (`.pdf`), globs (`*.pdf`, `report-*.md`), or exact names (`notes.md`); a bare `pdf` is read as both `*.pdf` and the literal name. Matching is per **file name**, so a path-shaped entry (`reports/*.pdf`) can never match — doctor's config check says so. Directories and git-repo sources are never matched (a repo is folded in as one digest, not as its files). Two escapes stay open: an explicitly named path (`citadel ingest one-off.docx`) is ingested regardless, and an already-ingested source that falls outside a newly narrowed allowlist keeps its pages — it is never read as deleted, it just stops being re-checked. |
+| `CITADEL_IGNORE_PATTERNS` | (built-in OS/junk globs) | The **blocklist**, applied first — deny beats allow, so whitelisting `*.db` does not resurrect `Thumbs.db`. Case-insensitive globs skipped at discovery (`Thumbs.db`, `.DS_Store`, `~$` locks, editor swap/backup files). A comma-separated list **replaces** the defaults; a `+` marker **extends** them (see [Writing a list setting](#writing-a-list-setting-in-env)). |
 | `CITADEL_MAX_SOURCE_BYTES` | `0` (no limit) | Discovery **size** ceiling, in bytes — the complement to the name-matching patterns above. A raw file over it is skipped from the walk's own stat: never opened, never hashed, never ingested, and never recorded in the manifest or the failures catalog. It is *reported*, though — the run report's *Oversized* section and `citadel status`' *Oversized* bucket — so nothing is dropped silently. Set it when a raw root also holds machine data (a folder of multi-GB `.tdms` sensor dumps is useless to a wiki but expensive to scan: every untracked candidate is stream-hashed in full before anything can classify it as unreadable binary). Off by default, because silently skipping a large-but-legitimate source (a 2 GB lecture recording, a scanned archive PDF) would be worse than a slow scan. An explicitly named path (`citadel ingest big.tdms`) bypasses it — explicit always wins — and an already-ingested source that later crosses the ceiling stays in the wiki, it just stops being re-checked. |
 
 ## Audio/video sources (whisper)

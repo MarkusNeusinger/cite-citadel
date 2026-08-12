@@ -109,8 +109,12 @@ CLI (see [configuration — Audio/video sources](configuration.md#audiovideo-sou
 
 - Run `citadel status` — the read-only per-source state table shows exactly what happened to each
   file: ingested, failed, skipped-duplicate, ignored (matched `CITADEL_IGNORE_PATTERNS`), oversized
-  (over `CITADEL_MAX_SOURCE_BYTES`), or pending. An ingested source that produced **zero entries**
-  (no wiki page cites it) is marked `NO PAGES`.
+  (over `CITADEL_MAX_SOURCE_BYTES`), not included (outside `CITADEL_INCLUDE_PATTERNS`), or pending.
+  An ingested source that produced **zero entries** (no wiki page cites it) is marked `NO PAGES`.
+- If you set an **allowlist** (`CITADEL_INCLUDE_PATTERNS`), check it first: a single typo (`*.pdff`,
+  or a path-shaped `reports/*.pdf` — patterns match file *names*) filters the whole corpus away, and
+  the run then looks like a clean pass over nothing. `citadel doctor`'s **include patterns** line
+  WARNs on exactly that, and says how many files the allowlist admits versus filters out.
 - `citadel ingest --retry` re-runs everything stuck in one go: every failed source still on disk
   plus every `NO PAGES` source (as a forced reconcile). No paths needed — it prints the set first.
 - Already-ingested sources are skipped by sha match — that's not a bug. To deliberately re-read one,
@@ -156,6 +160,13 @@ even though every one of them ends up recorded as unreadable binary. Set a **siz
 `citadel status`, never dropped silently; naming a path explicitly (`citadel ingest big.tdms`)
 ingests it anyway. Off by default — see
 [configuration.md](configuration.md#what-gets-ingested).
+
+When the noise is a *file type* rather than a size — a raw root shared with a working directory full
+of exports, archives, or binaries — say what you *do* want instead:
+`CITADEL_INCLUDE_PATTERNS=.pdf,.txt,.md` reads only those and skips everything else at the same
+walk-level cost (never opened, never hashed). It is the allowlist counterpart to
+`CITADEL_IGNORE_PATTERNS`, and the two compose — the ignore globs still win, so OS junk stays out
+even if a whitelisted extension would have matched it.
 
 ### Windows: the agent CLI fails on a mapped network drive (`T:\…`)
 

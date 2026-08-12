@@ -19,6 +19,10 @@ One command answering "is my setup sane?" without touching a byte. Each check em
 - **raw roots** — is every raw root ingest actually walks (``CITADEL_RAW_DIRS``) reachable (a dir
   on disk)? Also WARNs when the primary ``raw/`` was configured OUT of the walk list while holding
   files — those would silently never be ingested.
+- **include patterns** — the optional discovery allowlist (``CITADEL_INCLUDE_PATTERNS``, "read only
+  ``.pdf``/``.txt``"): which globs are in force and how many files they admit. WARNs when it admits
+  nothing while the roots hold files — the one quiet failure of this knob, where ingest reports a
+  clean run over an empty corpus.
 - **wiki placement** — does the wiki dir sit INSIDE a walked raw root (a whole mounted drive as one
   root)? Discovery excludes the wiki either way, so this is a clarity WARN, not data loss.
 - **child paths** — the UNC advisory: ``resolve()`` rewrites a Windows mapped drive into its UNC
@@ -248,6 +252,40 @@ def check_raw_roots() -> Check:
             "are never scanned; include `raw` in CITADEL_RAW_DIRS to walk it",
         )
     return Check(OK, "raw roots", f"{len(roots)} walked raw root(s) reachable")
+
+
+def check_include_patterns() -> Check:
+    """The optional discovery ALLOWLIST (``CITADEL_INCLUDE_PATTERNS``): OK-and-silent when it is
+    unset (every file is a candidate, citadel's default), else it says which globs are in force and
+    how many files under the walked roots they admit.
+
+    WARN when the allowlist admits NOTHING while files are there to admit — the one way this knob
+    fails, and it fails quietly: ``citadel ingest`` then finds no sources and reports a successful
+    run over an empty corpus, which reads exactly like "everything is already ingested". A typo
+    (``*.pdff``), a pattern written as a path (``raw/*.pdf``), or an extension the tree does not
+    hold all land here. Only walks when the knob is set, so the default costs nothing."""
+    patterns = config.INCLUDE_PATTERNS
+    if not patterns:
+        return Check(OK, "include patterns", "no allowlist configured - every raw file is a candidate")
+    listed = ", ".join(patterns)
+    # Imported lazily: doctor must stay importable (and fast) without pulling in the whole ingest
+    # stack, and this is the only check that needs a discovery walk at all.
+    from . import ingest
+
+    try:
+        walk = ingest._discover_walk(None)
+    except OSError as exc:  # a dead mount: report the config, not a walk failure
+        return Check(WARN, "include patterns", f"allowlist {listed} - could not scan the raw roots: {exc}")
+    admitted, excluded = len(walk.files), len(walk.not_included)
+    if admitted == 0 and excluded > 0:
+        return Check(
+            WARN,
+            "include patterns",
+            f"CITADEL_INCLUDE_PATTERNS ({listed}) admits NO file under the walked raw roots, while "
+            f"{excluded} file(s) are there - every ingest will find nothing; patterns match file "
+            "NAMES (e.g. '*.pdf' or '.pdf'), not paths",
+        )
+    return Check(OK, "include patterns", f"allowlist {listed} - {admitted} file(s) admitted, {excluded} filtered out")
 
 
 def check_wiki_placement() -> Check:
@@ -687,6 +725,7 @@ def run() -> DoctorReport:
             check_agent_cli(),
             check_ingest_model(),
             check_raw_roots(),
+            check_include_patterns(),
             check_wiki_placement(),
             check_child_paths(),
             check_manifest(),
