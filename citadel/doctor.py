@@ -43,6 +43,10 @@ One command answering "is my setup sane?" without touching a byte. Each check em
 - **audio** — ``CITADEL_AUDIO_SUPPORT=1`` needs a whisper-class CLI on PATH
   (``CITADEL_WHISPER_CLI``); WARN when the configured binary is missing — every audio/video source
   would fail until it is installed. A plain OK note while the knob is off.
+- **chunk budget** — what a large source is actually split on, since two knobs decide it: the
+  ``CITADEL_MAX_SOURCE_CHARS`` ceiling and, when stated, the ``CITADEL_MODEL_CONTEXT_TOKENS``
+  budget derived from the model's context. Shows the arithmetic, and WARNs when the stated context
+  is so small that the segment floor had to engage.
 - **HTTP serve** — the opt-in Streamable HTTP transport (``citadel serve --http``): a plain "stdio
   only" note while no ``CITADEL_HTTP_TOKEN`` is set, otherwise where it would listen and whether the
   mutating tools are exposed — WARNing on a token too short for ``serve --http`` to accept (a
@@ -483,6 +487,52 @@ def check_http_serve() -> Check:
     )
 
 
+def check_chunk_budget() -> Check:
+    """What a large source is actually split on — the one line that makes two interacting knobs
+    legible. ``CITADEL_MAX_SOURCE_CHARS`` is the ceiling; a stated ``CITADEL_MODEL_CONTEXT_TOKENS``
+    tightens it to a fraction of the model's context, because a session spends most of its window on
+    the rulebook, the wiki pages it reads and writes, and tool output rather than on the source.
+
+    WARNs in exactly one case: the stated context is small enough that the derived budget fell below
+    :data:`config.MIN_CHUNK_CHARS` and the floor had to clamp it. That is worth saying out loud —
+    the floor keeps the segment count bounded, but a context that small is unlikely to complete a
+    session at all, so the real problem is the backend, not the budget.
+
+    Deliberately NOT a segment estimate over the corpus: the manifest holds each source's BYTES, and
+    bytes are not extractable characters for exactly the classes that chunk (a PDF's bytes dwarf its
+    text layer, a `.docx` is a ZIP). A line that lies is worse than no line."""
+    effective = config.source_chunk_chars()
+    stated = config.MODEL_CONTEXT_TOKENS
+    if effective <= 0:
+        return Check(
+            OK, "chunk budget", "large-source chunking off (CITADEL_MAX_SOURCE_CHARS=0) - every source is one pass"
+        )
+    if stated <= 0:
+        return Check(
+            OK,
+            "chunk budget",
+            f"a source over {effective} chars (~{effective // 4} tokens) is folded in over several "
+            "passes - set CITADEL_MODEL_CONTEXT_TOKENS to your model's context for a small-context "
+            "backend, which derives a finer budget",
+        )
+    derived = config.context_budget_chars()
+    detail = (
+        f"a source over {effective} chars is folded in over several passes - derived from the "
+        f"stated {stated}-token model context"
+    )
+    if derived < config.MIN_CHUNK_CHARS:
+        return Check(
+            WARN,
+            "chunk budget",
+            f"{detail}, but that budget ({derived} chars) fell below the {config.MIN_CHUNK_CHARS}-char "
+            "segment floor and was clamped to it; a session's rules alone are ~13k tokens, so a "
+            "context this small is unlikely to complete a session at all",
+        )
+    if effective < derived:
+        detail += f" but capped by CITADEL_MAX_SOURCE_CHARS={config.MAX_SOURCE_CHARS}"
+    return Check(OK, "chunk budget", detail)
+
+
 def check_resume() -> Check:
     """State echo for resume checkpoints (:mod:`citadel.resume`), naming any that are waiting.
 
@@ -734,6 +784,7 @@ def run() -> DoctorReport:
             check_pdf_mode(),
             check_pdf_text(),
             check_audio_support(),
+            check_chunk_budget(),
             check_resume(),
             check_http_serve(),
             check_wiki_git(),

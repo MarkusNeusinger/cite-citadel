@@ -120,9 +120,9 @@ class Plan:
     for an earlier run's partial work to be reusable.
 
     - ``shape`` fingerprints the segment plan by CONTENT (each prepared segment's text), never by
-      the temp paths it is materialized to: a re-tuned ``CITADEL_MAX_SOURCE_CHARS``, a different
-      Office/PDF extraction or a re-transcription re-splits the source, so "segment 3" would no
-      longer mean the same text.
+      the temp paths it is materialized to: a re-tuned chunk budget (``CITADEL_MAX_SOURCE_CHARS``
+      or ``CITADEL_MODEL_CONTEXT_TOKENS``), a different Office/PDF extraction or a re-transcription
+      re-splits the source, so "segment 3" would no longer mean the same text.
     - ``knobs`` fingerprints the prompt-shaping settings ``rules_version`` does NOT cover (wiki
       language, style profiles, PDF mode, image support) — each one changes what the agent writes.
     """
@@ -482,7 +482,12 @@ def knob_stamp() -> str:
     embedded images came along, how many OTHER sources a session may consult. Flipping one between
     runs and then merging the new segments into the old ones would produce a page cluster no single
     run could — half English, half German — so a flip invalidates the checkpoint like any other
-    identity change."""
+    identity change.
+
+    Deliberately NOT here: the chunk-budget knobs (``CITADEL_MAX_SOURCE_CHARS``,
+    ``CITADEL_MODEL_CONTEXT_TOKENS``). They change the segment PLAN, not the prompt, so they already
+    reach this checkpoint's identity through ``Plan.shape`` — adding them here would be redundant,
+    not safer."""
     return "|".join(
         [
             config.WIKI_LANG,

@@ -1064,11 +1064,77 @@ DEDUP_BY_BASENAME: bool = _bool_env("CITADEL_DEDUP_BY_BASENAME", True)
 # characters is ingested in several sequential agent passes (segments split on paragraph
 # boundaries), so a file too big for one context window still folds in fully — each pass MERGES
 # into the pages the earlier passes created. 0 disables chunking (every source is one pass, the old
-# behavior). PDFs and images are never chunked (their text isn't extracted here — the agent reads
-# them whole). The default (~75k tokens) is generous — modern models rarely have less context — so
-# only genuinely large sources are split; lower it for a small-context backend, raise it (or set 0
-# to disable) for a very large one.
+# behavior). Images are never chunked (there is no text to split). A PDF IS chunked — as line
+# windows over its extracted text — whenever the text-layer pre-pass produced an extraction
+# (CITADEL_PDF_TEXT); only a PDF without a usable text layer is read whole by the agent. The
+# default (~75k tokens) is generous — modern models rarely have less context — so only genuinely
+# large sources are split; lower it for a small-context backend, raise it (or set 0 to disable) for
+# a very large one. CITADEL_MODEL_CONTEXT_TOKENS (below) tightens it without touching this value.
 MAX_SOURCE_CHARS: int = _int_env("CITADEL_MAX_SOURCE_CHARS", 300000)
+
+
+def _model_context_tokens() -> int:
+    """Resolve ``CITADEL_MODEL_CONTEXT_TOKENS`` to a token count >= 0, where 0 means "not stated"
+    (the default — nothing about chunking changes). A negative value is a misconfiguration, not a
+    spelling of "unlimited": it falls back to 0 and records a :data:`CONFIG_WARNINGS` entry, so
+    ``citadel doctor`` names it. A value that is merely *small* is not rejected here — that
+    judgement is advisory and belongs to doctor's chunk-budget check, not to import time."""
+    value = _int_env("CITADEL_MODEL_CONTEXT_TOKENS", 0)
+    if value < 0:
+        CONFIG_WARNINGS.append(f"CITADEL_MODEL_CONTEXT_TOKENS={value} is not a token count (>= 0) - using 0 (unset)")
+        return 0
+    return value
+
+
+# The ingest model's usable context, in TOKENS, as stated by the operator — 0 (the default) means
+# "not stated" and leaves chunking exactly as MAX_SOURCE_CHARS defines it.
+#
+# Why a second knob rather than "just lower MAX_SOURCE_CHARS": the char threshold is the right
+# ceiling but the wrong UNIT for the question a local-model operator is actually answering. They
+# know their `n_ctx` (llama.cpp/ollama print it); they do not know what citadel spends before a byte
+# of source is read — every session reads schema.md + core.md + a task brief + a format brief + the
+# genre briefs, ~12-13k tokens of rulebook, and then reads and writes wiki pages and tool output on
+# top. That asymmetry is the whole point: the operator states the context, citadel owns the headroom
+# math. Handing them a source-window budget instead would invite exactly the value that fails — the
+# full prompt budget, with no room for anything else.
+_SOURCE_WINDOW_FRACTION = 0.10
+_CHARS_PER_TOKEN = 4
+
+# The segment floor, in characters. Every segment is a full agent session that re-pays the ~13k-token
+# rulebook read, so below this the fixed overhead dwarfs the payload and no segment carries enough
+# context to be worth a page edit. Clamping here also makes a segment explosion impossible: any
+# stated context under ~20k tokens resolves to this same window rather than to an unbounded pass
+# count. Public because doctor's chunk-budget check compares against it.
+MIN_CHUNK_CHARS = 8000
+
+MODEL_CONTEXT_TOKENS: int = _model_context_tokens()
+
+
+def context_budget_chars() -> int:
+    """The source-window budget the stated model context implies, in characters — 0 when
+    :data:`MODEL_CONTEXT_TOKENS` is unset. Unclamped on purpose: :func:`source_chunk_chars` applies
+    the floor and the ceiling, and ``citadel doctor`` needs the raw figure to say WHY the floor
+    engaged. The one home for this arithmetic, so doctor never re-derives it."""
+    if MODEL_CONTEXT_TOKENS <= 0:
+        return 0
+    return int(MODEL_CONTEXT_TOKENS * _SOURCE_WINDOW_FRACTION * _CHARS_PER_TOKEN)
+
+
+def source_chunk_chars() -> int:
+    """The EFFECTIVE large-source chunking threshold — what ingest actually splits on.
+
+    ``MAX_SOURCE_CHARS`` when no model context is stated (the default, so nothing changes for an
+    existing workspace) or when chunking is switched off outright with ``CITADEL_MAX_SOURCE_CHARS=0``
+    — a 0 there is an explicit "never chunk", and a stated context is a BUDGET, never an override.
+    Otherwise the smaller of the two, floored at :data:`MIN_CHUNK_CHARS`.
+
+    Read at call time (``config.MAX_SOURCE_CHARS`` is what tests monkeypatch), never cached."""
+    if MAX_SOURCE_CHARS <= 0:
+        return MAX_SOURCE_CHARS
+    budget = context_budget_chars()
+    if budget <= 0:
+        return MAX_SOURCE_CHARS
+    return min(MAX_SOURCE_CHARS, max(MIN_CHUNK_CHARS, budget))
 
 
 def _max_source_bytes() -> int:

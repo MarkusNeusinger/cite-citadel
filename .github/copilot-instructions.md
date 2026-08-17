@@ -219,8 +219,11 @@ addressing them through `ingest`. The flow per source:
   reads the `[HH:MM:SS]`-stamped transcript; a pending PDF (pypdf is a bundled dep —
   `CITADEL_PDF_TEXT`, default auto) gets its text layer extracted (`pdftext.py`, content-addressed
   cache `.citadel_pdftext/`) and the agent reads the `[p. N]`-marked extraction, falling back to
-  the direct agent read when there is no usable text layer; a pending source larger than
-  `CITADEL_MAX_SOURCE_CHARS` is folded in over several passes (all against one staging copy — see
+  the direct agent read when there is no usable text layer; a pending source larger than the
+  effective chunk budget (`config.source_chunk_chars()` — the `CITADEL_MAX_SOURCE_CHARS` ceiling,
+  tightened to a fraction of a stated `CITADEL_MODEL_CONTEXT_TOKENS` and floored at
+  `MIN_CHUNK_CHARS`, so a small-context local model segments finer without the char threshold being
+  dialed down globally) is folded in over several passes (all against one staging copy — see
   the promote bullet below). `ingest --force <paths>` bypasses the sha short-circuit: the named
   sources land in pending as reconciles (a repo re-digests in full), and the manifest is re-stamped
   with the current model + rules version. `ingest --reingest <paths>` rides force's partitioning
@@ -611,7 +614,12 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   `CITADEL_WHISPER_MODEL`/`CITADEL_WHISPER_TIMEOUT` tuning the seam), `CITADEL_JOBS` (how many sources ingest folds in
   concurrently; 1 = serial), `CITADEL_STALL_LIMIT` (the broken-agent circuit breaker: stop the run
   after N consecutive sources come back with no wiki changes; 0 = off), `CITADEL_MAX_SOURCE_CHARS`
-  (large-source chunking threshold), `CITADEL_RESUME` (resume checkpoints for those chunked
+  (large-source chunking threshold — the absolute ceiling), `CITADEL_MODEL_CONTEXT_TOKENS` (the
+  ingest model's usable context in TOKENS, unset by default; when stated, the per-pass source window
+  is capped at 10% of it at ~4 chars/token and floored at 8000 chars, so a small-context local model
+  segments finer — and, because only chunked sources checkpoint, becomes resumable — while the two
+  compose by `min()` and a `MAX_SOURCE_CHARS=0` still means "never chunk"), `CITADEL_RESUME`
+  (resume checkpoints for those chunked
   sources: continue at the segment an interrupted run died on instead of re-paying for the earlier
   ones; default on), `CITADEL_DEDUP_BY_BASENAME` (skip same-basename document
   duplicates), `CITADEL_IGNORE_PATTERNS` (the BLOCKLIST: OS/junk-file globs skipped at discovery —

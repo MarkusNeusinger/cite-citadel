@@ -59,6 +59,23 @@ dropped automatically whenever it could no longer be trusted — you edited the 
 full. To force that yourself, delete `.citadel_resume/` next to the wiki dir, or set
 `CITADEL_RESUME=0`.
 
+A source that is large for **your model** but not large in absolute terms is the case that bites
+hardest against a local backend: it plans a single pass, the session's context fills up mid-way, and
+because a single-pass source never checkpoints, every failed attempt starts over from nothing. Tell
+citadel what the model can hold and both halves resolve — the source is split, and the splits are
+resumable:
+
+```bash
+CITADEL_MODEL_CONTEXT_TOKENS=100000   # your n_ctx; derives a 40 000-char source window
+CITADEL_MAX_SOURCE_CHARS=25000        # optional hard ceiling — the smaller of the two wins
+```
+
+`citadel doctor` prints the resolved *chunk budget*, so you can check the arithmetic before paying
+for a run. Watch out for a second, independent limit while you are there: if the proxy or gateway in
+front of your model caps a single HTTP request (a 10-minute cut is common), a slow model can lose a
+long request and, with it, its prompt cache — which shows up as the same run getting slower rather
+than as an error. Smaller windows shorten each request and keep it under such a cap.
+
 ### Windows: `citadel` / `citadel.exe` is blocked or missing
 
 Antivirus can quarantine the `citadel.exe` shim `uv` generates. Use the portable invocation

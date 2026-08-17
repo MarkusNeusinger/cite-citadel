@@ -8,6 +8,38 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`CITADEL_MODEL_CONTEXT_TOKENS` — state your model's context, get a chunk budget that fits it.**
+  Large-source chunking was governed by one number, `CITADEL_MAX_SOURCE_CHARS`, whose 300 000-char
+  default assumes a roomy hosted model. Against a **local** backend that assumption fails in a
+  particularly expensive way: a 55-page PDF extracts to well under the threshold, so it plans a
+  *single* pass, the session's context fills up part-way through, and the run dies — and because
+  resume checkpoints only exist for sources that chunk, nothing was ever banked, so the next attempt
+  starts from zero. Lowering the char threshold works, but it is the wrong unit (an operator knows
+  their `n_ctx`, not a character count) and the wrong scope (it applies to every source in every
+  workspace). The new knob is stated in **tokens** and derives the budget: the per-pass source window
+  is capped at 10% of the stated context at ~4 chars/token, floored at 8 000 chars so the segment
+  count can never run away. The fraction is deliberately small, because the source is only one claim
+  on a session's window — every session also reads the rulebook (~12–13k tokens before a byte of
+  source), searches the wiki, reads and writes pages, and carries every tool result along. The two
+  knobs compose by `min()`, so `MAX_SOURCE_CHARS` remains the hard ceiling and `=0` there still means
+  "never chunk": a stated context is a budget, never an override. Unset — the default — nothing
+  changes at all. The second half of the bug fixes itself on the way: a source that now chunks is a
+  source that now **checkpoints**, so an interrupted import continues at the segment it died on
+  instead of re-buying the ones before it. `citadel doctor` gained a *chunk budget* line that shows
+  what the two knobs actually resolve to, and WARNs when a stated context is small enough that the
+  segment floor had to clamp it.
+- **Segment edges no longer silently drop a fact they cut in half.** Segments are packed by whole
+  paragraphs or whole lines — never mid-line — but never by *meaning*, so a sentence, table row, or
+  list item can begin in one window and finish in the next; the rules said to ingest only what the
+  segment contains and not to invent continuations, which is right about fabrication and wrong about
+  loss. For the sources where the prepared file holds the WHOLE text and the window is only a line
+  range (PDF extractions and transcripts), the rules now say the cut unit may be read past the edge
+  to be seen whole, while ownership stays put: fold it in only if it **begins** inside your window,
+  cite the range it actually occupies even where that crosses the edge, and leave a unit that began
+  earlier to the pass that owned it. A physically sliced segment file is unchanged — there, the
+  slice really is all there is. This matters more now that a stated model context makes segment
+  boundaries more frequent.
+
 - **`CITADEL_INCLUDE_PATTERNS` — an allowlist for discovery ("in `raw/`, read only `.pdf` and
   `.txt`").** Deciding what citadel reads was a one-sided affair: `CITADEL_IGNORE_PATTERNS` could
   name what to keep out, so a raw root that mostly holds files you do *not* want folded in had to be

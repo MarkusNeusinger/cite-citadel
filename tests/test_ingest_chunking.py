@@ -218,3 +218,86 @@ def test_invalid_segment_fails_fast_and_discards_whole_source(tmp_citadel, fake_
     assert not (wiki / "misc" / "big.md").exists()  # segment 1's clean work discarded too
     assert not (wiki / "misc" / "invalid.md").exists()  # the invalid page never reached live
     assert "raw/big.txt" not in tmp_citadel.read_manifest()  # retried in full next run
+
+
+# --- The chunk budget: CITADEL_MAX_SOURCE_CHARS as ceiling, a stated model context as budget ---
+#
+# `config.source_chunk_chars()` is the ONE value ingest splits on (`_prepare_passes`) and the one
+# hashed into a resume checkpoint's segment shape (`_plan_shape`). These pin its composition, which
+# is deliberately asymmetric: the char threshold is an absolute ceiling, a stated model context only
+# ever tightens it, and neither can talk the other into chunking a source that was told not to.
+
+
+def test_stated_context_derives_a_finer_chunk_budget(monkeypatch):
+    """A stated model context caps the per-pass source window at 10% of it (~4 chars/token), well
+    under the generous char default — this is the whole point of the knob."""
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 300000)
+    monkeypatch.setattr(config, "MODEL_CONTEXT_TOKENS", 100000)
+    assert config.context_budget_chars() == 40000
+    assert config.source_chunk_chars() == 40000
+
+
+def test_unset_context_leaves_the_char_threshold_alone(monkeypatch):
+    """The default. An existing workspace that never heard of the new knob must chunk exactly where
+    it always did — this is the pin against a silent behavior change for every current user."""
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 300000)
+    monkeypatch.setattr(config, "MODEL_CONTEXT_TOKENS", 0)
+    assert config.context_budget_chars() == 0
+    assert config.source_chunk_chars() == 300000
+
+
+def test_max_source_chars_still_wins_when_lower(monkeypatch):
+    """The two compose by min(): the char threshold stays the hard ceiling, so an operator who wants
+    a window tighter than the derived one keeps the direct override they always had."""
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 25000)
+    monkeypatch.setattr(config, "MODEL_CONTEXT_TOKENS", 100000)
+    assert config.source_chunk_chars() == 25000
+
+
+def test_chunking_off_beats_a_stated_context(monkeypatch):
+    """CITADEL_MAX_SOURCE_CHARS=0 is an explicit "never chunk". A stated context is a BUDGET, not an
+    override, so it must not switch chunking back on behind the operator's back."""
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 0)
+    monkeypatch.setattr(config, "MODEL_CONTEXT_TOKENS", 100000)
+    assert config.source_chunk_chars() == 0
+
+
+def test_tiny_stated_context_clamps_to_the_segment_floor(monkeypatch):
+    """Every segment is a full session that re-pays the rulebook read, so the budget is floored: no
+    stated context, however small, can produce an unbounded number of tiny passes."""
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 300000)
+    monkeypatch.setattr(config, "MODEL_CONTEXT_TOKENS", 4000)
+    assert config.context_budget_chars() < config.MIN_CHUNK_CHARS  # what doctor WARNs about
+    assert config.source_chunk_chars() == config.MIN_CHUNK_CHARS
+
+
+def test_stated_context_segments_a_source_the_char_threshold_would_not(tmp_citadel, fake_agent, cite_page, monkeypatch):
+    """End-to-end: the reported bug. A source comfortably UNDER MAX_SOURCE_CHARS — one that plans a
+    single pass today and blows a small model's context — is split once the model's context is
+    stated, with no change to the char threshold."""
+    raw = tmp_citadel.raw
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 300000)  # untouched: alone it would NOT split
+    monkeypatch.setattr(config, "MODEL_CONTEXT_TOKENS", 50000)  # -> a 20000-char window
+    body = _paras(1100)
+    assert len(body) < config.MAX_SOURCE_CHARS  # the premise: not "large" by the char threshold
+    (raw / "big.txt").write_text(body, encoding="utf-8")
+
+    calls: list[dict] = []
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+        assert read_path is not None and segment is not None
+        calls.append({"segment": segment, "content": Path(read_path).read_text(encoding="utf-8")})
+        if segment[0] == 1:
+            cite_page("misc/big.md", rel_key, "A fact from the big source.")
+
+    fake_agent(side_effect=fake)
+    report = ingest.ingest()
+
+    n = len(calls)
+    assert n >= 3  # actually split, several times over
+    assert report.processed == ["raw/big.txt"]
+    assert [c["segment"] for c in calls] == [(i, n) for i in range(1, n + 1)]
+    assert all(len(c["content"]) <= 20000 for c in calls)  # each within the derived window
+    joined = "\n".join(c["content"] for c in calls)
+    for i in (0, 550, 1099):
+        assert f"Paragraph number {i} " in joined  # start, middle and end all covered

@@ -1283,3 +1283,37 @@ def test_stream_subprocess_timeout_kills_child_and_carries_partial(monkeypatch, 
 
     assert exc.value.output == "partial 1\npartial 2\n"  # partial transcript preserved on the exc
     assert created["proc"].killed  # the hung child was killed
+
+
+def test_chunked_pdf_pass_carries_the_window_and_keeps_the_pdf_brief(tmp_citadel):
+    """A chunked PDF pass must arrive with BOTH halves of the contract, on EVERY segment: the line
+    window that bounds it, and `formats/pdf.md` — which is where the cite-the-original rule, the
+    `lines A-B` locator rule and the read-past-a-cut-edge permission live. The `source` policy drops
+    its brief once a segment is set; the PDF policy must NOT, or a later segment would be grounded
+    by nothing."""
+    (tmp_citadel.raw / "report.pdf").write_bytes(b"%PDF-1.7\nfake body\n")
+    prompt = llm._build_instruction("raw/report.pdf", "pdf", "/tmp/okf_extract_x/report.md", (3, 8), (240, 480))
+
+    assert _ref("formats/pdf.md") in prompt  # kept on a later segment, not just the first
+    assert "- Segment: part 3 of 8" in prompt
+    assert "Extracted text window for THIS pass: lines 240-480" in prompt
+    assert "holds the WHOLE extracted text" in prompt  # ... so reading past a cut edge is possible
+    assert "raw/report.pdf" in prompt  # the original stays the source of record
+
+
+def test_pdf_and_transcript_briefs_permit_reading_a_cut_unit_whole(tmp_citadel):
+    """Windows are packed by whole lines, never by meaning, so a sentence or table row can straddle
+    an edge. Both windowed formats must say the cut unit may be read past the edge AND that
+    ownership does not move with it — otherwise a straddling fact is either dropped or ingested
+    twice."""
+    for name in ("formats/pdf.md", "formats/transcripts.md"):
+        brief = (REAL_RULES_DIR / name).read_text(encoding="utf-8").lower()
+        assert "past" in brief and "edge" in brief, name  # may read beyond the window edge
+        assert "begins" in brief, name  # ... but only the pass it BEGINS in folds it in
+
+
+def test_ingest_task_brief_distinguishes_a_window_from_a_sliced_segment():
+    """The generic segment section must not promise the read-past-the-edge escape to a source that
+    was handed a physically sliced file — there the slice really is all there is."""
+    brief = (REAL_RULES_DIR / "tasks/ingest.md").read_text(encoding="utf-8").lower()
+    assert "sliced" in brief and "all there is" in brief
