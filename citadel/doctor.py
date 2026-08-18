@@ -493,10 +493,13 @@ def check_chunk_budget() -> Check:
     tightens it to a fraction of the model's context, because a session spends most of its window on
     the rulebook, the wiki pages it reads and writes, and tool output rather than on the source.
 
-    WARNs in exactly one case: the stated context is small enough that the derived budget fell below
-    :data:`config.MIN_CHUNK_CHARS` and the floor had to clamp it. That is worth saying out loud —
-    the floor keeps the segment count bounded, but a context that small is unlikely to complete a
-    session at all, so the real problem is the backend, not the budget.
+    WARNs in exactly one case: the floor ACTUALLY bound the result — the stated context derived a
+    budget below :data:`config.MIN_CHUNK_CHARS` and nothing else was tighter. That is worth saying
+    out loud, because the floor keeps the segment count bounded but a context that small is unlikely
+    to complete a session at all, so the real problem is the backend, not the budget. A derived
+    budget under the floor does NOT by itself mean the floor bound anything: an operator whose
+    ``CITADEL_MAX_SOURCE_CHARS`` sits below the floor is capped by that ceiling instead, and saying
+    "clamped to the floor" there would name the wrong knob.
 
     Deliberately NOT a segment estimate over the corpus: the manifest holds each source's BYTES, and
     bytes are not extractable characters for exactly the classes that chunk (a PDF's bytes dwarf its
@@ -516,10 +519,16 @@ def check_chunk_budget() -> Check:
             "backend, which derives a finer budget",
         )
     derived = config.context_budget_chars()
+    floored = max(config.MIN_CHUNK_CHARS, derived)
     detail = (
         f"a source over {effective} chars is folded in over several passes - derived from the "
         f"stated {stated}-token model context"
     )
+    # The ceiling is checked FIRST, against the floored budget: whenever it is the tighter of the
+    # two it is what produced `effective`, whatever the raw derivation was. Naming the floor here
+    # would credit a knob that never applied.
+    if effective < floored:
+        return Check(OK, "chunk budget", f"{detail} but capped by CITADEL_MAX_SOURCE_CHARS={config.MAX_SOURCE_CHARS}")
     if derived < config.MIN_CHUNK_CHARS:
         return Check(
             WARN,
@@ -528,8 +537,6 @@ def check_chunk_budget() -> Check:
             "segment floor and was clamped to it; a session's rules alone are ~13k tokens, so a "
             "context this small is unlikely to complete a session at all",
         )
-    if effective < derived:
-        detail += f" but capped by CITADEL_MAX_SOURCE_CHARS={config.MAX_SOURCE_CHARS}"
     return Check(OK, "chunk budget", detail)
 
 

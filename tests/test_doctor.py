@@ -923,3 +923,19 @@ def test_chunk_budget_warns_when_the_stated_context_is_too_small(monkeypatch):
     c = doctor.check_chunk_budget()
     assert c.status == doctor.WARN
     assert str(config.MIN_CHUNK_CHARS) in c.detail
+
+
+def test_chunk_budget_credits_the_ceiling_not_the_floor_when_the_ceiling_is_lower(monkeypatch):
+    """Regression: a derived budget under MIN_CHUNK_CHARS does NOT mean the floor bound the result.
+    With CITADEL_MAX_SOURCE_CHARS set below the floor, the CEILING is what produced the effective
+    value, and the line must say so — claiming "clamped to the 8000-char segment floor" would name a
+    knob that never applied and send the operator to the wrong setting."""
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 5000)
+    monkeypatch.setattr(config, "MODEL_CONTEXT_TOKENS", 10000)  # derives 4000 — under the floor
+    assert config.context_budget_chars() < config.MIN_CHUNK_CHARS  # the trap
+    assert config.source_chunk_chars() == 5000  # ... but the ceiling is what binds
+
+    c = doctor.check_chunk_budget()
+    assert c.status == doctor.OK  # not the floor WARN
+    assert "5000" in c.detail and "CITADEL_MAX_SOURCE_CHARS" in c.detail
+    assert "floor" not in c.detail

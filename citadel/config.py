@@ -1064,9 +1064,10 @@ DEDUP_BY_BASENAME: bool = _bool_env("CITADEL_DEDUP_BY_BASENAME", True)
 # characters is ingested in several sequential agent passes (segments split on paragraph
 # boundaries), so a file too big for one context window still folds in fully — each pass MERGES
 # into the pages the earlier passes created. 0 disables chunking (every source is one pass, the old
-# behavior). Images are never chunked (there is no text to split). A PDF IS chunked — as line
-# windows over its extracted text — whenever the text-layer pre-pass produced an extraction
-# (CITADEL_PDF_TEXT); only a PDF without a usable text layer is read whole by the agent. The
+# behavior). Images are never chunked (there is no text to split). A PDF is chunked the same way any
+# other source is — only once its text exceeds the threshold — but as line windows over the
+# extraction the text-layer pre-pass produced (CITADEL_PDF_TEXT), never as sliced files; a PDF
+# without a usable text layer has no extractable text here and is read whole by the agent. The
 # default (~75k tokens) is generous — modern models rarely have less context — so only genuinely
 # large sources are split; lower it for a small-context backend, raise it (or set 0 to disable) for
 # a very large one. CITADEL_MODEL_CONTEXT_TOKENS (below) tightens it without touching this value.
