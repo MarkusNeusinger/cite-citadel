@@ -835,6 +835,7 @@ def test_run_emits_the_full_check_inventory(tmp_citadel, monkeypatch):
         "PDF mode",
         "PDF text",
         "audio",
+        "chunk budget",
         "resume",
         "HTTP serve",
         "wiki git",
@@ -873,3 +874,68 @@ def test_manifest_with_non_utf8_bytes_reports_corrupt_not_crash(tmp_citadel):
     check = doctor.check_manifest()
     assert check.status != doctor.FAIL or "corrupt" in check.detail  # WARN with the corrupt message
     assert "corrupt" in check.detail or "not valid" in check.detail
+
+
+# --- chunk budget ------------------------------------------------------------------------------
+
+
+def test_chunk_budget_echoes_the_derived_window(monkeypatch):
+    """Two knobs decide where a large source splits, so doctor shows the arithmetic rather than
+    either input on its own."""
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 300000)
+    monkeypatch.setattr(config, "MODEL_CONTEXT_TOKENS", 100000)
+    c = doctor.check_chunk_budget()
+    assert (c.status, c.name) == (doctor.OK, "chunk budget")
+    assert "40000" in c.detail and "100000" in c.detail
+
+
+def test_chunk_budget_names_the_char_ceiling_when_it_caps_the_budget(monkeypatch):
+    """When the operator set both and the char threshold is the tighter one, say so — otherwise the
+    line reads as if the stated context produced a number it did not."""
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 25000)
+    monkeypatch.setattr(config, "MODEL_CONTEXT_TOKENS", 100000)
+    c = doctor.check_chunk_budget()
+    assert c.status == doctor.OK
+    assert "25000" in c.detail and "CITADEL_MAX_SOURCE_CHARS" in c.detail
+
+
+def test_chunk_budget_reports_chunking_off(monkeypatch):
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 0)
+    monkeypatch.setattr(config, "MODEL_CONTEXT_TOKENS", 100000)
+    c = doctor.check_chunk_budget()
+    assert c.status == doctor.OK
+    assert "off" in c.detail
+
+
+def test_chunk_budget_points_at_the_knob_when_no_context_is_stated(monkeypatch):
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 300000)
+    monkeypatch.setattr(config, "MODEL_CONTEXT_TOKENS", 0)
+    c = doctor.check_chunk_budget()
+    assert c.status == doctor.OK
+    assert "CITADEL_MODEL_CONTEXT_TOKENS" in c.detail
+
+
+def test_chunk_budget_warns_when_the_stated_context_is_too_small(monkeypatch):
+    """The floor keeps the segment count bounded, but a context this small will not finish a session
+    at all — the WARN names the real problem, not just the clamp."""
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 300000)
+    monkeypatch.setattr(config, "MODEL_CONTEXT_TOKENS", 4000)
+    c = doctor.check_chunk_budget()
+    assert c.status == doctor.WARN
+    assert str(config.MIN_CHUNK_CHARS) in c.detail
+
+
+def test_chunk_budget_credits_the_ceiling_not_the_floor_when_the_ceiling_is_lower(monkeypatch):
+    """Regression: a derived budget under MIN_CHUNK_CHARS does NOT mean the floor bound the result.
+    With CITADEL_MAX_SOURCE_CHARS set below the floor, the CEILING is what produced the effective
+    value, and the line must say so — claiming "clamped to the 8000-char segment floor" would name a
+    knob that never applied and send the operator to the wrong setting."""
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 5000)
+    monkeypatch.setattr(config, "MODEL_CONTEXT_TOKENS", 10000)  # derives 4000 — under the floor
+    assert config.context_budget_chars() < config.MIN_CHUNK_CHARS  # the trap
+    assert config.source_chunk_chars() == 5000  # ... but the ceiling is what binds
+
+    c = doctor.check_chunk_budget()
+    assert c.status == doctor.OK  # not the floor WARN
+    assert "5000" in c.detail and "CITADEL_MAX_SOURCE_CHARS" in c.detail
+    assert "floor" not in c.detail

@@ -621,3 +621,51 @@ def test_manifest_and_failure_state_are_untouched_by_a_checkpointed_failure(chun
     assert "raw/big.txt" not in chunked_source.read_manifest()
     assert failures.load()["raw/big.txt"]["reason"] == failures.ERROR
     assert manifest.load() == {}
+
+
+# --- the chunk budget reaches the checkpoint -----------------------------------------------------
+
+
+def test_stated_context_makes_a_would_be_single_pass_source_resumable(tmp_citadel, fake_agent, cite_page, monkeypatch):
+    """The other half of the local-model bug. A source UNDER MAX_SOURCE_CHARS plans one pass, and a
+    single-pass source never checkpoints — so a session that dies half-way through it (exactly what a
+    small context does) loses everything, every time. Stating the model's context splits the source,
+    and chunked sources bank their completed segments."""
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 300000)  # alone: one pass, nothing bankable
+    monkeypatch.setattr(config, "MODEL_CONTEXT_TOKENS", 50000)  # -> a 20000-char window
+    body = _paras(1100)
+    assert len(body) < config.MAX_SOURCE_CHARS  # the premise
+    (tmp_citadel.raw / "big.txt").write_text(body, encoding="utf-8")
+
+    fake_agent(side_effect=_fail_at(2, cite_page))
+    first = ingest.ingest()
+
+    assert "raw/big.txt" not in first.processed  # the source still failed ...
+    assert not (tmp_citadel.wiki / "misc" / "big.md").exists()  # ... and promoted nothing
+    waiting = resume.pending()
+    assert [(p.key, p.completed) for p in waiting] == [("raw/big.txt", 1)]  # ... but segment 1 is banked
+    assert waiting[0].total >= 3
+
+    calls: list = []
+    fake_agent(side_effect=_record_segments(calls))
+    second = ingest.ingest()
+
+    assert calls and calls[0][0] == 2  # continued at segment 2, never re-paying segment 1
+    assert second.processed == ["raw/big.txt"]
+    assert resume.pending() == []
+
+
+def test_plan_shape_changes_when_the_stated_context_changes(monkeypatch):
+    """The segment shape is fingerprinted from the EFFECTIVE budget, not the raw char threshold.
+    Without this, changing only CITADEL_MODEL_CONTEXT_TOKENS would re-split a source while the
+    checkpoint still claimed to describe it, and "segment 3" would name text its predecessor never
+    saw."""
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 300000)
+    passes = [(None, (1, 2), None), (None, (2, 2), None)]
+
+    monkeypatch.setattr(config, "MODEL_CONTEXT_TOKENS", 50000)
+    narrow = ingest_sessions._plan_shape(passes)
+    monkeypatch.setattr(config, "MODEL_CONTEXT_TOKENS", 100000)
+    wide = ingest_sessions._plan_shape(passes)
+
+    assert narrow and wide and narrow != wide

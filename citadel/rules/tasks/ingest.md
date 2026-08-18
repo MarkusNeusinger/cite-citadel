@@ -29,6 +29,14 @@ written.
 - **Read the slice for content; cite the whole source.** `resource:` and every `[^sN]` definition
   name the ORIGINAL source — never the segment file. Ingest only what THIS segment contains; do
   not invent continuations of it.
+- **At the edges, a cut unit may be read whole — but not claimed.** Segments are split on
+  paragraph or line boundaries, never on meaning, so a sentence, table row, or list item can be
+  cut by the edge. Where your format brief says the prepared file holds the WHOLE text and bounds
+  you to a line window (PDF extractions, transcripts), read the few lines past the edge needed to
+  see that unit entire. Fold it in only if it **begins** inside your window, and cite the range it
+  actually occupies; a unit that began earlier belongs to the pass that owned it. Where instead
+  you were handed a physically sliced segment file, the slice is all there is — say what it
+  supports and stop.
 - **Segment 1** — the first pass. Later segments of the SAME source will follow and EXTEND the
   pages you create, so capture this segment's facts now and expect to add more.
 - **Segment N > 1** — segments 1..N-1 were already folded into the wiki in prior passes. ADD this

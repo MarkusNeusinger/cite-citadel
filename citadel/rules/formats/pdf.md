@@ -16,6 +16,13 @@ text — and cite the **original `.pdf` file** as the source of record.
 - A **large** extraction may be split across passes: the prepared file then holds the WHOLE
   extraction and your run instruction bounds THIS pass to a line window. Read only that window
   (ranged/offset reads) — the file's own line numbers ARE the locator line numbers.
+- **A unit cut by the window edge may be read to its end.** Windows are packed by whole lines, not
+  by meaning, so a sentence, table row, or list item can start inside your window and continue past
+  it (or start just before it). Read the few lines beyond the edge needed to see that unit whole —
+  the prepared file holds the entire extraction, so nothing stops you. Ownership does not move: fold
+  in the unit only if it **begins** inside your window, and cite it with the `lines A-B` range it
+  actually occupies, even where that range crosses the edge. A unit that begins before your window
+  belongs to the earlier pass — leave it alone. Never invent the far side of a cut you cannot see.
 - An empty stretch under a `[p. N]` marker means that page has no text layer (a figure-only or
   scanned page). In **text** mode, note nothing for it; in **images** mode, read that page in the
   original PDF (below).

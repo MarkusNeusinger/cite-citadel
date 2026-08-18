@@ -156,3 +156,23 @@ def test_max_source_bytes_negative_clamps_to_no_limit_and_warns(monkeypatch):
     assert config._max_source_bytes() == 0
     assert len(config.CONFIG_WARNINGS) == 1
     assert "CITADEL_MAX_SOURCE_BYTES" in config.CONFIG_WARNINGS[0]
+
+
+def test_model_context_tokens_unset_is_off(monkeypatch):
+    """The default must be "not stated", not a guessed context: unset leaves large-source chunking
+    exactly where CITADEL_MAX_SOURCE_CHARS puts it, with nothing to warn about."""
+    monkeypatch.setattr(config, "CONFIG_WARNINGS", [])
+    monkeypatch.delenv("CITADEL_MODEL_CONTEXT_TOKENS", raising=False)
+    assert config._model_context_tokens() == 0
+    assert config.CONFIG_WARNINGS == []
+
+
+def test_model_context_tokens_negative_falls_back_and_warns(monkeypatch):
+    """A negative context is a mistake, not a spelling of "unlimited" — it degrades to unset and
+    says so, so doctor's config check can name the line instead of the operator wondering why their
+    budget never took effect."""
+    monkeypatch.setattr(config, "CONFIG_WARNINGS", [])
+    monkeypatch.setenv("CITADEL_MODEL_CONTEXT_TOKENS", "-1")
+    assert config._model_context_tokens() == 0
+    assert len(config.CONFIG_WARNINGS) == 1
+    assert "CITADEL_MODEL_CONTEXT_TOKENS" in config.CONFIG_WARNINGS[0]

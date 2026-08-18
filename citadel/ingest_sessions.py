@@ -103,10 +103,14 @@ def _plan_shape(passes) -> str:
 
     Deliberately not the temp PATHS (``_office_write_temp`` mints a fresh random dir every run) and
     deliberately not just the segment count: an extraction change (a pypdf upgrade, a
-    re-transcription, a re-tuned ``CITADEL_MAX_SOURCE_CHARS``) can keep the count while moving the
-    boundaries, and "segment 3" would then name text its predecessor never saw. "" means the shape
-    could not be determined — the caller then simply does not checkpoint."""
-    digest = hashlib.sha256(f"{config.MAX_SOURCE_CHARS}".encode())
+    re-transcription, a re-tuned chunk budget) can keep the count while moving the boundaries, and
+    "segment 3" would then name text its predecessor never saw. "" means the shape could not be
+    determined — the caller then simply does not checkpoint.
+
+    The budget hashed here is the EFFECTIVE one (:func:`config.source_chunk_chars`), never the raw
+    ``CITADEL_MAX_SOURCE_CHARS``: a stated model context tightens the threshold, so hashing the raw
+    value would let a checkpoint planned under one segment shape be replayed under another."""
+    digest = hashlib.sha256(f"{config.source_chunk_chars()}".encode())
     for read_key, segment, window in passes:
         digest.update(f"\x1e{segment}|{window}|".encode())
         if read_key:
@@ -690,8 +694,9 @@ def _prepare_passes(
       stay correct by construction (a sliced temp restarts numbering at 1 and would silently
       mis-ground every chunked locator).
     - a source (pre-extracted Office text, or — when chunking is on — a readable non-PDF text
-      file) whose content exceeds ``config.MAX_SOURCE_CHARS`` is SPLIT into segments, one pass
-      each.
+      file) whose content exceeds the effective chunk budget (``config.source_chunk_chars()`` —
+      ``CITADEL_MAX_SOURCE_CHARS``, tightened by a stated ``CITADEL_MODEL_CONTEXT_TOKENS``) is
+      SPLIT into segments, one pass each.
     - a small Office file / audio transcript / PDF extraction: one pass reading the prepared text.
     - anything else (small plain text, a PDF without a usable text layer, an image-less binary
       the agent reads): one pass reading the file directly (unchanged behavior).
@@ -703,7 +708,7 @@ def _prepare_passes(
     Raises ``OSError`` if a temp segment/extract file can't be written (handled per-source)."""
     if is_image:
         return [(None, None, None)], []
-    max_chars = config.MAX_SOURCE_CHARS
+    max_chars = config.source_chunk_chars()
     # Content we could chunk: pre-extracted Office/transcript/PDF text, or (chunking on) a
     # readable text source.
     content = office

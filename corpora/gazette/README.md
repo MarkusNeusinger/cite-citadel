@@ -20,6 +20,7 @@ figures; `images` also looks at charts and scans.
 | `feature-article.pdf` | a 2-page popular-science feature (real tardigrade survival science) | multi-page **text-layer** extraction — these facts must appear in **both** modes |
 | `figure-brief.pdf` | a one-page observatory brief whose key number (**best seeing 0.42 arcsec, Nov 14**) exists **only inside the embedded chart image**, never in the text | the **text-vs-images differentiator**: absent-and-honest in `text` mode, present-and-cited in `images` mode |
 | `preprint.pdf` | a 2-page fictional academic preprint (abstract / methods / results / **references**) | the **publications** genre (its finding stays attributed to the authors) and **references-are-not-sources** (the `[1]`–`[5]` bibliography must never become fabricated raw sources or `[^sN]` to nonexistent files) |
+| `field-survey.pdf` | an 11-page field report: **36 uniform station records** (`T-01`…`T-36`), each with an elevation, ring count, stem density and canopy closure | **window edges**: it is the only source long enough to chunk, and with `CITADEL_MODEL_CONTEXT_TOKENS=20000` its 4 line windows cut three records in half (`T-09`, `T-19`, `T-29`) — no station may be lost, truncated, duplicated or invented at a boundary |
 | `scanned-notice.pdf` | a one-page **image-only** notice (rendered as pixels, no text layer) | honest degradation: in `text` mode it must **not** invent prose; in `images` mode the suspension notice is read visually |
 | `press-release.md` | a clean markdown control | a non-PDF baseline in the same world |
 

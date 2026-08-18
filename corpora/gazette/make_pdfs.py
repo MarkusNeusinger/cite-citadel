@@ -13,7 +13,14 @@ The files exercise different PDF-extraction behaviours:
   2. figure-brief.pdf     -- 1 page, text body + an embedded chart raster whose
                              numeric value ("0.42 (Nov 14)") lives ONLY in pixels.
   3. preprint.pdf         -- 2 pages, text-only, shaped like an academic preprint.
-  4. scanned-notice.pdf   -- 1 page that is a single full-page image, NO text
+  4. field-survey.pdf     -- 11 pages, text-only, long enough that its extracted
+                             text splits into several line windows once
+                             CITADEL_MODEL_CONTEXT_TOKENS states a small context
+                             (one un-chunked pass under the char default). Its 36
+                             uniformly-shaped, individually-numbered station
+                             records are what makes a record lost at a window
+                             edge visible.
+  5. scanned-notice.pdf   -- 1 page that is a single full-page image, NO text
                              layer at all (text extraction yields nothing).
 
 PDF byte-plumbing notes (why the xref is byte-exact):
@@ -598,6 +605,112 @@ def build_preprint() -> bytes:
     return pdf.build()
 
 
+_TRANSECT_PLACES = (
+    "Larch Hollow", "Cold Saddle", "Wind Gap", "Slate Bench", "Fern Steps", "Iron Cirque",
+    "Blue Screes", "Otter Shelf", "Hawthorn Rise", "Quarry Notch", "Pale Meadow", "Raven Spur",
+    "Birch Landing", "Frost Bowl", "Sundial Knoll", "Elder Basin", "Copper Ledge", "Willow Draw",
+    "Chalk Terrace", "Stone Fold", "Marten Col", "Amber Flat", "Juniper Bank", "Thistle Reach",
+    "Kestrel Brow", "Moss Corner", "Granite Step", "Heron Pool", "Silver Bight", "Alder Cleft",
+    "Cinder Verge", "Glass Shoulder", "Nettle Bay", "Rowan Head", "Peat Landing", "Lantern Edge",
+)  # fmt: skip
+
+_TRANSECT_ASPECTS = ("north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west")
+_TRANSECT_SOILS = ("shallow podzol", "blocky scree", "peaty gley", "sandy loam", "fractured schist", "clay till")
+_TRANSECT_DAMAGE = ("none recorded", "light bark-beetle scarring", "old wind snap", "browsing on leaders", "frost crack")
+
+
+def _transect_record(i: int) -> list[str]:
+    """One station's paragraph, derived deterministically from its index (1-based).
+
+    Deliberately several WRAPPED LINES long and free of blank lines inside: a chunked pass splits
+    the extraction on whole lines, so a record of this shape is what actually straddles a window
+    edge. Every station carries three numbers unique to it (elevation, ring count, canopy closure),
+    which is what makes "did this record survive the split?" checkable at all.
+    """
+    place = _TRANSECT_PLACES[i - 1]
+    elevation = 1180 + i * 17
+    rings = 60 + (i * 7) % 120
+    canopy = 28 + (i * 11) % 60
+    stems = 40 + (i * 13) % 90
+    aspect = _TRANSECT_ASPECTS[i % len(_TRANSECT_ASPECTS)]
+    soil = _TRANSECT_SOILS[i % len(_TRANSECT_SOILS)]
+    damage = _TRANSECT_DAMAGE[i % len(_TRANSECT_DAMAGE)]
+    body = (
+        f"Station T-{i:02d}, {place}. The plot sits at {elevation} metres on a {aspect} aspect, "
+        f"on {soil}, and was walked once in the first week of the season and once again at its "
+        f"close. The oldest cored stem at this station returned a ring count of {rings}, which is "
+        f"the figure the transect uses when it speaks of stand age here. Stem density over the "
+        f"fixed ten-by-ten-metre plot came to {stems} stems, counted alive and standing only, so "
+        f"the deadwood tallied separately is not included in that number. Canopy closure measured "
+        f"{canopy} percent by densiometer, averaged over the four cardinal readings taken from the "
+        f"plot centre. Damage at the station was recorded as {damage}. The plot was photographed "
+        f"from its north-west corner on both visits, and the two photographs are archived with the "
+        f"survey rather than reproduced in this report."
+    )
+    return wrap(body, 92)
+
+
+def build_field_survey() -> bytes:
+    """A LONG multi-page report (36 station records over 9 pages), text-only.
+
+    Its purpose in the corpus is size, not subject matter: the extracted text runs to tens of
+    thousands of characters, so it is a single un-chunked pass under the default
+    ``CITADEL_MAX_SOURCE_CHARS`` and splits into several line windows once
+    ``CITADEL_MODEL_CONTEXT_TOKENS`` states a small model context. The 36 uniformly-shaped,
+    individually-numbered records are the instrument: a record lost at a window edge is visible as a
+    missing station, and no single boundary offset has to be pinned for that to work (boundaries
+    move whenever the extraction does).
+    """
+    intro = (
+        "This report records the second full walk of the Cinder Peak treeline transect, a fixed "
+        "line of thirty-six plots that the Meridian Gazette environment desk has followed since "
+        "the transect was established. Every station is revisited twice a season, at the opening "
+        "of the melt and again at its close, and each is reported below in the same order and the "
+        "same shape: position, stand age from the oldest cored stem, stem density over the fixed "
+        "plot, canopy closure, and any damage found. Nothing in this report is interpolated - a "
+        "station with no reading is reported as having none."
+    )
+    closing = (
+        "Across the full transect the season's clearest pattern was that canopy closure fell with "
+        "elevation while stand age did not, which the desk reads as recruitment failing at the "
+        "upper stations rather than the older stands there dying back. The transect will be walked "
+        "again next season on the same schedule."
+    )
+
+    pages: list[str] = []
+    first = ""
+    first += text_block(MARGIN, 730, 16, 16, ["Cinder Peak Treeline Transect - Second Season Report"])
+    first += text_block(MARGIN, 710, 10, 12, ["The Meridian Gazette  |  Environment desk"])
+    first += text_block(MARGIN, 685, 10, 13, wrap(intro, 92))
+    pages.append(first)
+
+    # Four stations per page keeps every record whole ON THE PAGE while the report as a whole still
+    # runs long; page breaks and window edges are then independent, which is the point.
+    per_page = 4
+    for start in range(1, 37, per_page):
+        lines: list[str] = []
+        for i in range(start, min(start + per_page, 37)):
+            lines.extend(_transect_record(i))
+            lines.append("")
+        pages.append(text_block(MARGIN, 730, 10, 13, lines))
+
+    last = text_block(MARGIN, 730, 10, 13, wrap(closing, 92))
+    pages.append(last)
+
+    pdf = PDFBuilder()
+    catalog = pdf.alloc()
+    pages_ref = pdf.alloc()
+    font = pdf.add(font_object())
+    page_refs: list[int] = []
+    for content in pages:
+        c = pdf.add(stream_object("", content.encode("latin-1")))
+        page_refs.append(pdf.add(page_object(pages_ref, c, font_ref=font)))
+    pdf.put(catalog, catalog_object(pages_ref))
+    pdf.put(pages_ref, pages_object(page_refs))
+    pdf.root = catalog
+    return pdf.build()
+
+
 def build_scanned_notice() -> bytes:
     """1 page that is a single full-page image with NO text layer at all."""
     W, H, gray = make_notice_raster()
@@ -634,6 +747,7 @@ def main() -> int:
         ("feature-article.pdf", build_feature_article),
         ("figure-brief.pdf", build_figure_brief),
         ("preprint.pdf", build_preprint),
+        ("field-survey.pdf", build_field_survey),
         ("scanned-notice.pdf", build_scanned_notice),
     ]
 

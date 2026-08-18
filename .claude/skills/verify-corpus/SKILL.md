@@ -29,7 +29,7 @@ then runs real curate sessions and grades that the model FIXES them without brea
 | `injection-resistance` | embedded adversarial instructions treated as content, never executed; real facts still extracted | 3 files, 3 quick sessions | `.claude/skills/verify-corpus/injection-resistance/ground-truth.md` |
 | `clockwork` | a whole git repo folded in as ONE digest (`kind=repo`), then a second commit driving `kind=repo-reconcile`; folder-keyed provenance; one documented default superseded | materialize the repo + 2 commits (see the clockwork note) | `.claude/skills/verify-corpus/clockwork/ground-truth.md` |
 | `flurfunk` | informal genres (chat / social / interview / application / forum); attribution ("X said Y" ≠ "Y is true"), in-thread reversal, a quote-tweet negative row, CV timeline | 7 files, one pass each | `.claude/skills/verify-corpus/flurfunk/ground-truth.md` |
-| `gazette` | PDF sources: `CITADEL_PDF_MODE` text-vs-images (a figure-only number + an image-only page), the publications genre, references-are-not-sources, page locators | 5 files (4 PDFs + 1 md); **two runs** (text then images — see the gazette note) | `.claude/skills/verify-corpus/gazette/ground-truth.md` |
+| `gazette` | PDF sources: `CITADEL_PDF_MODE` text-vs-images (a figure-only number + an image-only page), the publications genre, references-are-not-sources, page locators, and **chunked-window edges** | 6 files (5 PDFs + 1 md); **three runs** (text, images, then a chunked run — see the gazette note) | `.claude/skills/verify-corpus/gazette/ground-truth.md` |
 | `kontor` | binary Office documents (OOXML .pptx/.docx/.xlsx + legacy OLE .doc/.ppt/.xls); the Office extraction path, an embedded-chart image delta (CITADEL_IMAGE_SUPPORT), dedup-by-basename, ignore-patterns; the usual judgment traps | 11 files (8 Office + 3 junk); **two runs** (images off then on — see the kontor note) | `.claude/skills/verify-corpus/kontor/ground-truth.md` |
 | `werkhof` | uniform enumerable sources (a 28-machine register, a 20-code fault catalogue, a 15-customer CSV): `Registry` completeness (no entry compressed away), per-row citations + locators, promotion past the granularity floor, a status supersession, near-miss keys | 4 files, one pass each | `.claude/skills/verify-corpus/werkhof/ground-truth.md` |
 
@@ -176,20 +176,30 @@ quote-tweet's false claim must stay attributed/refuted, never wiki-voice — plu
 reversal (30 days current, 7 only dated), the CV timeline, and chat noise never leaking into prose.
 See `flurfunk/ground-truth.md`.
 
-### gazette — the PDF two-mode protocol (text vs. images)
+### gazette — the PDF protocol (text vs. images, then chunked)
 
-`gazette` is 4 generated PDFs + 1 markdown control, and it grades the **`CITADEL_PDF_MODE` delta**, so
-run it **twice** in two fresh sandboxes. The PDFs are regenerable — run the committed stdlib generator
-first (it needs no third-party libs):
+`gazette` is 5 generated PDFs + 1 markdown control. It grades the **`CITADEL_PDF_MODE` delta**, which
+needs two fresh sandboxes, plus a **chunked-window** run that needs a third. The PDFs are regenerable
+— run the committed stdlib generator first (it needs no third-party libs):
 
 ```bash
-python "$REPO/corpora/gazette/make_pdfs.py"           # rewrites the 4 PDFs into raw/
+python "$REPO/corpora/gazette/make_pdfs.py"           # rewrites the 5 PDFs into raw/
 export CITADEL_RAW_DIR="$REPO/corpora/gazette/raw"; RAW="$CITADEL_RAW_DIR"
 
 CITADEL_PDF_MODE=text   uv run python -m citadel ingest   # sandbox 1 — figures NOT interpreted
 # … grade, then a FRESH sandbox …
 CITADEL_PDF_MODE=images uv run python -m citadel ingest   # sandbox 2 — figures + scans read
+# … grade, then a FRESH sandbox …
+CITADEL_MODEL_CONTEXT_TOKENS=20000 uv run python -m citadel ingest   # sandbox 3 — chunked
 ```
+
+Sandbox 3 is the only run in which anything chunks: the stated context resolves to an 8000-char
+window, so `field-survey.pdf`'s 30 623-char extraction is folded in over **4 passes** whose
+boundaries cut three station records in half. Grade it against `gazette/ground-truth.md` **§F** — no
+station lost, truncated, duplicated or invented at an edge, and locators still the full extraction's
+own line numbers. Run it whenever the change touches chunking, the resume path, or the segment/window
+wording in `citadel/rules/` (`tasks/ingest.md`, `formats/pdf.md`, `formats/transcripts.md`); the
+text/images delta alone never exercises a window edge.
 
 The grade is the **delta** (`gazette/ground-truth.md` §B): the figure-only number **0.42 arcsec** and
 the image-only **suspension notice** must be **absent-and-honest** in text mode (inventing either is a

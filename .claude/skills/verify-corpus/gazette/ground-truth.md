@@ -15,13 +15,14 @@ and scans.
 > and its authors). The tardigrade science the feature reports is **real public-domain fact** in
 > original prose. The wiki must record it faithfully as the PDFs state it.
 
-## The 5 sources and the two-mode protocol
+## The 6 sources and the run protocol
 
 | file | genre | key content |
 | ---- | ----- | ----------- |
 | `feature-article.pdf` | popular-science feature, 2 pp, TEXT | tardigrade cryptobiosis/anhydrobiosis; ~97% water loss → "tun"; trehalose + TDPs vitrify; 2007 TARDIS / FOTON-M3 orbit survival |
 | `figure-brief.pdf` | observatory brief, 1 p, text + a CHART IMAGE | body text: observatory **opened in 1998**, autumn nights sharpest, no seeing number; the new instrument gives "**about three times** the light-gathering area of the retired 0.6 m". **Figure only:** best seeing **0.42 arcsec (Nov 14)** — pixels only, no text layer |
 | `preprint.pdf` | academic preprint, 2 pp, TEXT | Black Tarn up to **1,180 particles/L** (~6× the least affected); methods; **References [1]–[5]** (fictional) |
+| `field-survey.pdf` | field report, 11 pp, TEXT, **long** | the Cinder Peak treeline transect: **36 stations T-01…T-36**, each with a place name, elevation, ring count (stand age), stem density and canopy closure. Deliberately uniform and individually numbered — its only job is to be long enough to CHUNK, so a station lost at a window edge is visible as a missing station |
 | `scanned-notice.pdf` | image-only, 1 p, NO text layer | public viewing **SUSPENDED for dome resurfacing 3–17 April 2026**, reopens 18 April 2026 |
 | `press-release.md` | markdown control | first light of the new **1.2-metre telescope on 1 May 2026**; replaces the 0.6 m; "**roughly quadruples**" light-gathering area; ties the new instrument to the **same seeing survey** as the brief; a standard press-boilerplate paragraph carrying no facts |
 
@@ -48,7 +49,14 @@ CITADEL_PDF_MODE=text  uv run python -m citadel ingest      # (or leave unset �
 # RUN 2 — images mode: figures + scans are read (needs the claude CLI, whose reader renders pages)
 CITADEL_PDF_MODE=images uv run python -m citadel ingest     # fresh sandbox
 # grade §A present, §Figure PRESENT+cited (0.42), §Scanned captured+cited
+
+# RUN 3 — chunked: state a small model context so the long report splits into line windows
+CITADEL_MODEL_CONTEXT_TOKENS=20000 uv run python -m citadel ingest   # fresh sandbox
+# 20000 tokens -> an 8000-char window -> field-survey.pdf runs as 4 passes; grade §F
 ```
+
+RUN 3 is the only run in which any source chunks; RUNS 1 and 2 fold `field-survey.pdf` in as a
+single pass, so a §F failure there would mean something other than the window edges.
 
 The **committed showcase** (`corpora/gazette/wiki/`) is built in **images** mode — the richest read.
 
@@ -96,6 +104,38 @@ text-layer (present in both modes).
 | `xc-area` | **contradiction:** figure brief "**about three times**" vs press release "**roughly quadruples**" (~4×) the light-gathering area, same upgrade | both values kept and cited, the discrepancy surfaced (a `> [!CONTRADICTION]` callout, or both stated side-by-side with the conflict noted) | the wiki asserts one figure (3× **or** 4×) alone as settled fact, silently dropping the other |
 | `xe-name` | entity variance: "**Cinderpeak Observatory**" (press release, once) vs "**Cinder Peak Observatory**" (everywhere else) | **one** observatory node; the variant spelling resolves to it | a second, separate observatory page/org for "Cinderpeak" |
 | `nz-boiler` | the press release's **media-boilerplate** paragraph ("issued for immediate publication… reproduction… no observatory facts") | its non-facts do **not** become wiki facts; at most the Meridian-Gazette-as-publisher relation is kept | a page asserting "reproduction requires no permission" or "a high-resolution image is available" as an observatory fact |
+
+## F · Window edges — the chunked grade (RUN 3 only)
+
+`field-survey.pdf` is the corpus's only chunkable source. Under `CITADEL_MODEL_CONTEXT_TOKENS=20000`
+the budget resolves to an **8000-char window**, and its ~30 600-char extraction splits into **4
+windows** (at the time of writing, lines `1-101`, `102-200`, `201-303`, `304-387` — informational
+only: the exact offsets move if the extraction ever changes). Those boundaries fall **inside** three
+station records, which is the entire point of this section. The three stations below are **pinned by
+the offline suite** (`tests/test_corpora_fixtures.py`), so if a pypdf upgrade or a regenerated
+fixture shifts the boundaries, `pytest` fails and this table is corrected — it can never quietly
+send the grader hunting a defect that cannot exist:
+
+| station | place | elevation | ring count | canopy | stem density |
+| ------- | ----- | --------- | ---------- | ------ | ------------ |
+| **T-09** | Hawthorn Rise | 1333 m | 123 | 67 % | 67 |
+| **T-19** | Chalk Terrace | 1503 m | 73 | 57 % | 107 |
+| **T-29** | Silver Bight | 1673 m | 143 | 47 % | 57 |
+
+A pass that reads only its own window sees each of these three records cut in half. `formats/pdf.md`
+says the cut unit may be read past the edge to be seen whole, and that only the pass it **begins** in
+folds it in — so the correct outcome is one complete record, once.
+
+| id | what | expected | fail |
+| -- | ---- | -------- | ---- |
+| `wf-all36` | **no station is lost to a boundary** | all **36** stations `T-01`…`T-36` are recoverable from the wiki, each `[^sN]`-cited to `field-survey.pdf` | any station missing entirely — the headline failure this corpus exists to catch |
+| `wf-cut3` | the three **straddling** records survive intact | `T-09`, `T-19` and `T-29` each carry their full figure set (elevation, ring count, canopy, stem density) as tabled above | a straddling station present but truncated (e.g. elevation kept, canopy lost), or its numbers attached to the wrong station |
+| `wf-nodup` | ownership does not move with the read | each straddling station appears **once** — not once per pass that could see it | `T-09` (or `T-19`/`T-29`) duplicated across two pages, or the same fact restated twice on one page |
+| `wf-noinvent` | the edge permission is not a licence to guess | every figure matches the table above exactly | a plausible-but-wrong number at a straddling station — worse than a missing one |
+| `wf-locator` | locators stay the full extraction's own line numbers | the straddling records' `lines A-B` ranges resolve against the cached extraction (`lint`: 0 locator issues), including where a range crosses a window edge | a rebased/re-counted range, or a range clipped to the window |
+
+A **Registry**-shaped page for the transect is the natural home for 36 uniform records (see
+`werkhof`'s granularity rules); the grade is on the records surviving, not on the page shape.
 
 ## D · Structural gates (hard pass/fail — pure code)
 

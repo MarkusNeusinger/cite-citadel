@@ -24,7 +24,11 @@ Applies when the run instruction says the source is an **audio or video recordin
   the run instruction names the line window THIS pass processes. Read only that window (use a
   ranged/offset read; the file may be too large to read whole) and cite the file's own line
   numbers as usual: they are the transcript's line numbers in every pass, so locators from
-  different passes never conflict.
+  different passes never conflict. Windows are packed by whole lines, not by meaning, so a
+  sentence or an exchange can run past the edge: read the few lines beyond it needed to see that
+  unit whole — the file holds the entire transcript. Ownership does not move, though; fold in the
+  unit only if it **begins** inside your window, cite the `lines A-B` it actually occupies even
+  where that crosses the edge, and leave a unit that began earlier to the pass that owned it.
 - Judge the genre from the content as usual: a multi-voice recording composes with
   `genres/transcript.md`, a single-voice memo or dictation with `genres/first-person.md`.
 - If the transcript holds no usable content, make no edits and stop.
