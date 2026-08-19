@@ -460,6 +460,14 @@ def test_pdf_ok_images_on_claude(tmp_citadel, monkeypatch):
     assert doctor.check_pdf_mode().status == doctor.OK
 
 
+def test_pdf_ok_images_on_copilot_and_agy(tmp_citadel, monkeypatch):
+    """All three supported CLIs render PDF pages and embedded images visually, not just claude."""
+    monkeypatch.setattr(config, "PDF_MODE", "images")
+    for backend in ("copilot", "agy"):
+        monkeypatch.setattr(config, "LLM_CLI", backend)
+        assert doctor.check_pdf_mode().status == doctor.OK
+
+
 # --- audio support -----------------------------------------------------------------------
 
 

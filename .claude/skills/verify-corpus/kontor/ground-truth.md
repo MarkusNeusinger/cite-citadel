@@ -48,7 +48,7 @@ python "$REPO/corpora/kontor/make_office.py"          # regenerate fixtures (std
 CITADEL_IMAGE_SUPPORT=0 uv run python -m citadel ingest
 # grade §A present, §B ABSENT-and-honest (no 34.2 %), §C/§D as noted
 
-# RUN 2 — images ON (default): the chart PNG is read (needs a vision-capable CLI, e.g. claude)
+# RUN 2 — images ON (default): the chart PNG is read (needs a vision-capable CLI: claude/copilot/agy)
 CITADEL_IMAGE_SUPPORT=1 uv run python -m citadel ingest   # fresh sandbox
 # grade §A present, §B PRESENT+cited (34.2 %), §C/§D as noted
 ```
