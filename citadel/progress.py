@@ -20,6 +20,12 @@ top of that, every write goes through :meth:`ConsoleProgress._guard` — console
 be able to break an ingest, so a rendering/encoding failure is swallowed exactly as the old
 hand-rolled writer swallowed it.
 
+A source too large for one context window is folded in over several agent sessions, and its row
+carries WHICH pass is running (``part 3/8``) — otherwise the one case that can legitimately hold a
+single row for many hours is also the case that looks most like a hung run:
+
+    | [1/14] raw/reports/annual.pdf  part 3/8   2:06:35
+
 Off a TTY (piped / CI) — and whenever the live region is suppressed (``--verbose``, whose streamed
 agent transcript would fight the live region for the same stderr) — it degrades to a plain START
 line per source followed by that source's verdict line, so you can always see WHICH file the
@@ -147,6 +153,10 @@ class ConsoleProgress:
         self._overall: Progress | None = None
         self._overall_task = None
         self._tasks: dict[str, object] = {}
+        # Per in-flight source: the live row's base label, and the last `source_segment` seen for
+        # it. Both are dropped in `_finish`, so nothing accumulates over a long run.
+        self._labels: dict[str, str] = {}
+        self._segments: dict[str, tuple[int, int]] = {}
 
     # ``progress(event, data)`` entry point -> dispatch to on_<event>.
     def __call__(self, event: str, data: dict) -> None:
@@ -210,6 +220,9 @@ class ConsoleProgress:
 
     def on_source_start(self, index: int, total: int, source: str) -> None:
         label = f"[{index}/{total}] {config.display_key(source)}"
+        with self._lock:
+            self._labels[source] = label
+            self._segments.pop(source, None)
         if self.live_mode:
             self._add_task(source, label)
         else:
@@ -218,6 +231,28 @@ class ConsoleProgress:
             # up-front START line — otherwise the streamed session (or the eventual verdict line)
             # gives no clue WHICH file is being worked on right now.
             self._print(Text(f"{label} ...", style="dim"))
+
+    def on_source_segment(self, index: int, total: int, source: str, part: int, parts: int) -> None:
+        """A CHUNKED source moved on to the next pass: fold ``part N/M`` into its live row.
+
+        A source too large for one context is folded in over several agent sessions against one
+        staging copy, and only the whole set promotes. That is the one case where a single console
+        row can stand still for many hours — each pass is its own session, up to
+        ``CITADEL_LLM_TIMEOUT`` long — so without this the row is indistinguishable from a hung
+        run, and the eventual verdict is the first hint that the file was ever split at all.
+
+        Only fired for a genuinely multi-pass source (see ``ingest._attempt_source``), so an
+        ordinary one-pass source's row is untouched."""
+        with self._lock:
+            self._segments[source] = (part, parts)
+            label = self._labels.get(source) or f"[{index}/{total}] {config.display_key(source)}"
+        text = f"{label}  part {part}/{parts}"
+        if self.live_mode:
+            self._update_task(source, text)
+        else:
+            # No live region: the row that would have been rewritten does not exist, so the pass
+            # gets its own line — which is also what a piped log wants.
+            self._print(Text(f"{text} ...", style="dim"))
 
     def on_source_done(
         self,
@@ -241,6 +276,11 @@ class ConsoleProgress:
         # "no changes" renders in YELLOW, not dim: a source that folded in without touching a
         # single page is exactly the verdict worth a second look (see IngestReport.no_pages).
         tail = [(", ".join(changes), "") if changes else ("no changes", "yellow")]
+        # A chunked source's verdict names the pass count: the spend on that line is the SUM over
+        # every pass, which reads very differently once you know it bought eight sessions.
+        parts = self._segments.get(source, (0, 0))[1]
+        if parts > 1:
+            tail.append((f"{parts} parts", "dim"))
         tail.extend(usage_bits(usage, model))
         self._finish(source, self._verdict(index, total, "OK", "bold green", source, seconds, tail))
 
@@ -256,7 +296,13 @@ class ConsoleProgress:
         self._finish(source, line, advance=False)
 
     def on_source_error(self, index: int, total: int, source: str, error: str, seconds: float) -> None:
-        line = self._verdict(index, total, "ERR", "bold red", source, seconds, [(str(error), "red")])
+        # WHERE a chunked source died is the first thing you want on a failure line: "part 7/8"
+        # says the run bought seven sessions and promoted nothing (and, with CITADEL_RESUME on,
+        # that the next run continues there instead of re-buying them).
+        part, parts = self._segments.get(source, (0, 0))
+        tail = [(f"part {part}/{parts}", "yellow")] if parts > 1 else []
+        tail.append((str(error), "red"))
+        line = self._verdict(index, total, "ERR", "bold red", source, seconds, tail)
         self._finish(source, line)
 
     def on_finalize(self) -> None:
@@ -337,12 +383,25 @@ class ConsoleProgress:
         with self._lock:
             self._guard(add)
 
+    def _update_task(self, source: str, label: str) -> None:
+        """Rewrite an in-flight source's live row in place (a no-op once it has been retired)."""
+
+        def update() -> None:
+            task = self._tasks.get(source)
+            if task is not None and self._sources is not None:
+                self._sources.update(task, description=label)
+
+        with self._lock:
+            self._guard(update)
+
     def _finish(self, source: str, line: Text, advance: bool = True) -> None:
         """Retire the source's live row, print its permanent verdict line above the live region,
         and advance the overall bar."""
         with self._lock:
 
             def done() -> None:
+                self._labels.pop(source, None)
+                self._segments.pop(source, None)
                 task = self._tasks.pop(source, None)
                 if task is not None and self._sources is not None:
                     self._sources.remove_task(task)
@@ -360,6 +419,8 @@ class ConsoleProgress:
             self._overall = None
             self._overall_task = None
             self._tasks.clear()
+            self._labels.clear()
+            self._segments.clear()
 
     def _print(self, renderable) -> None:
         """Print one permanent line. While the live region is up, rich renders it ABOVE the region

@@ -165,3 +165,51 @@ def test_console_progress_renders_ascii_without_tty():
     assert "[2/2] ERR  raw/b.md" in out and "boom" in out
     assert "Rebuilding indexes" in out
     out.encode("ascii")  # must be ASCII-only (safe on any Windows code page)
+
+
+def test_chunked_source_emits_a_segment_event_per_pass(tmp_citadel, fake_agent, cite_page, monkeypatch):
+    """A large source folded in over several passes announces WHICH pass is running.
+
+    One console row stands for the whole source (it promotes exactly once), and each pass is its
+    own agent session that can run for hours — so without a per-pass event the row is
+    indistinguishable from a hung run, and nothing says the file was split at all until the
+    verdict. The event rides between the source's ``source_start`` and its verdict and carries the
+    same ``index``/``total``/``source`` identity as the rest of the vocabulary."""
+    from citadel import config
+
+    raw = tmp_citadel.raw
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 120)
+    (raw / "big.txt").write_text(
+        "\n\n".join(f"Paragraph number {i} with some filler content about topic {i}." for i in range(6)),
+        encoding="utf-8",
+    )
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+        if segment and segment[0] == 1:
+            cite_page("misc/big.md", rel_key, "A fact from the big source.")
+
+    fake_agent(side_effect=fake)
+    events: list[tuple[str, dict]] = []
+    ingest.ingest(progress=lambda ev, data: events.append((ev, dict(data))))
+
+    names = [e for e, _ in events]
+    segs = [d for e, d in events if e == "source_segment"]
+    assert len(segs) >= 2  # actually chunked
+    parts = segs[0]["parts"]
+    assert [s["part"] for s in segs] == list(range(1, parts + 1))  # ordered, one per pass
+    assert all(s["parts"] == parts and s["source"] == "raw/big.txt" for s in segs)
+    assert all(s["index"] == 1 and s["total"] == 1 for s in segs)
+    # ...between the source's start and its verdict.
+    assert names.index("source_start") < names.index("source_segment") < names.index("source_done")
+
+
+def test_single_pass_source_emits_no_segment_event(tmp_citadel, fake_agent, transformer_page):
+    """An ordinary one-pass source stays exactly as loud as before: a ``part 1/1`` would be noise
+    on every normal source, so the event is fired only where there is more than one pass."""
+    raw = tmp_citadel.raw
+    fake_agent(transformer_page)
+    (raw / "notes.md").write_text("Transformers use self-attention.\n", encoding="utf-8")
+
+    events: list[str] = []
+    ingest.ingest(progress=lambda ev, data: events.append(ev))
+    assert "source_segment" not in events

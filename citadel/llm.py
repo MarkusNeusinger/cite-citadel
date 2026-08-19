@@ -785,7 +785,11 @@ def _write_transcript(
         if err:
             body += ["", "## STDERR", err]
         path.write_text("\n".join(body) + "\n", encoding="utf-8")
-        _echo_stderr(f"LLM transcript: {path}\n")
+        # Shortened for the console (config.display_path): on a network-drive workspace the
+        # absolute path is a ~200-char UNC string, and one is announced per SESSION — a chunked
+        # source alone prints seven, each wrapping over several rows straight through the live
+        # progress display. The path stays workspace-relative, so it is still what you open.
+        _echo_stderr(f"LLM transcript: {config.display_path(path)}\n")
     except OSError:
         pass  # logging is diagnostic only — never let it abort an ingest
 
@@ -948,7 +952,10 @@ def run_ingest_session(
     cli_path = _resolve_cli(cli)
     prompt = _build_instruction(rel_key, kind, read_path, segment, line_range)
     argv, stdin_text = _build_invocation(cli, cli_path, prompt, _external_dirs(rel_key, read_path))
-    label = f"{kind}.{rel_key}"
+    # The segment goes in FRONT of the source key: the label is truncated from the right when a
+    # transcript filename is composed, and on a chunked source "which pass is this" is exactly the
+    # part that must survive.
+    label = f"{kind}.p{segment[0]}of{segment[1]}.{rel_key}" if segment else f"{kind}.{rel_key}"
     hermetic = _hermetic_flags(cli, cli_path)  # session isolation (claude --bare), probe-gated
     try:
         return _run_session(cli, argv + hermetic, stdin_text, log_label=label)

@@ -1102,6 +1102,47 @@ def test_run_session_writes_transcript_when_log_dir_set(tmp_path, monkeypatch):
     assert "ingest.raw_notes.md" in logs[0].name  # label sanitized into the filename
 
 
+def test_transcript_announcement_is_shortened_not_the_full_unc_path(tmp_path, monkeypatch, capsys):
+    """The announced transcript path is workspace-RELATIVE.
+
+    The path is echoed once per SESSION — seven times for a chunked source — and on a workspace
+    mounted from a network share its absolute form is a ~200-character UNC string that wraps over
+    several terminal rows straight through the live progress display. Relative keeps it one short
+    line that still opens."""
+    monkeypatch.setattr(config, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(config, "LLM_LOG_DIR", str(tmp_path / ".citadel_llm_logs"), raising=False)
+    monkeypatch.setattr(config, "LLM_VERBOSE", False, raising=False)
+
+    def fake_run(*a, **k):
+        return _FakeProc(returncode=0, stdout="ok")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    llm._run_session("copilot", ["copilot", "-p", "x"], None, log_label="ingest.raw/notes.md")
+
+    line = next(ln for ln in capsys.readouterr().err.splitlines() if "LLM transcript:" in ln)
+    assert line.split("LLM transcript:")[1].strip().startswith(".citadel_llm_logs/")
+    assert str(tmp_path) not in line
+
+
+def test_transcript_label_names_the_pass_of_a_chunked_source(monkeypatch):
+    """A chunked source writes one transcript per pass, so the pass number belongs in the label —
+    in FRONT of the source key, which is the end that gets truncated out of a filename."""
+    monkeypatch.setattr(llm, "_resolve_cli", lambda cli: cli)
+    monkeypatch.setattr(llm, "_hermetic_flags", lambda *a, **k: [])
+    monkeypatch.setattr(llm, "_build_instruction", lambda *a, **k: "prompt")
+    monkeypatch.setattr(llm, "_build_invocation", lambda *a, **k: (["copilot"], None))
+    seen: dict = {}
+
+    def fake_session(cli, argv, stdin_text, *, log_label=None):
+        seen["label"] = log_label
+
+    monkeypatch.setattr(llm, "_run_session", fake_session)
+    llm.run_ingest_session("raw/big.pdf", kind="pdf", read_path="/tmp/seg.md", segment=(3, 8))
+    assert seen["label"] == "pdf.p3of8.raw/big.pdf"
+    llm.run_ingest_session("raw/notes.md", kind="ingest")
+    assert seen["label"] == "ingest.raw/notes.md"  # unchanged for a single-pass source
+
+
 def test_run_session_no_transcript_when_log_dir_unset(tmp_path, monkeypatch):
     """The transcript is strictly opt-in: with no log dir configured, nothing is written (the
     captured, no-log path is the unchanged default)."""

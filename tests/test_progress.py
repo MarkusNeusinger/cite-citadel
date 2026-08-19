@@ -317,6 +317,131 @@ def test_completion_line_without_usage_is_unchanged(monkeypatch):
     assert "no changes" in out
 
 
+# --- a chunked source: which pass is running ----------------------------------------------
+
+
+def test_segment_event_names_the_pass_off_a_tty(monkeypatch):
+    """Off the live region a chunked source's passes get their own lines — the only way to see
+    that a source folded in over hours is progressing rather than hung."""
+    monkeypatch.setattr(config, "RAW_DIR", Path("/nowhere"))
+    stream = io.StringIO()
+    prog = _reporter(stream)
+
+    prog("source_start", {"index": 1, "total": 2, "source": "raw/big.pdf"})
+    prog("source_segment", {"index": 1, "total": 2, "source": "raw/big.pdf", "part": 3, "parts": 8})
+    out = stream.getvalue()
+
+    assert "[1/2] raw/big.pdf  part 3/8" in out
+    out.encode("ascii")
+
+
+def test_completion_line_names_the_pass_count(monkeypatch):
+    """The verdict of a chunked source says how many passes it took: the cost on that line is the
+    SUM over all of them, which reads very differently once you know it bought eight sessions."""
+    monkeypatch.setattr(config, "RAW_DIR", Path("/nowhere"))
+    stream = io.StringIO()
+    prog = _reporter(stream)
+
+    prog("source_start", {"index": 1, "total": 1, "source": "raw/big.pdf"})
+    prog("source_segment", {"index": 1, "total": 1, "source": "raw/big.pdf", "part": 8, "parts": 8})
+    prog(
+        "source_done",
+        {"index": 1, "total": 1, "source": "raw/big.pdf", "created": 2, "updated": 0, "deleted": 0, "seconds": 9.0},
+    )
+
+    assert "8 parts" in stream.getvalue()
+
+
+def test_error_line_says_which_pass_died(monkeypatch):
+    """A failed chunked source names the pass it died on — the run bought that many sessions and
+    promoted nothing, and (with resume on) the next run continues exactly there."""
+    monkeypatch.setattr(config, "RAW_DIR", Path("/nowhere"))
+    stream = io.StringIO()
+    prog = _reporter(stream)
+
+    prog("source_start", {"index": 1, "total": 1, "source": "raw/big.pdf"})
+    prog("source_segment", {"index": 1, "total": 1, "source": "raw/big.pdf", "part": 7, "parts": 8})
+    prog(
+        "source_error",
+        {"index": 1, "total": 1, "source": "raw/big.pdf", "error": "the 'copilot' CLI timed out", "seconds": 9.0},
+    )
+    out = stream.getvalue()
+
+    assert "ERR" in out and "part 7/8" in out and "timed out" in out
+
+
+def test_segment_state_does_not_leak_into_the_next_source(monkeypatch):
+    """Per-source segment state is dropped with the source's verdict: the NEXT source's line must
+    not inherit a pass count from the chunked one before it."""
+    monkeypatch.setattr(config, "RAW_DIR", Path("/nowhere"))
+    stream = io.StringIO()
+    prog = _reporter(stream)
+
+    prog("source_start", {"index": 1, "total": 2, "source": "raw/big.pdf"})
+    prog("source_segment", {"index": 1, "total": 2, "source": "raw/big.pdf", "part": 8, "parts": 8})
+    prog(
+        "source_done",
+        {"index": 1, "total": 2, "source": "raw/big.pdf", "created": 1, "updated": 0, "deleted": 0, "seconds": 1.0},
+    )
+    prog("source_start", {"index": 2, "total": 2, "source": "raw/small.md"})
+    prog(
+        "source_done",
+        {"index": 2, "total": 2, "source": "raw/small.md", "created": 1, "updated": 0, "deleted": 0, "seconds": 1.0},
+    )
+
+    second = [line for line in stream.getvalue().splitlines() if "raw/small.md" in line]
+    assert second and all("parts" not in line for line in second)
+
+
+# --- the paths citadel itself prints -------------------------------------------------------
+
+
+def test_display_path_is_workspace_relative(monkeypatch, tmp_path):
+    """A path citadel writes under the workspace (an LLM transcript) prints RELATIVE to it: on a
+    network-drive workspace the absolute form is a ~200-char UNC string announced once per agent
+    session, which wraps over several rows and buries the progress display."""
+    monkeypatch.setattr(config, "WORKSPACE_ROOT", tmp_path)
+    log = tmp_path / ".citadel_llm_logs" / "20260818-152715.4240.1.log"
+    assert config.display_path(log) == ".citadel_llm_logs/20260818-152715.4240.1.log"
+
+
+def test_display_path_falls_back_to_the_key_shortening(monkeypatch, tmp_path):
+    """A path OUTSIDE the workspace is handed to display_key, so it is collapsed against a raw
+    root (or clipped) instead of printed in full."""
+    monkeypatch.setattr(config, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(config, "RAW_DIR", Path(_LONG_KEY_RAW_DIR))
+    assert config.display_path(_LONG_KEY) == _LONG_KEY_SHORT
+
+
+def test_display_path_shortens_even_when_resolution_fails(monkeypatch, tmp_path):
+    """A path that cannot be resolved at all (a dead mount) is exactly the long absolute one this
+    exists to shorten, so it takes the same display_key fallback as a path outside the workspace —
+    the error path must not be the one that prints the full UNC string."""
+    monkeypatch.setattr(config, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(config, "RAW_DIR", Path(_LONG_KEY_RAW_DIR))
+
+    real = config._safe_resolve
+
+    def boom(path):
+        # Only the WORKSPACE root is unreachable — the raw root still resolves, which is what
+        # display_key needs to collapse the key.
+        if str(path) == str(tmp_path):
+            raise OSError("the mount is gone")
+        return real(path)
+
+    monkeypatch.setattr(config, "_safe_resolve", boom)
+    assert config.display_path(_LONG_KEY) == _LONG_KEY_SHORT
+
+
+def test_display_path_never_raises_on_a_relative_or_empty_value(monkeypatch, tmp_path):
+    """Display-only: every fallback returns a normalized string rather than blowing up console
+    output (a relative path is already short and is passed through)."""
+    monkeypatch.setattr(config, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(config, "RAW_DIR", tmp_path / "raw")
+    assert config.display_path("logs\\a.log") == "logs/a.log"
+    assert config.display_path("") == ""
+
+
 def test_format_tokens_is_compact_and_never_raises():
     """The at-a-glance token form, and its defensive fallback for a value that is not a count."""
     assert progress.format_tokens(456) == "456"
