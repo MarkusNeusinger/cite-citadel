@@ -203,8 +203,9 @@ text/images delta alone never exercises a window edge.
 
 The grade is the **delta** (`gazette/ground-truth.md` §B): the figure-only number **0.42 arcsec** and
 the image-only **suspension notice** must be **absent-and-honest** in text mode (inventing either is a
-hard fail — hallucination) and **present-and-cited** in images mode. Images mode needs the claude CLI
-(its reader renders the PDF pages visually). The committed showcase is built in **images** mode.
+hard fail — hallucination) and **present-and-cited** in images mode. Images mode needs a
+vision-capable CLI (claude, copilot, and agy all render the PDF pages visually). The committed
+showcase is built in **images** mode.
 
 ### kontor — the Office two-mode protocol (images off vs. on)
 

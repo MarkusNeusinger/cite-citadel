@@ -154,6 +154,19 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **All three supported CLIs are now recognized as vision-capable backends.** Nothing in code ever
+  gated image reading on the backend — `CITADEL_IMAGE_SUPPORT` and `CITADEL_PDF_MODE=images` run
+  the same session whatever CLI is configured — but `citadel doctor` warned on *any* non-claude
+  backend that images mode "may silently ingest PDF text only", and the rules/docs said images mode
+  needs the claude CLI. Verified in practice: copilot and agy render PDF pages and PPTX-embedded
+  images visually just like claude (given only a file path, copilot reads figures straight out of a
+  PDF page). `doctor` now keeps a known-vision set (claude, copilot, agy) and warns only for a
+  backend outside it; `formats/pdf.md`, the troubleshooting guide, and the verify-corpus protocols
+  name all three. An unrecognized custom CLI still WARNs — against a reader that cannot render
+  pixels, images mode silently degrades to text-only, which is exactly what the warning exists to
+  catch — and a proxy-redirected **local model** still needs to be vision-capable itself (the
+  `docs/configuration.md` caveat; doctor cannot see through the CLI to the model).
+
 - **Registry creation triggers more reliably.** The `Registry` rules (shipped in 0.6.0) fired
   cleanly on sources that *are* enumerations, but three gaps let real-world registries silently not
   happen: an enumeration **embedded** in a prose source (a table, an appendix, a price list at the

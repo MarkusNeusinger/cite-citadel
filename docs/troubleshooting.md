@@ -92,7 +92,9 @@ For the MCP server config, set the client's `command` to `uv` with
 
 By default (`CITADEL_PDF_MODE=text`) ingest reads a PDF's body text only. Set
 `CITADEL_PDF_MODE=images` to also have the agent look at figures, diagrams, and charts — this needs
-an agent CLI whose reader actually renders PDF pages (a vision-capable backend). The same applies to
+an agent CLI whose reader actually renders PDF pages (a vision-capable backend: claude, copilot,
+and agy all do; against an unrecognized backend `citadel doctor` warns that images mode may
+silently degrade to text-only). The same applies to
 image sources: `CITADEL_IMAGE_SUPPORT=1` (the default) reads recognized images visually.
 
 ### A PDF's citations aren't offline-verifiable (`wiki_raw` says "no cached text-layer extraction")

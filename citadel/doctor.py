@@ -35,8 +35,9 @@ One command answering "is my setup sane?" without touching a byte. Each check em
   ``CITADEL_LLM_CLI=claude`` may bill the API per-token instead of the subscription (cross-referenced
   to the README "License & third-party tools" section, where the subscription-vs-API story is told
   once).
-- **PDF mode** — ``CITADEL_PDF_MODE=images`` against a non-``claude`` backend may silently ingest a
-  PDF's text only, because a non-vision CLI cannot look at the figures.
+- **PDF mode** — ``CITADEL_PDF_MODE=images`` against a backend not known to be vision-capable
+  (claude, copilot, and agy all render PDF pages/images visually) may silently ingest a PDF's
+  text only, because a non-vision CLI cannot look at the figures.
 - **PDF text layer** — is the pypdf pre-pass active (``CITADEL_PDF_TEXT``)? pypdf is a bundled
   dependency, so this WARNs only in the unusual case that it was force-removed from the environment
   (PDF locators then stay agent-verified instead of offline-checkable); otherwise a plain on/off echo.
@@ -403,11 +404,21 @@ def check_billing_shadow() -> Check:
     return Check(OK, "billing", "no API-key billing shadow")
 
 
+# Backends whose agentic file reader is known to render images and PDF pages VISUALLY — all three
+# supported CLIs do, verified by real ingests (copilot and agy read figures out of PDF pages and
+# PPTX-embedded images just like claude). Unknown/custom backends stay outside: against a reader
+# that cannot render pixels, images mode silently degrades to text-only, which is exactly what the
+# WARN is for. A proxy-redirected local model rides its CLI's entry — whether the MODEL has vision
+# is not visible here (docs/configuration.md's local-model caveat covers that).
+_VISION_BACKENDS = {"claude", "copilot", "agy"}
+
+
 def check_pdf_mode() -> Check:
-    """WARN when ``CITADEL_PDF_MODE=images`` is set against a non-claude backend: a non-vision CLI
-    cannot look at a PDF's figures, so it may silently ingest the text only."""
+    """WARN when ``CITADEL_PDF_MODE=images`` is set against a backend not in
+    :data:`_VISION_BACKENDS`: a non-vision CLI cannot look at a PDF's figures, so it may silently
+    ingest the text only."""
     cli = (config.LLM_CLI or "claude").strip().lower()
-    if config.PDF_MODE == "images" and cli != "claude":
+    if config.PDF_MODE == "images" and cli not in _VISION_BACKENDS:
         return Check(
             WARN,
             "PDF mode",

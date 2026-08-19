@@ -46,7 +46,7 @@ python "$REPO/corpora/gazette/make_pdfs.py"
 CITADEL_PDF_MODE=text  uv run python -m citadel ingest      # (or leave unset — text is the default)
 # grade §A present, §Figure ABSENT-and-honest (no 0.42), §Scanned degraded honestly
 
-# RUN 2 — images mode: figures + scans are read (needs the claude CLI, whose reader renders pages)
+# RUN 2 — images mode: figures + scans are read (needs a vision-capable CLI: claude/copilot/agy)
 CITADEL_PDF_MODE=images uv run python -m citadel ingest     # fresh sandbox
 # grade §A present, §Figure PRESENT+cited (0.42), §Scanned captured+cited
 

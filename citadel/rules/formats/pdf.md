@@ -51,7 +51,7 @@ No text layer was extracted (a scanned/image-only PDF, or the pre-pass was turne
   agent-verified — there is no offline text to check them against, so verify them yourself with
   extra care.
 
-Images mode requires a backend whose file reader renders PDF pages visually (e.g. the claude
-CLI); other backends may silently ingest text only.
+Images mode requires a backend whose file reader renders PDF pages visually (the claude, copilot,
+and agy CLIs all do); other backends may silently ingest text only.
 
 Locators are **required** for every PDF citation in both setups (`schema.md` § Locators).
