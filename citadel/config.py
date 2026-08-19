@@ -539,6 +539,38 @@ def display_key(key: str) -> str:
     return _clip_middle(text)
 
 
+def display_path(path) -> str:
+    """A short, human-facing rendering of an arbitrary FILESYSTEM path for console output — the
+    :func:`display_key` idea applied to the paths citadel itself writes (today: the per-session LLM
+    transcripts ``CITADEL_LLM_LOG_DIR`` produces).
+
+    A workspace on a mounted network drive turns every such path into a ~200-character UNC string,
+    and one announced per agent session — seven for a chunked source — wraps over three terminal
+    rows each and buries the progress display it prints alongside. Under the workspace root the
+    path is shown RELATIVE to it (``.citadel_llm_logs/20260818-152715.4240.1.log``), which is both
+    short and still exactly what you type to open it; anything else falls back to
+    :func:`display_key`, so it is collapsed against a raw root or clipped rather than printed in
+    full.
+
+    Display-only and never raises — like ``display_key``, every fallback returns the normalized
+    string."""
+    text = str(path).replace("\\", "/").strip()
+    if not text:
+        return text
+    try:
+        p = Path(text)
+        if p.is_absolute():
+            root = PurePosixPath(_safe_resolve(WORKSPACE_ROOT).as_posix())
+            try:
+                rel = PurePosixPath(_safe_resolve(p).as_posix()).relative_to(root)
+            except ValueError:
+                return display_key(text)
+            return "/".join(rel.parts) or "."
+    except (OSError, ValueError):
+        return text
+    return display_key(text)
+
+
 # How many trailing path segments an unrecognized absolute key keeps (see `_clip_middle`).
 _DISPLAY_TAIL_PARTS = 3
 

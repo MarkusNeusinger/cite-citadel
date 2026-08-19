@@ -460,6 +460,18 @@ def _attempt_source(job: _SourceJob, index: int, total: int, emit, concurrent: b
     except Exception as exc:  # noqa: BLE001 - per-source, keep going
         run.prepare_exc = exc
         return run
+
+    def on_segment(part: int, parts: int) -> None:
+        """Announce which PASS of a chunked source is starting.
+
+        Only for a source that actually has several (``parts > 1``): a single-pass source's
+        ``source_start`` already said everything there is to say, and an unconditional
+        ``1/1`` would be noise on every ordinary source. A chunked one is the opposite case —
+        one agent session per segment, each of which can run for hours — so without this its
+        console row shows the same file and a spinner from the first pass to the last."""
+        if parts > 1:
+            emit("source_segment", index=index, total=total, source=job.key, part=part, parts=parts)
+
     try:
         run.outcome = _run_agent_sessions(
             sessions,
@@ -468,6 +480,7 @@ def _attempt_source(job: _SourceJob, index: int, total: int, emit, concurrent: b
             allow_emptying=job.allow_emptying,
             resume_ctx=resume_ctx,
             concurrent=concurrent,
+            on_segment=on_segment,
         )
     except BaseException as exc:  # noqa: BLE001 - Ctrl+C etc.: runner rolled back; captured
         run.interrupt = exc
@@ -592,7 +605,9 @@ def _run_source_jobs(
 
     The progress vocabulary is frozen (pinned by tests): ``index``/``total`` count within THIS
     group, restarting at 1 per group, and the event payload keys are exactly what the three
-    former loops emitted. Page changes reach the report only on success — a failed or interrupted
+    former loops emitted. The one addition is ``source_segment`` (``part``/``parts`` on top of
+    those keys), fired between a chunked source's ``source_start`` and its verdict — a purely
+    additive event a consumer that does not know it simply ignores. Page changes reach the report only on success — a failed or interrupted
     source promotes nothing, so the report claims nothing for it.
 
     ``workers`` > 1 (``citadel ingest --jobs N``) runs that many sources CONCURRENTLY — see

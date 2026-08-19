@@ -351,6 +351,7 @@ def _run_agent_sessions(
     allow_emptying: bool = False,
     resume_ctx: _Resume | None = None,
     concurrent: bool = False,
+    on_segment=None,
 ) -> _SourceOutcome:
     """Run one source's agent session(s) — a single pass, or every segment of a chunked source —
     against ONE staging copy, with full all-or-nothing safety. Shared by every job kind
@@ -395,6 +396,14 @@ def _run_agent_sessions(
     base (see :func:`_promote`). A promote refused because a concurrent source got to one of these
     pages first comes back as ``conflict`` rather than an error — the driver re-runs the source
     serially, and the live wiki is untouched either way.
+
+    ``on_segment(part, parts)`` — optional, best-effort — is called just BEFORE each session with
+    its 1-based position among this source's passes. A chunked source is the one case where a
+    single console row stands still for hours (one agent session per segment, each up to
+    ``CITADEL_LLM_TIMEOUT``), so the caller uses it to say *which* pass is running rather than
+    leaving a lone spinner to look hung; with a resume checkpoint the numbering continues at the
+    segment the earlier run died on, since that is the pass actually being paid for. It is
+    progress output — a raising callback must never cost a source its session, so it is guarded.
 
     An EMPTY ``session_fns`` (a deleted source nothing cites) succeeds immediately with zero page
     changes — before a staging copy is even made."""
@@ -461,6 +470,11 @@ def _run_agent_sessions(
             # a page created by segment 1 is absent here, so segment 2 owns it in full.
             inherited = {page.rel_path: page for page in prev_pages}
             for i in range(start_at, len(session_fns)):
+                if on_segment is not None:
+                    try:
+                        on_segment(i + 1, len(session_fns))
+                    except Exception:  # noqa: BLE001 - progress must never break a session
+                        pass
                 result = session_fns[i]()  # the agent edits the STAGING copy, never the live wiki
                 usage_parts.append(result if isinstance(result, llm.SessionUsage) else None)
 

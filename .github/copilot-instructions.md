@@ -503,8 +503,13 @@ per install method, and workspace coherence).
 region: one spinner row per IN-FLIGHT source (which is what makes `--jobs N` legible) plus an
 overall bar, while finished sources scroll away above it as permanent one-line verdicts carrying
 what the session actually spent (`[2/3] OK raw/notes.md 18.4s 2 created $0.0123 1.2k in / 456 out
-claude-opus-5` — only fields the backend genuinely reported). Off a TTY or under `--verbose` it
-degrades to a START line plus a verdict line per source. Two invariants are load-bearing: every
+claude-opus-5` — only fields the backend genuinely reported). A CHUNKED source names the pass it
+is on (`part 3/8`, from the `source_segment` event `ingest._attempt_source` fires before each of a
+multi-pass source's sessions — never for a single-pass one), because that is the one row that can
+legitimately stand still for hours and it would otherwise be indistinguishable from a hung run;
+its verdict then carries `8 parts`, and a failed one `part 7/8` — where it died, and where
+`CITADEL_RESUME` continues. Off a TTY or under `--verbose` it
+degrades to a START line plus a verdict line per source (plus one line per pass). Two invariants are load-bearing: every
 composed string is ASCII-only and the spinner is pinned to rich's ASCII `line` frames (a cp1252
 Windows console must be able to encode it), and every write goes through a swallow-everything guard
 — console output must never be able to fail a run that already spent money. Source keys are
@@ -512,7 +517,11 @@ shortened by `config.display_key`, which drops the whole prefix before the raw f
 tiers: an exact prefix match, a cut at the last path segment NAMED like a configured root (this is
 what rescues a Windows drive letter mapped to a share, where `T:\proj\raw` and the key's
 `//fileserver.../proj/raw/...` are one folder but share no text), and finally a `.../`-marked tail
-clip, so no absolute key can ever flood the console.
+clip, so no absolute key can ever flood the console. Its twin `config.display_path` does the same
+for the paths citadel itself announces — today the per-session transcript `CITADEL_LLM_LOG_DIR`
+writes, printed workspace-RELATIVE (a network-drive workspace makes it a ~200-char UNC string, and
+one is echoed per session, so a chunked source alone used to wrap two dozen rows through the live
+display).
 `wikigit.py` is the best-effort wiki-HISTORY layer: after every run that changed the wiki (ingest or
 curate) it commits the whole wiki dir as ONE commit (and pushes to `CITADEL_WIKI_GIT_REMOTE` when
 set), so every change is a reviewable diff; `auto` (default) only acts when the wiki dir is already
