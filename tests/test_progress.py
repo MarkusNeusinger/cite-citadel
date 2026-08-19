@@ -413,6 +413,26 @@ def test_display_path_falls_back_to_the_key_shortening(monkeypatch, tmp_path):
     assert config.display_path(_LONG_KEY) == _LONG_KEY_SHORT
 
 
+def test_display_path_shortens_even_when_resolution_fails(monkeypatch, tmp_path):
+    """A path that cannot be resolved at all (a dead mount) is exactly the long absolute one this
+    exists to shorten, so it takes the same display_key fallback as a path outside the workspace —
+    the error path must not be the one that prints the full UNC string."""
+    monkeypatch.setattr(config, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(config, "RAW_DIR", Path(_LONG_KEY_RAW_DIR))
+
+    real = config._safe_resolve
+
+    def boom(path):
+        # Only the WORKSPACE root is unreachable — the raw root still resolves, which is what
+        # display_key needs to collapse the key.
+        if str(path) == str(tmp_path):
+            raise OSError("the mount is gone")
+        return real(path)
+
+    monkeypatch.setattr(config, "_safe_resolve", boom)
+    assert config.display_path(_LONG_KEY) == _LONG_KEY_SHORT
+
+
 def test_display_path_never_raises_on_a_relative_or_empty_value(monkeypatch, tmp_path):
     """Display-only: every fallback returns a normalized string rather than blowing up console
     output (a relative path is already short and is passed through)."""

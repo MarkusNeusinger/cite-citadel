@@ -567,7 +567,10 @@ def display_path(path) -> str:
                 return display_key(text)
             return "/".join(rel.parts) or "."
     except (OSError, ValueError):
-        return text
+        # A path that could not even be resolved (a dead mount under the workspace root) is
+        # exactly the long absolute one this exists to shorten, so it takes the SAME fallback as
+        # a path that simply lies outside the workspace — never the full string.
+        pass
     return display_key(text)
 
 
