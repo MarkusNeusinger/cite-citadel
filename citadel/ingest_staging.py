@@ -18,6 +18,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import os
+import secrets
 import shutil
 import threading
 import time
@@ -257,6 +258,12 @@ def _robust_copy_file(src: Path, dst: Path, attempts: int = _RMTREE_ATTEMPTS) ->
 # The staging identity sentinel _make_staging drops into every fresh copy — see _staging_intact.
 _STAGING_SENTINEL = ".citadel_staging"
 
+# Process-local registry: absolute staging path -> the unguessable token its sentinel must carry.
+# In memory on purpose — staging copies live and die within one run of this process, and a token
+# that never touches disk anywhere else cannot be forged by re-creating the directory (the dir
+# NAME is predictable; this is not). A handful of entries per run, so it is never pruned.
+_STAGING_TOKENS: dict[str, str] = {}
+
 # Monotonic per-process counter so each staging dir gets a UNIQUE name — see _make_staging.
 _STAGING_SEQ = 0
 # Guards the counter itself: with `--jobs N` several workers mint staging names at once, and two
@@ -330,9 +337,12 @@ def _make_staging(live: Path) -> Path:
         # re-created empty" (or replaced by a symlinked directory) — and on a first ingest that
         # replacement would diff as an empty wiki and stamp the source as a silent zero-change
         # success. A dotfile, so it is invisible to the content walks, the promote, and the agent
-        # (which is told never to touch dotfiles); the unique dir name is the token, tying the
-        # file to this staging instance. See :func:`_staging_intact`.
-        (staging / _STAGING_SENTINEL).write_text(staging.name, encoding="utf-8")
+        # (which is told never to touch dotfiles). The token is random and lives only in this
+        # process's _STAGING_TOKENS — the directory name would be predictable, so a re-created
+        # tree could forge it; this it cannot. See :func:`_staging_intact`.
+        token = secrets.token_hex(16)
+        (staging / _STAGING_SENTINEL).write_text(token, encoding="utf-8")
+        _STAGING_TOKENS[str(staging)] = token
     except OSError:
         _robust_rmtree(staging)
         raise
@@ -341,14 +351,24 @@ def _make_staging(live: Path) -> Path:
 
 def _staging_intact(staging: Path) -> bool:
     """True while ``staging`` is still the directory :func:`_make_staging` created — its identity
-    sentinel is present and names this exact staging dir. False when the tree was deleted,
-    deleted-and-recreated, or replaced (a weak agent inventing a "publish"/cleanup step), where a
-    plain existence check would read the impostor as an empty wiki. Read errors count as not
-    intact — the conservative answer, since the caller fails the source rather than trusting an
-    unverifiable tree."""
+    sentinel is present and carries the unguessable token registered for this exact staging dir.
+    False when the tree was deleted, deleted-and-recreated, or replaced (a weak agent inventing a
+    "publish"/cleanup step), where a plain existence check would read the impostor as an empty
+    wiki: a re-created tree cannot know the token (it never leaves this process except into the
+    sentinel itself), and a symlink standing where the directory or sentinel should be is refused
+    outright rather than followed. ANY read/decode error counts as not intact — the conservative
+    answer, since the caller fails the source rather than trusting an unverifiable tree (and this
+    helper is also called while handling another failure, where raising would abort the run)."""
+    expected = _STAGING_TOKENS.get(str(staging))
+    if expected is None:
+        return False
+    root = Path(staging)
+    sentinel = root / _STAGING_SENTINEL
     try:
-        return (Path(staging) / _STAGING_SENTINEL).read_text(encoding="utf-8") == Path(staging).name
-    except OSError:
+        if root.is_symlink() or sentinel.is_symlink():
+            return False
+        return sentinel.read_text(encoding="utf-8") == expected
+    except Exception:  # noqa: BLE001 - a corrupt sentinel (e.g. UnicodeDecodeError) means "not intact", never a crash
         return False
 
 

@@ -607,6 +607,40 @@ def test_recreated_staging_directory_is_detected_as_replaced(tmp_citadel, fake_a
     assert "raw/notes.md" not in tmp_citadel.read_manifest()
 
 
+def test_forged_sentinel_in_recreated_staging_is_detected(tmp_citadel, fake_agent):
+    """The sentinel's token is random and process-local, so even an impostor tree that re-creates
+    `.citadel_staging` (the filename and the directory name are both predictable) cannot forge the
+    identity: the content never matches the registered token and the source fails."""
+    import shutil
+
+    raw = tmp_citadel.raw
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+
+    def fake(rel_key, kind="ingest"):
+        staging = config.wiki_dir()
+        shutil.rmtree(staging)
+        staging.mkdir()
+        # Forge the sentinel with the only value an outsider could predict: the dir's own name.
+        (staging / ingest_staging._STAGING_SENTINEL).write_text(staging.name, encoding="utf-8")
+
+    fake_agent(side_effect=fake)
+    report = ingest.ingest([str(raw / "notes.md")])
+
+    assert "raw/notes.md" not in report.processed
+    assert any("staging wiki copy vanished or was replaced" in e for e in report.errors)
+    assert "raw/notes.md" not in tmp_citadel.read_manifest()
+
+
+def test_corrupt_sentinel_reads_as_not_intact(tmp_path):
+    """A sentinel holding undecodable bytes must answer False, never raise — `_staging_intact` is
+    also called while another failure is being handled, where an escaping UnicodeDecodeError would
+    abort the whole run instead of reporting the vanished/replaced staging copy."""
+    staging = ingest_staging._make_staging(tmp_path / "wiki")
+    assert ingest_staging._staging_intact(staging)
+    (staging / ingest_staging._STAGING_SENTINEL).write_bytes(b"\xff\xfe garbage")
+    assert ingest_staging._staging_intact(staging) is False
+
+
 def test_raising_session_still_reports_vanished_staging(tmp_citadel, fake_agent):
     """A session can destroy its staging copy AND then die (timeout, non-zero exit). The vanished
     -staging diagnosis must not be lost behind the session's own error: both stories surface."""

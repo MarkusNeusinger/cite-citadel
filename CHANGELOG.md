@@ -77,8 +77,9 @@ All notable changes to this project are documented here. The format is based on
   the agent deletes staging *without* touching the live wiki the same run would have been a
   **silent zero-change success** (money spent, nothing imported, source stamped done). A vanished
   staging directory is now detected right after the session, before any diff is taken — by an
-  identity sentinel, not a bare existence check, so a deleted-then-recreated (or symlink-replaced)
-  directory cannot impersonate the copy this run made — and fails the source with its own reason —
+  identity sentinel carrying a random, process-local token — not a bare existence check — so a
+  deleted-then-recreated (or symlink-replaced) directory cannot impersonate the copy this run
+  made, even by re-creating the sentinel file — and fails the source with its own reason —
   *"the staging wiki copy vanished or was replaced mid-session"* — that also names
   any files that appeared in the live wiki outside the staging discipline (serial runs only, where
   no concurrent promote can legitimately explain them). Those files are deliberately left in place
