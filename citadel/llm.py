@@ -486,11 +486,13 @@ def _build_instruction(
         f"Your finished pages STAY under {wiki_rel}/ — that IS the deliverable. There is no "
         "publish step for you to perform: the orchestrator validates and imports your edits "
         f"from {wiki_rel}/ after this session ends, so never move, copy, or re-create them "
-        "anywhere else (a page placed outside it is lost, not published). "
+        "anywhere else (a page placed outside it is lost, not published), and never delete, "
+        "rename, or move that wiki directory itself. "
         f"The source and {raw_rel}/ are READ-ONLY inputs: read them, but never write, create, "
         f"move, or delete anything there. Never create or edit {wiki_rel}/index.md, "
         f"{wiki_rel}/log.md, any */index.md, or any dotfile, and make no changes outside "
-        f"{wiki_rel}/. When your edits are complete, run `citadel check` (or `uv run python -m "
+        f"{wiki_rel}/. When your edits "
+        "are complete, run `citadel check` (or `uv run python -m "
         "citadel check`) ONCE; only if it reports errors, fix them and run it again to confirm.",
     ]
     return "\n".join(lines)
@@ -963,9 +965,9 @@ def run_ingest_session(
     cli_path = _resolve_cli(cli)
     prompt = _build_instruction(rel_key, kind, read_path, segment, line_range)
     argv, stdin_text = _build_invocation(cli, cli_path, prompt, _external_dirs(rel_key, read_path))
-    # The segment goes in FRONT of the source key: the label is truncated from the right when a
-    # transcript filename is composed, and on a chunked source "which pass is this" is exactly the
-    # part that must survive.
+    # The segment goes in FRONT of the source key: when a transcript filename is composed the
+    # label is truncated in the MIDDLE (head + tail kept), so on a chunked source "which pass is
+    # this" and the source's basename both survive a long absolute key.
     label = f"{kind}.p{segment[0]}of{segment[1]}.{rel_key}" if segment else f"{kind}.{rel_key}"
     hermetic = _hermetic_flags(cli, cli_path)  # session isolation (claude --bare), probe-gated
     try:

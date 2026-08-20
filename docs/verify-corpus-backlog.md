@@ -61,6 +61,37 @@ Row format:
 verdict, and the `VCB-` ids the run touched, or `misses: none`. This `## Runs` heading stays
 singular; runs nest under it.)*
 
+### 2026-08-20 beverages (routing gate for PR #151 — vanished-staging guard + no-publish prompt line)
+
+- **Mode:** Mode A into a scratch sandbox (`CITADEL_RAW_DIR` at the corpus `raw/`), as the
+  ingest/llm routing gate for PR #151 (the vanished-staging failure detection, the prompt's new
+  no-publish/stay-in-place invariant, and middle-truncated transcript filenames) — proving the
+  extended run instruction does not regress a real ingest. Full answer-key walk, retrieval-first.
+- **Model:** `claude:claude-sonnet-5` (`CITADEL_INGEST_MODEL=sonnet`) · serial · `rules_version
+  1b71f03b566f` · every source paid the per-source hermetic-auth retry (container auth shape) ·
+  $21.74 recorded, 14 processed, 0 errors.
+- **Result:** `check` 0 errors (1 advisory: two `§ Heading` locators on
+  `concepts/tea-brewing-temperature-and-method.md` naming composed headings — the VCB-001 shape, at
+  reference-model rarity), `lint` exit 0. Hard gates all hold: §A single-source facts present +
+  cited with per-line locators; §D and §L both attributed-false claims stand questioned
+  (`[^llm]` + `[!CONTRADICTION]`, never wiki-voice); §E cold-brew-higher present; §F one shared
+  caffeine concept page bridges the topics (24 outbound links) and Thornbury & Lin spans both;
+  §I all ten deep-dive facts landed with the true values; §J all four 2024 prices + the near-black
+  profile carried as dated Change Log entries beside the live 2026 values, no date-vs-date
+  contradiction. Soft: §C **4/4** contradictions surfaced, §K **3/3 co-located** (filter-temp +
+  ideal-extraction both on `concepts/pour-over-coffee-brewing.md` with `[^llm]` pushback,
+  cold-brew-caffeine on `concepts/caffeine-content-in-coffee.md`), §B merged + co-cited (robusta
+  2× and drip 95 mg each one statement citing both files), §H/§N TDS/EGCG/SCA/GH/KH defined and
+  EY carried as the honest `[^llm]`-labeled Abbreviation page (lint: 0 undefined), §M the
+  Midnight-rest open point shows the full 2024-open → 2026-resolved arc and the mineralised-water
+  question is live. Retrieval battery **8/8**, every row rank ≤2 via search tier 1, 1 read each;
+  negatives (`rb-midnight-price`, `rb-darkroast`, `rb-caffeine-fades`) all surface the attributed
+  framing, never the forbidden claim as truth. Texture: lint's "Malformed open points (no id/date):
+  3" fires on threads that DO carry `id:`/dates (e.g. `objects/aurora-midnight.md` § Midnight
+  extended rest) — looks like a parser-shape mismatch worth a look, not an agent defect.
+- **Verdict:** PASS · misses: none (advisory locator pair rides VCB-001's open entry — `last seen`
+  not bumped since that entry is haiku-scoped; noted here as a reference-model near-miss).
+
 ### 2026-08-06 werkhof (regression run for PR #143 — the sharpened Registry creation triggers)
 
 - **Mode:** Mode A into a scratch sandbox (`CITADEL_RAW_DIR` at the corpus `raw/`), grading that the

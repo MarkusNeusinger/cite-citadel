@@ -39,6 +39,7 @@ from .ingest_staging import (
     _sha256,
     _sha256_or_none,
     _snapshot,
+    _staging_intact,
     _validate_and_restamp,
 )
 
@@ -486,7 +487,7 @@ def _run_agent_sessions(
         staging, cloned = clone()
         # `base` feeds the base-aware promote and the resume checkpoints ONLY under `--jobs N`,
         # keeping the serial promote/checkpoint semantics byte-for-byte; `cloned` stays available
-        # in both modes for the drift note.
+        # in both modes for the drift note and the vanished-staging check below.
         base = cloned if concurrent else None
         # RESUME: replay an earlier run's completed segments into this fresh staging copy, so only
         # the remaining ones have to be paid for again. Every guard failure falls back to a full
@@ -502,6 +503,7 @@ def _run_agent_sessions(
                 resume.clear(rel_key)
                 resume_ctx.checkpoint = None
                 _robust_rmtree(staging)
+                staging = None  # a failed re-clone must not read as "staging vanished" below
                 staging, cloned = clone()
                 base = cloned if concurrent else None
             else:
@@ -526,6 +528,33 @@ def _run_agent_sessions(
                         pass
                 result = session_fns[i]()  # the agent edits the STAGING copy, never the live wiki
                 usage_parts.append(result if isinstance(result, llm.SessionUsage) else None)
+
+                if not _staging_intact(staging):
+                    # The staging copy ITSELF is gone — or was deleted and re-created, which a
+                    # bare existence check cannot tell apart (the identity sentinel can): the
+                    # agent (a weak model has been seen inventing a "publish" step — copying its
+                    # pages into the live wiki and deleting staging as "done") or something else
+                    # on the machine removed it.
+                    # Without this check the empty snapshot reads as "the session changed
+                    # nothing" and the failure surfaces — if at all — as an opaque
+                    # refusing-to-promote error three steps later (or, on a wiki with no prior
+                    # content pages, as a silent zero-change SUCCESS). Fail the source with the
+                    # real story; `failed_errors` appends the serial-mode live-drift note, which
+                    # names any pages that appeared in the live wiki outside the staging
+                    # discipline — never validated, and deliberately left in place to inspect.
+                    msg = (
+                        f"{rel_key}: the staging wiki copy vanished or was replaced mid-session "
+                        "(the agent or another process moved, deleted, or re-created it), so "
+                        "this session's work cannot be verified or promoted"
+                    )
+                    return _SourceOutcome(
+                        False,
+                        errors=failed_errors([msg]),
+                        seconds=time.monotonic() - started,
+                        usage=llm.combine_usage(usage_parts),
+                        carried_usage=_usage_from_fields(carried),
+                        resumed_note=resumed_note,
+                    )
 
                 after = _snapshot()
                 seg_created, seg_updated, seg_deleted = _diff(prev, after)
@@ -625,9 +654,18 @@ def _run_agent_sessions(
         # carries that on the exception, so the run total honors "failed sessions included".
         salvaged = getattr(exc, "session_usage", None)
         usage_parts.append(salvaged if isinstance(salvaged, llm.SessionUsage) else None)
+        errs = [f"{rel_key}: {exc}"]
+        # A session that dies (timeout, non-zero exit) can STILL have destroyed its staging copy
+        # first — without this the vanished-staging story is lost behind the session's own error,
+        # and the drift note below is the only trace of any out-of-band live writes.
+        if staging is not None and not _staging_intact(staging):
+            errs.append(
+                f"{rel_key}: the staging wiki copy also vanished or was replaced mid-session "
+                "(the agent or another process moved, deleted, or re-created it)"
+            )
         return _SourceOutcome(
             False,
-            errors=failed_errors([f"{rel_key}: {exc}"]),
+            errors=failed_errors(errs),
             seconds=time.monotonic() - started,
             usage=llm.combine_usage(usage_parts),
             carried_usage=_usage_from_fields(carried),

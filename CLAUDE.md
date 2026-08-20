@@ -269,6 +269,13 @@ addressing them through `ingest`. The flow per source:
   guard failure falls back to a full restart at segment 1 *in the same run*, so the pre-resume
   behavior is the floor). Any
   failure/timeout/Ctrl+C leaves the live wiki exactly as it was; the source is retried next run.
+  A session that deletes its own STAGING COPY (a weak model inventing a "publish" step — copying
+  its pages into the live wiki and removing staging as "done") is caught right after the session
+  (an identity sentinel, so a deleted-then-recreated directory cannot impersonate the copy —
+  checked on the raising path too): the source fails with `staging wiki copy vanished`, naming any
+  files that appeared in the live
+  wiki outside the staging discipline (left in place, flagged as never validated), and the prompt
+  tells the agent outright that its work stays in the wiki dir it was given — no publish step.
   Deletion cleanups, then pending files, then repos all drive this through ONE shared per-source
   loop (`_SourceJob` + `_run_source_jobs`) — **deletions run first** so a delete cleanup strips a
   vanished source's stale provenance before any pending session touches a page that still cites it

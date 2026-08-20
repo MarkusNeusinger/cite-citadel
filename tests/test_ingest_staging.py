@@ -510,6 +510,157 @@ def test_session_that_deletes_all_pages_is_refused_not_promoted(tmp_citadel, fak
     assert (wiki / "concepts" / "keep.md").exists()  # the live wiki kept its page
 
 
+def test_vanished_staging_fails_with_clear_reason(tmp_citadel, fake_agent, seed_page):
+    """A session that deletes its own staging copy (a weak model inventing a "publish"/cleanup
+    step) fails the source with a reason that says so — not with an opaque promote refusal or,
+    worse, a silent zero-change success. The live wiki is untouched and the source is retried."""
+    import shutil
+
+    wiki, raw = tmp_citadel.wiki, tmp_citadel.raw
+    seed_page(
+        "concepts/keep.md",
+        {"type": "Concept", "title": "Keep", "description": "d", "tags": ["x"], "resource": "raw/o.md"},
+        "Keep me.[^s1]\n\n## Sources\n\n[^s1]: [raw/o.md](../../raw/o.md) - o\n",
+    )
+    (raw / "o.md").write_text("x\n", encoding="utf-8")
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+
+    def fake(rel_key, kind="ingest"):
+        shutil.rmtree(config.wiki_dir())  # the redirected wiki IS the staging copy
+
+    fake_agent(side_effect=fake)
+    report = ingest.ingest([str(raw / "notes.md")])
+
+    assert "raw/notes.md" not in report.processed
+    assert any("staging wiki copy vanished" in e for e in report.errors)
+    assert (wiki / "concepts" / "keep.md").exists()  # live wiki untouched
+    assert "raw/notes.md" not in tmp_citadel.read_manifest()  # retried next run
+
+
+def test_vanished_staging_names_pages_written_to_live_wiki(tmp_citadel, fake_agent, seed_page):
+    """The incident this guards against: the agent copies its pages into the LIVE wiki directly,
+    then deletes the staging copy as "published". The failure reason must name the files that
+    appeared outside the staging discipline — they were never validated — and leave them in
+    place for the user to inspect rather than silently deleting paid-for work."""
+    import shutil
+
+    wiki, raw = tmp_citadel.wiki, tmp_citadel.raw
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+
+    def fake(rel_key, kind="ingest"):
+        stray = wiki / "concepts" / "stray.md"
+        stray.parent.mkdir(parents=True, exist_ok=True)
+        stray.write_text("published directly, bypassing staging\n", encoding="utf-8")
+        shutil.rmtree(config.wiki_dir())
+
+    fake_agent(side_effect=fake)
+    report = ingest.ingest([str(raw / "notes.md")])
+
+    assert "raw/notes.md" not in report.processed
+    assert any("staging wiki copy vanished" in e for e in report.errors)
+    # The serial-mode live-drift note (appended to the failure) names the out-of-band write ...
+    note = next(e for e in report.errors if "changed while this source's session ran" in e)
+    assert "concepts/stray.md" in note
+    assert (wiki / "concepts" / "stray.md").exists()  # ... and left in place, never auto-deleted
+
+
+def test_vanished_staging_on_empty_wiki_is_not_a_silent_success(tmp_citadel, fake_agent):
+    """The variant with nothing to trip the anti-emptying guard: the live wiki has NO content
+    pages yet (a first ingest), the agent deletes its staging copy and touches nothing else.
+    Empty-before vs empty-after used to diff as "the session changed nothing" and stamp the
+    source done — a silent zero-change success. The identity check must fail the source."""
+    import shutil
+
+    raw = tmp_citadel.raw
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+
+    def fake(rel_key, kind="ingest"):
+        shutil.rmtree(config.wiki_dir())
+
+    fake_agent(side_effect=fake)
+    report = ingest.ingest([str(raw / "notes.md")])
+
+    assert "raw/notes.md" not in report.processed  # never stamped as ingested
+    assert any("staging wiki copy vanished" in e for e in report.errors)
+    assert "raw/notes.md" not in tmp_citadel.read_manifest()  # retried next run
+
+
+def test_recreated_staging_directory_is_detected_as_replaced(tmp_citadel, fake_agent):
+    """A deleted-then-recreated staging directory (the "publish then tidy up" shape) passes a bare
+    existence check but not the identity sentinel: the impostor tree was never the copy this run
+    made, so nothing in it can be trusted or diffed. The source must fail, not read as empty."""
+    import shutil
+
+    raw = tmp_citadel.raw
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+
+    def fake(rel_key, kind="ingest"):
+        staging = config.wiki_dir()
+        shutil.rmtree(staging)
+        staging.mkdir()  # same path, brand-new (empty) directory — is_dir() alone would pass
+
+    fake_agent(side_effect=fake)
+    report = ingest.ingest([str(raw / "notes.md")])
+
+    assert "raw/notes.md" not in report.processed
+    assert any("staging wiki copy vanished or was replaced" in e for e in report.errors)
+    assert "raw/notes.md" not in tmp_citadel.read_manifest()
+
+
+def test_forged_sentinel_in_recreated_staging_is_detected(tmp_citadel, fake_agent):
+    """The sentinel's token is random and process-local, so even an impostor tree that re-creates
+    `.citadel_staging` (the filename and the directory name are both predictable) cannot forge the
+    identity: the content never matches the registered token and the source fails."""
+    import shutil
+
+    raw = tmp_citadel.raw
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+
+    def fake(rel_key, kind="ingest"):
+        staging = config.wiki_dir()
+        shutil.rmtree(staging)
+        staging.mkdir()
+        # Forge the sentinel with the only value an outsider could predict: the dir's own name.
+        (staging / ingest_staging._STAGING_SENTINEL).write_text(staging.name, encoding="utf-8")
+
+    fake_agent(side_effect=fake)
+    report = ingest.ingest([str(raw / "notes.md")])
+
+    assert "raw/notes.md" not in report.processed
+    assert any("staging wiki copy vanished or was replaced" in e for e in report.errors)
+    assert "raw/notes.md" not in tmp_citadel.read_manifest()
+
+
+def test_corrupt_sentinel_reads_as_not_intact(tmp_path):
+    """A sentinel holding undecodable bytes must answer False, never raise — `_staging_intact` is
+    also called while another failure is being handled, where an escaping UnicodeDecodeError would
+    abort the whole run instead of reporting the vanished/replaced staging copy."""
+    staging = ingest_staging._make_staging(tmp_path / "wiki")
+    assert ingest_staging._staging_intact(staging)
+    (staging / ingest_staging._STAGING_SENTINEL).write_bytes(b"\xff\xfe garbage")
+    assert ingest_staging._staging_intact(staging) is False
+
+
+def test_raising_session_still_reports_vanished_staging(tmp_citadel, fake_agent):
+    """A session can destroy its staging copy AND then die (timeout, non-zero exit). The vanished
+    -staging diagnosis must not be lost behind the session's own error: both stories surface."""
+    import shutil
+
+    raw = tmp_citadel.raw
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+
+    def fake(rel_key, kind="ingest"):
+        shutil.rmtree(config.wiki_dir())
+        raise RuntimeError("agent timed out")
+
+    fake_agent(side_effect=fake)
+    report = ingest.ingest([str(raw / "notes.md")])
+
+    assert "raw/notes.md" not in report.processed
+    assert any("agent timed out" in e for e in report.errors)  # the session's own failure ...
+    assert any("also vanished or was replaced" in e for e in report.errors)  # ... and the story
+
+
 def test_failed_source_names_out_of_staging_live_writes(tmp_citadel, fake_agent):
     """The observed weak-model failure mode: the agent "publishes" its pages into the LIVE wiki
     itself instead of leaving them in its staging copy. The emptied staging trips the promote

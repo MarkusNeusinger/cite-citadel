@@ -81,6 +81,7 @@ from .ingest_staging import _make_staging as _make_staging
 from .ingest_staging import _promote as _promote
 from .ingest_staging import _robust_copy_file as _robust_copy_file
 from .ingest_staging import _robust_rmtree as _robust_rmtree
+from .ingest_staging import _staging_intact as _staging_intact
 from .ingest_staging import _staging_prefix as _staging_prefix
 from .ingest_staging import _sweep_stale_staging
 
