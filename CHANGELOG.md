@@ -68,6 +68,28 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A session that deletes its own staging copy now fails with the real story.** A weak local model
+  was observed inventing a "publish" step at the end of a long session: it copied its finished
+  pages out of the per-source staging copy into the **live** wiki, deleted the staging directory as
+  "done", and exited 0. Ingest then saw an empty staging tree next to a live wiki with pages and
+  failed the source with the anti-emptying valve's generic *"refusing to promote: the session left
+  the wiki with no content pages"* — technically true, entirely misleading, and in the variant where
+  the agent deletes staging *without* touching the live wiki the same run would have been a
+  **silent zero-change success** (money spent, nothing imported, source stamped done). A vanished
+  staging directory is now detected right after the session, before any diff is taken, and fails
+  the source with its own reason — *"the staging wiki copy vanished mid-session"* — that also names
+  any files that appeared in the live wiki outside the staging discipline (serial runs only, where
+  no concurrent promote can legitimately explain them). Those files are deliberately left in place
+  for inspection: they were paid for, but they were **never validated by this run**, and the reason
+  says so. The session prompt gained the matching instruction — the wiki directory the agent is
+  given is where its work *stays*: there is no publish step, never move or copy its contents
+  elsewhere, never delete or rename the directory itself.
+- **Transcript log filenames keep the source's basename.** The per-session transcript's filename
+  label was truncated from the right at 80 characters, so for a source on a network share —
+  `pdf.//host/share/very/deep/tree/Report.pdf` — everything recognizable was cut off and the log
+  was named after the *middle of the directory tree*. The label is now truncated in the middle
+  (head + tail kept), so both the kind/segment prefix and the file's own name survive; the 80-char
+  cap itself (a Windows path-length guard) is unchanged.
 - **The `+` in a pattern list is understood wherever you write it.** `CITADEL_IGNORE_PATTERNS`'
   extend-marker was only honored in front of the *whole* value, so the equally natural
   `+*.bak,+~backup*` — one `+` per entry, the way a list of independent additions reads — left the

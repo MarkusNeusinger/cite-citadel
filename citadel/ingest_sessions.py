@@ -440,6 +440,11 @@ def _run_agent_sessions(
 
     try:
         staging, base = clone()
+        # The content paths the live wiki held when this source cloned it (the fresh staging copy
+        # IS that state, so walking it costs no second pass over live). Consulted only by the
+        # vanished-staging check below, to name files that appeared in the LIVE wiki outside the
+        # staging discipline.
+        clone_paths = set(base) if base is not None else set(_content_files(staging))
         # RESUME: replay an earlier run's completed segments into this fresh staging copy, so only
         # the remaining ones have to be paid for again. Every guard failure falls back to a full
         # start on a clean staging copy IN THIS RUN — never a failed source, never a wasted session.
@@ -455,6 +460,7 @@ def _run_agent_sessions(
                 resume_ctx.checkpoint = None
                 _robust_rmtree(staging)
                 staging, base = clone()
+                clone_paths = set(base) if base is not None else set(_content_files(staging))
             else:
                 created, updated, deleted = list(seeded[0]), list(seeded[1]), list(seeded[2])
                 start_at = resume_ctx.checkpoint.completed
@@ -477,6 +483,39 @@ def _run_agent_sessions(
                         pass
                 result = session_fns[i]()  # the agent edits the STAGING copy, never the live wiki
                 usage_parts.append(result if isinstance(result, llm.SessionUsage) else None)
+
+                if not Path(staging).is_dir():
+                    # The staging copy ITSELF is gone: the agent (a weak model has been seen
+                    # inventing a "publish" step — copying its pages into the live wiki and
+                    # deleting staging as "done") or something else on the machine removed it.
+                    # Without this check the empty snapshot reads as "the session changed
+                    # nothing" and the failure surfaces — if at all — as an opaque
+                    # refusing-to-promote error three steps later. Fail the source with the real
+                    # story, and (serial runs only — under --jobs N a concurrent source's promote
+                    # legitimately changes the live wiki) name any files that appeared in the
+                    # LIVE wiki outside the staging discipline: they were never validated, and
+                    # they are deliberately left in place for the user to inspect.
+                    msg = (
+                        f"{rel_key}: the staging wiki copy vanished mid-session (the agent or "
+                        "another process moved or deleted it), so this session's work cannot be "
+                        "verified or promoted"
+                    )
+                    if not concurrent:
+                        stray = sorted(set(_content_files(live)) - clone_paths)
+                        if stray:
+                            shown = ", ".join(stray[:5]) + (f", ... +{len(stray) - 5} more" if len(stray) > 5 else "")
+                            msg += (
+                                "; these files appeared in the LIVE wiki outside the staging "
+                                f"discipline (NOT validated by this run, left in place): {shown}"
+                            )
+                    return _SourceOutcome(
+                        False,
+                        errors=[msg],
+                        seconds=time.monotonic() - started,
+                        usage=llm.combine_usage(usage_parts),
+                        carried_usage=_usage_from_fields(carried),
+                        resumed_note=resumed_note,
+                    )
 
                 after = _snapshot()
                 seg_created, seg_updated, seg_deleted = _diff(prev, after)

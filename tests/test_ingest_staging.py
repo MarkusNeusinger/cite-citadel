@@ -510,6 +510,59 @@ def test_session_that_deletes_all_pages_is_refused_not_promoted(tmp_citadel, fak
     assert (wiki / "concepts" / "keep.md").exists()  # the live wiki kept its page
 
 
+def test_vanished_staging_fails_with_clear_reason(tmp_citadel, fake_agent, seed_page):
+    """A session that deletes its own staging copy (a weak model inventing a "publish"/cleanup
+    step) fails the source with a reason that says so — not with an opaque promote refusal or,
+    worse, a silent zero-change success. The live wiki is untouched and the source is retried."""
+    import shutil
+
+    wiki, raw = tmp_citadel.wiki, tmp_citadel.raw
+    seed_page(
+        "concepts/keep.md",
+        {"type": "Concept", "title": "Keep", "description": "d", "tags": ["x"], "resource": "raw/o.md"},
+        "Keep me.[^s1]\n\n## Sources\n\n[^s1]: [raw/o.md](../../raw/o.md) - o\n",
+    )
+    (raw / "o.md").write_text("x\n", encoding="utf-8")
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+
+    def fake(rel_key, kind="ingest"):
+        shutil.rmtree(config.wiki_dir())  # the redirected wiki IS the staging copy
+
+    fake_agent(side_effect=fake)
+    report = ingest.ingest([str(raw / "notes.md")])
+
+    assert "raw/notes.md" not in report.processed
+    assert any("staging wiki copy vanished" in e for e in report.errors)
+    assert (wiki / "concepts" / "keep.md").exists()  # live wiki untouched
+    assert "raw/notes.md" not in tmp_citadel.read_manifest()  # retried next run
+
+
+def test_vanished_staging_names_pages_written_to_live_wiki(tmp_citadel, fake_agent, seed_page):
+    """The incident this guards against: the agent copies its pages into the LIVE wiki directly,
+    then deletes the staging copy as "published". The failure reason must name the files that
+    appeared outside the staging discipline — they were never validated — and leave them in
+    place for the user to inspect rather than silently deleting paid-for work."""
+    import shutil
+
+    wiki, raw = tmp_citadel.wiki, tmp_citadel.raw
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+
+    def fake(rel_key, kind="ingest"):
+        stray = wiki / "concepts" / "stray.md"
+        stray.parent.mkdir(parents=True, exist_ok=True)
+        stray.write_text("published directly, bypassing staging\n", encoding="utf-8")
+        shutil.rmtree(config.wiki_dir())
+
+    fake_agent(side_effect=fake)
+    report = ingest.ingest([str(raw / "notes.md")])
+
+    assert "raw/notes.md" not in report.processed
+    err = next(e for e in report.errors if "staging wiki copy vanished" in e)
+    assert "concepts/stray.md" in err  # the out-of-band write is named ...
+    assert "NOT validated" in err
+    assert (wiki / "concepts" / "stray.md").exists()  # ... and left in place, never auto-deleted
+
+
 def test_promote_excludes_generated_and_manifest_files(tmp_path):
     """``_promote`` syncs only content pages: it never copies a staging ``index.md``/``log.md`` or
     the manifest onto live (finalize regenerates indexes, the loop owns the manifest), and it does
