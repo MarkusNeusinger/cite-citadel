@@ -142,8 +142,16 @@
   function inlineFmt(text, fromRel, fnSrc) {
     fnSrc = fnSrc || {};
     text = text.replace(/`([^`]+)`/g, function (_, c) { return "<code>" + c + "</code>"; });
-    text = text.replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, function (_, t, url) {
-      if (url.indexOf("://") >= 0) return "<span class='ext' title='" + url + "'>" + t + "</span>";
+    // Two target forms, mirroring grammar.split_link_target: the angle form (the ONE supported
+    // way to cite a path containing spaces — here already HTML-escaped to &lt;...&gt; because
+    // inlineFmt runs on escaped text) and the bare whitespace-free form. Without the angle
+    // alternative a citation into a spacey path never renders as a link at all, and its footnote
+    // def lands in the "unresolved citations" bucket of the compacted Sources block.
+    text = text.replace(/\[([^\]]+)\]\((&lt;[^)]*&gt;|[^)\s]+)(?:\s+"[^"]*")?\)/g, function (_, t, url) {
+      // The bare target, angle wrapper stripped, for the hover title of an unresolved span
+      // (resolveLink strips the wrapper itself for the lookup).
+      var plain = url.slice(0, 4) === "&lt;" && url.slice(-4) === "&gt;" ? url.slice(4, -4) : url;
+      if (url.indexOf("://") >= 0) return "<span class='ext' title='" + plain + "'>" + t + "</span>";
       var rel = resolveLink(fromRel, url);
       if (PAGES[rel]) {
         return "<a href='#" + encodeURIComponent(rel) + "' data-page='" + esc(rel) + "'>" + t + "</a>";
@@ -152,7 +160,7 @@
         return "<a href='#src:" + encodeURIComponent(rel) + "' class='srclink' data-source='" +
           esc(rel) + "' data-pop='" + esc(rel) + "'>" + t + "</a>";
       }
-      return "<span class='ext' title='" + url + "'>" + t + "</span>";
+      return "<span class='ext' title='" + plain + "'>" + t + "</span>";
     });
     text = text.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
     text = text.replace(/\[\^([^\]]+)\](?!:)/g, function (_, id) {
@@ -1415,7 +1423,9 @@
     // inline [^sN] markers become source-aware (hover preview + open).
     var fnSrc = {};
     p.body.split("\n").forEach(function (line) {
-      var m = /^\s*\[\^([^\]]+)\]:\s*\[[^\]]*\]\(([^)\s]+)/.exec(line);
+      // Same two target forms as inlineFmt, but over the RAW body: the <angle> form (spacey
+      // paths — grammar.DEF_LINK_RE's twin) and the bare whitespace-free form.
+      var m = /^\s*\[\^([^\]]+)\]:\s*\[[^\]]*\]\((<[^)>]+>|[^)\s]+)/.exec(line);
       if (m) { var r = resolveLink(rel, m[2]); if (SOURCES[r]) fnSrc[m[1]] = r; }
     });
     var meta = "<div class='meta'><span class='ptype'>" + esc(p.type) + "</span> " +
@@ -1472,12 +1482,16 @@
     var prov = sourceProvenance(s).map(function (part, i) {
       return "<span class='" + part.cls + "'>" + (i === 0 ? "via " : "\u00b7 ") + esc(part.text) + "</span>";
     }).join(" ");
+    // The human-facing path (the key collapsed against the configured raw roots, computed at
+    // build time by config.display_key) — an out-of-workspace source's `id` is an absolute-path
+    // join that would flood the meta line, so the short form wins wherever a path is DISPLAYED.
+    var shown = s.display || s.id;
     var meta = "<div class='meta'><span class='ptype src'>Source</span> <span class='src-id'>" +
-      esc(s.id) + "</span>" + (prov ? " " + prov : "") + (open ? " " + open : "") + "</div>";
+      esc(shown) + "</span>" + (prov ? " " + prov : "") + (open ? " " + open : "") + "</div>";
     var body;
     if (s.missing) {
       body = "<div class='callout'><div class='callout-title'>SOURCE UNAVAILABLE</div>" +
-        "<div class='callout-body'>The raw file <code>" + esc(s.id) +
+        "<div class='callout-body'>The raw file <code>" + esc(shown) +
         "</code> was not found when this viewer was generated. Re-run <code>citadel view</code> " +
         "with the source present to embed its content.</div></div>";
     } else if (s.kind === "binary") {
@@ -1487,7 +1501,7 @@
         "<div class='callout-body'>This source is a binary file (e.g. a PDF) and can't be " +
         "rendered inline. " + (s.href
           ? "Use <strong>Open original file</strong> above — a PDF opens directly in your browser."
-          : "Open the raw file <code>" + esc(s.id) + "</code> directly to read it.") +
+          : "Open the raw file <code>" + esc(shown) + "</code> directly to read it.") +
         "</div></div>";
     } else {
       body = (s.kind === "office"
@@ -1530,7 +1544,7 @@
       : (s.kind === "binary" ? " · (binary — opens original)" : "");
     var provText = sourceProvenance(s).map(function (p) { return p.text; }).join(" · ");
     pop.innerHTML = "<div class='sp-title'>" + esc(s.title) + "</div><div class='sp-meta'>" +
-      esc(s.id) + (provText ? " · " + esc(provText) : "") + note + "</div>" +
+      esc(s.display || s.id) + (provText ? " · " + esc(provText) : "") + note + "</div>" +
       (s.snippet ? "<div class='sp-snip'>" + esc(s.snippet) + "…</div>" : "") +
       "<div class='sp-hint'>Click to open source</div>";
     positionPop(anchor);

@@ -126,3 +126,52 @@ def test_search_filters_and_recovers(viewer_page):
 def test_slash_focuses_search(viewer_page):
     viewer_page.keyboard.press("/")
     assert viewer_page.evaluate("document.activeElement && document.activeElement.id") == "search"
+
+
+def test_spacey_angle_citation_renders_as_live_source_link(browser, tmp_citadel, seed_page):
+    """A citation into a path containing SPACES must be written in the angle form
+    (``[t](<../../raw/my report.md>)`` — grammar.split_link_target's decided rule), and the viewer
+    must render it like any other citation: a live source link, a source-aware inline marker, and a
+    Sources group under the file — never the "unresolved citations" fallback bucket the angle form
+    used to land in because the JS link regexes only accepted whitespace-free targets."""
+    (tmp_citadel.raw / "my report.md").write_text("# My Report\n\nThe measured value was 42.\n", encoding="utf-8")
+    seed_page(
+        "concepts/widget.md",
+        {
+            "type": "Concept",
+            "title": "Widget",
+            "description": "A thing.",
+            "tags": ["x"],
+            "resource": "raw/my report.md",
+        },
+        "The value is 42.[^s1]\n\n## Sources\n\n"
+        "[^s1]: [My Report](<../../raw/my report.md>), lines 3-3 (ingested 2026-06-22)\n",
+    )
+    out = viewer.write_viewer()
+
+    errors: list[str] = []
+    page = browser.new_page()
+    page.on("pageerror", lambda exc: errors.append(str(exc)))
+    page.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" else None)
+    page.goto(out.as_uri())
+    page.wait_for_selector("#page-list a.navitem")
+    page.click("#page-list a.navitem[data-page='concepts/widget.md']")
+    page.wait_for_selector("#reader details.sources")
+
+    # The compacted Sources block groups the citation under a LIVE source link.
+    assert page.locator("#reader details.sources a.srclink").count() == 1
+    # text_content reads the collapsed <details> too: no unresolved bucket, no literal markdown.
+    sources_text = page.locator("#reader details.sources").text_content() or ""
+    assert "unresolved citations" not in sources_text
+    assert "](<" not in sources_text
+    # The inline [^s1] marker resolved its source (the fnSrc map parsed the angle-form def).
+    assert page.locator("#reader sup.fnref.has-src").count() == 1
+    # Clicking the source link opens the embedded source content.
+    page.click("#reader details.sources summary")
+    page.click("#reader details.sources a.srclink")
+    reader = page.locator("#reader")
+    reader.wait_for()
+    assert "measured value was 42" in reader.inner_text()
+
+    page.close()
+    assert errors == [], f"viewer JS reported errors: {errors}"

@@ -83,6 +83,35 @@ def test_binary_pdf_source_is_openable_not_unavailable(tmp_citadel, seed_page):
     assert s["cited_by"] == ["concepts/x.md"]
 
 
+def test_sources_carry_a_raw_root_relative_display_path(tmp_path, make_citadel, seed_page):
+    """Every source record carries a ``display`` path — the key collapsed against the configured
+    raw roots (``config.display_key``), so an out-of-workspace source on a mounted share shows as
+    ``<raw-folder-name>/<path-below>`` in the viewer instead of its full absolute path. The angle
+    ``(<...>)`` citation form is the one way to cite a spacey path, so the test cites through it."""
+    raw = tmp_path / "srv" / "Project Files"
+    make_citadel(root=tmp_path / "repo", wiki=tmp_path / "net" / "wiki", raw=raw)
+    src = raw / "sub dir" / "report file.md"
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_text("# Report\n\nThe measured value was 42.\n", encoding="utf-8")
+    seed_page(
+        "concepts/p.md",
+        {"type": "Concept", "title": "P"},
+        f"Fact.[^s1]\n\n## Sources\n\n[^s1]: [report](<{src.as_posix()}>) - n\n",
+    )
+    sources = viewer.build_bundle()["sources"]
+    (rec,) = [s for s in sources.values() if s["key"].endswith("report file.md")]
+    assert rec["display"] == "Project Files/sub dir/report file.md"
+    assert rec["missing"] is False
+    assert rec["cited_by"] == ["concepts/p.md"]
+
+
+def test_in_repo_source_display_is_its_short_key(tmp_citadel, seed_page):
+    """The in-repo case stays what it always looked like: ``raw/a.md``."""
+    (tmp_citadel.raw / "a.md").write_text("# A\n\nbody\n", encoding="utf-8")
+    _two_page_wiki(seed_page)
+    assert viewer.build_bundle()["sources"]["raw/a.md"]["display"] == "raw/a.md"
+
+
 def test_missing_source_is_flagged_not_fatal(tmp_citadel, seed_page):
     _two_page_wiki(seed_page)  # cites raw/a.md, but the raw file is absent
     s = viewer.build_bundle()["sources"]["raw/a.md"]

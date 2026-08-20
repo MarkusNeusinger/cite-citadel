@@ -767,7 +767,14 @@ def _write_transcript(
             directory = config.WORKSPACE_ROOT / directory
         config.robust_mkdir(directory)
         stamp = time.strftime("%Y%m%d-%H%M%S")
-        safe = "".join(c if (c.isalnum() or c in "-._") else "_" for c in (label or "session"))[:80]
+        safe = "".join(c if (c.isalnum() or c in "-._") else "_" for c in (label or "session"))
+        if len(safe) > 80:
+            # The label is `kind[.pNofM].<source key>`, and for an out-of-workspace source the key
+            # is a long absolute path whose FILENAME sits at the END — a plain head-cut keeps the
+            # noise (host + folders) and drops the one part that identifies the session. Keep both
+            # ends instead: the kind/pass prefix and the filename tail, with an ASCII `...` marking
+            # the cut (the full label is still inside the transcript itself).
+            safe = safe[:24] + "..." + safe[-53:]
         path = directory / f"{stamp}.{os.getpid()}.{seq}.{safe}.log"
         body = [
             "# citadel ingest — LLM agent session transcript",

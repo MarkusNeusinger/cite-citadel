@@ -480,6 +480,11 @@ def _build_sources(pages) -> dict:
         record = {
             "id": view_id,
             "key": key,
+            # The human-facing path: the key collapsed against the configured raw/docs roots
+            # (config.display_key — the console's rendering), so an out-of-workspace source shows
+            # as "<raw-folder-name>/<path-below>" instead of its full absolute path. Display-only;
+            # `id`/`key` stay the canonical identities.
+            "display": config.display_key(key),
             # Title and snippet are computed from the FULL text (it is read anyway).
             "title": _source_title(text, view_id),
             "model": manifest_mod.entry_model(manifest[key]) if key in manifest else None,
