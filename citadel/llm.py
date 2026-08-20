@@ -483,6 +483,10 @@ def _build_instruction(
         "",
         f"Do what the task brief says by EDITING FILES DIRECTLY under {wiki_rel}/, using your "
         "built-in file tools (read/search/edit) — not shell commands — to read and search. "
+        f"Your finished pages STAY under {wiki_rel}/ — that IS the deliverable. There is no "
+        "publish step for you to perform: the orchestrator validates and imports your edits "
+        f"from {wiki_rel}/ after this session ends, so never move, copy, or re-create them "
+        "anywhere else (a page placed outside it is lost, not published). "
         f"The source and {raw_rel}/ are READ-ONLY inputs: read them, but never write, create, "
         f"move, or delete anything there. Never create or edit {wiki_rel}/index.md, "
         f"{wiki_rel}/log.md, any */index.md, or any dotfile, and make no changes outside "
@@ -767,7 +771,14 @@ def _write_transcript(
             directory = config.WORKSPACE_ROOT / directory
         config.robust_mkdir(directory)
         stamp = time.strftime("%Y%m%d-%H%M%S")
-        safe = "".join(c if (c.isalnum() or c in "-._") else "_" for c in (label or "session"))[:80]
+        safe = "".join(c if (c.isalnum() or c in "-._") else "_" for c in (label or "session"))
+        if len(safe) > 80:
+            # The label is `kind[.pNofM].<source key>`, and for an out-of-workspace source the key
+            # is a long absolute path whose FILENAME sits at the END — a plain head-cut keeps the
+            # noise (host + folders) and drops the one part that identifies the session. Keep both
+            # ends instead: the kind/pass prefix and the filename tail, with an ASCII `...` marking
+            # the cut (the full label is still inside the transcript itself).
+            safe = safe[:24] + "..." + safe[-53:]
         path = directory / f"{stamp}.{os.getpid()}.{seq}.{safe}.log"
         body = [
             "# citadel ingest — LLM agent session transcript",

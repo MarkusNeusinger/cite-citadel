@@ -154,6 +154,31 @@ def test_error_line_shows_short_path(monkeypatch):
     assert "CLI not found" in out
 
 
+def test_error_line_drops_the_redundant_key_prefix_from_the_reason(monkeypatch):
+    """Failure reasons are canonically ``"<key>: <error>"`` (that string is what the report and the
+    failures catalog keep) — but the key is already the verdict line's head column. For an
+    out-of-workspace source the repeated absolute key alone overflows the row, so the actual error
+    text used to be pushed off-screen: the one line a user sees on a failure showed the path twice
+    and the reason never. The verdict strips the redundant prefix; the catalog stays untouched."""
+    monkeypatch.setattr(config, "RAW_DIR", Path(_LONG_KEY_RAW_DIR))
+    stream = io.StringIO()
+    prog = _reporter(stream)
+    prog(
+        "source_error",
+        {
+            "index": 1,
+            "total": 1,
+            "source": _LONG_KEY,
+            "error": f"{_LONG_KEY}: refusing to promote: the session left the wiki with no content pages",
+            "seconds": 0.2,
+        },
+    )
+    out = stream.getvalue()
+    assert _LONG_KEY_SHORT in out  # the key still appears — once, as the head column
+    assert "//fileserver" not in out  # ...but never as the long absolute prefix inside the reason
+    assert "refusing to promote" in out  # the actual error text survives on the line
+
+
 def test_every_printed_line_stays_on_one_row(monkeypatch):
     """The one-row invariant: rich WRAPS by default, which is exactly how a long key turned a
     scrolling ingest into a wall of text. Lines are printed no-wrap with an ellipsis overflow, so a
