@@ -128,6 +128,35 @@ def test_slash_focuses_search(viewer_page):
     assert viewer_page.evaluate("document.activeElement && document.activeElement.id") == "search"
 
 
+def test_sources_sidebar_tree_and_overview_table(viewer_page):
+    """The Sources axis renders as a folder tree (folders as <details>, leaves = FILENAMES) and
+    links an "#sources" overview: one table row per source with filename, folder, provenance, and
+    citation count. The fixture's one source (raw/a.md, cited by both pages) yields a single
+    'raw' folder holding one 'a.md' leaf."""
+    viewer_page.click("#source-list details.src-axis summary")
+    folder = viewer_page.locator("#source-list details.src-dir > summary")
+    assert folder.count() == 1
+    assert "raw" in (folder.first.inner_text() or "").lower()  # CSS may uppercase summaries
+    viewer_page.click("#source-list details.src-dir > summary")
+    leaf = viewer_page.locator("#source-list a.navitem.src")
+    assert leaf.count() == 1
+    assert "a.md" in (leaf.first.inner_text() or "")  # the filename, not the embedded title
+
+    viewer_page.click("#source-list a.src-overview")
+    reader = viewer_page.locator("#reader")
+    reader.wait_for()
+    viewer_page.wait_for_selector("#reader table.src-table")
+    rows = viewer_page.locator("#reader table.src-table tbody tr")
+    assert rows.count() == 1
+    row_text = rows.first.inner_text()
+    assert "a.md" in row_text
+    assert "2" in row_text  # cited by both fixture pages
+    # Clicking the file cell opens the embedded source itself.
+    viewer_page.click("#reader table.src-table a[data-source]")
+    reader.wait_for()
+    assert "nine bars of pressure" in reader.inner_text()
+
+
 def test_spacey_angle_citation_renders_as_live_source_link(browser, tmp_citadel, seed_page):
     """A citation into a path containing SPACES must be written in the angle form
     (``[t](<../../raw/my report.md>)`` — grammar.split_link_target's decided rule), and the viewer

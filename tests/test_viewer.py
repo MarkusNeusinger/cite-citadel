@@ -105,6 +105,29 @@ def test_sources_carry_a_raw_root_relative_display_path(tmp_path, make_citadel, 
     assert rec["cited_by"] == ["concepts/p.md"]
 
 
+def test_absolute_citations_share_one_source_identity(tmp_path, make_citadel, seed_page):
+    """An ABSOLUTE citation target (the form for an out-of-workspace raw root) is its own
+    page-independent identity. Joining it under the citing page's folder — the relative-link
+    rule — minted one identity per citing FOLDER, so the same PDF cited from four pages appeared
+    four times in the Sources axis, each copy embedded again."""
+    raw = tmp_path / "srv" / "Project Files"
+    make_citadel(root=tmp_path / "repo", wiki=tmp_path / "net" / "wiki", raw=raw)
+    src = raw / "report.md"
+    src.write_text("# Report\n\nThe measured value was 42.\n", encoding="utf-8")
+    for rel in ("concepts/a.md", "objects/b.md"):
+        seed_page(
+            rel,
+            {"type": "Concept" if rel.startswith("concepts") else "Object", "title": rel},
+            f"Fact.[^s1]\n\n## Sources\n\n[^s1]: [report](<{src.as_posix()}>) - n\n",
+        )
+    sources = viewer.build_bundle()["sources"]
+    matching = [s for s in sources.values() if s["key"].endswith("report.md")]
+    assert len(matching) == 1  # ONE record, not one per citing folder
+    (rec,) = matching
+    assert rec["id"] == src.as_posix()  # keyed by the absolute path itself
+    assert set(rec["cited_by"]) == {"concepts/a.md", "objects/b.md"}
+
+
 def test_in_repo_source_display_is_its_short_key(tmp_citadel, seed_page):
     """The in-repo case stays what it always looked like: ``raw/a.md``."""
     (tmp_citadel.raw / "a.md").write_text("# A\n\nbody\n", encoding="utf-8")

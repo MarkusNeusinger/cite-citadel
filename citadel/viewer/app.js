@@ -127,7 +127,12 @@
     } else if (target.slice(0, 4) === "&lt;" && target.slice(-4) === "&gt;") {
       target = target.slice(4, -4);
     }
-    target = target.split("#")[0];
+    target = target.split("#")[0].replace(/\\/g, "/");
+    // An ABSOLUTE target (//server/share/… UNC, /posix, or a T:/… drive path — the citation form
+    // for an out-of-workspace raw root) IS its own identity, page-independent: joining it under
+    // the citing page's folder would mint one identity per citing FOLDER, listing the same file
+    // once per page in the Sources axis. Mirrors _viewer_resolve in viewer/__init__.py.
+    if (target.charAt(0) === "/" || /^[A-Za-z]:/.test(target)) return target;
     var base = fromRel.indexOf("/") >= 0 ? fromRel.replace(/\/[^\/]*$/, "") : "";
     var parts = base ? base.split("/") : [];
     target.split("/").forEach(function (seg) {
@@ -475,24 +480,60 @@
 
   // The Sources browse axis: a sidebar group listing every embedded source with its citation
   // count. Shown only in browse mode with no tag/facet active (sources carry neither); in search
-  // mode they surface inline in the ranked results instead.
+  // mode they surface inline in the ranked results instead. Sources render as a FOLDER TREE over
+  // their raw-root-relative `display` paths — folders nest as <details>, single-child folder
+  // chains collapse into one "a/b/c" label, and each leaf shows the FILENAME (the name a user
+  // recognizes; the embedded title can be any first heading of the file's text). A deep share
+  // layout would otherwise render as an unreadable flat wall of near-identical titles.
   function renderSources() {
     var box = document.getElementById("source-list");
     if (!box) return;
     if (activeTag || activeFacet) { box.innerHTML = ""; return; }
-    var ids = Object.keys(SOURCES).sort();
+    var ids = Object.keys(SOURCES);
     if (!ids.length) { box.innerHTML = ""; return; }
+    var root = { dirs: {}, files: [] };
+    ids.forEach(function (id) {
+      var s = SOURCES[id];
+      var parts = String(s.display || s.id).split("/").filter(function (p) { return p !== ""; });
+      var name = parts.length ? parts.pop() : String(id);
+      var node = root;
+      parts.forEach(function (seg) {
+        node = node.dirs[seg] || (node.dirs[seg] = { dirs: {}, files: [] });
+      });
+      node.files.push({ id: id, name: name, cites: s.cited_by.length, full: String(s.display || s.id) });
+    });
+    function countFiles(node) {
+      return node.files.length + Object.keys(node.dirs).reduce(function (n, k) {
+        return n + countFiles(node.dirs[k]);
+      }, 0);
+    }
+    function fileLink(f) {
+      return "<a class='navitem src' href='#src:" + encodeURIComponent(f.id) + "' data-source='" +
+        esc(f.id) + "' data-pop='" + esc(f.id) + "' title='" + esc(f.full) + "'>" + esc(f.name) +
+        " <span class='cite-count'>" + f.cites + "</span></a>";
+    }
+    function renderNode(node, label) {
+      // Collapse a chain of single-child folders into one slash-joined label — a deep share
+      // layout (project/phase/topic/subtopic/file) would otherwise cost one click per level.
+      var names = Object.keys(node.dirs);
+      while (!node.files.length && names.length === 1) {
+        label = label === null ? names[0] : label + "/" + names[0];
+        node = node.dirs[names[0]];
+        names = Object.keys(node.dirs);
+      }
+      var inner = names.sort().map(function (k) { return renderNode(node.dirs[k], k); }).join("") +
+        node.files.sort(function (a, b) { return a.name.localeCompare(b.name); }).map(fileLink).join("");
+      if (label === null) return inner;  // the root renders no wrapper of its own
+      return "<details class='src-dir'><summary>" + esc(label) +
+        " <span class='cite-count'>" + countFiles(node) + "</span></summary>" + inner + "</details>";
+    }
     // Default CLOSED (the source list is a long secondary axis), but honor a persisted user toggle.
     var open = false;
     try { open = localStorage.getItem("okf_sources_open") === "1"; } catch (e) {}
     var html = "<details class='src-axis'" + (open ? " open" : "") +
-      "><summary>Sources (" + ids.length + ")</summary>";
-    ids.forEach(function (id) {
-      var s = SOURCES[id];
-      html += "<a class='navitem src' href='#src:" + encodeURIComponent(id) +
-        "' data-source='" + esc(id) + "' data-pop='" + esc(id) + "'>" + esc(s.title) +
-        " <span class='cite-count'>" + s.cited_by.length + "</span></a>";
-    });
+      "><summary>Sources (" + ids.length + ")</summary>" +
+      "<a class='navitem src-overview' href='#sources'>All sources — overview</a>" +
+      renderNode(root, null);
     box.innerHTML = html + "</details>";
   }
 
@@ -1523,6 +1564,62 @@
     markActiveNav();
   }
 
+  // The "#sources" overview: every source as one table row — FILENAME (opens the source), its
+  // folder under the raw root, the model that imported it, what the session cost (dollars, with
+  // copilot's AI credits beside them), token volume, when it was last checked, and how many pages
+  // cite it — with corpus totals up top. The per-file answer to "what did this corpus cost and
+  // when was what verified", without leaving the viewer. Only figures the manifest actually
+  // carries are shown; an unknown number renders as a dash, never as a zero.
+  function openSourcesOverview() {
+    if (safeHash() !== "sources") { location.hash = "sources"; }
+    var ids = Object.keys(SOURCES).sort(function (a, b) {
+      var da = String(SOURCES[a].display || a), db = String(SOURCES[b].display || b);
+      return da.localeCompare(db);
+    });
+    var totCost = 0, anyCost = false, totAic = 0, anyAic = false;
+    var totIn = 0, anyIn = false, totOut = 0, anyOut = false;
+    var rows = ids.map(function (id) {
+      var s = SOURCES[id], u = s.usage || {};
+      var full = String(s.display || s.id);
+      var cut = full.lastIndexOf("/");
+      var name = cut >= 0 ? full.slice(cut + 1) : full;
+      var folder = cut >= 0 ? full.slice(0, cut) : "";
+      if (typeof u.cost_usd === "number") { totCost += u.cost_usd; anyCost = true; }
+      if (typeof u.aic === "number") { totAic += u.aic; anyAic = true; }
+      if (typeof u.tokens_in === "number") { totIn += u.tokens_in; anyIn = true; }
+      if (typeof u.tokens_out === "number") { totOut += u.tokens_out; anyOut = true; }
+      var cost = typeof u.cost_usd === "number"
+        ? fmtCost(u.cost_usd) + (typeof u.aic === "number" ? " (" + fmtAic(u.aic) + " AIC)" : "")
+        : (typeof u.aic === "number" ? fmtAic(u.aic) + " AIC" : "—");
+      var tok = [];
+      if (typeof u.tokens_in === "number") tok.push(fmtTokens(u.tokens_in) + " in");
+      if (typeof u.tokens_out === "number") tok.push(fmtTokens(u.tokens_out) + " out");
+      return "<tr><td><a href='#src:" + encodeURIComponent(id) + "' data-source='" + esc(id) +
+        "' data-pop='" + esc(id) + "'>" + esc(name) + "</a>" + (s.missing ? " <span class='ext'>(missing)</span>" : "") +
+        "</td><td class='src-folder' title='" + esc(full) + "'>" + esc(folder || "—") +
+        "</td><td>" + (s.model ? esc(s.model) : "—") +
+        "</td><td>" + esc(cost) +
+        "</td><td>" + (tok.length ? esc(tok.join(" / ")) : "—") +
+        "</td><td>" + (s.checked ? esc(String(s.checked).slice(0, 10)) : "—") +
+        "</td><td>" + s.cited_by.length + "</td></tr>";
+    }).join("");
+    var totals = [ids.length + " source" + (ids.length === 1 ? "" : "s")];
+    if (anyCost) totals.push("recorded cost " + fmtCost(totCost) + (anyAic ? " (" + fmtAic(totAic) + " AIC)" : ""));
+    else if (anyAic) totals.push("recorded " + fmtAic(totAic) + " AIC");
+    if (anyIn || anyOut) {
+      totals.push((anyIn ? fmtTokens(totIn) + " in" : "") + (anyIn && anyOut ? " / " : "") +
+        (anyOut ? fmtTokens(totOut) + " out" : ""));
+    }
+    var html = "<h1>Sources</h1><div class='meta'><span class='ptype src'>Overview</span> " +
+      totals.map(function (t) { return "<span class='src-usage'>" + esc(t) + "</span>"; }).join(" · ") +
+      "</div><div class='tbl-wrap'><table class='src-table'><thead><tr><th>File</th><th>Folder</th>" +
+      "<th>Model</th><th>Cost</th><th>Tokens</th><th>Checked</th><th>Cited</th></tr></thead><tbody>" +
+      rows + "</tbody></table></div>";
+    renderReader(html, "sources");
+    Graph.setActive(null);
+    markActiveNav();
+  }
+
   // ---- Source hover preview popover. ----
 
   var pop = null;
@@ -1734,7 +1831,8 @@
       if (t) t.scrollIntoView({ block: "center" });
       return;
     }
-    if (h.indexOf("src:") === 0) { if (SOURCES[h.slice(4)]) openSource(h.slice(4)); }
+    if (h === "sources") { openSourcesOverview(); }
+    else if (h.indexOf("src:") === 0) { if (SOURCES[h.slice(4)]) openSource(h.slice(4)); }
     else if (h && PAGES[h]) openPage(h);
     else return;
     // Navigating to a page/source dismisses the mobile drawer, so the reader is visible at once.

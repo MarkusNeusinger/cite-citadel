@@ -168,8 +168,15 @@ def _viewer_resolve(from_rel: str, target: str) -> str:
     the wiki root (a no-op pop on an empty stack, exactly like ``Array.pop`` in JS). This is the
     single identity under which an embedded source is keyed AND under which the browser looks it up,
     so a citation resolves to its source no matter how the wiki and raw trees are laid out (in-repo,
-    a nested ``sub/wiki``, or a mounted network drive)."""
-    target = target.split("#", 1)[0]
+    a nested ``sub/wiki``, or a mounted network drive).
+
+    An ABSOLUTE target (``//server/share/…`` UNC, ``/posix``, or a ``T:/…`` drive path — the
+    citation form for an out-of-workspace raw root) IS its own identity, page-independent:
+    joining it under the citing page's folder would mint one identity per citing FOLDER, so the
+    same file cited from ``concepts/`` and ``objects/`` would embed (and list) twice."""
+    target = target.split("#", 1)[0].replace("\\", "/")
+    if target.startswith("/") or re.match(r"^[A-Za-z]:", target):
+        return target
     base = from_rel.rsplit("/", 1)[0] if "/" in from_rel else ""
     parts = base.split("/") if base else []
     for seg in target.split("/"):
@@ -191,8 +198,12 @@ def _source_view_id(abs_path: str | os.PathLike) -> str:
     parent = config.wiki_dir().parent
     try:
         return os.path.relpath(str(abs_path), str(parent)).replace(os.sep, "/")
-    except ValueError:  # different drive — no relative path exists
-        return os.path.basename(str(abs_path))
+    except ValueError:
+        # Different drive — no relative path exists, and the citation form for such a source is
+        # its ABSOLUTE path, which _viewer_resolve keeps verbatim as the identity. Key the
+        # fallback the same way (a bare basename would collide for same-named files in different
+        # folders — real corpora repeat filenames like dated deliverables).
+        return str(abs_path).replace("\\", "/")
 
 
 def _collect_sources(pages) -> dict[str, str]:
