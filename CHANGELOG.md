@@ -76,14 +76,18 @@ All notable changes to this project are documented here. The format is based on
   the wiki with no content pages"* — technically true, entirely misleading, and in the variant where
   the agent deletes staging *without* touching the live wiki the same run would have been a
   **silent zero-change success** (money spent, nothing imported, source stamped done). A vanished
-  staging directory is now detected right after the session, before any diff is taken, and fails
-  the source with its own reason — *"the staging wiki copy vanished mid-session"* — that also names
+  staging directory is now detected right after the session, before any diff is taken — by an
+  identity sentinel, not a bare existence check, so a deleted-then-recreated (or symlink-replaced)
+  directory cannot impersonate the copy this run made — and fails the source with its own reason —
+  *"the staging wiki copy vanished or was replaced mid-session"* — that also names
   any files that appeared in the live wiki outside the staging discipline (serial runs only, where
   no concurrent promote can legitimately explain them). Those files are deliberately left in place
   for inspection: they were paid for, but they were **never validated by this run**, and the reason
   says so. The session prompt gained the matching instruction — the wiki directory the agent is
   given is where its work *stays*: there is no publish step, never move or copy its contents
-  elsewhere, never delete or rename the directory itself.
+  elsewhere, never delete or rename the directory itself. A session that destroys its staging and
+  then dies (timeout, non-zero exit) reports both stories — the session's own error and the
+  vanished staging behind it.
 - **Transcript log filenames keep the source's basename.** The per-session transcript's filename
   label was truncated from the right at 80 characters, so for a source on a network share —
   `pdf.//host/share/very/deep/tree/Report.pdf` — everything recognizable was cut off and the log

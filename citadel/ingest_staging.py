@@ -254,6 +254,9 @@ def _robust_copy_file(src: Path, dst: Path, attempts: int = _RMTREE_ATTEMPTS) ->
             time.sleep(0.2 * (attempt + 1))
 
 
+# The staging identity sentinel _make_staging drops into every fresh copy — see _staging_intact.
+_STAGING_SENTINEL = ".citadel_staging"
+
 # Monotonic per-process counter so each staging dir gets a UNIQUE name — see _make_staging.
 _STAGING_SEQ = 0
 # Guards the counter itself: with `--jobs N` several workers mint staging names at once, and two
@@ -322,10 +325,31 @@ def _make_staging(live: Path) -> Path:
             shutil.copytree(live, staging, dirs_exist_ok=True, ignore=shutil.ignore_patterns("*.citadeltmp", ".git"))
         else:
             config.robust_mkdir(staging)
+        # Identity sentinel: proves at check time that THIS directory is still the tree this call
+        # created. A bare `is_dir()` cannot tell "still my staging copy" from "deleted and
+        # re-created empty" (or replaced by a symlinked directory) — and on a first ingest that
+        # replacement would diff as an empty wiki and stamp the source as a silent zero-change
+        # success. A dotfile, so it is invisible to the content walks, the promote, and the agent
+        # (which is told never to touch dotfiles); the unique dir name is the token, tying the
+        # file to this staging instance. See :func:`_staging_intact`.
+        (staging / _STAGING_SENTINEL).write_text(staging.name, encoding="utf-8")
     except OSError:
         _robust_rmtree(staging)
         raise
     return staging
+
+
+def _staging_intact(staging: Path) -> bool:
+    """True while ``staging`` is still the directory :func:`_make_staging` created — its identity
+    sentinel is present and names this exact staging dir. False when the tree was deleted,
+    deleted-and-recreated, or replaced (a weak agent inventing a "publish"/cleanup step), where a
+    plain existence check would read the impostor as an empty wiki. Read errors count as not
+    intact — the conservative answer, since the caller fails the source rather than trusting an
+    unverifiable tree."""
+    try:
+        return (Path(staging) / _STAGING_SENTINEL).read_text(encoding="utf-8") == Path(staging).name
+    except OSError:
+        return False
 
 
 def _redirect_wiki(staging: Path):

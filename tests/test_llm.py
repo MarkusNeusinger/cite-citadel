@@ -63,6 +63,7 @@ def test_build_instruction_references_paths_not_content():
     # The stay-in-place invariant: the agent must never "publish" (move/copy) its wiki edits
     # elsewhere or delete the wiki directory itself — the staging discipline depends on it.
     assert "no publish step" in prompt
+    assert "never delete, rename, or move that wiki directory itself" in prompt
     # Must never embed a large blob — paths only.
     assert len(prompt) < PROMPT_CHAR_BUDGET
 
