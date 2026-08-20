@@ -43,6 +43,16 @@ _ID_WIDTH = 12
 _NOT_INCLUDED_SHOWN = 10
 
 
+def _format_duration(seconds: float) -> str:
+    """Wall-clock seconds as a compact ASCII duration for the table: ``42s`` / ``4m 32s`` /
+    ``5h 46m`` (the viewer's ``fmtDuration`` twin — keep the two in step)."""
+    if seconds < 60:
+        return f"{round(seconds)}s"
+    if seconds < 3600:
+        return f"{int(seconds // 60)}m {round(seconds % 60)}s"
+    return f"{int(seconds // 3600)}h {round(seconds % 3600 // 60)}m"
+
+
 @dataclass
 class SourceState:
     """One raw source's lifecycle row. Which BUCKET a row lands in on :class:`StatusReport` IS its
@@ -68,6 +78,10 @@ class SourceState:
     tokens_in: int | None = None
     tokens_out: int | None = None
     aic: float | None = None
+    # Citadel's own wall-clock measurement of the completing run's work on this source (the
+    # manifest's `seconds` stamp) — on a local model, time is the cost, so it renders beside the
+    # backend-reported figures. None for pre-duration-stamp entries.
+    seconds: float | None = None
     # True for an INGESTED source that NO wiki page cites (the ``Referenced by`` column of
     # ``wiki/sources/index.md`` is empty for it): a session ran and was paid for, the source is
     # marked done, yet it contributed zero entries to the wiki. Rendered as a ``NO PAGES`` marker
@@ -138,6 +152,8 @@ class StatusReport:
                 # Stamped independently, so credits can outlive an unknown dollar figure — show
                 # them rather than silently dropping spend the corpus total already counts.
                 parts.append(f"{llm.format_aic(s.aic)} AIC")
+            if s.seconds is not None:
+                parts.append(_format_duration(s.seconds))
             if s.uncited:
                 # Loud on purpose: "ingested" reads as success, but nothing in the wiki cites
                 # this source — it produced zero entries.
@@ -310,6 +326,7 @@ def build_status() -> StatusReport:
                 tokens_in=usage.get("tokens_in"),
                 tokens_out=usage.get("tokens_out"),
                 aic=usage.get("aic"),
+                seconds=usage.get("seconds"),
             )
         )
 

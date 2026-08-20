@@ -304,9 +304,10 @@ class _SourceJob:
       the job succeeds immediately with zero page changes.
     - ``on_success``: the post-success bookkeeping that differs per kind — the manifest stamp
       (``mark_done`` / repo entry / key drop), clearing the failure record, the per-source
-      manifest save, and which report list the source lands in. Takes exactly one argument, the
-      outcome's combined session usage (``llm.SessionUsage | None``) so the manifest stamp can
-      record what the verification cost; the page changes already went into the report before it
+      manifest save, and which report list the source lands in. Takes the outcome's combined
+      session usage (``llm.SessionUsage | None``) plus the source's wall-clock seconds, so the
+      manifest stamp can record what the verification cost in the backend's units AND in time
+      (the only cost a local model has); the page changes already went into the report before it
       runs, so a job needs no view of the diff.
       (``citadel curate`` deliberately BYPASSES ``_SourceJob`` — its per-cluster report, different
       vocabulary, and NOOP outcome do not fit here — and rides :func:`_run_agent_sessions`
@@ -333,7 +334,7 @@ class _SourceJob:
 
     key: str
     build_sessions: Callable[[], tuple[list[Callable[[], llm.SessionUsage | None]], list[str], "_Resume | None"]]
-    on_success: Callable[[llm.SessionUsage | None], None]
+    on_success: Callable[[llm.SessionUsage | None, float | None], None]
     prepare_error: str
     extra_check: Callable[[], list[str]] | None = None
     allow_emptying: bool = False
@@ -577,7 +578,7 @@ def _record_source_run(run: _JobRun, emit, report: IngestReport, failures_dict, 
     # ``report.usage`` above stays strictly this run's spend, so nothing is double-counted
     # across runs and `citadel status` never under-reports a resumed source.
     stamped = llm.combine_usage([outcome.usage, outcome.carried_usage])
-    job.on_success(stamped)
+    job.on_success(stamped, outcome.seconds)
     emit(
         "source_done",
         index=index,
@@ -1346,11 +1347,12 @@ def _ingest_run(
             ]
             return sessions, tmpdirs, _resume_context(rel_key, run_kind, sha_stat[0], passes, model, rules_ver)
 
-        def done(usage: llm.SessionUsage | None) -> None:
+        def done(usage: llm.SessionUsage | None, seconds: float | None = None) -> None:
             # mark_done records exactly what discovery hashed (sha_stat above). On a forced
             # re-read this re-stamps the entry with the CURRENT model + rules_version. The
             # source's combined session usage (cost/tokens, when the backend reported any)
-            # is stamped alongside — per-source cost observability.
+            # is stamped alongside — per-source cost observability — plus the wall-clock
+            # seconds the run spent on this source (the only cost a local model has).
             done_sha, done_stat = sha_stat
             # A re-recorded/re-exported source leaves its OLD bytes' transcript/extraction orphaned
             # in the content-addressed cache — plaintext source content (SECURITY.md). Prune it by
@@ -1371,6 +1373,7 @@ def _ingest_run(
                 rules_ver,
                 sha=done_sha,
                 st=done_stat,
+                seconds=seconds,
                 **_usage_fields(usage),
             )
             # A source that had failed before (unreadable/errored/duplicate) now succeeded: drop
@@ -1427,16 +1430,18 @@ def _ingest_run(
             sessions = [lambda rp=read_key: llm.run_ingest_session(rjob.key, kind=rjob.kind, read_path=rp)]
             return sessions, [tmp], None  # one session per repo digest: nothing to resume
 
-        def done(usage: llm.SessionUsage | None) -> None:
+        def done(usage: llm.SessionUsage | None, seconds: float | None = None) -> None:
             # On success the manifest records the repo's CURRENT commit identity, with a fresh
             # last-checked stamp (an agent session just verified this repo — the one event that
-            # moves ingested_at) and the session's usage stamp when the backend reported one.
+            # moves ingested_at), the session's usage stamp when the backend reported one, and
+            # the wall-clock seconds the run spent on this repo.
             manifest_dict[rjob.key] = manifest.make_repo_entry(
                 repo.identity(rjob.path),
                 _stamp_model(usage, model),
                 repo.remote_url(rjob.path),
                 rules_ver,
                 ingested_at=manifest.now_iso(),
+                seconds=seconds,
                 **_usage_fields(usage),
             )
             failures.clear(failures_dict, rjob.key)
@@ -1465,7 +1470,7 @@ def _ingest_run(
                 return [], [], None  # nothing cites it: no cleanup session, just forget it below
             return [lambda: llm.run_ingest_session(key, kind="delete")], [], None
 
-        def done(_usage: llm.SessionUsage | None) -> None:
+        def done(_usage: llm.SessionUsage | None, _seconds: float | None = None) -> None:
             # The cleanup session's usage lands only in the RUN total (report.usage) — the
             # source's manifest key is dropped, so there is no entry left to stamp.
             entry = manifest_dict.get(key)

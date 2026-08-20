@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import re
 
-from citadel import manifest, store, viewer
+from citadel import failures, manifest, store, viewer
 
 
 def _two_page_wiki(seed_page) -> None:
@@ -133,6 +133,31 @@ def test_in_repo_source_display_is_its_short_key(tmp_citadel, seed_page):
     (tmp_citadel.raw / "a.md").write_text("# A\n\nbody\n", encoding="utf-8")
     _two_page_wiki(seed_page)
     assert viewer.build_bundle()["sources"]["raw/a.md"]["display"] == "raw/a.md"
+
+
+def test_bundle_carries_the_failures_catalog(tmp_citadel, seed_page):
+    """The bundle embeds the persisted could-not-ingest catalog, so the ``#sources`` overview can
+    show that a file was SKIPPED — the wiki not mentioning a document and the document having
+    failed to import look identical without it. The row keeps the display path, the coarse
+    reason, and the detail with the redundant leading "<key>: " stripped."""
+    _two_page_wiki(seed_page)
+    catalog: dict = {}
+    failures.record(catalog, "raw/broken.pdf", failures.ERROR, "raw/broken.pdf: agent session failed", "copilot:qwen")
+    catalog["raw/broken.pdf"]["attempts"] = 2
+    failures.save(catalog)
+    rows = viewer.build_bundle()["failures"]
+    (row,) = rows
+    assert row["key"] == "raw/broken.pdf"
+    assert row["display"] == "raw/broken.pdf"
+    assert row["reason"] == "error"
+    assert row["detail"] == "agent session failed"  # the key prefix is stripped — the row names the file
+    assert row["model"] == "copilot:qwen"
+    assert row["attempts"] == 2
+
+
+def test_bundle_failures_empty_without_a_catalog(tmp_citadel, seed_page):
+    _two_page_wiki(seed_page)
+    assert viewer.build_bundle()["failures"] == []
 
 
 def test_missing_source_is_flagged_not_fatal(tmp_citadel, seed_page):

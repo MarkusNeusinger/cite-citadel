@@ -4,6 +4,7 @@
   var PAGES = {};
   BUNDLE.pages.forEach(function (p) { PAGES[p.rel_path] = p; });
   var SOURCES = BUNDLE.sources || {};
+  var FAILURES = BUNDLE.failures || [];  // the persisted could-not-ingest catalog (may be empty)
   // The flat {source, target} link edges the graph consumes are NOT shipped (they duplicated the
   // per-page outbound/inbound lists ~3x in every file). Rebuild them ONCE here at boot, from each
   // page's outbound list, BEFORE any consumer runs (Graph.clusters()/buildModel read BUNDLE.edges).
@@ -79,6 +80,14 @@
     if (v >= 1000) return (v / 1000).toFixed(1).replace(/\.0$/, "") + "k";
     return String(v);
   }
+  // Wall-clock seconds as a compact human duration: "42s", "4m 32s", "5h 46m". On a local model,
+  // time IS the cost, so this renders wherever the dollar figures do.
+  function fmtDuration(v) {
+    if (typeof v !== "number" || !isFinite(v) || v < 0) return "";
+    if (v < 60) return Math.round(v) + "s";
+    if (v < 3600) return Math.floor(v / 60) + "m " + Math.round(v % 60) + "s";
+    return Math.floor(v / 3600) + "h " + Math.round((v % 3600) / 60) + "m";
+  }
   // The provenance fragments of a source, in display order: model, spend, tokens, last check.
   function sourceProvenance(s) {
     var u = s.usage || {};
@@ -99,6 +108,7 @@
     if (typeof u.tokens_in === "number") tok.push(fmtTokens(u.tokens_in) + " in");
     if (typeof u.tokens_out === "number") tok.push(fmtTokens(u.tokens_out) + " out");
     if (tok.length) out.push({ cls: "src-usage", text: tok.join(" / ") });
+    if (typeof u.seconds === "number") out.push({ cls: "src-usage", text: fmtDuration(u.seconds) });
     if (s.checked) out.push({ cls: "src-checked", text: "checked " + String(s.checked).slice(0, 10) });
     return out;
   }
@@ -532,8 +542,9 @@
     try { open = localStorage.getItem("okf_sources_open") === "1"; } catch (e) {}
     var html = "<details class='src-axis'" + (open ? " open" : "") +
       "><summary>Sources (" + ids.length + ")</summary>" +
-      "<a class='navitem src-overview' href='#sources'>All sources — overview</a>" +
-      renderNode(root, null);
+      "<a class='navitem src-overview' href='#sources'>All sources — overview" +
+      (FAILURES.length ? " <span class='fail-count'>" + FAILURES.length + " failed</span>" : "") +
+      "</a>" + renderNode(root, null);
     box.innerHTML = html + "</details>";
   }
 
@@ -1578,6 +1589,7 @@
     });
     var totCost = 0, anyCost = false, totAic = 0, anyAic = false;
     var totIn = 0, anyIn = false, totOut = 0, anyOut = false;
+    var totSec = 0, anySec = false;
     var rows = ids.map(function (id) {
       var s = SOURCES[id], u = s.usage || {};
       var full = String(s.display || s.id);
@@ -1588,6 +1600,7 @@
       if (typeof u.aic === "number") { totAic += u.aic; anyAic = true; }
       if (typeof u.tokens_in === "number") { totIn += u.tokens_in; anyIn = true; }
       if (typeof u.tokens_out === "number") { totOut += u.tokens_out; anyOut = true; }
+      if (typeof u.seconds === "number") { totSec += u.seconds; anySec = true; }
       var cost = typeof u.cost_usd === "number"
         ? fmtCost(u.cost_usd) + (typeof u.aic === "number" ? " (" + fmtAic(u.aic) + " AIC)" : "")
         : (typeof u.aic === "number" ? fmtAic(u.aic) + " AIC" : "—");
@@ -1599,6 +1612,7 @@
         "</td><td class='src-folder' title='" + esc(full) + "'>" + esc(folder || "—") +
         "</td><td>" + (s.model ? esc(s.model) : "—") +
         "</td><td>" + esc(cost) +
+        "</td><td>" + (typeof u.seconds === "number" ? esc(fmtDuration(u.seconds)) : "—") +
         "</td><td>" + (tok.length ? esc(tok.join(" / ")) : "—") +
         "</td><td>" + (s.checked ? esc(String(s.checked).slice(0, 10)) : "—") +
         "</td><td>" + s.cited_by.length + "</td></tr>";
@@ -1606,6 +1620,7 @@
     var totals = [ids.length + " source" + (ids.length === 1 ? "" : "s")];
     if (anyCost) totals.push("recorded cost " + fmtCost(totCost) + (anyAic ? " (" + fmtAic(totAic) + " AIC)" : ""));
     else if (anyAic) totals.push("recorded " + fmtAic(totAic) + " AIC");
+    if (anySec) totals.push("recorded time " + fmtDuration(totSec));
     if (anyIn || anyOut) {
       totals.push((anyIn ? fmtTokens(totIn) + " in" : "") + (anyIn && anyOut ? " / " : "") +
         (anyOut ? fmtTokens(totOut) + " out" : ""));
@@ -1613,8 +1628,30 @@
     var html = "<h1>Sources</h1><div class='meta'><span class='ptype src'>Overview</span> " +
       totals.map(function (t) { return "<span class='src-usage'>" + esc(t) + "</span>"; }).join(" · ") +
       "</div><div class='tbl-wrap'><table class='src-table'><thead><tr><th>File</th><th>Folder</th>" +
-      "<th>Model</th><th>Cost</th><th>Tokens</th><th>Checked</th><th>Cited</th></tr></thead><tbody>" +
+      "<th>Model</th><th>Cost</th><th>Time</th><th>Tokens</th><th>Checked</th><th>Cited</th></tr></thead><tbody>" +
       rows + "</tbody></table></div>";
+    // The could-not-ingest catalog: a reader must be able to SEE that a relevant file was skipped
+    // — a document the wiki never mentions and a document that failed to import look identical
+    // without this section.
+    if (FAILURES.length) {
+      html += "<h2>Could not ingest (" + FAILURES.length + ")</h2><div class='tbl-wrap'>" +
+        "<table class='src-table fail-table'><thead><tr><th>File</th><th>Folder</th><th>Reason</th>" +
+        "<th>Detail</th><th>Attempts</th></tr></thead><tbody>" +
+        FAILURES.map(function (f) {
+          var full = String(f.display || f.key);
+          var cut = full.lastIndexOf("/");
+          var name = cut >= 0 ? full.slice(cut + 1) : full;
+          var folder = cut >= 0 ? full.slice(0, cut) : "";
+          return "<tr><td>" + esc(name) +
+            "</td><td class='src-folder' title='" + esc(full) + "'>" + esc(folder || "—") +
+            "</td><td class='fail-reason'>" + esc(f.reason || "error") +
+            "</td><td class='fail-detail'>" + esc(f.detail || "") +
+            "</td><td>" + (f.attempts ? esc(String(f.attempts)) : "—") + "</td></tr>";
+        }).join("") + "</tbody></table></div>" +
+        "<p class='desc'>These files were seen but could not be folded into the wiki — " +
+        "<code>citadel ingest --retry</code> re-runs them. Files skipped by ignore/include " +
+        "patterns or a size limit are listed by <code>citadel status</code>.</p>";
+    }
     renderReader(html, "sources");
     Graph.setActive(null);
     markActiveNav();
@@ -2156,7 +2193,8 @@
   });
 
   var initial = safeHash();
-  if (initial.indexOf("src:") === 0 && SOURCES[initial.slice(4)]) openSource(initial.slice(4));
+  if (initial === "sources") openSourcesOverview();
+  else if (initial.indexOf("src:") === 0 && SOURCES[initial.slice(4)]) openSource(initial.slice(4));
   else if (initial && PAGES[initial]) openPage(initial);
   else if (BUNDLE.pages.length) openPage(BUNDLE.pages[0].rel_path);
 })();

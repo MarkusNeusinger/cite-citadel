@@ -176,14 +176,17 @@ def _finite_round(value, digits: int):
     return round(number, digits) if math.isfinite(number) else None
 
 
-def _usage_stamp_fields(cost_usd, tokens_in, tokens_out, aic=None) -> dict:
+def _usage_stamp_fields(cost_usd, tokens_in, tokens_out, aic=None, seconds=None) -> dict:
     """The defensively-validated usage fields for an entry — the ONE filter both the stamp sites
     (:func:`make_entry` / :func:`make_repo_entry`) and the read side (:func:`entry_usage`) share,
     so a junk value can neither enter the committed JSON nor crash a renderer reading it back:
     finite numeric ``cost_usd``/``aic`` (see :func:`_finite_round`) and non-negative real ints for
     the token counts. ``aic`` is copilot's own billing unit, AI credits — kept at 6 decimals
     because it is the un-derived figure the backend reported, while ``cost_usd`` is only its
-    conversion at GitHub's fixed published rate. Anything else is dropped, never coerced."""
+    conversion at GitHub's fixed published rate. ``seconds`` is the one CITADEL-measured field in
+    the stamp: the wall-clock time the completing run spent on this source (a chunked source's
+    segments summed) — on a LOCAL model, time is the cost, so it earns a place beside the
+    backend-reported figures. Anything else is dropped, never coerced."""
     out: dict = {}
     cost = _finite_round(cost_usd, 4)
     if cost is not None:
@@ -194,6 +197,9 @@ def _usage_stamp_fields(cost_usd, tokens_in, tokens_out, aic=None) -> dict:
     for key, value in (("tokens_in", tokens_in), ("tokens_out", tokens_out)):
         if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
             out[key] = value
+    dur = _finite_round(seconds, 1)
+    if dur is not None and dur >= 0:
+        out["seconds"] = dur
     return out
 
 
@@ -207,6 +213,7 @@ def make_entry(
     tokens_in: int | None = None,
     tokens_out: int | None = None,
     aic: float | None = None,
+    seconds: float | None = None,
 ) -> Entry:
     """Build a manifest value from a content hash, the importing model, and the rules-tree hash
     the importing session ran under (``config.rules_version``). ``model``/``rules_version`` are
@@ -230,7 +237,7 @@ def make_entry(
         entry["rules_version"] = rules_version
     if ingested_at:
         entry["ingested_at"] = ingested_at
-    entry.update(_usage_stamp_fields(cost_usd, tokens_in, tokens_out, aic))
+    entry.update(_usage_stamp_fields(cost_usd, tokens_in, tokens_out, aic, seconds))
     if st is not None:
         entry.update(stat_fields(st))
     return entry
@@ -255,6 +262,7 @@ def make_repo_entry(
     tokens_in: int | None = None,
     tokens_out: int | None = None,
     aic: float | None = None,
+    seconds: float | None = None,
 ) -> dict:
     """Build a manifest value for a GIT-REPOSITORY source: ``{"kind": "git", "commit": ...}``
     plus the importing ``model``, the repo's ``remote`` URL when known, and the ``rules_version``
@@ -274,7 +282,7 @@ def make_repo_entry(
         entry["rules_version"] = rules_version
     if ingested_at:
         entry["ingested_at"] = ingested_at
-    entry.update(_usage_stamp_fields(cost_usd, tokens_in, tokens_out, aic))
+    entry.update(_usage_stamp_fields(cost_usd, tokens_in, tokens_out, aic, seconds))
     return entry
 
 
@@ -331,7 +339,11 @@ def entry_usage(entry: Entry | None) -> dict:
     ``ingested_at``, must survive everything except an actual new agent session."""
     if isinstance(entry, dict):
         return _usage_stamp_fields(
-            entry.get("cost_usd"), entry.get("tokens_in"), entry.get("tokens_out"), entry.get("aic")
+            entry.get("cost_usd"),
+            entry.get("tokens_in"),
+            entry.get("tokens_out"),
+            entry.get("aic"),
+            entry.get("seconds"),
         )
     return {}
 
@@ -592,6 +604,7 @@ def mark_done(
     tokens_in: int | None = None,
     tokens_out: int | None = None,
     aic: float | None = None,
+    seconds: float | None = None,
 ) -> None:
     """Record ``src`` as ingested: manifest[rel_key(src)] = {sha256, model, rules_version} plus
     the scan-cache stat fields and — when a model imported it — a fresh ``ingested_at`` stamp
@@ -606,7 +619,10 @@ def mark_done(
     re-read); when omitted (direct callers), they are computed here.
     ``cost_usd``/``tokens_in``/``tokens_out``/``aic`` are what the just-finished session(s)
     cost, per the backend's own report (ingest combines a chunked source's segments) — recorded
-    only when known, so a backend that reports nothing leaves no misleading zeros."""
+    only when known, so a backend that reports nothing leaves no misleading zeros. ``seconds``
+    is citadel's own wall-clock measurement of the completing run's work on this source (see
+    :func:`_usage_stamp_fields`) — a resumed chunked source records only the run that finished
+    it, not the earlier runs a checkpoint refunded."""
     if st is None:
         try:
             st = src.stat()
@@ -624,4 +640,5 @@ def mark_done(
         tokens_in=tokens_in,
         tokens_out=tokens_out,
         aic=aic,
+        seconds=seconds,
     )

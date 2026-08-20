@@ -18,6 +18,7 @@ import os
 
 import pytest
 
+from citadel import failures as failures_mod
 from citadel import viewer
 
 
@@ -155,6 +156,40 @@ def test_sources_sidebar_tree_and_overview_table(viewer_page):
     viewer_page.click("#reader table.src-table a[data-source]")
     reader.wait_for()
     assert "nine bars of pressure" in reader.inner_text()
+
+
+def test_overview_lists_failed_sources(browser, tmp_citadel, seed_page):
+    """The ``#sources`` overview renders the persisted could-not-ingest catalog as its own table —
+    so a reader can SEE that a relevant file was skipped — and the sidebar overview link carries a
+    failed-count chip."""
+    (tmp_citadel.raw / "a.md").write_text("# A\n\nA fact to cite.\n", encoding="utf-8")
+    seed_page(
+        "concepts/x.md",
+        {"type": "Concept", "title": "X", "description": "d", "tags": ["t"], "resource": "raw/a.md"},
+        "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - n\n",
+    )
+    catalog: dict = {}
+    failures_mod.record(
+        catalog, "raw/broken report.pdf", failures_mod.ERROR, "raw/broken report.pdf: agent session failed"
+    )
+    failures_mod.save(catalog)
+    out = viewer.write_viewer()
+
+    errors: list[str] = []
+    page = browser.new_page()
+    page.on("pageerror", lambda exc: errors.append(str(exc)))
+    page.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" else None)
+    page.goto(out.as_uri() + "#sources")  # deep link straight to the overview
+    page.wait_for_selector("#reader table.fail-table")
+    fail_text = page.locator("#reader table.fail-table").inner_text()
+    assert "broken report.pdf" in fail_text
+    assert "agent session failed" in fail_text
+    # The sidebar overview link carries the failed count.
+    page.click("#source-list details.src-axis summary")
+    assert "1 failed" in (page.locator("#source-list a.src-overview").inner_text() or "")
+
+    page.close()
+    assert errors == [], f"viewer JS reported errors: {errors}"
 
 
 def test_spacey_angle_citation_renders_as_live_source_link(browser, tmp_citadel, seed_page):
