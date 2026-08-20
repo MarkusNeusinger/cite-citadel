@@ -483,13 +483,15 @@ def _build_instruction(
         "",
         f"Do what the task brief says by EDITING FILES DIRECTLY under {wiki_rel}/, using your "
         "built-in file tools (read/search/edit) — not shell commands — to read and search. "
+        f"Your finished pages STAY under {wiki_rel}/ — that IS the deliverable. There is no "
+        "publish step for you to perform: the orchestrator validates and imports your edits "
+        f"from {wiki_rel}/ after this session ends, so never move, copy, or re-create them "
+        "anywhere else (a page placed outside it is lost, not published), and never delete, "
+        "rename, or move that wiki directory itself. "
         f"The source and {raw_rel}/ are READ-ONLY inputs: read them, but never write, create, "
         f"move, or delete anything there. Never create or edit {wiki_rel}/index.md, "
         f"{wiki_rel}/log.md, any */index.md, or any dotfile, and make no changes outside "
-        f"{wiki_rel}/. Your work STAYS in {wiki_rel}/ — there is no publish step for you to "
-        "perform: never move or copy its contents anywhere else (whatever other directories "
-        "exist nearby), and never delete, rename, or move the directory itself; the "
-        "surrounding tooling picks your edits up from there after you exit. When your edits "
+        f"{wiki_rel}/. When your edits "
         "are complete, run `citadel check` (or `uv run python -m "
         "citadel check`) ONCE; only if it reports errors, fix them and run it again to confirm.",
     ]
@@ -773,11 +775,12 @@ def _write_transcript(
         stamp = time.strftime("%Y%m%d-%H%M%S")
         safe = "".join(c if (c.isalnum() or c in "-._") else "_" for c in (label or "session"))
         if len(safe) > 80:
-            # Truncate in the MIDDLE, not at the end: a long label is `kind.<absolute source
-            # key>`, and cutting the tail drops the one part a human recognizes — the source's
-            # file name. Keeping head + tail preserves both the kind/segment prefix and the
-            # basename (the cap itself guards Windows path-length limits).
-            safe = safe[:40] + "..." + safe[-37:]
+            # The label is `kind[.pNofM].<source key>`, and for an out-of-workspace source the key
+            # is a long absolute path whose FILENAME sits at the END — a plain head-cut keeps the
+            # noise (host + folders) and drops the one part that identifies the session. Keep both
+            # ends instead: the kind/pass prefix and the filename tail, with an ASCII `...` marking
+            # the cut (the full label is still inside the transcript itself).
+            safe = safe[:24] + "..." + safe[-53:]
         path = directory / f"{stamp}.{os.getpid()}.{seq}.{safe}.log"
         body = [
             "# citadel ingest — LLM agent session transcript",

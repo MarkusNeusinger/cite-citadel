@@ -429,6 +429,31 @@ def test_mark_done_stamps_usage(tmp_citadel):
     assert entry["ingested_at"]  # the fresh last-checked stamp still arrives alongside
 
 
+def test_seconds_stamp_rounds_carries_and_rejects_junk():
+    """The `seconds` field — citadel's own wall-clock measurement — follows the usage-stamp
+    contract: rounded on write, read back by entry_usage as kwargs (so the move/re-stamp carry
+    sites splat it through unchanged), junk dropped rather than coerced, unknown ABSENT."""
+    entry = manifest.make_entry("abc", "m", "rv", seconds=123.44)
+    assert entry["seconds"] == 123.4  # one decimal: sub-second precision without float noise
+    assert manifest.entry_usage(entry)["seconds"] == 123.4
+    carried = manifest.make_entry("abc", "m", "rv", **manifest.entry_usage(entry))
+    assert carried["seconds"] == 123.4  # a move/re-stamp carries the stamp like ingested_at
+    for junk in (float("nan"), float("inf"), -5, "fast", True):
+        assert "seconds" not in manifest.make_entry("abc", "m", "rv", seconds=junk)
+    assert "seconds" not in manifest.make_entry("abc", "m", "rv")  # unknown is ABSENT
+
+
+def test_ingest_stamps_wall_clock_seconds(tmp_citadel, fake_agent):
+    """Every successful source records how long the run spent on it. On a local model, TIME is
+    the cost — the backend reports no dollars — so the duration belongs in the manifest beside
+    the backend-reported figures, and `citadel status` / the viewer render it from there."""
+    (tmp_citadel.raw / "notes.md").write_text("alpha\n", encoding="utf-8")
+    fake_agent(_valid_page())
+    ingest.ingest()
+    entry = tmp_citadel.read_manifest()["raw/notes.md"]
+    assert isinstance(entry.get("seconds"), (int, float)) and entry["seconds"] >= 0
+
+
 # --- ingest: manifest stamp + run-report totals ------------------------------------------------
 
 

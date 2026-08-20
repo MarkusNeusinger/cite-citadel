@@ -379,9 +379,11 @@ def _sha256_or_none(path: Path) -> str | None:
 
 def _content_hashes(root: Path) -> dict[str, str]:
     """``{relposix: sha256}`` over :func:`_content_files` — a wiki's content state as bytes, not as
-    timestamps. Taken (`--jobs N` only) of the fresh STAGING clone, which is byte-for-byte the live
-    wiki this source started from, so its promote can tell "this page is exactly what I started
-    from" from "another source changed it while I was working". A file that vanishes or cannot be
+    timestamps. Taken of the fresh STAGING clone, which is byte-for-byte the live
+    wiki this source started from: under ``--jobs N`` it feeds the base-aware promote (so it can
+    tell "this page is exactly what I started from" from "another source changed it while I was
+    working"), and in serial mode the live-drift note on a failed source
+    (``ingest_sessions._live_drift_note``). A file that vanishes or cannot be
     read mid-walk is simply omitted, which reads as "absent" — the conservative answer, since it
     makes the promote treat it as changed rather than silently overwriting it."""
     out: dict[str, str] = {}

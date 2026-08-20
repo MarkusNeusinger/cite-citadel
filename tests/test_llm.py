@@ -1105,10 +1105,11 @@ def test_run_session_writes_transcript_when_log_dir_set(tmp_path, monkeypatch):
     assert "ingest.raw_notes.md" in logs[0].name  # label sanitized into the filename
 
 
-def test_transcript_filename_keeps_basename_of_a_long_label(tmp_path, monkeypatch):
-    """A long label (kind + an absolute network-share source key) is truncated in the MIDDLE of
-    the transcript filename, so the kind prefix AND the source's basename both survive — the
-    basename is the one part a human recognizes when hunting for the right log."""
+def test_transcript_filename_keeps_the_source_filename_tail_of_a_long_label(tmp_path, monkeypatch):
+    """A long label (an out-of-workspace source's absolute key) is truncated for the filename —
+    keeping BOTH ends: the kind prefix and the source's own filename. A plain head-cut used to keep
+    the host + folder noise and drop the one part that identifies the session, so every transcript
+    of a deep network-share corpus was named after the same directory prefix."""
     monkeypatch.setattr(config, "LLM_LOG_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(config, "LLM_VERBOSE", False, raising=False)
 
@@ -1116,13 +1117,18 @@ def test_transcript_filename_keeps_basename_of_a_long_label(tmp_path, monkeypatc
         return _FakeProc(returncode=0, stdout="ok")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    label = "pdf.//fileserver.example/share/" + "deeply/nested/" * 8 + "quarterly-report.pdf"
+    label = (
+        "pdf.//fileserver.corp.example/share/dept/unit/team/project/2026/subproject/"
+        "deliverables/archive/Quarterly Review Report.pdf"
+    )
     llm._run_session("copilot", ["copilot", "-p", "x"], None, log_label=label)
 
     (log,) = tmp_path.glob("*.log")
-    assert "pdf." in log.name  # the kind prefix survives the cap ...
-    assert "quarterly-report.pdf" in log.name  # ... and so does the source's basename
-    assert "..." in log.name  # the middle-truncation marker
+    assert log.name.count("...") == 1  # the cut is marked, once
+    assert "pdf." in log.name  # the kind prefix survives at the front
+    assert "Quarterly_Review_Report.pdf" in log.name  # the identifying tail survives
+    # The whole sanitized-label portion stays bounded, so the path never nears MAX_PATH.
+    assert len(log.name) < 120
 
 
 def test_transcript_announcement_is_shortened_not_the_full_unc_path(tmp_path, monkeypatch, capsys):

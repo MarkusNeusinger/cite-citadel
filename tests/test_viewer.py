@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import re
 
-from citadel import manifest, store, viewer
+from citadel import failures, manifest, store, viewer
 
 
 def _two_page_wiki(seed_page) -> None:
@@ -81,6 +81,83 @@ def test_binary_pdf_source_is_openable_not_unavailable(tmp_citadel, seed_page):
     assert s["body"] == ""
     assert s["href"] == "../raw/a.pdf"
     assert s["cited_by"] == ["concepts/x.md"]
+
+
+def test_sources_carry_a_raw_root_relative_display_path(tmp_path, make_citadel, seed_page):
+    """Every source record carries a ``display`` path — the key collapsed against the configured
+    raw roots (``config.display_key``), so an out-of-workspace source on a mounted share shows as
+    ``<raw-folder-name>/<path-below>`` in the viewer instead of its full absolute path. The angle
+    ``(<...>)`` citation form is the one way to cite a spacey path, so the test cites through it."""
+    raw = tmp_path / "srv" / "Project Files"
+    make_citadel(root=tmp_path / "repo", wiki=tmp_path / "net" / "wiki", raw=raw)
+    src = raw / "sub dir" / "report file.md"
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_text("# Report\n\nThe measured value was 42.\n", encoding="utf-8")
+    seed_page(
+        "concepts/p.md",
+        {"type": "Concept", "title": "P"},
+        f"Fact.[^s1]\n\n## Sources\n\n[^s1]: [report](<{src.as_posix()}>) - n\n",
+    )
+    sources = viewer.build_bundle()["sources"]
+    (rec,) = [s for s in sources.values() if s["key"].endswith("report file.md")]
+    assert rec["display"] == "Project Files/sub dir/report file.md"
+    assert rec["missing"] is False
+    assert rec["cited_by"] == ["concepts/p.md"]
+
+
+def test_absolute_citations_share_one_source_identity(tmp_path, make_citadel, seed_page):
+    """An ABSOLUTE citation target (the form for an out-of-workspace raw root) is its own
+    page-independent identity. Joining it under the citing page's folder — the relative-link
+    rule — minted one identity per citing FOLDER, so the same PDF cited from four pages appeared
+    four times in the Sources axis, each copy embedded again."""
+    raw = tmp_path / "srv" / "Project Files"
+    make_citadel(root=tmp_path / "repo", wiki=tmp_path / "net" / "wiki", raw=raw)
+    src = raw / "report.md"
+    src.write_text("# Report\n\nThe measured value was 42.\n", encoding="utf-8")
+    for rel in ("concepts/a.md", "objects/b.md"):
+        seed_page(
+            rel,
+            {"type": "Concept" if rel.startswith("concepts") else "Object", "title": rel},
+            f"Fact.[^s1]\n\n## Sources\n\n[^s1]: [report](<{src.as_posix()}>) - n\n",
+        )
+    sources = viewer.build_bundle()["sources"]
+    matching = [s for s in sources.values() if s["key"].endswith("report.md")]
+    assert len(matching) == 1  # ONE record, not one per citing folder
+    (rec,) = matching
+    assert rec["id"] == src.as_posix()  # keyed by the absolute path itself
+    assert set(rec["cited_by"]) == {"concepts/a.md", "objects/b.md"}
+
+
+def test_in_repo_source_display_is_its_short_key(tmp_citadel, seed_page):
+    """The in-repo case stays what it always looked like: ``raw/a.md``."""
+    (tmp_citadel.raw / "a.md").write_text("# A\n\nbody\n", encoding="utf-8")
+    _two_page_wiki(seed_page)
+    assert viewer.build_bundle()["sources"]["raw/a.md"]["display"] == "raw/a.md"
+
+
+def test_bundle_carries_the_failures_catalog(tmp_citadel, seed_page):
+    """The bundle embeds the persisted could-not-ingest catalog, so the ``#sources`` overview can
+    show that a file was SKIPPED — the wiki not mentioning a document and the document having
+    failed to import look identical without it. The row keeps the display path, the coarse
+    reason, and the detail with the redundant leading "<key>: " stripped."""
+    _two_page_wiki(seed_page)
+    catalog: dict = {}
+    failures.record(catalog, "raw/broken.pdf", failures.ERROR, "raw/broken.pdf: agent session failed", "copilot:qwen")
+    catalog["raw/broken.pdf"]["attempts"] = 2
+    failures.save(catalog)
+    rows = viewer.build_bundle()["failures"]
+    (row,) = rows
+    assert row["key"] == "raw/broken.pdf"
+    assert row["display"] == "raw/broken.pdf"
+    assert row["reason"] == "error"
+    assert row["detail"] == "agent session failed"  # the key prefix is stripped — the row names the file
+    assert row["model"] == "copilot:qwen"
+    assert row["attempts"] == 2
+
+
+def test_bundle_failures_empty_without_a_catalog(tmp_citadel, seed_page):
+    _two_page_wiki(seed_page)
+    assert viewer.build_bundle()["failures"] == []
 
 
 def test_missing_source_is_flagged_not_fatal(tmp_citadel, seed_page):

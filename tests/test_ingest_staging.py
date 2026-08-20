@@ -557,10 +557,37 @@ def test_vanished_staging_names_pages_written_to_live_wiki(tmp_citadel, fake_age
     report = ingest.ingest([str(raw / "notes.md")])
 
     assert "raw/notes.md" not in report.processed
-    err = next(e for e in report.errors if "staging wiki copy vanished" in e)
-    assert "concepts/stray.md" in err  # the out-of-band write is named ...
-    assert "NOT validated" in err
+    assert any("staging wiki copy vanished" in e for e in report.errors)
+    # The serial-mode live-drift note (appended to the failure) names the out-of-band write ...
+    note = next(e for e in report.errors if "changed while this source's session ran" in e)
+    assert "concepts/stray.md" in note
     assert (wiki / "concepts" / "stray.md").exists()  # ... and left in place, never auto-deleted
+
+
+def test_failed_source_names_out_of_staging_live_writes(tmp_citadel, fake_agent):
+    """The observed weak-model failure mode: the agent "publishes" its pages into the LIVE wiki
+    itself instead of leaving them in its staging copy. The emptied staging trips the promote
+    guard exactly as before — and the failure must also NAME the out-of-band live writes, because
+    those pages bypassed validation and the plain rollback message would read as "live wiki
+    untouched" while unvalidated pages actually stand in it. Detection only: nothing is swept (a
+    page a human added mid-run must never be deleted on the agent's account)."""
+    wiki, raw = tmp_citadel.wiki, tmp_citadel.raw
+    (raw / "notes.md").write_text("x\n", encoding="utf-8")
+
+    def rogue(*args, **kwargs):
+        # Writes around the staging copy, straight into the live wiki; staging stays empty.
+        target = wiki / "concepts" / "rogue.md"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("a page written around the staging machinery\n", encoding="utf-8")
+
+    fake_agent(side_effect=rogue)
+    report = ingest.ingest([str(raw / "notes.md")])
+
+    assert "raw/notes.md" not in report.processed  # the source still fails (guard unchanged)
+    assert any("no content pages" in e for e in report.errors)
+    note = next(e for e in report.errors if "changed while this source's session ran" in e)
+    assert "concepts/rogue.md" in note  # the drift note names the unvalidated page
+    assert (wiki / "concepts" / "rogue.md").exists()  # detection only — nothing is swept
 
 
 def test_promote_excludes_generated_and_manifest_files(tmp_path):

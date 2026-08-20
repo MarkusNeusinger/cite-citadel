@@ -344,6 +344,41 @@ def _write_checkpoint(
         pass
 
 
+def _live_drift_note(live: Path, cloned: dict[str, str] | None, rel_key: str) -> str | None:
+    """A warning naming out-of-band LIVE-wiki changes under a FAILED serial source, or None.
+
+    In a serial run nothing may legitimately touch the live wiki while a source's session runs:
+    every agent edit belongs in the per-source staging copy, and the promote at the end of THIS
+    source is the only writer. So when a failed source's live wiki no longer hash-matches the
+    state its staging was cloned from, something wrote around the machinery — in practice a weak
+    agent that "published" its staging into the live wiki itself (inventing a publish step the
+    orchestrator never has), whose pages then bypassed validation while its emptied staging
+    tripped the promote guard. Without this note the rollback message reads as "live wiki
+    untouched" while the wiki actually holds unvalidated pages, so the note names them and the
+    offline tools that inspect them. Detection only — nothing here deletes or reverts: a page a
+    HUMAN added mid-run must never be swept on the agent's account, and the next run's session
+    clones whatever stands and re-validates every page it touches.
+
+    Best-effort by contract: any error reading the live wiki returns None rather than masking the
+    source's real failure. Never called under ``--jobs N``, where concurrent promotes move the
+    live wiki legitimately."""
+    if cloned is None:
+        return None
+    try:
+        current = _content_hashes(live)
+    except Exception:  # noqa: BLE001 - diagnostics must never mask the real failure
+        return None
+    if current == cloned:
+        return None
+    changed = sorted(k for k in current.keys() | cloned.keys() if current.get(k) != cloned.get(k))
+    shown = ", ".join(changed[:3]) + (f", +{len(changed) - 3} more" if len(changed) > 3 else "")
+    return (
+        f"{rel_key}: note: the live wiki changed while this source's session ran "
+        f"({len(changed)} page(s): {shown}) - agent writes outside the staging copy bypass "
+        "validation; inspect them with `citadel check` and `citadel lint`"
+    )
+
+
 def _run_agent_sessions(
     session_fns,
     rel_key: str,
@@ -412,6 +447,7 @@ def _run_agent_sessions(
         return _SourceOutcome(True, ran_sessions=False)
     live = config.wiki_dir()
     base: dict[str, str] | None = None
+    cloned: dict[str, str] | None = None
     staging: Path | None = None
     created: list[str] = []
     updated: list[str] = []
@@ -425,26 +461,33 @@ def _run_agent_sessions(
     carried_issues: list[str] = []
     resumed_note = ""
 
-    def clone() -> tuple[Path, dict[str, str] | None]:
-        """A staging copy of the live wiki plus (concurrent runs only) the base state it copied.
+    def clone() -> tuple[Path, dict[str, str]]:
+        """A staging copy of the live wiki plus the content-hash base state it copied.
 
         The lock covers the COPY alone; the base is then hashed off the fresh staging tree, which
         is a byte-exact copy of exactly what was cloned — same hashes, half the disk I/O (the wiki
         is read once, not twice), and every other worker's clone/promote is unblocked that much
         sooner. It must still happen HERE, before anything mutates staging: a resume replay writes
         into it a few lines below, and those pages are not part of the wiki this source started
-        from."""
+        from. The hashes serve two consumers: the base-aware promote/checkpoint machinery (fed
+        only under ``--jobs N``, exactly as before — ``base`` below) and the serial-mode
+        live-drift note on a FAILED source (:func:`_live_drift_note`)."""
         with _LIVE_WIKI_LOCK:
             staging = _make_staging(live)
-        return staging, (_content_hashes(staging) if concurrent else None)
+        return staging, _content_hashes(staging)
+
+    def failed_errors(errs: list[str]) -> list[str]:
+        """The error list for a FAILED outcome, with the serial-mode live-drift note appended when
+        the live wiki moved under this source's session (see :func:`_live_drift_note`)."""
+        note = None if concurrent else _live_drift_note(live, cloned, rel_key)
+        return [*errs, note] if note else errs
 
     try:
-        staging, base = clone()
-        # The content paths the live wiki held when this source cloned it (the fresh staging copy
-        # IS that state, so walking it costs no second pass over live). Consulted only by the
-        # vanished-staging check below, to name files that appeared in the LIVE wiki outside the
-        # staging discipline.
-        clone_paths = set(base) if base is not None else set(_content_files(staging))
+        staging, cloned = clone()
+        # `base` feeds the base-aware promote and the resume checkpoints ONLY under `--jobs N`,
+        # keeping the serial promote/checkpoint semantics byte-for-byte; `cloned` stays available
+        # in both modes for the drift note and the vanished-staging check below.
+        base = cloned if concurrent else None
         # RESUME: replay an earlier run's completed segments into this fresh staging copy, so only
         # the remaining ones have to be paid for again. Every guard failure falls back to a full
         # start on a clean staging copy IN THIS RUN — never a failed source, never a wasted session.
@@ -459,8 +502,8 @@ def _run_agent_sessions(
                 resume.clear(rel_key)
                 resume_ctx.checkpoint = None
                 _robust_rmtree(staging)
-                staging, base = clone()
-                clone_paths = set(base) if base is not None else set(_content_files(staging))
+                staging, cloned = clone()
+                base = cloned if concurrent else None
             else:
                 created, updated, deleted = list(seeded[0]), list(seeded[1]), list(seeded[2])
                 start_at = resume_ctx.checkpoint.completed
@@ -490,27 +533,19 @@ def _run_agent_sessions(
                     # deleting staging as "done") or something else on the machine removed it.
                     # Without this check the empty snapshot reads as "the session changed
                     # nothing" and the failure surfaces — if at all — as an opaque
-                    # refusing-to-promote error three steps later. Fail the source with the real
-                    # story, and (serial runs only — under --jobs N a concurrent source's promote
-                    # legitimately changes the live wiki) name any files that appeared in the
-                    # LIVE wiki outside the staging discipline: they were never validated, and
-                    # they are deliberately left in place for the user to inspect.
+                    # refusing-to-promote error three steps later (or, on a wiki with no prior
+                    # content pages, as a silent zero-change SUCCESS). Fail the source with the
+                    # real story; `failed_errors` appends the serial-mode live-drift note, which
+                    # names any pages that appeared in the live wiki outside the staging
+                    # discipline — never validated, and deliberately left in place to inspect.
                     msg = (
                         f"{rel_key}: the staging wiki copy vanished mid-session (the agent or "
                         "another process moved or deleted it), so this session's work cannot be "
                         "verified or promoted"
                     )
-                    if not concurrent:
-                        stray = sorted(set(_content_files(live)) - clone_paths)
-                        if stray:
-                            shown = ", ".join(stray[:5]) + (f", ... +{len(stray) - 5} more" if len(stray) > 5 else "")
-                            msg += (
-                                "; these files appeared in the LIVE wiki outside the staging "
-                                f"discipline (NOT validated by this run, left in place): {shown}"
-                            )
                     return _SourceOutcome(
                         False,
-                        errors=[msg],
+                        errors=failed_errors([msg]),
                         seconds=time.monotonic() - started,
                         usage=llm.combine_usage(usage_parts),
                         carried_usage=_usage_from_fields(carried),
@@ -526,7 +561,7 @@ def _run_agent_sessions(
                 if val_errors:
                     return _SourceOutcome(
                         False,
-                        errors=val_errors,
+                        errors=failed_errors(val_errors),
                         seconds=time.monotonic() - started,
                         usage=llm.combine_usage(usage_parts),
                         carried_usage=_usage_from_fields(carried),
@@ -565,7 +600,7 @@ def _run_agent_sessions(
                         created,
                         updated,
                         deleted,
-                        post_errors,
+                        failed_errors(post_errors),
                         time.monotonic() - started,
                         usage=llm.combine_usage(usage_parts),
                         carried_usage=_usage_from_fields(carried),
@@ -617,7 +652,7 @@ def _run_agent_sessions(
         usage_parts.append(salvaged if isinstance(salvaged, llm.SessionUsage) else None)
         return _SourceOutcome(
             False,
-            errors=[f"{rel_key}: {exc}"],
+            errors=failed_errors([f"{rel_key}: {exc}"]),
             seconds=time.monotonic() - started,
             usage=llm.combine_usage(usage_parts),
             carried_usage=_usage_from_fields(carried),

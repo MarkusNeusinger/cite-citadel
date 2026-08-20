@@ -18,6 +18,7 @@ import os
 
 import pytest
 
+from citadel import failures as failures_mod
 from citadel import viewer
 
 
@@ -126,3 +127,115 @@ def test_search_filters_and_recovers(viewer_page):
 def test_slash_focuses_search(viewer_page):
     viewer_page.keyboard.press("/")
     assert viewer_page.evaluate("document.activeElement && document.activeElement.id") == "search"
+
+
+def test_sources_sidebar_tree_and_overview_table(viewer_page):
+    """The Sources axis renders as a folder tree (folders as <details>, leaves = FILENAMES) and
+    links an "#sources" overview: one table row per source with filename, folder, provenance, and
+    citation count. The fixture's one source (raw/a.md, cited by both pages) yields a single
+    'raw' folder holding one 'a.md' leaf."""
+    viewer_page.click("#source-list details.src-axis summary")
+    folder = viewer_page.locator("#source-list details.src-dir > summary")
+    assert folder.count() == 1
+    assert "raw" in (folder.first.inner_text() or "").lower()  # CSS may uppercase summaries
+    viewer_page.click("#source-list details.src-dir > summary")
+    leaf = viewer_page.locator("#source-list a.navitem.src")
+    assert leaf.count() == 1
+    assert "a.md" in (leaf.first.inner_text() or "")  # the filename, not the embedded title
+
+    viewer_page.click("#source-list a.src-overview")
+    reader = viewer_page.locator("#reader")
+    reader.wait_for()
+    viewer_page.wait_for_selector("#reader table.src-table")
+    rows = viewer_page.locator("#reader table.src-table tbody tr")
+    assert rows.count() == 1
+    row_text = rows.first.inner_text()
+    assert "a.md" in row_text
+    assert "2" in row_text  # cited by both fixture pages
+    # Clicking the file cell opens the embedded source itself.
+    viewer_page.click("#reader table.src-table a[data-source]")
+    reader.wait_for()
+    assert "nine bars of pressure" in reader.inner_text()
+
+
+def test_overview_lists_failed_sources(browser, tmp_citadel, seed_page):
+    """The ``#sources`` overview renders the persisted could-not-ingest catalog as its own table —
+    so a reader can SEE that a relevant file was skipped — and the sidebar overview link carries a
+    failed-count chip."""
+    (tmp_citadel.raw / "a.md").write_text("# A\n\nA fact to cite.\n", encoding="utf-8")
+    seed_page(
+        "concepts/x.md",
+        {"type": "Concept", "title": "X", "description": "d", "tags": ["t"], "resource": "raw/a.md"},
+        "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - n\n",
+    )
+    catalog: dict = {}
+    failures_mod.record(
+        catalog, "raw/broken report.pdf", failures_mod.ERROR, "raw/broken report.pdf: agent session failed"
+    )
+    failures_mod.save(catalog)
+    out = viewer.write_viewer()
+
+    errors: list[str] = []
+    page = browser.new_page()
+    page.on("pageerror", lambda exc: errors.append(str(exc)))
+    page.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" else None)
+    page.goto(out.as_uri() + "#sources")  # deep link straight to the overview
+    page.wait_for_selector("#reader table.fail-table")
+    fail_text = page.locator("#reader table.fail-table").inner_text()
+    assert "broken report.pdf" in fail_text
+    assert "agent session failed" in fail_text
+    # The sidebar overview link carries the failed count.
+    page.click("#source-list details.src-axis summary")
+    assert "1 failed" in (page.locator("#source-list a.src-overview").inner_text() or "")
+
+    page.close()
+    assert errors == [], f"viewer JS reported errors: {errors}"
+
+
+def test_spacey_angle_citation_renders_as_live_source_link(browser, tmp_citadel, seed_page):
+    """A citation into a path containing SPACES must be written in the angle form
+    (``[t](<../../raw/my report.md>)`` — grammar.split_link_target's decided rule), and the viewer
+    must render it like any other citation: a live source link, a source-aware inline marker, and a
+    Sources group under the file — never the "unresolved citations" fallback bucket the angle form
+    used to land in because the JS link regexes only accepted whitespace-free targets."""
+    (tmp_citadel.raw / "my report.md").write_text("# My Report\n\nThe measured value was 42.\n", encoding="utf-8")
+    seed_page(
+        "concepts/widget.md",
+        {
+            "type": "Concept",
+            "title": "Widget",
+            "description": "A thing.",
+            "tags": ["x"],
+            "resource": "raw/my report.md",
+        },
+        "The value is 42.[^s1]\n\n## Sources\n\n"
+        "[^s1]: [My Report](<../../raw/my report.md>), lines 3-3 (ingested 2026-06-22)\n",
+    )
+    out = viewer.write_viewer()
+
+    errors: list[str] = []
+    page = browser.new_page()
+    page.on("pageerror", lambda exc: errors.append(str(exc)))
+    page.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" else None)
+    page.goto(out.as_uri())
+    page.wait_for_selector("#page-list a.navitem")
+    page.click("#page-list a.navitem[data-page='concepts/widget.md']")
+    page.wait_for_selector("#reader details.sources")
+
+    # The compacted Sources block groups the citation under a LIVE source link.
+    assert page.locator("#reader details.sources a.srclink").count() == 1
+    # text_content reads the collapsed <details> too: no unresolved bucket, no literal markdown.
+    sources_text = page.locator("#reader details.sources").text_content() or ""
+    assert "unresolved citations" not in sources_text
+    assert "](<" not in sources_text
+    # The inline [^s1] marker resolved its source (the fnSrc map parsed the angle-form def).
+    assert page.locator("#reader sup.fnref.has-src").count() == 1
+    # Clicking the source link opens the embedded source content.
+    page.click("#reader details.sources summary")
+    page.click("#reader details.sources a.srclink")
+    reader = page.locator("#reader")
+    reader.wait_for()
+    assert "measured value was 42" in reader.inner_text()
+
+    page.close()
+    assert errors == [], f"viewer JS reported errors: {errors}"

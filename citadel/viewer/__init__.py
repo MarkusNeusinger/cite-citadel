@@ -61,6 +61,7 @@ from importlib import resources
 from pathlib import Path
 
 from .. import config, extract, grammar, pdftext, store, transcribe
+from .. import failures as failures_mod
 from .. import manifest as manifest_mod
 
 
@@ -153,7 +154,40 @@ def build_bundle(pages=None) -> dict:
         "tags": tags,
         "types": {k: sorted(v) for k, v in types.items()},
         "sources": _build_sources(pages),
+        "failures": _build_failures(),
     }
+
+
+def _build_failures() -> list[dict]:
+    """The persisted could-not-ingest catalog (``failures.load()``) as viewer rows, sorted by
+    display path: the file (short and full path), the coarse reason category, the human detail
+    (with the redundant leading "<key>: " stripped — the row already names the file), the model
+    that tried, and the attempt count. Surfaced in the ``#sources`` overview so a reader can see
+    at a glance whether a relevant file was SKIPPED rather than silently absent from the wiki —
+    the wiki not mentioning a document and the document having failed to import look identical
+    without this. Decoration only: a missing/corrupt catalog reads as no failures."""
+    rows: list[dict] = []
+    for key, entry in failures_mod.load().items():
+        if not isinstance(entry, dict):
+            continue  # defensive: a hand-edited catalog must not break the build
+        detail = str(entry.get("detail") or "")
+        prefix = f"{key}: "
+        if detail.startswith(prefix) and len(detail) > len(prefix):
+            detail = detail[len(prefix) :]
+        row = {
+            "key": key,
+            "display": config.display_key(key),
+            "reason": str(entry.get("reason") or "error"),
+            "detail": detail,
+        }
+        if entry.get("model"):
+            row["model"] = str(entry["model"])
+        attempts = entry.get("attempts")
+        if isinstance(attempts, int) and not isinstance(attempts, bool) and attempts > 0:
+            row["attempts"] = attempts
+        rows.append(row)
+    rows.sort(key=lambda r: r["display"])
+    return rows
 
 
 # --------------------------------------------------------------------------------------
@@ -168,8 +202,15 @@ def _viewer_resolve(from_rel: str, target: str) -> str:
     the wiki root (a no-op pop on an empty stack, exactly like ``Array.pop`` in JS). This is the
     single identity under which an embedded source is keyed AND under which the browser looks it up,
     so a citation resolves to its source no matter how the wiki and raw trees are laid out (in-repo,
-    a nested ``sub/wiki``, or a mounted network drive)."""
-    target = target.split("#", 1)[0]
+    a nested ``sub/wiki``, or a mounted network drive).
+
+    An ABSOLUTE target (``//server/share/…`` UNC, ``/posix``, or a ``T:/…`` drive path — the
+    citation form for an out-of-workspace raw root) IS its own identity, page-independent:
+    joining it under the citing page's folder would mint one identity per citing FOLDER, so the
+    same file cited from ``concepts/`` and ``objects/`` would embed (and list) twice."""
+    target = target.split("#", 1)[0].replace("\\", "/")
+    if target.startswith("/") or re.match(r"^[A-Za-z]:", target):
+        return target
     base = from_rel.rsplit("/", 1)[0] if "/" in from_rel else ""
     parts = base.split("/") if base else []
     for seg in target.split("/"):
@@ -191,8 +232,12 @@ def _source_view_id(abs_path: str | os.PathLike) -> str:
     parent = config.wiki_dir().parent
     try:
         return os.path.relpath(str(abs_path), str(parent)).replace(os.sep, "/")
-    except ValueError:  # different drive — no relative path exists
-        return os.path.basename(str(abs_path))
+    except ValueError:
+        # Different drive — no relative path exists, and the citation form for such a source is
+        # its ABSOLUTE path, which _viewer_resolve keeps verbatim as the identity. Key the
+        # fallback the same way (a bare basename would collide for same-named files in different
+        # folders — real corpora repeat filenames like dated deliverables).
+        return str(abs_path).replace("\\", "/")
 
 
 def _collect_sources(pages) -> dict[str, str]:
@@ -480,6 +525,11 @@ def _build_sources(pages) -> dict:
         record = {
             "id": view_id,
             "key": key,
+            # The human-facing path: the key collapsed against the configured raw/docs roots
+            # (config.display_key — the console's rendering), so an out-of-workspace source shows
+            # as "<raw-folder-name>/<path-below>" instead of its full absolute path. Display-only;
+            # `id`/`key` stay the canonical identities.
+            "display": config.display_key(key),
             # Title and snippet are computed from the FULL text (it is read anyway).
             "title": _source_title(text, view_id),
             "model": manifest_mod.entry_model(manifest[key]) if key in manifest else None,

@@ -301,7 +301,16 @@ class ConsoleProgress:
         # that the next run continues there instead of re-buying them).
         part, parts = self._segments.get(source, (0, 0))
         tail = [(f"part {part}/{parts}", "yellow")] if parts > 1 else []
-        tail.append((str(error), "red"))
+        # Failure reasons are canonically prefixed with the source key ("<key>: <error>") for the
+        # report and the failures catalog — but the key is ALREADY this line's head column, and for
+        # an out-of-workspace source it is a long absolute path: repeated in the tail it overflows
+        # the row and pushes the actual error text off-screen, so the verdict shows the path twice
+        # and the reason never. Display-only strip; the catalog keeps the full string.
+        text = str(error)
+        prefix = f"{source}: "
+        if text.startswith(prefix) and len(text) > len(prefix):
+            text = text[len(prefix) :]
+        tail.append((text, "red"))
         line = self._verdict(index, total, "ERR", "bold red", source, seconds, tail)
         self._finish(source, line)
 
