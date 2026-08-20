@@ -483,6 +483,10 @@ def _build_instruction(
         "",
         f"Do what the task brief says by EDITING FILES DIRECTLY under {wiki_rel}/, using your "
         "built-in file tools (read/search/edit) — not shell commands — to read and search. "
+        f"Your finished pages STAY under {wiki_rel}/ — that IS the deliverable. There is no "
+        "publish step for you to perform: the orchestrator validates and imports your edits "
+        f"from {wiki_rel}/ after this session ends, so never move, copy, or re-create them "
+        "anywhere else (a page placed outside it is lost, not published). "
         f"The source and {raw_rel}/ are READ-ONLY inputs: read them, but never write, create, "
         f"move, or delete anything there. Never create or edit {wiki_rel}/index.md, "
         f"{wiki_rel}/log.md, any */index.md, or any dotfile, and make no changes outside "
