@@ -309,9 +309,8 @@ def test_audio_kinds_map_to_transcripts_brief_with_transcript_as_prepared_file()
 
 
 def test_audio_segment_keeps_transcripts_brief():
-    """Unlike the Office exemption (a slice is not an Office extract), a chunked long recording
-    keeps formats/transcripts.md on EVERY segment — its cite-the-original and lines-locator rules
-    bind per slice."""
+    """A chunked long recording keeps formats/transcripts.md on EVERY segment — its
+    cite-the-original and lines-locator rules bind per window."""
     prompt = llm._build_instruction("raw/podcast.mp3", "audio", "/tmp/okf_extract_x/podcast.md", (2, 3))
     assert _ref("formats/transcripts.md") in prompt
     assert "part 2 of 3" in prompt
@@ -328,9 +327,26 @@ def test_audio_segment_line_window_bullet_names_global_lines():
     assert "part 2 of 3" in prompt
     assert len(prompt) < PROMPT_CHAR_BUDGET
 
-    # Without a line_range (every non-audio segment pass), no window bullet appears.
-    plain = llm._build_instruction("raw/big.txt", "ingest", "/tmp/okf_extract_x/big.md", (2, 3))
-    assert "Transcript window" not in plain
+    # Without a line_range, no window bullet appears at all.
+    plain = llm._build_instruction("raw/big.txt", "ingest", None, (2, 3))
+    assert "window for THIS pass" not in plain
+
+
+def test_chunked_plain_text_pass_windows_the_source_file_itself():
+    """A chunked plain-text source has NO prepared file: the agent reads the ORIGINAL through a
+    line window, and the prompt says so — the source file holds the whole text, read only the
+    window, and its own line numbers ARE the locator numbers. This is the locator guarantee for
+    plain text (the old rebased, blank-squeezed slice let a segment-1 agent cite lines up to
+    hundreds off). The task brief still carries the Large-sources rules; no format brief applies."""
+    prompt = llm._build_instruction("raw/novel.txt", "ingest", None, (1, 3), (1, 6099))
+    assert "- Segment: part 1 of 3" in prompt
+    assert "Source text window for THIS pass: lines 1-6099" in prompt
+    assert "source file holds the WHOLE source text" in prompt
+    assert "line numbers ARE the locator line numbers" in prompt
+    assert "Prepared file" not in prompt  # nothing to read but the source itself
+    assert _ref("tasks/ingest.md") in prompt
+    assert _ref("formats/office.md") not in prompt
+    assert len(prompt) < PROMPT_CHAR_BUDGET
 
 
 def test_image_kinds_map_to_image_brief():
@@ -371,15 +387,17 @@ def test_pdf_suffix_is_the_fallback_when_the_file_is_unreadable():
     assert llm._is_pdf_source("raw/gone.md") is False
 
 
-def test_segment_bullet_and_no_office_brief_for_slices():
-    """A large-source slice names the segment position and the slice as the prepared file; the
-    task brief's Large-sources rules cover it (NOT formats/office.md — a slice is not an Office
-    extract, even when the source was one)."""
-    prompt = llm._build_instruction("raw/big.txt", "ingest", "/tmp/okf_extract_y/big.md", (2, 3))
+def test_chunked_office_pass_keeps_the_office_brief_and_windows_the_extract():
+    """A chunked Office pass reads the WHOLE extraction through a line window (never a slice of
+    it), so formats/office.md stays on EVERY segment — its `§ Slide N` / `lines A-B` locator rules
+    bind per window — beside the task brief's Large-sources rules and the segment position."""
+    prompt = llm._build_instruction("raw/deck.pptx", "ingest", "/tmp/okf_extract_y/deck.md", (2, 3), (41, 80))
     assert "Segment: part 2 of 3" in prompt
-    assert "/tmp/okf_extract_y/big.md" in prompt
-    assert "raw/big.txt" in prompt
-    assert _ref("formats/office.md") not in prompt
+    assert "Extracted text window for THIS pass: lines 41-80" in prompt
+    assert "prepared file holds the WHOLE extracted text" in prompt
+    assert "/tmp/okf_extract_y/deck.md" in prompt
+    assert "raw/deck.pptx" in prompt
+    assert _ref("formats/office.md") in prompt  # kept on a later segment, not just the first
     assert _ref("tasks/ingest.md") in prompt
 
 
@@ -1383,8 +1401,13 @@ def test_pdf_and_transcript_briefs_permit_reading_a_cut_unit_whole(tmp_citadel):
         assert "begins" in brief, name  # ... but only the pass it BEGINS in folds it in
 
 
-def test_ingest_task_brief_distinguishes_a_window_from_a_sliced_segment():
-    """The generic segment section must not promise the read-past-the-edge escape to a source that
-    was handed a physically sliced file — there the slice really is all there is."""
+def test_ingest_task_brief_states_the_window_numbering_is_the_files_own():
+    """The generic segment section describes ONE mechanism — a line window of one unchanged text —
+    and pins the locator guarantee in words the agent cannot misread: the file's own line numbers
+    are the locator numbers, never renumbered from 1 (the pemberley segment-1 drift). The old
+    "physically sliced segment file" carve-out must be gone: no chunked pass is a slice any more."""
     brief = (REAL_RULES_DIR / "tasks/ingest.md").read_text(encoding="utf-8").lower()
-    assert "sliced" in brief and "all there is" in brief
+    assert "line window" in brief
+    assert "line numbers are the locator line numbers" in brief
+    assert "never renumber" in brief
+    assert "sliced" not in brief and "all there is" not in brief

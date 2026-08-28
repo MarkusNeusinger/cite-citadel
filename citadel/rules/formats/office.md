@@ -12,6 +12,10 @@ Applies when the run instruction says the source is a binary **Office** file —
   and ingest their facts too; ignore decorative icons and logos.
 - Cite the **original Office file** as the source of record: `resource:` and every `[^sN]`
   definition name the original file, never the extracted temp files.
+- A **large** extract is never sliced: the prepared file always holds the WHOLE extraction, and
+  when the run instruction names a segment it bounds this pass to a **line window** of that one
+  file (`tasks/ingest.md` § Large sources). Read only the window; the locator rules below apply
+  unchanged in every pass, and a `lines A-B` locator is the extract's own line numbering.
 - If it holds no usable content, make no edits and stop.
 - Every citation into an Office source **requires a locator** (`schema.md` § Locators). The extract
   marks structure with headings, not pages, so use a heading anchor copied verbatim from it:

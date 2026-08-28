@@ -35,7 +35,7 @@ def chunked_source(tmp_citadel, monkeypatch):
 def _fail_at(segment_no: int, cite_page, page: str = "misc/big.md"):
     """A fake session that writes ``page`` on segment 1 and raises on ``segment_no``."""
 
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
         if segment[0] == 1:
             cite_page(page, rel_key, "A fact from segment one.")
         if segment[0] == segment_no:
@@ -45,7 +45,7 @@ def _fail_at(segment_no: int, cite_page, page: str = "misc/big.md"):
 
 
 def _record_segments(calls: list):
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
         calls.append(segment)
 
     return fake
@@ -100,7 +100,7 @@ def test_checkpoint_captures_edits_no_session_diff_reports(chunked_source, fake_
 
     sources = "\n\n## Sources\n\n[^s1]: [raw/big.txt](../../raw/big.txt) - src\n"
 
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
         if segment[0] == 1:
             page("concepts/kaffee.md", "Kaffee", "A fact.[^s1]" + sources)
             page("concepts/hub.md", "Hub", "See [Kaffee](kaffee.md).[^s1]" + sources)
@@ -146,7 +146,7 @@ def test_promote_failure_after_the_last_segment_resumes_with_no_sessions(
     becomes a free retry: the next run replays the complete delta and promotes it without opening
     a single session."""
 
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
         if segment[0] == 1:
             cite_page("misc/big.md", rel_key, "A fact from segment one.")
 
@@ -287,7 +287,7 @@ def test_replay_that_no_longer_validates_discards_the_checkpoint(chunked_source,
     discard costs nothing."""
     (chunked_source.docs / "spec.md").write_text("A spec.\n", encoding="utf-8")
 
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
         if segment[0] == 1:
             target = Path(config.wiki_dir()) / "misc" / "big.md"
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -323,7 +323,7 @@ def test_repeated_fruitless_resumes_fall_back_to_a_full_retry(chunked_source, fa
     for _ in range(resume.ATTEMPT_CAP + 1):
         calls: list = []
 
-        def fake(rel_key, kind="ingest", read_path=None, segment=None, _calls=calls):
+        def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None, _calls=calls):
             _calls.append(segment)
             if segment[0] == 1:
                 cite_page("misc/big.md", rel_key, "A fact from segment one.")

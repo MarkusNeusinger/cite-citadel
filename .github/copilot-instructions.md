@@ -223,8 +223,11 @@ addressing them through `ingest`. The flow per source:
   effective chunk budget (`config.source_chunk_chars()` — the `CITADEL_MAX_SOURCE_CHARS` ceiling,
   tightened to a fraction of a stated `CITADEL_MODEL_CONTEXT_TOKENS` and floored at
   `MIN_CHUNK_CHARS`, so a small-context local model segments finer without the char threshold being
-  dialed down globally) is folded in over several passes (all against one staging copy — see
-  the promote bullet below). `ingest --force <paths>` bypasses the sha short-circuit: the named
+  dialed down globally) is folded in over several passes — each a contiguous LINE WINDOW of the
+  ONE unchanged text (`ingest_sessions._line_windows`: the source file itself for plain text, the
+  single full-text temp for an Office/PDF/transcript extraction), never a rebased slice, so every
+  `lines A-B` locator is the file's own line number in every pass — all against one staging copy
+  (see the promote bullet below). `ingest --force <paths>` bypasses the sha short-circuit: the named
   sources land in pending as reconciles (a repo re-digests in full), and the manifest is re-stamped
   with the current model + rules version. `ingest --reingest <paths>` rides force's partitioning
   but re-imports fresh instead of reconciling: a delete-cleanup job per named tracked source runs

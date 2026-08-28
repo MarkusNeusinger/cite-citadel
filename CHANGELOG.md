@@ -226,9 +226,9 @@ All notable changes to this project are documented here. The format is based on
   range (PDF extractions and transcripts), the rules now say the cut unit may be read past the edge
   to be seen whole, while ownership stays put: fold it in only if it **begins** inside your window,
   cite the range it actually occupies even where that crosses the edge, and leave a unit that began
-  earlier to the pass that owned it. A physically sliced segment file is unchanged — there, the
-  slice really is all there is. This matters more now that a stated model context makes segment
-  boundaries more frequent.
+  earlier to the pass that owned it. This matters more now that a stated model context makes
+  segment boundaries more frequent — and since every chunked pass is now a window of one unchanged
+  text (see *Fixed*), the permission applies to plain-text and Office sources too.
 - **A curate cluster can no longer promote a broken cross-link.** Renaming and merging pages is what
   curate is for — and a `--guidance` steer makes renames the common case — but a rename is the one
   edit that reliably strands inbound links, and the mechanical rename-repair net only fires when the
@@ -257,6 +257,25 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A chunked plain-text or Office source no longer cites a slice's line numbers as the file's.**
+  Audio transcripts and PDF text layers were always folded in as line windows over ONE unchanged
+  text, so a `lines A-B` locator from any pass was the file's own by construction — but a large
+  plain-text file (and a large Office extraction) still went through the older path: the text was
+  packed by paragraphs into segments, each written to a temp file that **restarted at line 1** and
+  **squeezed every multi-blank-line run to one**. The agent was told to cite the original, and a
+  later pass (whose slice obviously did not start at the book's first line) looked the numbering up
+  and got it right — but a first-segment agent, whose slice *did* start at line 1, trusted the
+  slice's numbering, and every squeezed blank run before a fact pushed its locator one line early.
+  Rebuilding the pemberley showcase made it visible: 25 of 28 sampled segment-1 locators pointed
+  17–258 lines before the passage they cited (`citadel raw --locator` showing a reader the wrong
+  paragraph), while every segment-2/3 sample was exact. Every chunked source now takes the window
+  path: a plain-text source is windowed **in place** — no temp at all, the agent reads the original
+  file through a `lines A-B` window the run instruction names — and a large Office extraction is
+  written once, whole, and windowed the same way, its embedded images riding beside it for every
+  pass (they used to reach only the first segment). `formats/office.md` stays on every Office
+  segment so its `§ Slide N` / `lines A-B` rules bind per window, `tasks/ingest.md` § Large
+  sources describes one mechanism instead of two, and the segment/window position already sits in
+  each resume checkpoint's identity, so nothing changes for interrupted imports.
 - **One invalid page no longer fails every source that touches it.** Ingest validates each page an
   agent session changed and rolls the whole source back on any error — which was blaming a source
   for damage it inherited. If a page is *already* invalid when a session touches it (a failed

@@ -15,7 +15,6 @@ implementation detail; ``ingest._run_agent_sessions`` etc. remain the addressabl
 from __future__ import annotations
 
 import hashlib
-import re
 import shutil
 import tempfile
 import time
@@ -720,49 +719,17 @@ def _read_source_text(src: Path) -> str | None:
         return None
 
 
-def _text_atoms(text: str, max_chars: int) -> list[str]:
-    """Break ``text`` into atoms each at most ``max_chars`` long, preferring paragraph boundaries,
-    then line boundaries, then hard character slices for a pathological single long line."""
-    out: list[str] = []
-    for para in re.split(r"\n\s*\n", text):
-        if len(para) <= max_chars:
-            out.append(para)
-            continue
-        for line in para.split("\n"):
-            if len(line) <= max_chars:
-                out.append(line)
-            else:
-                out.extend(line[i : i + max_chars] for i in range(0, len(line), max_chars))
-    return [a for a in out if a.strip()]
-
-
-def _split_text(text: str, max_chars: int) -> list[str]:
-    """Split ``text`` into ordered segments each at most ``max_chars`` long (packing whole
-    paragraphs/lines together), or ``[text]`` when it already fits / chunking is off. Used to feed a
-    large source to the agent in several sequential passes."""
-    if max_chars <= 0 or len(text) <= max_chars:
-        return [text]
-    segments: list[str] = []
-    cur = ""
-    for atom in _text_atoms(text, max_chars):
-        candidate = atom if not cur else cur + "\n\n" + atom
-        if len(candidate) <= max_chars:
-            cur = candidate
-        else:
-            if cur:
-                segments.append(cur)
-            cur = atom
-    if cur:
-        segments.append(cur)
-    return segments or [text]
-
-
 def _line_windows(text: str, max_chars: int) -> list[tuple[int, int]]:
     """Split ``text`` into contiguous 1-based inclusive LINE ranges, packing whole lines so each
     window stays at most ``max_chars`` characters (a single over-long line still gets its own
     window — lines are the atom here, never split). The windows cover every line in order, so a
-    reader working window k of the SAME file sees the file's true line numbers — the point:
-    unlike :func:`_split_text` slices, nothing ever rebases the numbering."""
+    reader working window k of the SAME file sees the file's true line numbers — the point: nothing
+    ever rebases the numbering, and every ``lines A-B`` locator a pass writes is the file's own.
+    This is the ONE chunking primitive: a large plain-text source is windowed in place (the agent
+    reads the original file), a large extraction (Office / transcript / PDF layer) as one temp
+    holding the WHOLE prepared text. A rebased, paragraph-packed slice — the previous plain-text
+    path — squeezed blank-line runs and restarted at line 1, so a first-segment agent that trusted
+    the slice's numbering cited locators up to hundreds of lines early (pemberley, 2026-08)."""
     lines = text.splitlines()
     windows: list[tuple[int, int]] = []
     start, size = 1, 0
@@ -789,22 +756,23 @@ def _prepare_passes(
     temp directories the caller MUST remove afterwards.
 
     - image: one pass, read the file directly (viewed visually).
-    - a chunked AUDIO transcript or PDF text-layer extraction is NOT sliced into rebased temp
-      files: every pass reads the SAME full prepared text (its line numbers are identical to the
-      verification cache's) and carries the line window to process — so ``lines A-B`` locators
-      stay correct by construction (a sliced temp restarts numbering at 1 and would silently
-      mis-ground every chunked locator).
-    - a source (pre-extracted Office text, or — when chunking is on — a readable non-PDF text
-      file) whose content exceeds the effective chunk budget (``config.source_chunk_chars()`` —
+    - a source whose content exceeds the effective chunk budget (``config.source_chunk_chars()`` —
       ``CITADEL_MAX_SOURCE_CHARS``, tightened by a stated ``CITADEL_MODEL_CONTEXT_TOKENS``) is
-      SPLIT into segments, one pass each.
+      folded in over several passes as contiguous LINE WINDOWS of ONE unchanged text
+      (:func:`_line_windows`) — never sliced into rebased temp files, so every ``lines A-B``
+      locator a pass writes is the file's own line number by construction. A plain-text source is
+      windowed IN PLACE: ``read_key`` is None and the agent reads the original file, ranged. A
+      pre-extracted text (Office, whisper transcript, PDF text layer) is written ONCE as a temp
+      holding the WHOLE prepared text (line numbers identical to the verification cache's /
+      re-extraction's), and every pass reads that same file with its window; an Office source's
+      embedded images ride beside it, serving every pass.
     - a small Office file / audio transcript / PDF extraction: one pass reading the prepared text.
     - anything else (small plain text, a PDF without a usable text layer, an image-less binary
       the agent reads): one pass reading the file directly (unchanged behavior).
 
     ``is_audio`` marks the ``office`` text as a whisper transcript, ``is_pdf`` as a pypdf
-    text-layer extraction: same temp-file plumbing, but line-window chunking (above) and no media
-    extraction (an ``.mp3``/``.pdf`` is not a ZIP to unzip).
+    text-layer extraction: same temp-file plumbing, but no media extraction (an
+    ``.mp3``/``.pdf`` is not a ZIP to unzip).
 
     Raises ``OSError`` if a temp segment/extract file can't be written (handled per-source)."""
     if is_image:
@@ -816,27 +784,18 @@ def _prepare_passes(
     if content is None and max_chars > 0:
         content = _read_source_text(src)
     if content is not None and max_chars > 0 and len(content) > max_chars:
-        if is_audio or is_pdf:
-            windows = _line_windows(content, max_chars)
-            read_key, tmp = _office_write_temp(content, src.name, None)
-            return [(read_key, (i, len(windows)), w) for i, w in enumerate(windows, 1)], [tmp]
-        segments = _split_text(content, max_chars)
-        # A chunked Office source keeps its embedded images: attached to the FIRST segment's temp,
-        # exactly like the small-Office branch below — without this, a deck whose extracted text
-        # crossed the chunking threshold silently lost its diagrams/charts.
-        media = extract.extract_media(src) if office is not None and config.IMAGE_SUPPORT else []
-        passes: list[tuple[str | None, tuple[int, int] | None, tuple[int, int] | None]] = []
-        tmpdirs: list[str] = []
-        try:
-            for i, seg in enumerate(segments, 1):
-                read_key, tmp = _office_write_temp(seg, src.name, media if i == 1 else None)
-                passes.append((read_key, (i, len(segments)), None))
-                tmpdirs.append(tmp)
-        except OSError:
-            for tmp in tmpdirs:
-                shutil.rmtree(tmp, ignore_errors=True)
-            raise
-        return passes, tmpdirs
+        windows = _line_windows(content, max_chars)
+        total = len(windows)
+        if office is None:
+            # A large PLAIN-TEXT source is windowed in place: no temp at all — the agent reads the
+            # ORIGINAL file, one line window per pass, and cites its own line numbers.
+            return [(None, (i, total), w) for i, w in enumerate(windows, 1)], []
+        # A large prepared text: ONE temp holding the WHOLE extraction for every pass. An Office
+        # source keeps its embedded images beside it (without this, a deck whose extracted text
+        # crossed the chunking threshold silently lost its diagrams/charts).
+        media = extract.extract_media(src) if config.IMAGE_SUPPORT and not (is_audio or is_pdf) else []
+        read_key, tmp = _office_write_temp(content, src.name, media)
+        return [(read_key, (i, total), w) for i, w in enumerate(windows, 1)], [tmp]
     if office is not None:
         # Small Office file: one pass reading the extracted text — plus its embedded images (decks
         # and docs often carry diagrams/charts/screenshots the text extractor can't see), written
@@ -862,9 +821,10 @@ def _pending_session(
     (an Office source or a large-source segment whose text was extracted), point the agent at it
     via ``read_path``; otherwise call exactly as before so a non-Office source — and every
     existing test's faked session — is byte-for-byte unchanged. ``segment`` carries
-    ``(part, total)`` for a chunked source, ``line_range`` the transcript window of a chunked
-    AUDIO pass (the full-transcript lines this pass processes); each is passed to the backend
-    ONLY when set, so every pre-existing call shape stays byte-for-byte unchanged."""
+    ``(part, total)`` for a chunked source, ``line_range`` the line window of a chunked pass (the
+    lines of the one full text — source file or prepared extraction — this pass processes); each
+    is passed to the backend ONLY when set, so every pre-existing call shape stays byte-for-byte
+    unchanged."""
     if line_range is not None:
         return llm.run_ingest_session(rel_key, kind=kind, read_path=read_key, segment=segment, line_range=line_range)
     if read_key and segment is not None:

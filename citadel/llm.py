@@ -261,15 +261,16 @@ def _format_brief(rel_key: str, kind: str, read_path: str | None, segment: tuple
     the brief, genres stay the agent's content judgment.
 
     - ``repo``/``image``/``audio``/``pdf`` policies carry their format in the kind itself.
-      ``audio`` and ``pdf`` keep their brief on every SEGMENT too (unlike the Office exemption
-      below): the brief's cite-the-original-file and lines-locator rules bind for each slice of a
-      long recording / large extraction.
+      ``audio`` and ``pdf`` keep their brief on every SEGMENT too: the brief's cite-the-original-file
+      and lines-locator rules bind for each window of a long recording / large extraction.
     - ``none`` (delete, curate) attaches NO brief — even with a ``read_path`` present (curate's
       findings file must not pull in ``formats/office.md``).
-    - ``source`` (ingest/reconcile): a ``read_path`` WITHOUT a segment is a pre-extracted Office
-      source (``formats/office.md``); WITH a segment it is a large-source slice covered by the task
-      brief's Large-sources rules (a slice is not an Office extract, even when the source was one);
-      otherwise a direct read, and a PDF (magic-sniffed) reads ``formats/pdf.md``."""
+    - ``source`` (ingest/reconcile): a ``read_path`` is a pre-extracted Office source
+      (``formats/office.md``) — on every segment too, since a chunked Office pass reads the WHOLE
+      extraction through a line window, never a slice of it, and the brief's ``§ Slide N`` /
+      ``lines A-B`` locator rules bind per window; otherwise a direct read (a chunked plain-text
+      source is windowed in place with no prepared file), and a PDF (magic-sniffed) reads
+      ``formats/pdf.md``."""
     policy = _spec_for_kind(kind).format_policy
     if policy == "repo":
         return "formats/repo.md"
@@ -282,7 +283,7 @@ def _format_brief(rel_key: str, kind: str, read_path: str | None, segment: tuple
     if policy == "none":
         return None
     if read_path:
-        return None if segment is not None else "formats/office.md"
+        return "formats/office.md"
     if _is_pdf_source(rel_key):
         return "formats/pdf.md"
     return None
@@ -345,7 +346,7 @@ def _build_instruction(
        when present, and ONE line enumerating the effective genre briefs for the agent to judge
        from the source's CONTENT (none for ``delete`` — it never reads the source);
     2. the session VARIABLES as bullets — the source key (verbatim), the configured wiki/raw
-       directories, the prepared read path (an Office extract / segment slice / repo digest),
+       directories, the prepared read path (an Office extract / repo digest),
        the extracted-images ``media/`` folder with its file names (only an Office source that
        carried embedded images), the segment position, the source file's own date as the
        content-date fallback, the target wiki language (``CITADEL_WIKI_LANG``), the PDF mode
@@ -369,9 +370,11 @@ def _build_instruction(
     ``repo-reconcile`` / ``image`` / ``image-reconcile`` / ``audio`` / ``audio-reconcile`` /
     ``pdf`` / ``pdf-reconcile``) are the stable API; they map internally
     onto (task brief, format brief). ``read_path`` is the prepared file for a pre-extracted
-    Office source, one segment's slice of a large source (with ``segment=(part, total)``), or a
-    repo digest — the agent reads it for content while citing ``rel_key`` as the source of
-    record (per the task/format briefs)."""
+    Office source / transcript / PDF text layer (with ``segment=(part, total)`` and
+    ``line_range`` when it is large enough to be folded in over several line windows of that one
+    file), or a repo digest — the agent reads it for content while citing ``rel_key`` as the
+    source of record (per the task/format briefs). A chunked PLAIN-TEXT source has no prepared
+    file at all: ``read_path`` stays None and ``line_range`` bounds the pass on the source itself."""
     wiki_rel = _agent_path(config.wiki_dir())
     # The raw-dir bullet names the root that COVERS this source (in a multi-root corpus a
     # second-root source must not be pointed at the primary); an out-of-root explicit path
@@ -421,14 +424,19 @@ def _build_instruction(
     if segment is not None:
         lines.append(f"- Segment: part {segment[0]} of {segment[1]}")
         if line_range is not None:
-            # A chunked AUDIO/PDF-extract pass: the prepared file is the WHOLE transcript /
-            # extraction (its line numbers are the verification cache's), and this bullet bounds
-            # the pass — no rebased slice, so every `lines A-B` locator the agent writes is
-            # correct by construction.
-            noun = "transcript" if fmt == "formats/transcripts.md" else "extracted text"
+            # A chunked pass: the file the agent reads — the prepared transcript / extraction, or
+            # for plain text the SOURCE itself — holds the WHOLE text, and this bullet bounds the
+            # pass to a line window of it. No rebased slice, so every `lines A-B` locator the
+            # agent writes is correct by construction.
+            if fmt == "formats/transcripts.md":
+                noun, holder = "transcript", "prepared file"
+            elif read_path:
+                noun, holder = "extracted text", "prepared file"
+            else:
+                noun, holder = "source text", "source file"
             lines.append(
                 f"- {noun.capitalize()} window for THIS pass: lines {line_range[0]}-{line_range[1]} — the "
-                f"prepared file holds the WHOLE {noun}; read ONLY this window (use a "
+                f"{holder} holds the WHOLE {noun}; read ONLY this window (use a "
                 "ranged/offset read, the file may be too large to read whole) and fold in its "
                 "facts; the file's own line numbers ARE the locator line numbers"
             )
@@ -946,10 +954,10 @@ def run_ingest_session(
     source that was REMOVED from disk.
 
     ``read_path`` (ingest/reconcile only) is the path to the pre-extracted text of a binary Office
-    source — or, when ``segment`` is set, this segment's slice of a large source: when set, the
+    source — or, when ``segment`` is set, the one full prepared text of a large source: when set, the
     agent is told to READ it for content while still citing ``rel_key``, and its directory is
     granted to the CLI alongside any out-of-workspace wiki/raw. ``segment`` is ``(part, total)`` for a
-    large source split across passes. ``line_range`` (chunked AUDIO/PDF-extract only) is the
+    large source split across passes. ``line_range`` (every chunked pass) is the
     1-based inclusive line window of the full prepared text this pass processes — the prepared
     file is the WHOLE transcript/extraction, shared by every pass, so locator line numbers never
     rebase.

@@ -214,7 +214,7 @@ def test_keyboardinterrupt_mid_segment_discards_whole_source(tmp_citadel, fake_a
         encoding="utf-8",
     )
 
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
         if rel_key == "raw/a.md":
             cite_page("misc/from-a.md", rel_key, "Fact A.")
             return
