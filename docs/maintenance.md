@@ -125,8 +125,10 @@ re-read the corpus by accident.
 
 Refresh vs. its neighbors: `ingest` handles **new/changed** sources (refresh never touches those —
 a changed source is picked up by the next ingest anyway), `curate` improves **pages** against
-offline findings without necessarily re-reading sources, and `ingest --force <paths>` is the
-manual, targeted form of the same forced re-read when you already know *which* source to re-check.
+offline findings without necessarily re-reading sources, `ingest --force <paths>` is the
+manual, targeted form of the same forced re-read when you already know *which* source to re-check,
+and `ingest --reingest <paths>` (below) is the step past all of them — a fresh import, not a
+re-verification.
 
 ## Status
 
@@ -163,6 +165,27 @@ ingest` run — `--retry` is how you retry them *now*, together with the zero-pa
 normal run would never revisit (they are marked done in the manifest). It refuses explicit paths
 and `--force` (use `citadel ingest --force <paths>` for a hand-picked re-read) and exits 0 with
 `Nothing to retry` when the corpus is healthy.
+
+## Re-import from scratch
+
+A reconcile — `--force`, `refresh`, `--retry` — deliberately **keeps the source's existing
+treatment** (its genre, its page structure) and only verifies and updates the facts, so a source
+first ingested under an old rulebook or a weak model is never *re-thought*: "all ok, nothing new" is
+the correct reconcile verdict even when a fresh read would organize it completely differently.
+`--reingest` is the escape hatch:
+
+```bash
+citadel ingest --reingest raw/maschinenbestand-2026.md   # explicit paths, like --force
+```
+
+For each named tracked source it first runs a `delete` cleanup session that strips the source's
+previous facts from the wiki (its manifest entry is dropped), then — in the same run, since
+deletions always run first — ingests it as a **brand-new** source under the current model, rules,
+and wiki state, fresh cross-links included. This replaces the move-the-file-out / full ingest /
+move-it-back dance. A failed cleanup refuses that source's fresh session (nothing is written on
+top of the old facts); a tracked git repo gets the first-time `repo` brief instead of a digest
+reconcile; and the flag requires explicit paths exactly like `--force` (`--force` and `--retry`
+refuse to combine with it).
 
 ## Rules
 
