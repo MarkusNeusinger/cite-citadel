@@ -7,11 +7,11 @@ tags:
 - roasting
 - italy
 resource: raw/aurora-bulletin-2024.md
-timestamp: '2026-07-16T14:46:09Z'
-citadel_version: 0.3.0
+timestamp: '2026-08-28T21:22:51Z'
+citadel_version: 0.6.0
 ---
 
-Harbour Blonde is a [light roast](../concepts/coffee-roasting.md) coffee in [Caffè Aurora](../organizations/caffe-aurora.md)'s lineup, described as bright and citrusy.[^s1] It is sold in a 250 g bag for €14.00 as of spring 2026 (see Change Log for its 2024 price).[^s2]
+Harbour Blonde is a light roast coffee in [Caffè Aurora](../organizations/caffe-aurora.md)'s lineup, described as bright and citrusy.[^s1][^s2] As of spring 2026 it is sold in a 250 g bag for €14.00.[^s2]
 
 ## Change Log
 - 2024-03: €12.00 per 250 g bag.[^s1]
@@ -21,5 +21,5 @@ Harbour Blonde is a [light roast](../concepts/coffee-roasting.md) coffee in [Caf
 - [Caffè Aurora](../organizations/caffe-aurora.md)
 
 ## Sources
-[^s1]: [raw/aurora-bulletin-2024.md](../../raw/aurora-bulletin-2024.md), § This spring's lineup (ingested 2026-07-16)
-[^s2]: [raw/aurora-bulletin-2026.md](../../raw/aurora-bulletin-2026.md), line 15 — spring 2026 price (ingested 2026-07-16)
+[^s1]: [raw/aurora-bulletin-2024.md](../../raw/aurora-bulletin-2024.md), line 15 — lineup table row (ingested 2026-08-28)
+[^s2]: [raw/aurora-bulletin-2026.md](../../raw/aurora-bulletin-2026.md), line 15 — lineup table row (ingested 2026-08-28)

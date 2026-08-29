@@ -5,13 +5,18 @@
   },
   "sources": {
     "raw/pride-and-prejudice.txt": {
-      "ctime_ns": 1783208109331662682,
-      "hashed_at_ns": 1784215047285250156,
-      "model": "claude:sonnet",
-      "mtime_ns": 1783208109331662682,
-      "rules_version": "ac0a1175f9da",
+      "cost_usd": 13.5146,
+      "ctime_ns": 1787950777000519078,
+      "hashed_at_ns": 1787950787366008290,
+      "ingested_at": "2026-08-28T23:03:29Z",
+      "model": "claude:claude-sonnet-5",
+      "mtime_ns": 1787950777000519078,
+      "rules_version": "d08180f322a3",
+      "seconds": 2612.1,
       "sha256": "92452d51f0d077846150ab37314f501828239336cc2bc34644a5e4e397590dea",
-      "size": 752471
+      "size": 752471,
+      "tokens_in": 38103485,
+      "tokens_out": 270642
     }
   }
 }

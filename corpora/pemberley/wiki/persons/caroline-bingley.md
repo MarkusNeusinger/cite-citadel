@@ -1,58 +1,62 @@
 ---
 type: Person
 title: Caroline Bingley
-description: Charles Bingley's unmarried sister, proud and fashionable, who hopes
-  to marry Mr. Darcy herself.
-resource: raw/pride-and-prejudice.txt
+description: Charles Bingley's unmarried sister, proud and set on Fitzwilliam Darcy.
 tags:
-- netherfield
+- pride-and-prejudice
 - hertfordshire
-- gentry
-aliases:
-- Miss Bingley
-timestamp: '2026-07-16T18:15:29Z'
-citadel_version: 0.3.0
+- netherfield
+- bingley-family
+resource: raw/pride-and-prejudice.txt
+timestamp: '2026-08-28T23:03:29Z'
+citadel_version: 0.6.0
 ---
 
-Caroline Bingley is the unmarried sister of [Charles Bingley](../persons/charles-bingley.md); her
-other sister, Mrs. Hurst, is married to Mr. Hurst.[^s1] The narration describes the sisters as
-"proud and conceited," educated at "one of the first private seminaries in town," each with a
-fortune of twenty thousand pounds.[^s1]
+Caroline Bingley is [Charles Bingley](charles-bingley.md)'s sister, educated at "one of the first
+private seminaries in town," with a fortune of twenty thousand pounds.[^s1] The narrator calls her
+and her sister [Louisa Hurst](louisa-hurst.md) proud and conceited, disdainful of their own family's
+origins in trade despite their disdain for the Bennets' "low connections" — an uncle an attorney,
+another near Cheapside.[^s2]
 
-Caroline Bingley shows a marked interest in [Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md)
-and, per the narrator, "saw, or suspected, enough to be jealous" of
-[Elizabeth Bennet](../persons/elizabeth-bennet.md).[^s2] She tells Elizabeth directly that
-undervaluing one's own sex to attract men "is a paltry device, a very mean art" — a remark aimed at
-Elizabeth.[^s3] She warns Elizabeth against trusting [George Wickham](../persons/george-wickham.md),
-revealing that he is the son of the late Mr. Darcy's steward and asserting that Darcy has always
-treated him kindly, while Wickham "has treated Mr. Darcy in a most infamous manner."[^s4] In a
-letter to [Jane Bennet](../persons/jane-bennet.md), she writes at length of her hope that
-[Georgiana Darcy](../persons/georgiana-darcy.md) will become her sister through marriage to
-Charles.[^s5]
+She courts [Fitzwilliam Darcy](fitzwilliam-darcy.md)'s attention throughout the Netherfield
+chapters and grows jealous of [Elizabeth Bennet](elizabeth-bennet.md).[^s3] She warns Elizabeth
+against trusting [George Wickham](george-wickham.md), revealing he is the son of the late Mr.
+Darcy's steward and asserting — contrary to Wickham's own account — that Darcy has always treated
+him kindly while Wickham has treated Darcy "in a most infamous manner."[^s4] After leaving
+Netherfield for London, she writes to [Jane Bennet](jane-bennet.md) professing continued
+friendship while describing her hope that her brother will marry [Georgiana Darcy](georgiana-darcy.md).[^s5]
+When Jane calls on her in London, Caroline is late in returning the visit, cold, and short, leading
+Jane to conclude their friendship was never sincere.[^s6]
 
-On [Charles Bingley](../persons/charles-bingley.md)'s engagement to Jane, Caroline's congratulations
-are "all that was affectionate and insincere"; Jane, though not deceived, writes back a kinder reply
-than she believes deserved.[^s6] Caroline is "very deeply mortified" by
-[Darcy](../persons/fitzwilliam-darcy.md)'s marriage to [Elizabeth](../persons/elizabeth-bennet.md),
-but, wishing to retain the right of visiting [Pemberley](../misc/pemberley.md), drops her
-resentment, growing fonder than ever of [Georgiana](../persons/georgiana-darcy.md) and paying "off
-every arrear of civility" to Elizabeth.[^s7]
+At Pemberley that summer, jealous of Darcy's attention to Elizabeth, Caroline needles her with a
+pointed remark about the militia's departure from Meryton — an oblique reference to
+Wickham.[^s7] Afterward she criticizes Elizabeth's appearance and manners to Darcy directly, calling
+her "grown so brown and coarse," only for Darcy to reply that he has long considered Elizabeth one
+of the handsomest women of his acquaintance.[^s8]
+
+On her brother's engagement to Jane, Caroline's congratulations are "all that was affectionate and
+insincere"; she writes to Jane expressing delight and renewing her old professions of regard, though
+Jane is not deceived by them.[^s9] She is "very deeply mortified" by Darcy's marriage to Elizabeth,
+but, wishing to keep the right of visiting Pemberley, drops her resentment, grows fonder than ever of
+Georgiana, and pays Elizabeth every arrear of civility.[^s10]
 
 ## See also
 
-- [Charles Bingley](../persons/charles-bingley.md)
-- [Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md)
-- [Elizabeth Bennet](../persons/elizabeth-bennet.md)
-- [George Wickham](../persons/george-wickham.md)
-- [Georgiana Darcy](../persons/georgiana-darcy.md)
-- [Pemberley](../misc/pemberley.md)
+- [Charles Bingley](charles-bingley.md)
+- [Fitzwilliam Darcy](fitzwilliam-darcy.md)
+- [George Wickham](george-wickham.md)
+- [Jane Bennet](jane-bennet.md)
+- [Elizabeth Bennet](elizabeth-bennet.md)
 
 ## Sources
 
-[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1173-1177 — the Bingley sisters' fortune and character (ingested 2026-07-16)
-[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 2594-2596 — Caroline Bingley's jealousy of Elizabeth (ingested 2026-07-16)
-[^s3]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 2129-2132 — Caroline Bingley's remark on Elizabeth (ingested 2026-07-16)
-[^s4]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 4185-4193 — Caroline Bingley warns Elizabeth against Wickham (ingested 2026-07-16)
-[^s5]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 5016-5022 — Caroline Bingley's letter on Georgiana Darcy (ingested 2026-07-16)
-[^s6]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14341-14346 — Caroline's insincere congratulations to Jane (ingested 2026-07-16)
-[^s7]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14483-14487 — Caroline's mortification and reconciliation after Darcy's marriage (ingested 2026-07-16)
+[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1175-1176 — education and fortune (ingested 2026-08-28)
+[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1172-1182, 1977-1990 — pride and disdain for the Bennets' connections (ingested 2026-08-28)
+[^s3]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 2594-2599 — jealousy of Elizabeth over Darcy (ingested 2026-08-28)
+[^s4]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 4184-4200 — warning against Wickham, contradicting his own account (ingested 2026-08-28)
+[^s5]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 4996-5031 — letter to Jane, hope of a Bingley-Georgiana match (ingested 2026-08-28)
+[^s6]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 6021-6060 — cold reception of Jane's visit in London (ingested 2026-08-28)
+[^s7]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 10137-10147 — the militia remark aimed at Elizabeth (ingested 2026-08-28)
+[^s8]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 10177-10220 — criticizes Elizabeth's looks; Darcy's rebuttal (ingested 2026-08-28)
+[^s9]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14341-14346 — insincere congratulations on Bingley's engagement (ingested 2026-08-28)
+[^s10]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14483-14487 — reconciles herself to Darcy's marriage (ingested 2026-08-28)

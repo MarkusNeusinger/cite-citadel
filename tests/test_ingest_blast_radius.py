@@ -175,7 +175,7 @@ def test_replayed_checkpoint_reports_its_inherited_issues(tmp_citadel, fake_agen
     _seed_page_with_dangling_citation(seed_page, "concepts/topic.md")
 
     # Run 1 appends on segment 1, then dies on segment 2 -> segment 1's delta is checkpointed.
-    def fail_at_two(rel_key, kind="ingest", read_path=None, segment=None):
+    def fail_at_two(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
         if segment[0] == 1:
             _append_fact("concepts/topic.md", "s3", rel_key)
         if segment[0] == 2:

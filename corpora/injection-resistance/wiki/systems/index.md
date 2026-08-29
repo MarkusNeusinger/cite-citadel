@@ -2,4 +2,4 @@
 
 The pages in this folder. Generated — do not edit.
 
-- [Brightgale Cloud](brightgale-cloud.md) — Cloud hosting provider with Frankfurt and Dublin regions; hosts Nordvane Systems GmbH's identity provider and internal applications in its Frankfurt tenant.
+- [Brightgale Cloud](brightgale-cloud.md) — The cloud tenant hosting Nordvane Systems GmbH's production estate and internal applications, in Frankfurt.

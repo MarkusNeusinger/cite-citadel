@@ -23,20 +23,28 @@ def _paras(n: int) -> str:
     return "\n\n".join(f"Paragraph number {i} with some filler content about topic {i}." for i in range(n))
 
 
+def _window_text(lines: list[str], window: tuple[int, int]) -> str:
+    """The text of a 1-based inclusive line window — what the agent's ranged read of the file sees."""
+    return "\n".join(lines[window[0] - 1 : window[1]])
+
+
 def test_large_text_source_is_chunked_into_ordered_passes(tmp_citadel, fake_agent, cite_page, monkeypatch):
-    """A source larger than MAX_SOURCE_CHARS is split into ordered segments, each ingested in its
-    own pass (segment tuple (i, n), read_path holds that segment's slice), covering all content;
-    the source is processed once, tracked once, and all segment temp files are cleaned up."""
+    """A source larger than MAX_SOURCE_CHARS is folded in over ordered passes, each a contiguous
+    LINE WINDOW of the ORIGINAL file (segment tuple (i, n), line_range (a, b), read_path None —
+    the agent reads the source itself, ranged); the windows cover every line exactly once, the
+    source is processed once and tracked once, and no temp file is ever written for it."""
     raw = tmp_citadel.raw
     monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 120)
-    (raw / "big.txt").write_text(_paras(6), encoding="utf-8")
+    body = _paras(6)
+    (raw / "big.txt").write_text(body, encoding="utf-8")
+    lines = body.splitlines()
 
     calls: list[dict] = []
 
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
-        assert read_path is not None and segment is not None  # every chunked pass has both
-        assert Path(read_path).exists()  # the segment file exists at call time
-        calls.append({"segment": segment, "content": Path(read_path).read_text(encoding="utf-8")})
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
+        assert read_path is None  # no slice: the source file IS what the agent reads
+        assert segment is not None and line_range is not None  # every chunked pass has both
+        calls.append({"segment": segment, "window": line_range, "content": _window_text(lines, line_range)})
         if segment[0] == 1:  # first pass sets up the page; later passes merge (no-op here)
             cite_page("misc/big.md", rel_key, "A fact from the big source.")
 
@@ -48,6 +56,9 @@ def test_large_text_source_is_chunked_into_ordered_passes(tmp_citadel, fake_agen
     assert report.processed == ["raw/big.txt"]
     assert [c["segment"] for c in calls] == [(i, n) for i in range(1, n + 1)]  # ordered (i, n)
     assert all(len(c["content"]) <= 120 for c in calls)  # each within the cap
+    windows = [c["window"] for c in calls]
+    assert windows[0][0] == 1 and windows[-1][1] == len(lines)  # first line to last line
+    assert all(b + 1 == a2 for (_a, b), (a2, _b2) in zip(windows, windows[1:], strict=False))  # contiguous, no overlap
     joined = "\n".join(c["content"] for c in calls)
     for i in range(6):
         assert f"Paragraph number {i}" in joined  # all content covered across segments
@@ -55,6 +66,43 @@ def test_large_text_source_is_chunked_into_ordered_passes(tmp_citadel, fake_agen
     data = tmp_citadel.read_manifest()
     assert "raw/big.txt" in data  # tracked once
     assert ingest.ingest().processed == []  # idempotent
+
+
+def test_chunked_text_windows_keep_the_original_line_numbers(tmp_citadel, fake_agent, cite_page, monkeypatch):
+    """The locator guarantee for chunked plain text. The previous slicer split on blank-line RUNS
+    and re-joined with one blank line, then wrote each segment to a temp restarting at line 1 — so
+    a segment-1 agent that trusted the slice's numbering cited `lines A-B` that drifted early by
+    one line per squeezed run (observed on the pemberley showcase: 17-258 lines off). Now every
+    pass is a window of the original file: a fact's line number inside the window IS its line
+    number in the source, however many blank lines precede it."""
+    raw = tmp_citadel.raw
+    monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 120)
+    # Blank-line RUNS of growing length between paragraphs: exactly what the slicer collapsed.
+    body = "".join(
+        f"Paragraph number {i} with some filler content about topic {i}.\n" + "\n" * (i + 1) for i in range(6)
+    )
+    (raw / "big.txt").write_text(body, encoding="utf-8")
+    lines = body.splitlines()
+    assert (
+        lines.index("Paragraph number 5 with some filler content about topic 5.") + 1 == 21
+    )  # 5 paras + 1+2+3+4+5 blanks
+
+    windows: list[tuple[int, int]] = []
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
+        windows.append(line_range)
+        if segment[0] == 1:
+            cite_page("misc/big.md", rel_key, "A fact from the big source.")
+
+    fake_agent(side_effect=fake)
+    assert ingest.ingest().processed == ["raw/big.txt"]
+    assert len(windows) >= 2
+    # Every paragraph is found at its TRUE line number inside exactly one window.
+    for i in range(6):
+        true_line = lines.index(f"Paragraph number {i} with some filler content about topic {i}.") + 1
+        owners = [w for w in windows if w[0] <= true_line <= w[1]]
+        assert len(owners) == 1, (i, true_line, windows)
+        assert lines[true_line - 1].startswith(f"Paragraph number {i} ")  # the number indexes the source
 
 
 def test_chunking_disabled_is_single_direct_pass(tmp_citadel, fake_agent, cite_page, monkeypatch):
@@ -65,7 +113,7 @@ def test_chunking_disabled_is_single_direct_pass(tmp_citadel, fake_agent, cite_p
 
     calls: list[tuple] = []
 
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
         calls.append((read_path, segment))
         assert read_path is None and segment is None  # not chunked -> read the file directly
         cite_page("misc/big.md", rel_key, "A fact.")
@@ -84,7 +132,7 @@ def test_large_pdf_is_not_chunked(tmp_citadel, fake_agent, cite_page, monkeypatc
 
     calls: list[tuple] = []
 
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
         calls.append((read_path, segment))
         assert read_path is None and segment is None  # PDF read directly, never chunked
         cite_page("misc/big.md", rel_key, "A fact.")
@@ -110,7 +158,7 @@ def test_segment_failure_discards_all_segments_nothing_live(tmp_citadel, fake_ag
     monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 120)
     (raw / "big.txt").write_text(_paras(6), encoding="utf-8")
 
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
         if segment[0] == 1:
             cite_page("misc/big.md", rel_key, "A fact from segment one.")
         elif segment[0] == 2:
@@ -131,7 +179,7 @@ def test_segment_failure_discards_all_segments_nothing_live(tmp_citadel, fake_ag
     # afterwards can only have come from the replay).
     segments: list[tuple[int, int]] = []
 
-    def fake_retry(rel_key, kind="ingest", read_path=None, segment=None):
+    def fake_retry(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
         segments.append(segment)
         # Segment 1's page is already in the staging copy when the resumed segment opens.
         assert (Path(config.wiki_dir()) / "misc" / "big.md").exists()
@@ -168,7 +216,7 @@ def test_segments_fold_into_single_staging_and_promote_once(tmp_citadel, fake_ag
 
     seen: list[dict] = []
 
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
         seen.append(
             {
                 "segment": segment,
@@ -203,7 +251,7 @@ def test_invalid_segment_fails_fast_and_discards_whole_source(tmp_citadel, fake_
 
     seen: list[int] = []
 
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
         seen.append(segment[0])
         if segment[0] == 1:
             cite_page("misc/big.md", rel_key, "A fact from segment one.")
@@ -284,9 +332,11 @@ def test_stated_context_segments_a_source_the_char_threshold_would_not(tmp_citad
 
     calls: list[dict] = []
 
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
-        assert read_path is not None and segment is not None
-        calls.append({"segment": segment, "content": Path(read_path).read_text(encoding="utf-8")})
+    lines = body.splitlines()
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
+        assert read_path is None and segment is not None and line_range is not None
+        calls.append({"segment": segment, "content": _window_text(lines, line_range)})
         if segment[0] == 1:
             cite_page("misc/big.md", rel_key, "A fact from the big source.")
 

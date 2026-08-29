@@ -1,86 +1,86 @@
 ---
 type: Person
 title: Lady Catherine de Bourgh
-description: Wealthy widow of Rosings Park in Kent, patroness of Mr. Collins and aunt
-  of Mr. Darcy.
-resource: raw/pride-and-prejudice.txt
+description: Widow of Sir Lewis de Bourgh, owner of Rosings Park in Kent, patroness
+  of William Collins's living and aunt to Fitzwilliam Darcy.
 tags:
-- rosings-park
+- pride-and-prejudice
 - kent
-- gentry
-timestamp: '2026-07-16T18:15:29Z'
-citadel_version: 0.3.0
+- rosings
+- darcy-family
+resource: raw/pride-and-prejudice.txt
+timestamp: '2026-08-28T23:03:29Z'
+citadel_version: 0.6.0
 ---
 
-Lady Catherine de Bourgh, widow of Sir Lewis de Bourgh, owns [Rosings Park](../misc/rosings-park.md)
-in Kent and is patroness of the Hunsford living held by [Mr. Collins](../persons/mr-collins.md).[^s1]
-She is the sister of the late Lady Anne Darcy, making her [Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md)'s
-aunt.[^s2] She has one daughter, Miss de Bourgh, heiress of Rosings and "of very extensive
-property"; it is rumoured that she and her cousin Darcy will one day "unite the two estates."[^s3]
-Mr. Collins reports that a single drawing-room chimney-piece at Rosings cost eight hundred
-pounds.[^s4]
+Lady Catherine de Bourgh, widow of Sir Lewis de Bourgh, owns [Rosings Park](../objects/rosings-park.md)
+in Kent and gave [William Collins](william-collins.md) the living of Hunsford.[^s1] Her late sister,
+Lady Anne Darcy, makes her aunt to [Fitzwilliam Darcy](fitzwilliam-darcy.md).[^s2] She has one
+daughter, referred to in this segment only as Miss de Bourgh, heiress of Rosings and "of very
+extensive property," described by Collins as sickly and prevented by poor health from being
+presented at court; per [George Wickham](george-wickham.md), it is believed she and Darcy "will
+unite the two estates" in marriage.[^s3]
 
-Mr. Collins describes her as gracious and condescending toward him, but
-[George Wickham](../persons/george-wickham.md) tells Elizabeth he recalls her manners as
-"dictatorial and insolent," and suggests her reputation for sense owes as much to her rank and
-fortune as to any real ability — an assessment Elizabeth had already independently suspected from
-Collins's own account of her.[^s5]
+Collins describes her as affable and condescending toward him, approving his sermons, inviting him
+to dine at Rosings, and even advising him on shelving for his closets.[^s4] Wickham, by contrast,
+calls her manners "dictatorial and insolent," and says her reputation for sense owes more to her
+rank and fortune than to her own ability.[^s5] Per Collins, she advised him directly to marry and
+specified the qualities to look for in a wife.[^s6]
 
-Hosting [Elizabeth Bennet](../persons/elizabeth-bennet.md) at dinner, Lady Catherine questions her
-minutely on her family, remarking on the [entail](../concepts/entail.md) of Longbourn onto Collins
-("your father's estate is entailed on Mr. Collins, I think?") and expressing astonishment that the
-Bennets raised five daughters without a governess: "No governess! How was that possible? ... Your
-mother must have been quite a slave to your education."[^s6] She speaks of her nephew
-[Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md)'s expected visit "with the greatest
-satisfaction" and seems "almost angry" that he had already called on the Collinses and Lucases
-before she could arrange it herself, consistent with her expectation that he is destined to marry
-her daughter.[^s7] On later learning from Collins's letter of [Lydia Bennet](../persons/lydia-bennet.md)'s
-elopement, she is reported to have said that this "false step in one daughter will be injurious to
-the fortunes of all the others," asking who "will connect themselves with such a family."[^s8]
+Hosting the Hunsford party at Rosings, Lady Catherine questions Elizabeth minutely and without
+reserve about her family — her sisters' ages, their accomplishments, whether they have a governess,
+and her own age — remarking that estates ought not to be entailed away from the female line and
+professing astonishment at "five daughters brought up at home without a governess."[^s7] She
+dominates the drawing-room conversation, gives Charlotte Collins unsolicited advice on housekeeping
+and poultry, and acts as an active magistrate in her own parish, settling the cottagers' disputes
+herself.[^s8] She intends her nephew Darcy for her daughter, Anne, and speaks of his visits with the
+greatest satisfaction; after he and Colonel Fitzwilliam leave Rosings she complains of missing them
+and remarks that Darcy's "attachment to Rosings certainly increases."[^s9]
 
-## Confrontation at Longbourn
+On hearing a report that Darcy is likely to marry Elizabeth Bennet, Lady Catherine travels to
+Longbourn unannounced to have it "universally contradicted."[^s10] She interrogates Elizabeth in the
+garden, insisting the match "can never take place" because Darcy has been intended "from their
+infancy" for her own daughter, [Anne de Bourgh](anne-de-bourgh.md), by "the favourite wish of his
+mother, as well as of hers."[^s11] When Elizabeth refuses to promise never to accept him, Lady
+Catherine invokes Lydia's "infamous elopement" and calls Wickham "the son of his late father's
+steward," warning that such a connection would pollute "the shades of Pemberley."[^s12] She leaves,
+still insisting she "will carry my point," and refuses to take leave of Elizabeth or send
+compliments to her mother.[^s13]
 
-On hearing a report that [Elizabeth Bennet](../persons/elizabeth-bennet.md) may marry her nephew
-[Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md), Lady Catherine travels unannounced to
-[Longbourn](../misc/longbourn.md) to demand it be denied.[^s9] She tells Elizabeth "this match... can
-never take place," citing Darcy's supposed lifelong "tacit engagement" to her own daughter, Miss de
-Bourgh, and warns that if Elizabeth persists she "will be censured, slighted, and despised, by
-everyone connected with him."[^s10] She further invokes Lydia's "infamous elopement" and Wickham's
-being "the son of his late father's steward," demanding to know, "Are the shades of Pemberley to be
-thus polluted?"[^s11] Elizabeth refuses either to deny an engagement or to promise never to enter
-one; Lady Catherine departs "highly incensed," telling Elizabeth, "I take no leave of you, Miss
-Bennet. I send no compliments to your mother."[^s12] She writes to Darcy repeating her objections in
-even more forceful terms, unaware that — contrary to her purpose — the visit convinces Darcy that
-Elizabeth's feelings toward him have changed, since she refused to disavow him outright.[^s13]
-
-On learning that Darcy and Elizabeth are in fact engaged, Lady Catherine is "extremely indignant"
-and sends him an abusive letter, especially of Elizabeth, breaking off contact for a time; she is
-eventually persuaded, by Elizabeth's own efforts, to reconcile and later condescends to visit them
-at [Pemberley](../misc/pemberley.md).[^s14]
+On her way back through London, she calls on Darcy to relate the visit in full, hoping to enlist his
+help against the match — an account that, by Darcy's own telling, has exactly the opposite of its
+intended effect.[^s14] On learning of the engagement she is rendered "exceedingly angry" by Darcy's
+letter announcing it, and for a time breaks off all contact with him.[^s15] Charlotte Collins,
+"really rejoicing" in the Darcy match, brings her husband away to Lucas Lodge until Lady Catherine's
+anger has "blown over."[^s16] After further resistance, her resentment eventually gives way — whether
+to affection for her nephew or curiosity about his wife — and she condescends to visit them at
+Pemberley.[^s17]
 
 ## See also
 
-- [Rosings Park](../misc/rosings-park.md)
-- [Mr. Collins](../persons/mr-collins.md)
-- [Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md)
-- [Elizabeth Bennet](../persons/elizabeth-bennet.md)
-- [Colonel Fitzwilliam](../persons/colonel-fitzwilliam.md)
-- [Longbourn](../misc/longbourn.md)
-- [Pemberley](../misc/pemberley.md)
+- [Rosings Park](../objects/rosings-park.md)
+- [William Collins](william-collins.md)
+- [Fitzwilliam Darcy](fitzwilliam-darcy.md)
+- [Anne de Bourgh](anne-de-bourgh.md)
+- [Colonel Fitzwilliam](colonel-fitzwilliam.md)
+- [Elizabeth Bennet](elizabeth-bennet.md)
 
 ## Sources
 
-[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3009-3013 — Lady Catherine as Collins's patroness (ingested 2026-07-16)
-[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3762-3765 — Lady Catherine as Darcy's aunt (ingested 2026-07-16)
-[^s3]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3168-3169; 3770-3771 — Miss de Bourgh's inheritance and rumoured match with Darcy (ingested 2026-07-16)
-[^s4]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3457-3460 — the Rosings chimney-piece, per Collins's account (ingested 2026-07-16)
-[^s5]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3778-3788 — Elizabeth's and Wickham's assessment of Lady Catherine, attributed (ingested 2026-07-16)
-[^s6]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 6607-6608; 6640-6642 — Lady Catherine's dinner interrogation of Elizabeth (ingested 2026-07-16)
-[^s7]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 6815-6817 — Lady Catherine's anticipation of Darcy's visit (ingested 2026-07-16)
-[^s8]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 11109-11115 — Lady Catherine's reaction, per Collins, to Lydia's elopement (ingested 2026-07-16)
-[^s9]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13123-13135; 13233-13241 — Lady Catherine's unannounced arrival at Longbourn (ingested 2026-07-16)
-[^s10]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13283-13285; 13298-13301; 13311-13316 — Lady Catherine's demand and warning (ingested 2026-07-16)
-[^s11]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13390-13395 — Lady Catherine invokes Lydia's elopement and Wickham's parentage (ingested 2026-07-16)
-[^s12]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13401-13402; 13436-13437 — Lady Catherine's departure (ingested 2026-07-16)
-[^s13]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13720-13733 — the visit's unintended effect on Darcy (ingested 2026-07-16)
-[^s14]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14501-14512 — Lady Catherine's anger and eventual reconciliation (ingested 2026-07-16)
+[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3011-3013 — widow of Sir Lewis de Bourgh, patroness of Collins's living (ingested 2026-08-28)
+[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3763-3765 — aunt to Darcy via her sister Lady Anne Darcy (ingested 2026-08-28)
+[^s3]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3169-3170, 3178-3183, 3769-3771 — her daughter, described as heiress, sickly, and rumoured to marry Darcy (ingested 2026-08-28)
+[^s4]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3143-3158 — Collins's account of her affability (ingested 2026-08-28)
+[^s5]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3783-3790 — Wickham's contrasting account (ingested 2026-08-28)
+[^s6]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 4576-4585 — her advice to Collins on marrying (ingested 2026-08-28)
+[^s7]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 6593-6697 — interrogates Elizabeth at dinner (ingested 2026-08-28)
+[^s8]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 6585-6592, 6778-6790 — dominates conversation; acts as parish magistrate (ingested 2026-08-28)
+[^s9]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 6812-6817, 8194-8201 — hopes for a Darcy-Anne match; remark on his departure (ingested 2026-08-28)
+[^s10]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13217-13251 — arrives to have the rumoured engagement contradicted (ingested 2026-08-28)
+[^s11]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13283-13309 — claims a lifelong intended match between Darcy and Anne (ingested 2026-08-28)
+[^s12]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13388-13396 — invokes Lydia's elopement and Wickham's parentage (ingested 2026-08-28)
+[^s13]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13428-13438 — departs still resolved to "carry my point" (ingested 2026-08-28)
+[^s14]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13718-13729 — calls on Darcy in London to relate the visit (ingested 2026-08-28)
+[^s15]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14501-14505 — angry reaction to the engagement letter (ingested 2026-08-28)
+[^s16]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14353-14360 — the Collinses leave for Lucas Lodge until her anger passes (ingested 2026-08-28)
+[^s17]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14505-14512 — eventual reconciliation and visit to Pemberley (ingested 2026-08-28)

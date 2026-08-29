@@ -1,82 +1,84 @@
 ---
 type: Person
 title: Jane Bennet
-description: Eldest Bennet daughter of Longbourn, gentle and even-tempered, courted
-  then disappointed by Mr. Bingley.
-resource: raw/pride-and-prejudice.txt
+description: Eldest of the five Bennet daughters, considered the beauty of the family.
 tags:
+- pride-and-prejudice
 - bennet-family
-- longbourn
 - hertfordshire
-- gentry
-timestamp: '2026-07-16T18:15:29Z'
-citadel_version: 0.3.0
+- longbourn
+resource: raw/pride-and-prejudice.txt
+timestamp: '2026-08-28T23:03:29Z'
+citadel_version: 0.6.0
 ---
 
-Jane Bennet is the eldest of [Mr.](../persons/mr-bennet.md) and
-[Mrs. Bennet](../persons/mrs-bennet.md)'s five daughters.[^s1] At the Meryton assembly,
-[Mr. Bingley](../persons/charles-bingley.md) dances with her twice — the only lady in the room he
-asks a second time.[^s2] While visiting [Netherfield Park](../misc/netherfield-park.md), she
-falls ill after riding through the rain and writes to Elizabeth that she is "very unwell" with a
-sore throat and headache, prompting her to stay and be nursed there.[^s3]
+Jane Bennet is the eldest daughter of [Mr.](mr-bennet.md) and [Mrs. Bennet](mrs-bennet.md).[^s1]
+At the Meryton assembly, [Charles Bingley](charles-bingley.md) dances with her twice and calls her
+the most beautiful creature he ever beheld; his sisters likewise take to her.[^s2] Sent to dine at
+Netherfield on horseback at her mother's contrivance, she is caught in the rain, falls ill, and
+convalesces there for several days, nursed by [Elizabeth Bennet](elizabeth-bennet.md).[^s3]
 
-Her sister [Elizabeth](../persons/elizabeth-bennet.md) describes her as someone who "never heard
-speak ill of a human being" and who takes "the good of everybody's character" without ever noting
-the bad.[^s4] When [Caroline Bingley](../persons/caroline-bingley.md) writes from London that the
-Netherfield party will not return for the winter, and dwells on her brother's growing intimacy
-with [Georgiana Darcy](../persons/georgiana-darcy.md), Jane at first reads it as confirmation that
-Bingley's regard was never serious, while Elizabeth argues Caroline is only trying to keep him
-away from Jane.[^s5] After visiting Caroline in London and being received coldly, Jane concludes in
-a letter to Elizabeth that Caroline is "so altered a creature" that she is resolved not to
-continue the acquaintance, though she still tries to excuse Bingley himself.[^s6] Jane accepts her
-aunt [Mrs. Gardiner](../persons/mrs-gardiner.md)'s invitation to stay in London.[^s7]
+The narrator describes her as uniformly cheerful and composed, with a disposition to think well of
+everyone; Elizabeth teases her for never speaking ill of anybody.[^s4] After Bingley's party leaves
+Netherfield for London, [Caroline Bingley](caroline-bingley.md) writes to Jane suggesting the
+family will not return to Hertfordshire that winter and describing her hopes that her brother will
+marry [Georgiana Darcy](georgiana-darcy.md); Jane takes the letter's claims about Bingley's
+indifference at face value, while Elizabeth suspects Caroline of scheming.[^s5] Jane accepts an
+invitation to stay with the Gardiners in London.[^s6] Later, visiting Caroline in London, Jane finds
+her visibly cold and concludes she has been deceived in Caroline's professed friendship.[^s7]
 
-When Elizabeth tells her of [Darcy](../persons/fitzwilliam-darcy.md)'s proposal and refusal, Jane's
-sympathy goes first to Darcy: "his being so sure of succeeding was wrong... but consider how much it
-must increase his disappointment."[^s8] It is Jane who first writes to Elizabeth, at Lambton, that
-[Lydia](../persons/lydia-bennet.md) has "gone off to Scotland with one of his officers; to own the
-truth, with Wickham," adding "I am willing to hope the best, and that his character has been
-misunderstood."[^s9] A second, more urgent letter reports that Colonel Forster fears the couple are
-not married and never intended to be, and begs Elizabeth and the Gardiners to come home.[^s10] Once
-home, Jane argues against exposing Wickham's true character generally — "surely there can be no
-occasion for exposing him so dreadfully" — and cares for their mother through the crisis largely
-alone.[^s11]
+When Elizabeth returns from Kent, she confides Darcy's proposal and refusal to Jane, who is
+astonished but does not blame her sister, though she is grieved for Darcy's disappointment; the next
+day Elizabeth relates the contents of Darcy's letter concerning Wickham, which shocks Jane
+deeply.[^s8] The two sisters agree the matter should not be made public, given Wickham's imminent
+departure from Meryton.[^s9]
 
-## Engagement to Bingley
+In August, Jane writes urgently to Elizabeth at Lambton to report that Lydia has eloped with Wickham
+from Brighton, and again the next day with worse news — that Colonel Forster's pursuit traced the
+pair no further than Clapham, and that there is reason to fear they have not gone to Scotland to
+marry.[^s10] At home she bears the brunt of nursing their mother through the crisis, largely alone,
+and later shows Elizabeth the letter Lydia left for Mrs. Forster and Mr. Collins's letter of
+condolence.[^s11] When Wickham's marriage to Lydia is finally arranged, Jane hopes it reflects a
+genuine change of heart in him.[^s12]
 
-When [Bingley](../persons/charles-bingley.md) returns to [Netherfield Park](../misc/netherfield-park.md)
-and resumes calling at Longbourn, Jane at first insists to Elizabeth that she feels only
-indifference, then that his renewed attentions do not affect her — "you must not suspect me. It
-mortifies me" — before finally admitting he had "made me so happy" by revealing he had not known she
-was in town the previous spring.[^s12] Bingley proposes during a private moment at Longbourn; Jane
-"instantly embracing" Elizabeth, acknowledges herself "the happiest creature in the world."[^s13]
-That night, told of Elizabeth's own engagement to [Darcy](../persons/fitzwilliam-darcy.md), Jane is
-at first flatly incredulous — "I know it to be impossible" — before accepting it with delight once
-convinced.[^s14] After a year at Netherfield, Jane and Bingley buy an estate in a county neighbouring
-Derbyshire, bringing her within thirty miles of Elizabeth.[^s15]
+When news arrives that Bingley is returning to Netherfield to shoot, Jane insists to Elizabeth that
+the report affects her with neither pleasure nor pain, though Elizabeth can see her spirits are
+disturbed by it.[^s13] At the dinner where Bingley and Darcy are guests, Jane greets Bingley with
+tolerable ease and, keeping her place at table, is chosen by him to sit beside her when the party
+moves to dine.[^s14] A few days later, left alone together at Longbourn through her mother's
+contrivance, Bingley proposes and Jane accepts him, declaring herself "the happiest creature in the
+world."[^s15] She later learns from Bingley that he had been kept ignorant of her presence in London
+the previous winter, and that his sisters' scheming, not his own indifference, had kept them
+apart.[^s16]
+
+By the novel's close, Bingley and Jane remain at Netherfield only a twelvemonth before he buys an
+estate in a county neighbouring Derbyshire, so that the two sisters end up within thirty miles of
+each other.[^s17]
 
 ## See also
 
-- [Elizabeth Bennet](../persons/elizabeth-bennet.md)
-- [Charles Bingley](../persons/charles-bingley.md)
-- [Netherfield Park](../misc/netherfield-park.md)
-- [Lydia Bennet](../persons/lydia-bennet.md)
-- [Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md)
+- [Elizabeth Bennet](elizabeth-bennet.md)
+- [Charles Bingley](charles-bingley.md)
+- [Caroline Bingley](caroline-bingley.md)
+- [Netherfield Park](../objects/netherfield-park.md)
+- [Lydia Bennet](lydia-bennet.md)
 
 ## Sources
 
-[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 783-789 — the Bennet family (ingested 2026-07-16)
-[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1059-1082 — Bingley dances twice with Jane at the assembly (ingested 2026-07-16)
-[^s3]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1791-1796 — Jane's note about her illness (ingested 2026-07-16)
-[^s4]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1147-1158 — Elizabeth on Jane's disposition (ingested 2026-07-16)
-[^s5]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 5015-5022 — Caroline Bingley's letter on Georgiana Darcy (ingested 2026-07-16)
-[^s6]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 6050-6060 — Jane's letter after Caroline's cold visit (ingested 2026-07-16)
-[^s7]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 5844-5847 — Jane accepts Mrs. Gardiner's invitation to London (ingested 2026-07-16)
-[^s8]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 8657-8659 — Jane's sympathy for Darcy on hearing of the refused proposal (ingested 2026-07-16)
-[^s9]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 10263-10271 — Jane's first letter reporting Lydia's elopement (ingested 2026-07-16)
-[^s10]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 10297-10306 — Jane's second, more urgent letter (ingested 2026-07-16)
-[^s11]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 8739-8740 — Jane argues against exposing Wickham publicly (ingested 2026-07-16)
-[^s12]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12807-12813; 13058-13060 — Jane's protestations of indifference before admitting her happiness (ingested 2026-07-16)
-[^s13]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12951-12953 — Bingley's proposal and Jane's joy (ingested 2026-07-16)
-[^s14]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13953-13959; 14008-14009 — Jane's incredulity, then joy, at Elizabeth's engagement (ingested 2026-07-16)
-[^s15]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14412-14417 — Jane and Bingley's move near Derbyshire (ingested 2026-07-16)
+[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 980-981, 1034-1035 — "the eldest Miss Bennet" (ingested 2026-08-28)
+[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1037, 1080-1088, 1227-1230 — Bingley's admiration, praise from his sisters (ingested 2026-08-28)
+[^s3]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1778-1889 — Jane's illness and stay at Netherfield (ingested 2026-08-28)
+[^s4]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1148-1157 — Jane's disposition, per Elizabeth (ingested 2026-08-28)
+[^s5]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 4993-5044, 5016-5044 — Caroline's letter and the sisters' differing readings of it (ingested 2026-08-28)
+[^s6]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 5844-5849 — Jane accepts the Gardiners' invitation (ingested 2026-08-28)
+[^s7]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 6021-6060 — Jane's visit to Caroline in London and her disillusionment (ingested 2026-08-28)
+[^s8]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 8644-8752 — Elizabeth confides Darcy's proposal and letter (ingested 2026-08-28)
+[^s9]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 8739-8752 — the sisters agree not to expose Wickham (ingested 2026-08-28)
+[^s10]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 10261-10342 — the two letters reporting Lydia's elopement (ingested 2026-08-28)
+[^s11]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 10895-10923, 10938-10942, 11076-11080 — nurses her mother; shows Elizabeth the letters (ingested 2026-08-28)
+[^s12]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 11403-11409, 11421-11426 — hopes the marriage reflects real regard (ingested 2026-08-28)
+[^s13]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12435-12439 — claims indifference to news of Bingley's return (ingested 2026-08-28)
+[^s14]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12501-12505, 12684-12689 — greets Bingley with ease; seated beside him at dinner (ingested 2026-08-28)
+[^s15]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12939-12956 — Bingley's proposal and Jane's acceptance (ingested 2026-08-28)
+[^s16]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13058-13070 — learns his sisters kept them apart (ingested 2026-08-28)
+[^s17]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14412-14417 — Bingley buys an estate near Derbyshire, within thirty miles of Elizabeth (ingested 2026-08-28)

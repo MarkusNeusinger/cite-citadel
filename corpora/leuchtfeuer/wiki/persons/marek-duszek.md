@@ -1,60 +1,127 @@
 ---
 type: Person
 title: Marek Duszek
-description: Lead architect at Blauwal Logistik GmbH, responsible for assessing the
-  KOMET estate for Projekt LEUCHTFEUER.
+description: Lead architect at Blauwal Logistik GmbH, responsible for the KOMET warehouse
+  management system.
 tags:
-- leuchtfeuer
-- blauwal-logistik
-- komet
-- seagull
+- logistics
+- engineering
 resource: raw/2024-03-05-minutes-kickoff.md
-timestamp: '2026-07-16T17:06:43Z'
-citadel_version: 0.3.0
+timestamp: '2026-08-28T23:43:48Z'
+citadel_version: 0.6.0
 ---
 
-Marek Duszek is lead architect at [Blauwal Logistik GmbH](../organizations/blauwal-logistik-gmbh.md).[^s1] With [KOMET](../systems/komet.md)'s original vendor gone, every bug fix, carrier change, and customs-regulation update falls on his team alone, with no escalation path.[^s2] At the [Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md) kickoff meeting he warned against underestimating KOMET's integration surface — "The WMS is the spider in the web here — everything in this company touches it." — and took ownership of a written assessment of the KOMET estate, due 15 March 2024 (action AP-2).[^s3] He argued against running [QUAYSTONE](../systems/quaystone.md) on [KorallenDB](../systems/korallendb.md) and asked that his dissent be recorded in the minutes, stating he would not re-litigate the point outside the steering committee.[^s4]
+Marek Duszek is lead architect at
+[Blauwal Logistik GmbH](../organizations/blauwal-logistik-gmbh.md).[^s1] Per the programme charter,
+he owns technical decisions for Projekt LEUCHTFEUER within the platform frame the Lenkungsausschuss
+sets.[^s12] He and his team are the
+sole owners of [KOMET](../systems/komet.md): every bug fix, carrier change, and
+customs-regulation update lands on his team alone, with no escalation path, since KOMET's
+original vendor no longer exists.[^s2] At the
+[Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md) kickoff meeting he warned against
+underestimating KOMET's integration surface: "The WMS is the spider in the web here — everything
+in this company touches it."[^s3] He asked for, and was given, two weeks to produce a written
+assessment of the KOMET estate (action AP-2, due 15 March 2024).[^s3][^s4]
 
-Duszek delivered his written assessment of the KOMET estate on 12 March 2024, three days ahead of the 15 March deadline.[^s5] It found that KOMET runs in eleven warehouses with no two installations identical, and Duszek warned against planning the migration on a "one template, N copies" assumption, calling that "planning fiction."[^s6] The assessment also produced the company's first complete inventory of KOMET's 27 downstream-system interfaces; Duszek argues that re-pointing, re-testing, or retiring those connections — not the software swap — is the real project.[^s7] In the same mail he set out his case for BasaltDB over KorallenDB as QUAYSTONE's database — simpler replication, more mature operational tooling, more honest licence terms — while stressing this was his professional opinion, not a fact about the universe, and that he would implement the committee's decision properly rather than re-litigate it.[^s8] That decision was reversed on 13 January 2025, when the Lenkungsausschuss adopted [BasaltDB](../systems/basaltdb.md) by circular resolution.[^s11]
+Marek argued against the meeting's decision to run QUAYSTONE's deployment on
+[KorallenDB](../systems/korallendb.md) and asked that his dissent be recorded in the minutes,
+which was done; he stated he would not re-litigate the point outside the steering
+committee.[^s5]
 
-At the steering committee meeting on 19 March 2024 he summarised the assessment for the committee, which accepted it approvingly and asked that the interface list be kept as a living document on the project drive (decision LA-2024-01).[^s9]
+A week later he set out his reasoning in writing: he believes Blauwal should instead have built
+QUAYSTONE's persistence layer on [BasaltDB](../systems/basaltdb.md), whose replication story he
+considers simpler and whose operational tooling and licence terms he considers better than
+KorallenDB's — his professional opinion, offered for the record rather than to re-open a decision
+he said he would implement as made.[^s8]
 
-The [Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md) charter formalizes that, as lead architect, he owns technical decisions within the platform frame the Lenkungsausschuss sets.[^s10]
+The Lenkungsausschuss reversed its original decision by circular resolution on 13 January 2025:
+[QUAYSTONE](../systems/quaystone.md)'s persistence layer now runs on
+[BasaltDB](../systems/basaltdb.md), the platform he recommended.[^s13] He prepared this
+reassessment for the committee after KorallenDB's vendor announced revised licence terms in
+December 2024 — per-core pricing plus an audit clause granting the vendor scheduled access to
+Blauwal's own usage metering.[^s14] The Lenkungsausschuss confirmed the reversal unanimously as
+decision D-9 at its extraordinary steering session of 10 February 2025.[^s15]
 
-At the Lenkungsausschuss's 10 February 2025 session he presented his team's assessment of KorallenDB's revised licence terms — per-core pricing plus a usage-metering audit clause — which underpinned the committee's reversal of the database decision to BasaltDB (decision D-9).[^s12] He also required the interface conversion tests to be re-run against the BasaltDB stack before Gezeitenwerk's cutover runbook goes to v1.0, for the [SEAGULL](../projects/seagull-2024-25-quaystone-pilot.md) pilot (action AP-7, due 17 February 2025).[^s13]
+At that same session, as a condition of pilot readiness, he required the interface conversion
+tests to be re-run against the BasaltDB stack before Gezeitenwerk's cutover runbook — reviewed at
+v0.9 — advances to v1.0, which Tomás Iglesias accepted (action AP-7, with Gezeitenwerk, due
+17 February 2025).[^s16]
 
-At the pilot-operation status handover meeting of 30 June 2025 — which he attended by video — the committee recorded that certification of the customs interface by the responsible authority remained outstanding and, per current information, was not expected before autumn.[^s14] He took on monthly follow-up reporting to the committee on that certification.[^s15]
+He delivered the written KOMET estate assessment (action AP-2) on 12 March 2024, three days ahead
+of schedule.[^s6] It produced Blauwal's first complete inventory of KOMET's downstream interfaces —
+27 systems in all — and Marek judges that interface migration, not the KOMET-to-QUAYSTONE software
+swap itself, to be the real substance of the project.[^s7]
 
-In her 20 March 2026 go-live announcement, [Petra Vogelsang](petra-vogelsang.md) quoted his status note of 12 January 2026 in full, calling his numbered lists "this programme's folk art": [BasaltDB](../systems/basaltdb.md) had then run 47 consecutive weeks without an unplanned restart, and the interface backlog stood at zero.[^s16] She thanked him in the same announcement for "dissent in writing and delivery without sulking" — a reference to his recorded KorallenDB dissent.[^s17]
+At the steering committee (Lenkungsausschuss) meeting on 19 March 2024 he summarized this
+assessment for the committee, which took it in approvingly.[^s11]
 
-On 8 April 2026 he set the architecture guardrails for [SEAGULL](../projects/seagull.md), Blauwal's new customer self-service portal programme: it is built on the QUAYSTONE order and shipment APIs with no direct database access, holds no warehouse data of its own, and treats customer identity and entitlements as a first-class design topic from week one — guardrails the kickoff made binding (decision SG-2026-03).[^s18] He added that, after two years of migration discipline, he intends to defend these three lines "with the enthusiasm of a man who has seen the alternative,"[^s19] and takes on the new programme's architecture in an advisory capacity of two days a week.[^s20]
+He attended a status handover for the Bremen-Walle pilot on 30 June 2025 by video, where he took
+on tracking the customs-interface certification with the responsible authority, reporting to the
+group monthly — the certification remained outstanding and, per current information, was not
+expected before autumn 2025.[^s17]
+
+By his status note of 12 January 2026, he reported [BasaltDB](../systems/basaltdb.md) running 47
+consecutive weeks without an unplanned restart and the interface backlog at zero.[^s18] In her
+20 March 2026 go-live announcement, Petra Vogelsang thanked him specifically "for dissent in
+writing and delivery without sulking" — a callback to his own commitment, made in March 2024, to
+implement the KorallenDB decision "without sabotage-by-sulking" even though he disagreed with
+it.[^s19][^s8]
+
+He attended the
+[SEAGULL (customer portal programme)](../projects/seagull-customer-portal-programme.md) kickoff
+meeting on 8 April 2026 as lead architect, setting the programme's three binding architecture
+guardrails: the portal is built strictly on QUAYSTONE's order and shipment APIs with no direct
+database access, holds no warehouse data of its own, and treats customer identity and entitlements
+as a first-class design topic from week one.[^s20] He intends to defend the three lines "with the
+enthusiasm of a man who has seen the alternative."[^s21] He advises the programme's architecture
+two days a week,[^s22] and owns gap-analysing portal use cases against current QUAYSTONE
+endpoints, due 12 May 2026 (action SG-AP-2).[^s23]
+
+## Style profile
+
+- **Dry, declarative, and pre-empts pushback** — "Anyone who plans this migration on the
+  assumption of 'one template, N copies' is planning fiction, and I will say so in writing every
+  time it comes up."[^s9]
+- **Insists on written, dated records over verbal claims or memory** — "I want the opinion in
+  writing, dated, so that whichever way this goes, we can learn from it instead of re-arguing it
+  from memory."[^s8]
+- **Precise about his own epistemic confidence** — separates opinion from fact even while arguing
+  hard for it: "This is my professional opinion, not a fact about the universe, and the committee
+  has decided otherwise; I will implement the decision properly and without
+  sabotage-by-sulking."[^s8]
+- **Dry, understated humour** — "No slides, on principle."[^s6] "If you read only one page, read
+  the interface inventory and count to 27 yourself."[^s10]
 
 ## See also
+
 - [KOMET](../systems/komet.md)
-- [Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md)
 - [KorallenDB](../systems/korallendb.md)
 - [BasaltDB](../systems/basaltdb.md)
-- [SEAGULL (2024–25 pilot)](../projects/seagull-2024-25-quaystone-pilot.md)
-- [SEAGULL (customer portal)](../projects/seagull.md)
+- [Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md)
+- [SEAGULL (customer portal programme)](../projects/seagull-customer-portal-programme.md)
 
 ## Sources
-[^s1]: [raw/2024-03-05-minutes-kickoff.md](../../raw/2024-03-05-minutes-kickoff.md), § Projekt LEUCHTFEUER — kickoff meeting, minutes — role (ingested 2026-07-16)
-[^s2]: [raw/2024-03-05-minutes-kickoff.md](../../raw/2024-03-05-minutes-kickoff.md), § TOP 1 — Why this programme exists — no escalation path (ingested 2026-07-16)
-[^s3]: [raw/2024-03-05-minutes-kickoff.md](../../raw/2024-03-05-minutes-kickoff.md), § TOP 2 — Current estate — warning and AP-2 (ingested 2026-07-16)
-[^s4]: [raw/2024-03-05-minutes-kickoff.md](../../raw/2024-03-05-minutes-kickoff.md), § TOP 5 — Platform database — dissent on KorallenDB (ingested 2026-07-16)
-[^s5]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 7-8 — assessment delivered three days early (ingested 2026-07-16)
-[^s6]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 10-12 — eleven warehouses, "planning fiction" (ingested 2026-07-16)
-[^s7]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 16-21 — 27 interfaces, "the real project" (ingested 2026-07-16)
-[^s8]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 49-54 — BasaltDB preference and reasoning (ingested 2026-07-16)
-[^s9]: [raw/2024-03-19-protokoll-lenkungsausschuss.md](../../raw/2024-03-19-protokoll-lenkungsausschuss.md), § Beschlüsse — decision LA-2024-01 (ingested 2026-07-16)
-[^s10]: [raw/2024-05-14-charter-leuchtfeuer.md](../../raw/2024-05-14-charter-leuchtfeuer.md), § 9. Governance — lead architect owns technical decisions (ingested 2026-07-16)
-[^s11]: [raw/2024-05-14-charter-leuchtfeuer.md](../../raw/2024-05-14-charter-leuchtfeuer.md), § 8. Platform — BasaltDB decision reverses D-4 (ingested 2026-07-16)
-[^s12]: [raw/2025-02-10-minutes-steering.md](../../raw/2025-02-10-minutes-steering.md), § TOP 2 — Database decision, revisited — Duszek's team's licence-terms assessment (ingested 2026-07-16)
-[^s13]: [raw/2025-02-10-minutes-steering.md](../../raw/2025-02-10-minutes-steering.md), § TOP 6 — Pilot readiness — runbook v0.9 review, AP-7 (ingested 2026-07-16)
-[^s14]: [raw/2025-06-30-protokoll-uebergabe-walle.md](../../raw/2025-06-30-protokoll-uebergabe-walle.md), § TOP 5 — Gesamt-Rollout — customs certification outstanding (ingested 2026-07-16)
-[^s15]: [raw/2025-06-30-protokoll-uebergabe-walle.md](../../raw/2025-06-30-protokoll-uebergabe-walle.md), § Aufgaben — Duszek's customs-certification follow-up ownership (ingested 2026-07-16)
-[^s16]: [raw/2026-03-20-email-vogelsang-golive.md](../../raw/2026-03-20-email-vogelsang-golive.md), lines 27-33 — quoted 12 January 2026 status note: BasaltDB uptime, interface backlog zero (ingested 2026-07-16)
-[^s17]: [raw/2026-03-20-email-vogelsang-golive.md](../../raw/2026-03-20-email-vogelsang-golive.md), lines 48-50 — Vogelsang's thanks for "dissent in writing and delivery without sulking" (ingested 2026-07-16)
-[^s18]: [raw/2026-04-08-minutes-portal-kickoff.md](../../raw/2026-04-08-minutes-portal-kickoff.md), § TOP 3 — Architecture guardrails — the three guardrails (ingested 2026-07-16)
-[^s19]: [raw/2026-04-08-minutes-portal-kickoff.md](../../raw/2026-04-08-minutes-portal-kickoff.md), § TOP 3 — Architecture guardrails — Duszek's closing remark (ingested 2026-07-16)
-[^s20]: [raw/2026-04-08-minutes-portal-kickoff.md](../../raw/2026-04-08-minutes-portal-kickoff.md), § TOP 5 — Team and ways of working — architecture advisory role (ingested 2026-07-16)
+
+[^s1]: [raw/2024-03-05-minutes-kickoff.md](../../raw/2024-03-05-minutes-kickoff.md), lines 1-11 (ingested 2026-08-28)
+[^s2]: [raw/2024-03-05-minutes-kickoff.md](../../raw/2024-03-05-minutes-kickoff.md), § TOP 1 — Why this programme exists (ingested 2026-08-28)
+[^s3]: [raw/2024-03-05-minutes-kickoff.md](../../raw/2024-03-05-minutes-kickoff.md), § TOP 2 — Current estate (ingested 2026-08-28)
+[^s4]: [raw/2024-03-05-minutes-kickoff.md](../../raw/2024-03-05-minutes-kickoff.md), § Action items (ingested 2026-08-28)
+[^s5]: [raw/2024-03-05-minutes-kickoff.md](../../raw/2024-03-05-minutes-kickoff.md), § TOP 5 — Platform database (ingested 2026-08-28)
+[^s6]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 7-8 (ingested 2026-08-28)
+[^s7]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 16-21 (ingested 2026-08-28)
+[^s8]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 49-55 (ingested 2026-08-28)
+[^s9]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 10-12 (ingested 2026-08-28)
+[^s10]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 57-59 (ingested 2026-08-28)
+[^s11]: [raw/2024-03-19-protokoll-lenkungsausschuss.md](../../raw/2024-03-19-protokoll-lenkungsausschuss.md), § TOP 1 — Ausgangslage und Altsystem (ingested 2026-08-28)
+[^s12]: [raw/2024-05-14-charter-leuchtfeuer.md](../../raw/2024-05-14-charter-leuchtfeuer.md), § 9. Governance (ingested 2026-08-29)
+[^s13]: [raw/2024-05-14-charter-leuchtfeuer.md](../../raw/2024-05-14-charter-leuchtfeuer.md), lines 82-85 (ingested 2026-08-29)
+[^s14]: [raw/2025-02-10-minutes-steering.md](../../raw/2025-02-10-minutes-steering.md), lines 24-25 (ingested 2026-08-29)
+[^s15]: [raw/2025-02-10-minutes-steering.md](../../raw/2025-02-10-minutes-steering.md), lines 31-35 (ingested 2026-08-29)
+[^s16]: [raw/2025-02-10-minutes-steering.md](../../raw/2025-02-10-minutes-steering.md), lines 67-69 (ingested 2026-08-29)
+[^s17]: [raw/2025-06-30-protokoll-uebergabe-walle.md](../../raw/2025-06-30-protokoll-uebergabe-walle.md), lines 68-69 (ingested 2026-08-29)
+[^s18]: [raw/2026-03-20-email-vogelsang-golive.md](../../raw/2026-03-20-email-vogelsang-golive.md), lines 27-33 (ingested 2026-08-29)
+[^s19]: [raw/2026-03-20-email-vogelsang-golive.md](../../raw/2026-03-20-email-vogelsang-golive.md), line 49 (ingested 2026-08-29)
+[^s20]: [raw/2026-04-08-minutes-portal-kickoff.md](../../raw/2026-04-08-minutes-portal-kickoff.md), lines 39-43 (ingested 2026-08-29)
+[^s21]: [raw/2026-04-08-minutes-portal-kickoff.md](../../raw/2026-04-08-minutes-portal-kickoff.md), lines 45-46 (ingested 2026-08-29)
+[^s22]: [raw/2026-04-08-minutes-portal-kickoff.md](../../raw/2026-04-08-minutes-portal-kickoff.md), § TOP 5 — Team and ways of working (ingested 2026-08-29)
+[^s23]: [raw/2026-04-08-minutes-portal-kickoff.md](../../raw/2026-04-08-minutes-portal-kickoff.md), § Action items (ingested 2026-08-29)

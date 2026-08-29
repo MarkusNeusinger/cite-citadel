@@ -2,5 +2,5 @@
 
 The pages in this folder. Generated — do not edit.
 
-- [MDE — Mobile Data Capture](mde-mobile-data-capture.md) — Handheld devices for mobile data capture in the warehouse; Blauwal Logistik is renewing its fleet for the QUAYSTONE rollout.
-- [WMS — Warehouse Management System](wms-warehouse-management-system.md) — Software category for managing warehouse operations; Blauwal Logistik is migrating its WMS from KOMET to QUAYSTONE.
+- [MDE — Mobile Datenerfassung](mde-mobile-datenerfassung.md) — Handheld devices for mobile data capture in warehouse operations; QUAYSTONE requires new MDE devices Blauwal's legacy handhelds cannot run.
+- [WMS — Warehouse Management System](wms-warehouse-management-system.md) — Software system that manages warehouse operations; KOMET and QUAYSTONE are both WMS platforms in Projekt LEUCHTFEUER.

@@ -1,42 +1,78 @@
 ---
 type: System
 title: BasaltDB
-description: The database platform now running QUAYSTONE's persistence layer at Blauwal
-  Logistik, adopted in place of KorallenDB.
+description: Database platform now running QUAYSTONE's persistence layer for Blauwal
+  Logistik's Projekt LEUCHTFEUER, replacing KorallenDB after a January 2025 committee
+  reversal.
 tags:
 - database
-- wms
-- quaystone
-- leuchtfeuer
-- gezeitenwerk-software
-resource: raw/2024-05-14-charter-leuchtfeuer.md
-timestamp: '2026-07-16T17:06:43Z'
-citadel_version: 0.3.0
+- software
+- warehouse-management
+resource: raw/2024-03-12-email-duszek-komet-assessment.md
+timestamp: '2026-08-28T23:35:19Z'
+citadel_version: 0.6.0
 ---
 
-BasaltDB is the database platform now running [QUAYSTONE](quaystone.md)'s persistence layer at [Blauwal Logistik GmbH](../organizations/blauwal-logistik-gmbh.md), under [Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md).[^s1] The Lenkungsausschuss adopted it by circular resolution of 13 January 2025, reversing its earlier decision (D-4) to run the persistence layer on [KorallenDB](korallendb.md); per the charter, the migration was executed before the SEAGULL pilot cutover, so the pilot runs on the target stack from its first day.[^s1]
+BasaltDB is the database platform now running [QUAYSTONE](quaystone.md)'s persistence layer for
+[Blauwal Logistik GmbH](../organizations/blauwal-logistik-gmbh.md)'s
+[Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md), per a Lenkungsausschuss circular
+resolution of 13 January 2025.[^s2] The decision reverses the committee's original choice of
+[KorallenDB](korallendb.md) (decision D-4), made at the Projekt LEUCHTFEUER kickoff meeting over
+[Marek Duszek](../persons/marek-duszek.md)'s recorded dissent.[^s3]
 
-BasaltDB was lead architect [Marek Duszek](../persons/marek-duszek.md)'s preferred alternative from the programme's earliest platform-database discussion: in a 12 March 2024 email he named it as his choice over KorallenDB, citing simpler replication, more mature operational tooling, and more honest licence terms, while stressing this was his professional opinion and that he would implement whichever the committee decided rather than re-litigate it.[^s2]
+Marek Duszek had argued for BasaltDB in writing a week after that kickoff decision: in his
+assessment, BasaltDB's replication story is simpler than KorallenDB's, its operational tooling is
+"a decade ahead," and its licence terms are "honest" — a comparison offered in writing, dated, so
+the choice could be learned from later rather than re-argued from memory, and offered for the
+record rather than to re-open the decision.[^s1] The circular resolution of 13 January 2025 adopts
+the platform he recommended.[^s1][^s2]
 
-In the Lenkungsausschuss's 10 February 2025 session, Gezeitenwerk account manager [Tomás Iglesias](../persons/tomas-iglesias.md) confirmed that Gezeitenwerk supports QUAYSTONE on BasaltDB as a first-class deployment and that two reference customers run it in production at comparable volume to Blauwal's estate.[^s3] The Lenkungsausschuss confirmed the migration decision (D-9) unanimously in that session, noting that Duszek's original dissent against KorallenDB (recorded March 2024) was reversed on commercial grounds that had arisen since — KorallenDB's revised licence terms.[^s4]
+The reassessment behind that reversal followed the KorallenDB vendor's revised licence terms,
+announced in December 2024: per-core pricing plus an audit clause granting the vendor scheduled
+access to Blauwal's own usage metering.[^s4] Heike Brandt's commercial view was that the revised
+terms roughly double the persistence layer's five-year cost, with an audit overhead nobody had
+priced in.[^s5] Tomás Iglesias confirmed that Gezeitenwerk supports QUAYSTONE on BasaltDB as a
+first-class deployment, with two reference customers running it in production at comparable
+volume.[^s6] The Lenkungsausschuss confirmed the reversal unanimously as decision D-9 at its
+10 February 2025 extraordinary steering session, timing the migration to complete before the pilot
+cutover so the pilot runs on BasaltDB from day one.[^s7]
 
-A week after the SEAGULL cutover, Gezeitenwerk account manager [Tomás Iglesias](../persons/tomas-iglesias.md) reported that BasaltDB "behaved impeccably from the first minute," and that migrating the persistence layer before the pilot, rather than after it, had paid off over the cutover weekend.[^s5] This is the vendor's own assessment of the platform it recommended; no independent source in this corpus corroborates it.[^llm1]
+As a condition of pilot readiness, Marek Duszek required the interface conversion tests to be
+re-run against the BasaltDB stack before Gezeitenwerk's cutover runbook — reviewed at v0.9 —
+advances to v1.0, which Tomás Iglesias accepted (action AP-7, due 17 February 2025).[^s8]
 
-By 12 January 2026, lead architect [Marek Duszek](../persons/marek-duszek.md)'s internal status note reported BasaltDB had run 47 consecutive weeks without an unplanned restart, quoted in full in [Petra Vogelsang](../persons/petra-vogelsang.md)'s 20 March 2026 go-live announcement.[^s6]
+During the SEAGULL pilot cutover weekend of 22–23 February 2025, Tomás Iglesias reported that the
+BasaltDB stack "behaved impeccably from the first minute," and that moving the persistence layer
+ahead of the pilot rather than after it "paid for itself this weekend" — his assessment as
+Gezeitenwerk's account manager.[^s9]
+
+By his status note of 12 January 2026, Marek Duszek reported BasaltDB running 47 consecutive weeks
+without an unplanned restart.[^s10]
+
+## Change Log
+
+- 2024-03-05: QUAYSTONE's persistence layer decided on KorallenDB (decision D-4) instead of
+  BasaltDB, over Marek Duszek's recorded dissent.[^s3]
+- 2025-01-13: Lenkungsausschuss circular resolution reverses that decision: QUAYSTONE's
+  persistence layer runs on BasaltDB.[^s2] Confirmed unanimously as decision D-9 at the
+  10 February 2025 steering session.[^s7]
 
 ## See also
+
 - [KorallenDB](korallendb.md)
 - [QUAYSTONE](quaystone.md)
 - [Marek Duszek](../persons/marek-duszek.md)
-- [Tomás Iglesias](../persons/tomas-iglesias.md)
 - [Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md)
-- [SEAGULL (2024–25 pilot)](../projects/seagull-2024-25-quaystone-pilot.md)
 
 ## Sources
-[^s1]: [raw/2024-05-14-charter-leuchtfeuer.md](../../raw/2024-05-14-charter-leuchtfeuer.md), § 8. Platform — BasaltDB decision, migration timing (ingested 2026-07-16)
-[^s2]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 49-54 — Duszek's earlier BasaltDB preference and reasoning (ingested 2026-07-16)
-[^s3]: [raw/2025-02-10-minutes-steering.md](../../raw/2025-02-10-minutes-steering.md), § TOP 2 — Database decision, revisited — Gezeitenwerk's first-class support and reference customers (ingested 2026-07-16)
-[^s4]: [raw/2025-02-10-minutes-steering.md](../../raw/2025-02-10-minutes-steering.md), § Decisions — decision D-9, confirmed unanimously (ingested 2026-07-16)
-[^s5]: [raw/2025-03-03-email-iglesias-pilot-report.md](../../raw/2025-03-03-email-iglesias-pilot-report.md), lines 17-18 — BasaltDB "behaved impeccably," migration-timing decision paid off (ingested 2026-07-16)
-[^llm1]: LLM - self-promotional assessment of the vendor's recommended platform's performance, not independently corroborated in this corpus (added 2026-07-16)
-[^s6]: [raw/2026-03-20-email-vogelsang-golive.md](../../raw/2026-03-20-email-vogelsang-golive.md), lines 27-33 — Duszek's 12 January 2026 status note: 47 consecutive weeks without an unplanned restart (ingested 2026-07-16)
+
+[^s1]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 49-55 (ingested 2026-08-28)
+[^s2]: [raw/2024-05-14-charter-leuchtfeuer.md](../../raw/2024-05-14-charter-leuchtfeuer.md), lines 82-85 (ingested 2026-08-29)
+[^s3]: [raw/2024-03-05-minutes-kickoff.md](../../raw/2024-03-05-minutes-kickoff.md), § Decisions (ingested 2026-08-28)
+[^s4]: [raw/2025-02-10-minutes-steering.md](../../raw/2025-02-10-minutes-steering.md), lines 24-25 (ingested 2026-08-29)
+[^s5]: [raw/2025-02-10-minutes-steering.md](../../raw/2025-02-10-minutes-steering.md), lines 26-27 (ingested 2026-08-29)
+[^s6]: [raw/2025-02-10-minutes-steering.md](../../raw/2025-02-10-minutes-steering.md), lines 28-29 (ingested 2026-08-29)
+[^s7]: [raw/2025-02-10-minutes-steering.md](../../raw/2025-02-10-minutes-steering.md), lines 31-35 (ingested 2026-08-29)
+[^s8]: [raw/2025-02-10-minutes-steering.md](../../raw/2025-02-10-minutes-steering.md), lines 67-69 (ingested 2026-08-29)
+[^s9]: [raw/2025-03-03-email-iglesias-pilot-report.md](../../raw/2025-03-03-email-iglesias-pilot-report.md), lines 17-18 (ingested 2026-08-29)
+[^s10]: [raw/2026-03-20-email-vogelsang-golive.md](../../raw/2026-03-20-email-vogelsang-golive.md), lines 27-33 (ingested 2026-08-29)

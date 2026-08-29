@@ -1,52 +1,48 @@
 ---
 type: Person
 title: Colonel Fitzwilliam
-description: Fitzwilliam Darcy's amiable cousin, a younger son of an earl and joint
-  guardian of Georgiana Darcy.
-resource: raw/pride-and-prejudice.txt
+description: Younger son of an earl, Fitzwilliam Darcy's cousin and co-guardian of
+  Georgiana Darcy, met at Rosings Park.
 tags:
-- rosings-park
+- pride-and-prejudice
 - kent
-- gentry
-- pemberley
-timestamp: '2026-07-16T17:56:51Z'
-citadel_version: 0.3.0
+- rosings
+- darcy-family
+resource: raw/pride-and-prejudice.txt
+timestamp: '2026-08-28T22:49:27Z'
+citadel_version: 0.6.0
 ---
 
-Colonel Fitzwilliam is the younger son of [Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md)'s
-uncle, Lord ----, making him Darcy's cousin; he arrives at [Rosings Park](../misc/rosings-park.md)
-with Darcy for an Easter visit to their aunt, [Lady Catherine de Bourgh](../persons/lady-catherine-de-bourgh.md).[^s1]
-The narration describes him as "about thirty, not handsome, but in person and address most truly
-the gentleman."[^s2] He tells [Elizabeth Bennet](../persons/elizabeth-bennet.md) that he is "joined
-with" Darcy "in the guardianship of Miss Darcy."[^s3] As a younger son he has no independent
-fortune: "in matters of greater weight, I may suffer from the want of money. Younger sons cannot
-marry where they like."[^s4]
+Colonel Fitzwilliam is the younger son of an earl, cousin to [Fitzwilliam Darcy](fitzwilliam-darcy.md)
+and [Georgiana Darcy](georgiana-darcy.md), and joins Darcy at [Rosings Park](../objects/rosings-park.md)
+for Easter to visit their aunt, [Lady Catherine de Bourgh](lady-catherine-de-bourgh.md); he is about
+thirty, not handsome, but "in person and address most truly the gentleman."[^s1]
 
-Walking with Elizabeth, he mentions, without naming names, that Darcy "congratulated himself on
-having lately saved a friend from the inconveniences of a most imprudent marriage" earlier that
-summer; Elizabeth immediately identifies the "friend" as [Charles Bingley](../persons/charles-bingley.md)
-and the "imprudent marriage" as one to her sister [Jane Bennet](../persons/jane-bennet.md).[^s5]
-[Charlotte Collins](../persons/charlotte-lucas.md) privately hopes Elizabeth might marry him instead
-of Darcy, judging him "beyond comparison, the pleasantest man," though she recognizes Darcy has
-far more patronage to offer.[^s6] In his letter to Elizabeth, Darcy names Colonel Fitzwilliam — a
-fellow guardian of [Georgiana Darcy](../persons/georgiana-darcy.md) and an executor of their late
-father's will — as a witness who can corroborate his account of
-[George Wickham](../persons/george-wickham.md)'s history with the family.[^s7]
+He converses easily and pleasantly with [Elizabeth Bennet](elizabeth-bennet.md), discussing Kent,
+Hertfordshire, travel, books, and music, and seeks her out again on her solitary walks in the
+park.[^s2] As a younger son he speaks candidly of the financial constraints on his marrying where he
+likes: "our habits of expense make us too dependent."[^s3] He shares the guardianship of Georgiana
+Darcy with her brother, and — without meaning to — reveals to Elizabeth that Darcy recently
+congratulated himself on saving a friend from an "imprudent marriage," which she takes to mean
+[Charles Bingley](charles-bingley.md) and [Jane Bennet](jane-bennet.md).[^s4]
+
+Per Darcy's letter, Colonel Fitzwilliam, as a co-executor of the late Mr. Darcy's will, can
+corroborate every particular of [George Wickham](george-wickham.md)'s dealings with the family,
+including his attempted elopement with Georgiana.[^s5] He leaves Rosings for London with Darcy at
+the end of their visit.[^s6]
 
 ## See also
 
-- [Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md)
-- [Elizabeth Bennet](../persons/elizabeth-bennet.md)
-- [Lady Catherine de Bourgh](../persons/lady-catherine-de-bourgh.md)
-- [Georgiana Darcy](../persons/georgiana-darcy.md)
-- [George Wickham](../persons/george-wickham.md)
+- [Fitzwilliam Darcy](fitzwilliam-darcy.md)
+- [Georgiana Darcy](georgiana-darcy.md)
+- [Lady Catherine de Bourgh](lady-catherine-de-bourgh.md)
+- [Elizabeth Bennet](elizabeth-bennet.md)
 
 ## Sources
 
-[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 6829-6833 — Colonel Fitzwilliam's arrival with Darcy at Rosings (ingested 2026-07-16)
-[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 6844-6846 — Colonel Fitzwilliam's age and manner (ingested 2026-07-16)
-[^s3]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7333-7335 — Colonel Fitzwilliam on his joint guardianship of Georgiana Darcy (ingested 2026-07-16)
-[^s4]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7309-7310 — Colonel Fitzwilliam on a younger son's want of fortune (ingested 2026-07-16)
-[^s5]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7373-7376 — Colonel Fitzwilliam's unwitting revelation of Darcy's role separating Bingley and Jane (ingested 2026-07-16)
-[^s6]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7229-7233 — Charlotte Collins's hopes for a match between Elizabeth and Colonel Fitzwilliam (ingested 2026-07-16)
-[^s7]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7940-7944 — Darcy names Colonel Fitzwilliam as a corroborating witness (ingested 2026-07-16)
+[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 6819-6846 — arrival at Rosings; description as a younger son of an earl, about thirty (ingested 2026-08-28)
+[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 6905-6911, 7270-7286 — conversation at Rosings and on Elizabeth's walk (ingested 2026-08-28)
+[^s3]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7296-7317 — financial constraints on a younger son's marriage (ingested 2026-08-28)
+[^s4]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7334-7335, 7366-7378 — guardianship of Georgiana; unwitting revelation about Bingley (ingested 2026-08-28)
+[^s5]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7941-7944 — named in Darcy's letter as co-executor and corroborating witness (ingested 2026-08-28)
+[^s6]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 8177-8180 — departs Rosings with Darcy (ingested 2026-08-28)

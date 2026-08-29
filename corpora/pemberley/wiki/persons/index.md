@@ -2,24 +2,30 @@
 
 The pages in this folder. Generated — do not edit.
 
-- [Caroline Bingley](caroline-bingley.md) — Charles Bingley's unmarried sister, proud and fashionable, who hopes to marry Mr. Darcy herself.
-- [Catherine Bennet](catherine-bennet.md) — Second-youngest Bennet daughter of Longbourn, overshadowed by Lydia until her sisters' marriages let her improve.
-- [Charles Bingley](charles-bingley.md) — Wealthy, easy-tempered tenant of Netherfield Park, close friend of Mr. Darcy and suitor of Jane Bennet.
-- [Charlotte Lucas](charlotte-lucas.md) — Eldest daughter of Sir William Lucas, Elizabeth Bennet's pragmatic friend who marries Mr. Collins.
-- [Colonel Fitzwilliam](colonel-fitzwilliam.md) — Fitzwilliam Darcy's amiable cousin, a younger son of an earl and joint guardian of Georgiana Darcy.
-- [Colonel Forster](colonel-forster.md) — Colonel of the ----shire militia at Meryton and Brighton, whose wife invites Lydia Bennet to Brighton and who leads the search after her elopement.
-- [Elizabeth Bennet](elizabeth-bennet.md) — Second daughter of the Bennet family of Longbourn, known for her wit, quick perception, and lively disposition.
-- [Fitzwilliam Darcy](fitzwilliam-darcy.md) — Wealthy owner of Pemberley in Derbyshire, close friend of Charles Bingley, whose pride alienates Meryton society.
-- [George Wickham](george-wickham.md) — A charming militia officer at Meryton whose account of his history with Mr. Darcy turns Elizabeth Bennet against him.
-- [Georgiana Darcy](georgiana-darcy.md) — Fitzwilliam Darcy's younger sister, a highly accomplished teenager living in London.
-- [Jane Austen](jane-austen.md) — English novelist; author of Pride and Prejudice.
-- [Jane Bennet](jane-bennet.md) — Eldest Bennet daughter of Longbourn, gentle and even-tempered, courted then disappointed by Mr. Bingley.
-- [Lady Catherine de Bourgh](lady-catherine-de-bourgh.md) — Wealthy widow of Rosings Park in Kent, patroness of Mr. Collins and aunt of Mr. Darcy.
-- [Lydia Bennet](lydia-bennet.md) — Youngest Bennet daughter, favoured by her mother and eager for the militia officers at Meryton.
-- [Mary Bennet](mary-bennet.md) — Middle Bennet daughter, bookish and moralizing, prized for accomplishment more than natural talent.
-- [Mr. Bennet](mr-bennet.md) — Master of Longbourn, father of five daughters, given to sarcastic wit and retreat to his library.
-- [Mr. Collins](mr-collins.md) — Obsequious clergyman and heir to Longbourn, patronized by Lady Catherine de Bourgh.
-- [Mr. Gardiner](mr-gardiner.md) — Mrs. Bennet's brother, a sensible London tradesman who hosts Jane and Elizabeth Bennet and resolves the Lydia Wickham crisis.
-- [Mrs. Bennet](mrs-bennet.md) — Mistress of Longbourn, mother of five daughters, whose life's business is getting them married.
-- [Mrs. Gardiner](mrs-gardiner.md) — Mrs. Bennet's sister-in-law from London, a favourite aunt of Jane and Elizabeth Bennet.
-- [Sir William Lucas](sir-william-lucas.md) — Knighted former Meryton tradesman, master of Lucas Lodge and father of Charlotte Lucas.
+- [Anne de Bourgh](anne-de-bourgh.md) — Lady Catherine de Bourgh's only daughter, heiress of Rosings Park, in poor health.
+- [Caroline Bingley](caroline-bingley.md) — Charles Bingley's unmarried sister, proud and set on Fitzwilliam Darcy.
+- [Catherine Bennet](catherine-bennet.md) — The fourth Bennet daughter, called Kitty, usually paired with her younger sister Lydia in pursuit of the militia officers.
+- [Charles Bingley](charles-bingley.md) — Wealthy young tenant of Netherfield Park, close friend of Fitzwilliam Darcy, drawn to Jane Bennet.
+- [Charlotte Lucas](charlotte-lucas.md) — Elizabeth Bennet's close friend, eldest daughter of Sir William Lucas, who accepts William Collins's proposal for the security of an establishment.
+- [Colonel Fitzwilliam](colonel-fitzwilliam.md) — Younger son of an earl, Fitzwilliam Darcy's cousin and co-guardian of Georgiana Darcy, met at Rosings Park.
+- [Colonel Forster](colonel-forster.md) — Commanding officer of the militia regiment billeted at Meryton, and husband of Lydia Bennet's friend Mrs. Forster.
+- [Elizabeth Bennet](elizabeth-bennet.md) — Second of the five Bennet daughters; witty and quick, her father's favourite.
+- [Fitzwilliam Darcy](fitzwilliam-darcy.md) — Owner of Pemberley in Derbyshire, Charles Bingley's close friend, initially judged proud by the Meryton neighbourhood.
+- [George Saintsbury](george-saintsbury.md) — Critic who wrote the preface to this 1894 George Allen edition of Pride and Prejudice.
+- [George Wickham](george-wickham.md) — Newly commissioned militia officer at Meryton, son of the late Mr. Darcy's steward, and a rival account of Fitzwilliam Darcy's character.
+- [Georgiana Darcy](georgiana-darcy.md) — Fitzwilliam Darcy's younger sister, about fifteen or sixteen, living in London since their father's death.
+- [Jane Austen](jane-austen.md) — English novelist; author of Pride and Prejudice, per the preface to this 1894 edition.
+- [Jane Bennet](jane-bennet.md) — Eldest of the five Bennet daughters, considered the beauty of the family.
+- [Lady Catherine de Bourgh](lady-catherine-de-bourgh.md) — Widow of Sir Lewis de Bourgh, owner of Rosings Park in Kent, patroness of William Collins's living and aunt to Fitzwilliam Darcy.
+- [Louisa Hurst](louisa-hurst.md) — Charles Bingley's married sister, wife of the indolent Mr. Hurst.
+- [Lydia Bennet](lydia-bennet.md) — The youngest Bennet daughter, fifteen years old, bold and preoccupied with the militia officers.
+- [Mary Bennet](mary-bennet.md) — The middle Bennet daughter, called the only plain one of the family, given to moralizing and musical display.
+- [Mr. Bennet](mr-bennet.md) — Owner of Longbourn, father of five daughters, known for his sarcastic detachment from his wife's schemes.
+- [Mr. Gardiner](mr-gardiner.md) — Mrs. Bennet's brother, a sensible London tradesman married to Mrs. Gardiner, who negotiates Lydia Bennet's marriage settlement.
+- [Mrs. Bennet](mrs-bennet.md) — Mistress of Longbourn, singularly focused on marrying off her five daughters.
+- [Mrs. Forster](mrs-forster.md) — Wife of Colonel Forster and a new, close friend of Lydia Bennet, at whose invitation Lydia goes to Brighton.
+- [Mrs. Gardiner](mrs-gardiner.md) — Mrs. Bennet's sister-in-law, a favourite aunt of the two eldest Bennet daughters, who once lived near Pemberley in Derbyshire.
+- [Mrs. Reynolds](mrs-reynolds.md) — Longtime housekeeper at Pemberley, who has known Fitzwilliam Darcy since he was four years old.
+- [Mrs. Younge](mrs-younge.md) — Former companion to Georgiana Darcy, dismissed for aiding Wickham's attempted elopement with her, who later helps Darcy locate Wickham in London.
+- [William Collins](william-collins.md) — Clergyman cousin of Mr. Bennet, heir to Longbourn under the entail, and rector of Hunsford under Lady Catherine de Bourgh's patronage.
+- [William Lucas](william-lucas.md) — Knighted former Meryton tradesman, of Lucas Lodge, father of Charlotte Lucas.

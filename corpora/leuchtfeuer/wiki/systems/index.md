@@ -2,7 +2,7 @@
 
 The pages in this folder. Generated — do not edit.
 
-- [BasaltDB](basaltdb.md) — The database platform now running QUAYSTONE's persistence layer at Blauwal Logistik, adopted in place of KorallenDB.
-- [KOMET](komet.md) — Blauwal Logistik's long-serving, in-house-customised warehouse management system, being replaced by QUAYSTONE under Projekt LEUCHTFEUER.
-- [KorallenDB](korallendb.md) — The database platform that originally ran QUAYSTONE's persistence layer at Blauwal Logistik, superseded by BasaltDB in January 2025.
-- [QUAYSTONE](quaystone.md) — The cloud warehouse management system platform sold by Gezeitenwerk Software GmbH, replacing KOMET at Blauwal Logistik under Projekt LEUCHTFEUER.
+- [BasaltDB](basaltdb.md) — Database platform now running QUAYSTONE's persistence layer for Blauwal Logistik's Projekt LEUCHTFEUER, replacing KorallenDB after a January 2025 committee reversal.
+- [KOMET](komet.md) — Blauwal Logistik GmbH's in-house-customised warehouse management system, being replaced by QUAYSTONE under Projekt LEUCHTFEUER.
+- [KorallenDB](korallendb.md) — Database platform Blauwal Logistik originally selected to run QUAYSTONE's persistence layer for Projekt LEUCHTFEUER, superseded by BasaltDB in January 2025.
+- [QUAYSTONE](quaystone.md) — Cloud warehouse management system platform sold by Gezeitenwerk Software GmbH, selected to replace Blauwal Logistik's KOMET system under Projekt LEUCHTFEUER.

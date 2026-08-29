@@ -2,173 +2,182 @@
 
 The wiki's home index: every page grouped by type (with backlinks), plus tags and the source/open-point catalogs. Generated — do not edit.
 
-See also: [concepts](concepts/index.md) · [misc](misc/index.md) · [objects](objects/index.md) · [persons](persons/index.md) · [sources](sources/index.md)
-
-## Concept
-- [Entail](concepts/entail.md) — An inheritance restriction that channels an estate to a designated heir, bypassing daughters.
-  - ↳ referenced by: [Longbourn](misc/longbourn.md), [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md), [Mr. Bennet](persons/mr-bennet.md), [Mr. Collins](persons/mr-collins.md)
+See also: [misc](misc/index.md) · [objects](objects/index.md) · [persons](persons/index.md) · [sources](sources/index.md)
 
 ## Object
-- [Pride and Prejudice](objects/pride-and-prejudice.md) — Jane Austen's 1813 novel of the Bennet family, first drafted in the 1790s and here reproduced in an 1894 illustrated edition.
-  - ↳ referenced by: [Jane Austen](persons/jane-austen.md)
+- [Longbourn](objects/longbourn.md) — The Bennet family's entailed estate in Hertfordshire, one mile from Meryton.
+  - ↳ referenced by: [Meryton](misc/meryton.md), [Netherfield Park](objects/netherfield-park.md), [Mr. Bennet](persons/mr-bennet.md), [Mrs. Bennet](persons/mrs-bennet.md), [William Collins](persons/william-collins.md)
+- [Netherfield Park](objects/netherfield-park.md) — The Hertfordshire estate Charles Bingley leases near Longbourn, three miles from the Bennets.
+  - ↳ referenced by: [Charles Bingley](persons/charles-bingley.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Jane Bennet](persons/jane-bennet.md)
+- [Pemberley](objects/pemberley.md) — Fitzwilliam Darcy's estate in Derbyshire, worth about ten thousand pounds a year.
+  - ↳ referenced by: [Elizabeth Bennet](persons/elizabeth-bennet.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [George Wickham](persons/george-wickham.md), [Georgiana Darcy](persons/georgiana-darcy.md), [Mr. Gardiner](persons/mr-gardiner.md), [Mrs. Gardiner](persons/mrs-gardiner.md), [Mrs. Reynolds](persons/mrs-reynolds.md)
+- [Pride and Prejudice](objects/pride-and-prejudice.md) — Jane Austen's 1813 novel of the Bennet family of Longbourn, reproduced here in an 1894 George Allen illustrated edition with a preface by George Saintsbury.
+  - ↳ referenced by: [George Saintsbury](persons/george-saintsbury.md), [Jane Austen](persons/jane-austen.md)
+- [Rosings Park](objects/rosings-park.md) — Lady Catherine de Bourgh's residence in Kent, adjoining Hunsford parsonage.
+  - ↳ referenced by: [Anne de Bourgh](persons/anne-de-bourgh.md), [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md), [William Collins](persons/william-collins.md)
 
 ## Person
-- [Caroline Bingley](persons/caroline-bingley.md) — Charles Bingley's unmarried sister, proud and fashionable, who hopes to marry Mr. Darcy herself.
-  - ↳ referenced by: [Pemberley](misc/pemberley.md), [Charles Bingley](persons/charles-bingley.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [George Wickham](persons/george-wickham.md), [Georgiana Darcy](persons/georgiana-darcy.md), [Jane Bennet](persons/jane-bennet.md)
-- [Catherine Bennet](persons/catherine-bennet.md) — Second-youngest Bennet daughter of Longbourn, overshadowed by Lydia until her sisters' marriages let her improve.
-  - ↳ referenced by: [Meryton](misc/meryton.md), [Lydia Bennet](persons/lydia-bennet.md), [Mr. Bennet](persons/mr-bennet.md), [Mrs. Bennet](persons/mrs-bennet.md)
-- [Charles Bingley](persons/charles-bingley.md) — Wealthy, easy-tempered tenant of Netherfield Park, close friend of Mr. Darcy and suitor of Jane Bennet.
-  - ↳ referenced by: [Longbourn](misc/longbourn.md), [Meryton](misc/meryton.md), [Netherfield Park](misc/netherfield-park.md), [Caroline Bingley](persons/caroline-bingley.md), [Catherine Bennet](persons/catherine-bennet.md), [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [Georgiana Darcy](persons/georgiana-darcy.md), [Jane Bennet](persons/jane-bennet.md), [Mr. Bennet](persons/mr-bennet.md), [Mr. Collins](persons/mr-collins.md), [Mrs. Bennet](persons/mrs-bennet.md)
-- [Charlotte Lucas](persons/charlotte-lucas.md) — Eldest daughter of Sir William Lucas, Elizabeth Bennet's pragmatic friend who marries Mr. Collins.
-  - ↳ referenced by: [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [Mr. Collins](persons/mr-collins.md), [Sir William Lucas](persons/sir-william-lucas.md)
-- [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md) — Fitzwilliam Darcy's amiable cousin, a younger son of an earl and joint guardian of Georgiana Darcy.
-  - ↳ referenced by: [Rosings Park](misc/rosings-park.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [Georgiana Darcy](persons/georgiana-darcy.md), [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md)
-- [Colonel Forster](persons/colonel-forster.md) — Colonel of the ----shire militia at Meryton and Brighton, whose wife invites Lydia Bennet to Brighton and who leads the search after her elopement.
-  - ↳ referenced by: [Brighton](misc/brighton.md), [George Wickham](persons/george-wickham.md), [Lydia Bennet](persons/lydia-bennet.md)
-- [Elizabeth Bennet](persons/elizabeth-bennet.md) — Second daughter of the Bennet family of Longbourn, known for her wit, quick perception, and lively disposition.
-  - ↳ referenced by: [Entail](concepts/entail.md), [Pemberley](misc/pemberley.md), [Rosings Park](misc/rosings-park.md), [Pride and Prejudice](objects/pride-and-prejudice.md), [Caroline Bingley](persons/caroline-bingley.md), [Catherine Bennet](persons/catherine-bennet.md), [Charles Bingley](persons/charles-bingley.md), [Charlotte Lucas](persons/charlotte-lucas.md), [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [George Wickham](persons/george-wickham.md), [Georgiana Darcy](persons/georgiana-darcy.md), [Jane Bennet](persons/jane-bennet.md), [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md), [Mary Bennet](persons/mary-bennet.md), [Mr. Bennet](persons/mr-bennet.md), [Mr. Collins](persons/mr-collins.md), [Mr. Gardiner](persons/mr-gardiner.md), [Mrs. Bennet](persons/mrs-bennet.md), [Mrs. Gardiner](persons/mrs-gardiner.md), [Sir William Lucas](persons/sir-william-lucas.md)
-- [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md) — Wealthy owner of Pemberley in Derbyshire, close friend of Charles Bingley, whose pride alienates Meryton society.
-  - ↳ referenced by: [Meryton](misc/meryton.md), [Pemberley](misc/pemberley.md), [Rosings Park](misc/rosings-park.md), [Pride and Prejudice](objects/pride-and-prejudice.md), [Caroline Bingley](persons/caroline-bingley.md), [Catherine Bennet](persons/catherine-bennet.md), [Charles Bingley](persons/charles-bingley.md), [Charlotte Lucas](persons/charlotte-lucas.md), [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [George Wickham](persons/george-wickham.md), [Georgiana Darcy](persons/georgiana-darcy.md), [Jane Bennet](persons/jane-bennet.md), [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md), [Lydia Bennet](persons/lydia-bennet.md), [Mr. Bennet](persons/mr-bennet.md), [Mr. Collins](persons/mr-collins.md), [Mr. Gardiner](persons/mr-gardiner.md), [Mrs. Bennet](persons/mrs-bennet.md), [Mrs. Gardiner](persons/mrs-gardiner.md), [Sir William Lucas](persons/sir-william-lucas.md)
-- [George Wickham](persons/george-wickham.md) — A charming militia officer at Meryton whose account of his history with Mr. Darcy turns Elizabeth Bennet against him.
-  - ↳ referenced by: [Brighton](misc/brighton.md), [Meryton](misc/meryton.md), [Pemberley](misc/pemberley.md), [Caroline Bingley](persons/caroline-bingley.md), [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md), [Colonel Forster](persons/colonel-forster.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [Georgiana Darcy](persons/georgiana-darcy.md), [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md), [Lydia Bennet](persons/lydia-bennet.md), [Mr. Bennet](persons/mr-bennet.md), [Mr. Collins](persons/mr-collins.md), [Mr. Gardiner](persons/mr-gardiner.md), [Mrs. Bennet](persons/mrs-bennet.md), [Mrs. Gardiner](persons/mrs-gardiner.md)
-- [Georgiana Darcy](persons/georgiana-darcy.md) — Fitzwilliam Darcy's younger sister, a highly accomplished teenager living in London.
-  - ↳ referenced by: [Pemberley](misc/pemberley.md), [Caroline Bingley](persons/caroline-bingley.md), [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [George Wickham](persons/george-wickham.md), [Jane Bennet](persons/jane-bennet.md)
-- [Jane Austen](persons/jane-austen.md) — English novelist; author of Pride and Prejudice.
-  - ↳ referenced by: [Pride and Prejudice](objects/pride-and-prejudice.md)
-- [Jane Bennet](persons/jane-bennet.md) — Eldest Bennet daughter of Longbourn, gentle and even-tempered, courted then disappointed by Mr. Bingley.
-  - ↳ referenced by: [Entail](concepts/entail.md), [Netherfield Park](misc/netherfield-park.md), [Caroline Bingley](persons/caroline-bingley.md), [Catherine Bennet](persons/catherine-bennet.md), [Charles Bingley](persons/charles-bingley.md), [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [Mr. Bennet](persons/mr-bennet.md), [Mr. Collins](persons/mr-collins.md), [Mrs. Bennet](persons/mrs-bennet.md), [Mrs. Gardiner](persons/mrs-gardiner.md)
-- [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md) — Wealthy widow of Rosings Park in Kent, patroness of Mr. Collins and aunt of Mr. Darcy.
-  - ↳ referenced by: [Rosings Park](misc/rosings-park.md), [Charlotte Lucas](persons/charlotte-lucas.md), [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [Mr. Collins](persons/mr-collins.md), [Sir William Lucas](persons/sir-william-lucas.md)
-- [Lydia Bennet](persons/lydia-bennet.md) — Youngest Bennet daughter, favoured by her mother and eager for the militia officers at Meryton.
-  - ↳ referenced by: [Brighton](misc/brighton.md), [Catherine Bennet](persons/catherine-bennet.md), [Colonel Forster](persons/colonel-forster.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [George Wickham](persons/george-wickham.md), [Jane Bennet](persons/jane-bennet.md), [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md), [Mr. Bennet](persons/mr-bennet.md), [Mr. Collins](persons/mr-collins.md), [Mr. Gardiner](persons/mr-gardiner.md), [Mrs. Bennet](persons/mrs-bennet.md), [Mrs. Gardiner](persons/mrs-gardiner.md)
-- [Mary Bennet](persons/mary-bennet.md) — Middle Bennet daughter, bookish and moralizing, prized for accomplishment more than natural talent.
-  - ↳ referenced by: [Mr. Bennet](persons/mr-bennet.md), [Mrs. Bennet](persons/mrs-bennet.md)
-- [Mr. Bennet](persons/mr-bennet.md) — Master of Longbourn, father of five daughters, given to sarcastic wit and retreat to his library.
-  - ↳ referenced by: [Entail](concepts/entail.md), [Longbourn](misc/longbourn.md), [Pemberley](misc/pemberley.md), [Catherine Bennet](persons/catherine-bennet.md), [Colonel Forster](persons/colonel-forster.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [Jane Bennet](persons/jane-bennet.md), [Lydia Bennet](persons/lydia-bennet.md), [Mary Bennet](persons/mary-bennet.md), [Mr. Collins](persons/mr-collins.md), [Mr. Gardiner](persons/mr-gardiner.md), [Mrs. Bennet](persons/mrs-bennet.md), [Mrs. Gardiner](persons/mrs-gardiner.md)
-- [Mr. Collins](persons/mr-collins.md) — Obsequious clergyman and heir to Longbourn, patronized by Lady Catherine de Bourgh.
-  - ↳ referenced by: [Entail](concepts/entail.md), [Longbourn](misc/longbourn.md), [Rosings Park](misc/rosings-park.md), [Pride and Prejudice](objects/pride-and-prejudice.md), [Charlotte Lucas](persons/charlotte-lucas.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md), [Lydia Bennet](persons/lydia-bennet.md), [Mary Bennet](persons/mary-bennet.md), [Mr. Bennet](persons/mr-bennet.md), [Mrs. Bennet](persons/mrs-bennet.md), [Sir William Lucas](persons/sir-william-lucas.md)
-- [Mr. Gardiner](persons/mr-gardiner.md) — Mrs. Bennet's brother, a sensible London tradesman who hosts Jane and Elizabeth Bennet and resolves the Lydia Wickham crisis.
-  - ↳ referenced by: [Pemberley](misc/pemberley.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [George Wickham](persons/george-wickham.md), [Lydia Bennet](persons/lydia-bennet.md), [Mr. Bennet](persons/mr-bennet.md), [Mrs. Gardiner](persons/mrs-gardiner.md)
-- [Mrs. Bennet](persons/mrs-bennet.md) — Mistress of Longbourn, mother of five daughters, whose life's business is getting them married.
-  - ↳ referenced by: [Entail](concepts/entail.md), [Netherfield Park](misc/netherfield-park.md), [Catherine Bennet](persons/catherine-bennet.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [Jane Bennet](persons/jane-bennet.md), [Lydia Bennet](persons/lydia-bennet.md), [Mary Bennet](persons/mary-bennet.md), [Mr. Bennet](persons/mr-bennet.md), [Mr. Gardiner](persons/mr-gardiner.md)
-- [Mrs. Gardiner](persons/mrs-gardiner.md) — Mrs. Bennet's sister-in-law from London, a favourite aunt of Jane and Elizabeth Bennet.
-  - ↳ referenced by: [Pemberley](misc/pemberley.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [George Wickham](persons/george-wickham.md), [Jane Bennet](persons/jane-bennet.md), [Lydia Bennet](persons/lydia-bennet.md), [Mr. Gardiner](persons/mr-gardiner.md)
-- [Sir William Lucas](persons/sir-william-lucas.md) — Knighted former Meryton tradesman, master of Lucas Lodge and father of Charlotte Lucas.
-  - ↳ referenced by: [Charlotte Lucas](persons/charlotte-lucas.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [Lydia Bennet](persons/lydia-bennet.md)
+- [Anne de Bourgh](persons/anne-de-bourgh.md) — Lady Catherine de Bourgh's only daughter, heiress of Rosings Park, in poor health.
+  - ↳ referenced by: [Rosings Park](objects/rosings-park.md), [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md)
+- [Caroline Bingley](persons/caroline-bingley.md) — Charles Bingley's unmarried sister, proud and set on Fitzwilliam Darcy.
+  - ↳ referenced by: [Charles Bingley](persons/charles-bingley.md), [George Wickham](persons/george-wickham.md), [Georgiana Darcy](persons/georgiana-darcy.md), [Jane Bennet](persons/jane-bennet.md), [Louisa Hurst](persons/louisa-hurst.md)
+- [Catherine Bennet](persons/catherine-bennet.md) — The fourth Bennet daughter, called Kitty, usually paired with her younger sister Lydia in pursuit of the militia officers.
+  - ↳ referenced by: [Lydia Bennet](persons/lydia-bennet.md)
+- [Charles Bingley](persons/charles-bingley.md) — Wealthy young tenant of Netherfield Park, close friend of Fitzwilliam Darcy, drawn to Jane Bennet.
+  - ↳ referenced by: [Meryton](misc/meryton.md), [Netherfield Park](objects/netherfield-park.md), [Caroline Bingley](persons/caroline-bingley.md), [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [Georgiana Darcy](persons/georgiana-darcy.md), [Jane Bennet](persons/jane-bennet.md), [Louisa Hurst](persons/louisa-hurst.md), [Lydia Bennet](persons/lydia-bennet.md), [William Lucas](persons/william-lucas.md)
+- [Charlotte Lucas](persons/charlotte-lucas.md) — Elizabeth Bennet's close friend, eldest daughter of Sir William Lucas, who accepts William Collins's proposal for the security of an establishment.
+  - ↳ referenced by: [Elizabeth Bennet](persons/elizabeth-bennet.md), [William Collins](persons/william-collins.md), [William Lucas](persons/william-lucas.md)
+- [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md) — Younger son of an earl, Fitzwilliam Darcy's cousin and co-guardian of Georgiana Darcy, met at Rosings Park.
+  - ↳ referenced by: [Rosings Park](objects/rosings-park.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [Georgiana Darcy](persons/georgiana-darcy.md), [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md)
+- [Colonel Forster](persons/colonel-forster.md) — Commanding officer of the militia regiment billeted at Meryton, and husband of Lydia Bennet's friend Mrs. Forster.
+  - ↳ referenced by: [Mrs. Forster](persons/mrs-forster.md)
+- [Elizabeth Bennet](persons/elizabeth-bennet.md) — Second of the five Bennet daughters; witty and quick, her father's favourite.
+  - ↳ referenced by: [Pemberley](objects/pemberley.md), [Anne de Bourgh](persons/anne-de-bourgh.md), [Caroline Bingley](persons/caroline-bingley.md), [Charles Bingley](persons/charles-bingley.md), [Charlotte Lucas](persons/charlotte-lucas.md), [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [George Saintsbury](persons/george-saintsbury.md), [George Wickham](persons/george-wickham.md), [Jane Bennet](persons/jane-bennet.md), [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md), [Louisa Hurst](persons/louisa-hurst.md), [Mr. Bennet](persons/mr-bennet.md), [Mr. Gardiner](persons/mr-gardiner.md), [Mrs. Bennet](persons/mrs-bennet.md), [Mrs. Gardiner](persons/mrs-gardiner.md), [William Collins](persons/william-collins.md)
+- [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md) — Owner of Pemberley in Derbyshire, Charles Bingley's close friend, initially judged proud by the Meryton neighbourhood.
+  - ↳ referenced by: [Meryton](misc/meryton.md), [Netherfield Park](objects/netherfield-park.md), [Pemberley](objects/pemberley.md), [Anne de Bourgh](persons/anne-de-bourgh.md), [Caroline Bingley](persons/caroline-bingley.md), [Catherine Bennet](persons/catherine-bennet.md), [Charles Bingley](persons/charles-bingley.md), [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [George Saintsbury](persons/george-saintsbury.md), [George Wickham](persons/george-wickham.md), [Georgiana Darcy](persons/georgiana-darcy.md), [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md), [Mr. Bennet](persons/mr-bennet.md), [Mr. Gardiner](persons/mr-gardiner.md), [Mrs. Bennet](persons/mrs-bennet.md), [Mrs. Gardiner](persons/mrs-gardiner.md), [Mrs. Reynolds](persons/mrs-reynolds.md), [Mrs. Younge](persons/mrs-younge.md), [William Collins](persons/william-collins.md), [William Lucas](persons/william-lucas.md)
+- [George Saintsbury](persons/george-saintsbury.md) — Critic who wrote the preface to this 1894 George Allen edition of Pride and Prejudice.
+  - ↳ referenced by: [Pride and Prejudice](objects/pride-and-prejudice.md), [Jane Austen](persons/jane-austen.md)
+- [George Wickham](persons/george-wickham.md) — Newly commissioned militia officer at Meryton, son of the late Mr. Darcy's steward, and a rival account of Fitzwilliam Darcy's character.
+  - ↳ referenced by: [Meryton](misc/meryton.md), [Pemberley](objects/pemberley.md), [Caroline Bingley](persons/caroline-bingley.md), [Catherine Bennet](persons/catherine-bennet.md), [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md), [Colonel Forster](persons/colonel-forster.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [Georgiana Darcy](persons/georgiana-darcy.md), [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md), [Lydia Bennet](persons/lydia-bennet.md), [Mr. Gardiner](persons/mr-gardiner.md), [Mrs. Forster](persons/mrs-forster.md), [Mrs. Gardiner](persons/mrs-gardiner.md), [Mrs. Reynolds](persons/mrs-reynolds.md), [Mrs. Younge](persons/mrs-younge.md)
+- [Georgiana Darcy](persons/georgiana-darcy.md) — Fitzwilliam Darcy's younger sister, about fifteen or sixteen, living in London since their father's death.
+  - ↳ referenced by: [Pemberley](objects/pemberley.md), [Caroline Bingley](persons/caroline-bingley.md), [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [George Wickham](persons/george-wickham.md), [Jane Bennet](persons/jane-bennet.md), [Mrs. Reynolds](persons/mrs-reynolds.md), [Mrs. Younge](persons/mrs-younge.md)
+- [Jane Austen](persons/jane-austen.md) — English novelist; author of Pride and Prejudice, per the preface to this 1894 edition.
+  - ↳ referenced by: [Pride and Prejudice](objects/pride-and-prejudice.md), [George Saintsbury](persons/george-saintsbury.md)
+- [Jane Bennet](persons/jane-bennet.md) — Eldest of the five Bennet daughters, considered the beauty of the family.
+  - ↳ referenced by: [Caroline Bingley](persons/caroline-bingley.md), [Charles Bingley](persons/charles-bingley.md), [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Georgiana Darcy](persons/georgiana-darcy.md), [Mrs. Gardiner](persons/mrs-gardiner.md), [William Collins](persons/william-collins.md), [William Lucas](persons/william-lucas.md)
+- [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md) — Widow of Sir Lewis de Bourgh, owner of Rosings Park in Kent, patroness of William Collins's living and aunt to Fitzwilliam Darcy.
+  - ↳ referenced by: [Pemberley](objects/pemberley.md), [Rosings Park](objects/rosings-park.md), [Anne de Bourgh](persons/anne-de-bourgh.md), [Charlotte Lucas](persons/charlotte-lucas.md), [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [William Collins](persons/william-collins.md)
+- [Louisa Hurst](persons/louisa-hurst.md) — Charles Bingley's married sister, wife of the indolent Mr. Hurst.
+  - ↳ referenced by: [Caroline Bingley](persons/caroline-bingley.md), [Georgiana Darcy](persons/georgiana-darcy.md)
+- [Lydia Bennet](persons/lydia-bennet.md) — The youngest Bennet daughter, fifteen years old, bold and preoccupied with the militia officers.
+  - ↳ referenced by: [Meryton](misc/meryton.md), [Pemberley](objects/pemberley.md), [Catherine Bennet](persons/catherine-bennet.md), [Charles Bingley](persons/charles-bingley.md), [Colonel Forster](persons/colonel-forster.md), [George Wickham](persons/george-wickham.md), [Jane Bennet](persons/jane-bennet.md), [Mr. Bennet](persons/mr-bennet.md), [Mr. Gardiner](persons/mr-gardiner.md), [Mrs. Bennet](persons/mrs-bennet.md), [Mrs. Forster](persons/mrs-forster.md)
+- [Mary Bennet](persons/mary-bennet.md) — The middle Bennet daughter, called the only plain one of the family, given to moralizing and musical display.
+- [Mr. Bennet](persons/mr-bennet.md) — Owner of Longbourn, father of five daughters, known for his sarcastic detachment from his wife's schemes.
+  - ↳ referenced by: [Longbourn](objects/longbourn.md), [Pemberley](objects/pemberley.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Jane Bennet](persons/jane-bennet.md), [Mary Bennet](persons/mary-bennet.md), [Mr. Gardiner](persons/mr-gardiner.md), [Mrs. Bennet](persons/mrs-bennet.md), [William Collins](persons/william-collins.md)
+- [Mr. Gardiner](persons/mr-gardiner.md) — Mrs. Bennet's brother, a sensible London tradesman married to Mrs. Gardiner, who negotiates Lydia Bennet's marriage settlement.
+  - ↳ referenced by: [George Wickham](persons/george-wickham.md), [Lydia Bennet](persons/lydia-bennet.md), [Mr. Bennet](persons/mr-bennet.md), [Mrs. Gardiner](persons/mrs-gardiner.md)
+- [Mrs. Bennet](persons/mrs-bennet.md) — Mistress of Longbourn, singularly focused on marrying off her five daughters.
+  - ↳ referenced by: [Longbourn](objects/longbourn.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Jane Bennet](persons/jane-bennet.md), [Mary Bennet](persons/mary-bennet.md), [Mr. Bennet](persons/mr-bennet.md), [Mr. Gardiner](persons/mr-gardiner.md), [Mrs. Gardiner](persons/mrs-gardiner.md), [William Lucas](persons/william-lucas.md)
+- [Mrs. Forster](persons/mrs-forster.md) — Wife of Colonel Forster and a new, close friend of Lydia Bennet, at whose invitation Lydia goes to Brighton.
+  - ↳ referenced by: [Colonel Forster](persons/colonel-forster.md), [Lydia Bennet](persons/lydia-bennet.md)
+- [Mrs. Gardiner](persons/mrs-gardiner.md) — Mrs. Bennet's sister-in-law, a favourite aunt of the two eldest Bennet daughters, who once lived near Pemberley in Derbyshire.
+  - ↳ referenced by: [Pemberley](objects/pemberley.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [Mr. Gardiner](persons/mr-gardiner.md)
+- [Mrs. Reynolds](persons/mrs-reynolds.md) — Longtime housekeeper at Pemberley, who has known Fitzwilliam Darcy since he was four years old.
+  - ↳ referenced by: [Pemberley](objects/pemberley.md), [Elizabeth Bennet](persons/elizabeth-bennet.md)
+- [Mrs. Younge](persons/mrs-younge.md) — Former companion to Georgiana Darcy, dismissed for aiding Wickham's attempted elopement with her, who later helps Darcy locate Wickham in London.
+  - ↳ referenced by: [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [George Wickham](persons/george-wickham.md), [Georgiana Darcy](persons/georgiana-darcy.md)
+- [William Collins](persons/william-collins.md) — Clergyman cousin of Mr. Bennet, heir to Longbourn under the entail, and rector of Hunsford under Lady Catherine de Bourgh's patronage.
+  - ↳ referenced by: [Longbourn](objects/longbourn.md), [Rosings Park](objects/rosings-park.md), [Catherine Bennet](persons/catherine-bennet.md), [Charlotte Lucas](persons/charlotte-lucas.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md), [Lydia Bennet](persons/lydia-bennet.md), [Mary Bennet](persons/mary-bennet.md), [Mr. Bennet](persons/mr-bennet.md), [Mrs. Bennet](persons/mrs-bennet.md), [William Lucas](persons/william-lucas.md)
+- [William Lucas](persons/william-lucas.md) — Knighted former Meryton tradesman, of Lucas Lodge, father of Charlotte Lucas.
+  - ↳ referenced by: [Charlotte Lucas](persons/charlotte-lucas.md)
 
-## misc
-- [Brighton](misc/brighton.md) — A seaside resort where the ----shire militia camps for the summer, and the scene of Lydia Bennet's elopement.
-  - ↳ referenced by: [Meryton](misc/meryton.md), [Colonel Forster](persons/colonel-forster.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [George Wickham](persons/george-wickham.md), [Lydia Bennet](persons/lydia-bennet.md), [Mr. Bennet](persons/mr-bennet.md)
-- [Longbourn](misc/longbourn.md) — The Bennet family's Hertfordshire estate and village, one mile from Meryton.
-  - ↳ referenced by: [Entail](concepts/entail.md), [Meryton](misc/meryton.md), [Netherfield Park](misc/netherfield-park.md), [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md), [Mr. Bennet](persons/mr-bennet.md), [Mr. Collins](persons/mr-collins.md), [Mrs. Bennet](persons/mrs-bennet.md), [Sir William Lucas](persons/sir-william-lucas.md)
-- [Meryton](misc/meryton.md) — The Hertfordshire market town near Longbourn, host to the assembly balls and a militia regiment.
-  - ↳ referenced by: [Brighton](misc/brighton.md), [Longbourn](misc/longbourn.md), [Catherine Bennet](persons/catherine-bennet.md), [Colonel Forster](persons/colonel-forster.md), [George Wickham](persons/george-wickham.md), [Lydia Bennet](persons/lydia-bennet.md), [Sir William Lucas](persons/sir-william-lucas.md)
-- [Netherfield Park](misc/netherfield-park.md) — A leased Hertfordshire estate, about three miles from Longbourn, occupied by Charles Bingley.
-  - ↳ referenced by: [Longbourn](misc/longbourn.md), [Charles Bingley](persons/charles-bingley.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Jane Bennet](persons/jane-bennet.md), [Mrs. Bennet](persons/mrs-bennet.md)
-- [Pemberley](misc/pemberley.md) — Fitzwilliam Darcy's estate in Derbyshire, worth ten thousand a year.
-  - ↳ referenced by: [Caroline Bingley](persons/caroline-bingley.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md), [George Wickham](persons/george-wickham.md), [Georgiana Darcy](persons/georgiana-darcy.md), [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md), [Mr. Bennet](persons/mr-bennet.md), [Mr. Gardiner](persons/mr-gardiner.md), [Mrs. Gardiner](persons/mrs-gardiner.md)
-- [Rosings Park](misc/rosings-park.md) — Lady Catherine de Bourgh's grand estate in Kent, adjoining the Hunsford parsonage.
-  - ↳ referenced by: [Pemberley](misc/pemberley.md), [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md), [Elizabeth Bennet](persons/elizabeth-bennet.md), [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md)
+## Place
+- [Meryton](misc/meryton.md) — The Hertfordshire market town one mile from Longbourn, headquarters of the militia regiment billeted there through the winter.
+  - ↳ referenced by: [Longbourn](objects/longbourn.md), [Netherfield Park](objects/netherfield-park.md), [Catherine Bennet](persons/catherine-bennet.md), [Colonel Forster](persons/colonel-forster.md), [George Wickham](persons/george-wickham.md), [Lydia Bennet](persons/lydia-bennet.md), [William Lucas](persons/william-lucas.md)
 
 ## Tags
 
-### bennet-family (9)
+### author (2)
+- [George Saintsbury](persons/george-saintsbury.md)
+- [Jane Austen](persons/jane-austen.md)
+
+### bennet-family (8)
+- [Longbourn](objects/longbourn.md)
 - [Catherine Bennet](persons/catherine-bennet.md)
 - [Elizabeth Bennet](persons/elizabeth-bennet.md)
 - [Jane Bennet](persons/jane-bennet.md)
 - [Lydia Bennet](persons/lydia-bennet.md)
 - [Mary Bennet](persons/mary-bennet.md)
 - [Mr. Bennet](persons/mr-bennet.md)
-- [Mr. Gardiner](persons/mr-gardiner.md)
 - [Mrs. Bennet](persons/mrs-bennet.md)
-- [Mrs. Gardiner](persons/mrs-gardiner.md)
+
+### bingley-family (3)
+- [Caroline Bingley](persons/caroline-bingley.md)
+- [Charles Bingley](persons/charles-bingley.md)
+- [Louisa Hurst](persons/louisa-hurst.md)
 
 ### brighton (2)
-- [Brighton](misc/brighton.md)
 - [Colonel Forster](persons/colonel-forster.md)
+- [Mrs. Forster](persons/mrs-forster.md)
 
 ### clergy (1)
-- [Mr. Collins](persons/mr-collins.md)
+- [William Collins](persons/william-collins.md)
 
-### derbyshire (4)
-- [Pemberley](misc/pemberley.md)
+### criticism (1)
+- [George Saintsbury](persons/george-saintsbury.md)
+
+### darcy-family (6)
+- [Anne de Bourgh](persons/anne-de-bourgh.md)
+- [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md)
+- [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md)
+- [Georgiana Darcy](persons/georgiana-darcy.md)
+- [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md)
+- [Mrs. Younge](persons/mrs-younge.md)
+
+### derbyshire (7)
+- [Pemberley](objects/pemberley.md)
+- [Elizabeth Bennet](persons/elizabeth-bennet.md)
 - [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md)
 - [Georgiana Darcy](persons/georgiana-darcy.md)
 - [Mr. Gardiner](persons/mr-gardiner.md)
+- [Mrs. Gardiner](persons/mrs-gardiner.md)
+- [Mrs. Reynolds](persons/mrs-reynolds.md)
 
 ### entail (1)
-- [Entail](concepts/entail.md)
+- [Longbourn](objects/longbourn.md)
 
-### gentry (23)
-- [Entail](concepts/entail.md)
-- [Longbourn](misc/longbourn.md)
-- [Netherfield Park](misc/netherfield-park.md)
-- [Pemberley](misc/pemberley.md)
-- [Rosings Park](misc/rosings-park.md)
-- [Caroline Bingley](persons/caroline-bingley.md)
-- [Catherine Bennet](persons/catherine-bennet.md)
-- [Charles Bingley](persons/charles-bingley.md)
-- [Charlotte Lucas](persons/charlotte-lucas.md)
-- [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md)
-- [Elizabeth Bennet](persons/elizabeth-bennet.md)
-- [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md)
-- [Georgiana Darcy](persons/georgiana-darcy.md)
-- [Jane Bennet](persons/jane-bennet.md)
-- [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md)
-- [Lydia Bennet](persons/lydia-bennet.md)
-- [Mary Bennet](persons/mary-bennet.md)
-- [Mr. Bennet](persons/mr-bennet.md)
-- [Mr. Collins](persons/mr-collins.md)
+### estate (4)
+- [Longbourn](objects/longbourn.md)
+- [Netherfield Park](objects/netherfield-park.md)
+- [Pemberley](objects/pemberley.md)
+- [Rosings Park](objects/rosings-park.md)
+
+### fiction (3)
+- [Pride and Prejudice](objects/pride-and-prejudice.md)
+- [George Saintsbury](persons/george-saintsbury.md)
+- [Jane Austen](persons/jane-austen.md)
+
+### gardiner-family (2)
 - [Mr. Gardiner](persons/mr-gardiner.md)
-- [Mrs. Bennet](persons/mrs-bennet.md)
 - [Mrs. Gardiner](persons/mrs-gardiner.md)
-- [Sir William Lucas](persons/sir-william-lucas.md)
 
 ### hertfordshire (17)
-- [Entail](concepts/entail.md)
-- [Longbourn](misc/longbourn.md)
 - [Meryton](misc/meryton.md)
-- [Netherfield Park](misc/netherfield-park.md)
+- [Longbourn](objects/longbourn.md)
+- [Netherfield Park](objects/netherfield-park.md)
 - [Caroline Bingley](persons/caroline-bingley.md)
 - [Catherine Bennet](persons/catherine-bennet.md)
 - [Charles Bingley](persons/charles-bingley.md)
 - [Charlotte Lucas](persons/charlotte-lucas.md)
 - [Elizabeth Bennet](persons/elizabeth-bennet.md)
-- [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md)
 - [George Wickham](persons/george-wickham.md)
 - [Jane Bennet](persons/jane-bennet.md)
+- [Louisa Hurst](persons/louisa-hurst.md)
 - [Lydia Bennet](persons/lydia-bennet.md)
 - [Mary Bennet](persons/mary-bennet.md)
 - [Mr. Bennet](persons/mr-bennet.md)
 - [Mrs. Bennet](persons/mrs-bennet.md)
-- [Sir William Lucas](persons/sir-william-lucas.md)
-
-### hunsford (2)
-- [Rosings Park](misc/rosings-park.md)
-- [Mr. Collins](persons/mr-collins.md)
-
-### inheritance (1)
-- [Entail](concepts/entail.md)
+- [William Collins](persons/william-collins.md)
+- [William Lucas](persons/william-lucas.md)
 
 ### jane-austen (2)
 - [Pride and Prejudice](objects/pride-and-prejudice.md)
 - [Jane Austen](persons/jane-austen.md)
 
-### kent (4)
-- [Rosings Park](misc/rosings-park.md)
+### kent (6)
+- [Rosings Park](objects/rosings-park.md)
+- [Anne de Bourgh](persons/anne-de-bourgh.md)
 - [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md)
+- [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md)
 - [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md)
-- [Mr. Collins](persons/mr-collins.md)
+- [William Collins](persons/william-collins.md)
 
-### literary-criticism (1)
-- [Pride and Prejudice](objects/pride-and-prejudice.md)
-
-### london (2)
+### london (3)
 - [Mr. Gardiner](persons/mr-gardiner.md)
 - [Mrs. Gardiner](persons/mrs-gardiner.md)
+- [Mrs. Younge](persons/mrs-younge.md)
 
-### longbourn (10)
-- [Longbourn](misc/longbourn.md)
+### longbourn (9)
 - [Catherine Bennet](persons/catherine-bennet.md)
 - [Charlotte Lucas](persons/charlotte-lucas.md)
 - [Elizabeth Bennet](persons/elizabeth-bennet.md)
@@ -176,49 +185,79 @@ See also: [concepts](concepts/index.md) · [misc](misc/index.md) · [objects](ob
 - [Lydia Bennet](persons/lydia-bennet.md)
 - [Mary Bennet](persons/mary-bennet.md)
 - [Mr. Bennet](persons/mr-bennet.md)
-- [Mr. Collins](persons/mr-collins.md)
 - [Mrs. Bennet](persons/mrs-bennet.md)
+- [William Collins](persons/william-collins.md)
+
+### lucas-family (2)
+- [Charlotte Lucas](persons/charlotte-lucas.md)
+- [William Lucas](persons/william-lucas.md)
 
 ### meryton (5)
-- [Brighton](misc/brighton.md)
 - [Meryton](misc/meryton.md)
 - [Colonel Forster](persons/colonel-forster.md)
 - [George Wickham](persons/george-wickham.md)
-- [Sir William Lucas](persons/sir-william-lucas.md)
+- [Mrs. Forster](persons/mrs-forster.md)
+- [William Lucas](persons/william-lucas.md)
 
-### militia (5)
-- [Brighton](misc/brighton.md)
-- [Meryton](misc/meryton.md)
+### militia (3)
 - [Colonel Forster](persons/colonel-forster.md)
 - [George Wickham](persons/george-wickham.md)
-- [Lydia Bennet](persons/lydia-bennet.md)
+- [Mrs. Forster](persons/mrs-forster.md)
 
-### netherfield (3)
-- [Netherfield Park](misc/netherfield-park.md)
+### netherfield (4)
+- [Netherfield Park](objects/netherfield-park.md)
 - [Caroline Bingley](persons/caroline-bingley.md)
 - [Charles Bingley](persons/charles-bingley.md)
+- [Louisa Hurst](persons/louisa-hurst.md)
 
-### novel (1)
-- [Pride and Prejudice](objects/pride-and-prejudice.md)
-
-### novelist (1)
-- [Jane Austen](persons/jane-austen.md)
-
-### pemberley (4)
-- [Pemberley](misc/pemberley.md)
-- [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md)
+### pemberley (5)
+- [Pemberley](objects/pemberley.md)
 - [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md)
+- [George Wickham](persons/george-wickham.md)
 - [Georgiana Darcy](persons/georgiana-darcy.md)
+- [Mrs. Reynolds](persons/mrs-reynolds.md)
 
-### pride-and-prejudice (1)
+### pride-and-prejudice (33)
+- [Meryton](misc/meryton.md)
+- [Longbourn](objects/longbourn.md)
+- [Netherfield Park](objects/netherfield-park.md)
+- [Pemberley](objects/pemberley.md)
 - [Pride and Prejudice](objects/pride-and-prejudice.md)
-
-### regency-era (2)
-- [Pride and Prejudice](objects/pride-and-prejudice.md)
+- [Rosings Park](objects/rosings-park.md)
+- [Anne de Bourgh](persons/anne-de-bourgh.md)
+- [Caroline Bingley](persons/caroline-bingley.md)
+- [Catherine Bennet](persons/catherine-bennet.md)
+- [Charles Bingley](persons/charles-bingley.md)
+- [Charlotte Lucas](persons/charlotte-lucas.md)
+- [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md)
+- [Colonel Forster](persons/colonel-forster.md)
+- [Elizabeth Bennet](persons/elizabeth-bennet.md)
+- [Fitzwilliam Darcy](persons/fitzwilliam-darcy.md)
+- [George Saintsbury](persons/george-saintsbury.md)
+- [George Wickham](persons/george-wickham.md)
+- [Georgiana Darcy](persons/georgiana-darcy.md)
 - [Jane Austen](persons/jane-austen.md)
+- [Jane Bennet](persons/jane-bennet.md)
+- [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md)
+- [Louisa Hurst](persons/louisa-hurst.md)
+- [Lydia Bennet](persons/lydia-bennet.md)
+- [Mary Bennet](persons/mary-bennet.md)
+- [Mr. Bennet](persons/mr-bennet.md)
+- [Mr. Gardiner](persons/mr-gardiner.md)
+- [Mrs. Bennet](persons/mrs-bennet.md)
+- [Mrs. Forster](persons/mrs-forster.md)
+- [Mrs. Gardiner](persons/mrs-gardiner.md)
+- [Mrs. Reynolds](persons/mrs-reynolds.md)
+- [Mrs. Younge](persons/mrs-younge.md)
+- [William Collins](persons/william-collins.md)
+- [William Lucas](persons/william-lucas.md)
 
-### rosings-park (3)
-- [Rosings Park](misc/rosings-park.md)
+### regency-england (1)
+- [Pride and Prejudice](objects/pride-and-prejudice.md)
+
+### rosings (4)
+- [Rosings Park](objects/rosings-park.md)
+- [Anne de Bourgh](persons/anne-de-bourgh.md)
 - [Colonel Fitzwilliam](persons/colonel-fitzwilliam.md)
 - [Lady Catherine de Bourgh](persons/lady-catherine-de-bourgh.md)
 
@@ -226,4 +265,4 @@ See also: [concepts](concepts/index.md) · [misc](misc/index.md) · [objects](ob
 
 1 ingested raw source(s) — full catalog with the importing model in [sources/index.md](sources/index.md).
 
-- [raw/pride-and-prejudice.txt](../raw/pride-and-prejudice.txt) — cited by 29 pages
+- [raw/pride-and-prejudice.txt](../raw/pride-and-prejudice.txt) — cited by 33 pages

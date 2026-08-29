@@ -2,4 +2,5 @@
 
 The pages in this folder. Generated — do not edit.
 
-- [Nordvane Employee Onboarding](nordvane-employee-onboarding.md) — Nordvane Systems GmbH's process for provisioning new joiners' accounts, access, and mandatory training in their first weeks.
+- [Employee onboarding — Nordvane Systems](employee-onboarding-nordvane-systems.md) — How Nordvane Systems GmbH provisions accounts and badges, and trains new permanent and contract staff.
+- [Prompt injection](prompt-injection.md) — Untrusted text crafted to make an AI system follow instructions embedded in it instead of its operator's.

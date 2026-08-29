@@ -1,60 +1,61 @@
 ---
 type: Organization
 title: Larkspur
-description: Company behind Skylight, a real-time analytics dashboard.
-resource: raw/announcement.md
+description: The company behind Skylight, a real-time analytics dashboard, with a
+  team of around 30 people.
 tags:
-- larkspur
+- software
+- analytics
 - company
-- saas
-timestamp: '2026-07-16T14:53:35Z'
-citadel_version: 0.3.0
+resource: raw/announcement.md
+timestamp: '2026-08-29T00:18:16Z'
+citadel_version: 0.6.0
 ---
 
-Larkspur is the company that makes [Skylight](../systems/skylight.md), a real-time analytics
-dashboard.[^s1]
+Larkspur is the company behind [Skylight](../systems/skylight.md), a real-time analytics
+dashboard.[^s1] On 1 April 2026, Larkspur announced that Skylight 2.0, the latest release of the
+product, had reached general availability.[^s1] Larkspur describes reaching this milestone with a
+team of around 30 people as something the whole company is proud of.[^s1]
 
-[Priya Nadkarni](../persons/priya-nadkarni.md) founded Larkspur in 2021 in Lisbon, after growing
-frustrated that other analytics products calling themselves "real-time" never actually felt
-real-time; she and a small founding group set out to build the tool they wished existed.[^s4]
+[Priya Nadkarni](../persons/priya-nadkarni.md) is Larkspur's founder and CEO.[^s2] Larkspur was
+founded in 2021 in Lisbon: Nadkarni has said she had been working on analytics infrastructure at
+larger companies and kept running into products that called themselves "real-time" without
+actually being real-time, so she and a small founding group set out to build the product that
+became Skylight.[^s5]
 
-As of the Skylight 2.0 general-availability milestone on 1 April 2026, Larkspur had a team of
-around 30 people.[^s1] By a 14 July 2026 interview, Nadkarni described the team as 28 people,
-saying the company has stayed deliberately lean on purpose.[^s5]
+In an interview on The Build Loop podcast, Nadkarni put Larkspur's team at 28 people, calling the
+size deliberately small; she said the company has stayed lean on purpose, and that she thinks the
+pressure of staying lean is part of why the product is good.[^s6]
 
-[Priya Nadkarni](../persons/priya-nadkarni.md) is Larkspur's founder and CEO.[^s1]
+In the same interview, Nadkarni said Larkspur has been profitable since its first month and has
+never taken a "lose money to grow" approach, adding that the company has never had a month in the
+red.[^s7][^s8] This is a financial claim from the company's own founder, not independently verified
+in this wiki.[^llm1]
 
-As of March 2026, Larkspur was hiring for a Senior Platform Engineer role; [Dana
-Kessler](../persons/dana-kessler.md) applied for the position.[^s2]
+Larkspur runs a community forum for Skylight customers, staffed in part by its Skylight Support
+team.[^s3] [Sofia Ruiz](../persons/sofia-ruiz.md) works in Skylight Support and, in February 2026,
+helped a customer resolve a [Skylight](../systems/skylight.md) dashboard bug (see Skylight's Known
+issues).[^s4]
 
-[Sofia Ruiz](../persons/sofia-ruiz.md) works in Larkspur's Support team; in February 2026 she
-diagnosed and fixed a customer-reported bug in [Skylight](../systems/skylight.md).[^s3]
-
-In a 14 July 2026 interview on The Build Loop podcast, Nadkarni said Larkspur has been
-profitable since its first month and has "never had a month in the red," attributing this
-discipline to staying small and charging for something customers need.[^s6] This is a
-self-promotional financial claim made by the company's own founder; no independent source in
-this corpus corroborates Larkspur's profitability, so it should be read as Larkspur's own
-account rather than a verified fact.[^llm1]
-
-## Change Log
-
-- 2026-04-01: team was around 30 people, per the Skylight 2.0 GA announcement.[^s1]
-- 2026-07-14: team is 28 people, per Nadkarni's interview on The Build Loop podcast.[^s5]
+Larkspur's internal #platform Slack channel includes Ruiz, [Tom Alvarez](../persons/tom-alvarez.md),
+and [Wei Chen](../persons/wei-chen.md), who together made several changes to Skylight's
+event-retention and dashboard defaults in February 2026 (see Skylight's Change Log).[^s9]
 
 ## See also
-
 - [Skylight](../systems/skylight.md)
 - [Priya Nadkarni](../persons/priya-nadkarni.md)
-- [Dana Kessler](../persons/dana-kessler.md)
 - [Sofia Ruiz](../persons/sofia-ruiz.md)
+- [Tom Alvarez](../persons/tom-alvarez.md)
+- [Wei Chen](../persons/wei-chen.md)
 
 ## Sources
-
-[^s1]: [raw/announcement.md](../../raw/announcement.md), lines 1-24 — Skylight 2.0 GA announcement (ingested 2026-07-15)
-[^s2]: [raw/application-cover-letter.md](../../raw/application-cover-letter.md), line 9 — Kessler's cover letter applying for the Senior Platform Engineer role (ingested 2026-07-16)
-[^s3]: [raw/forum-support-thread.md](../../raw/forum-support-thread.md), lines 55-57 — Ruiz posts as Larkspur Support on the Skylight Support forum (ingested 2026-07-15)
-[^s4]: [raw/interview-transcript-founder.md](../../raw/interview-transcript-founder.md), line 13 — founding story: 2021, Lisbon, motivation (ingested 2026-07-14)
-[^s5]: [raw/interview-transcript-founder.md](../../raw/interview-transcript-founder.md), line 21 — current team size and leanness philosophy (ingested 2026-07-14)
-[^s6]: [raw/interview-transcript-founder.md](../../raw/interview-transcript-founder.md), lines 33-37 — profitability claim (ingested 2026-07-14)
-[^llm1]: LLM - self-promotional financial claim by the company's founder, not independently corroborated in this corpus (added 2026-07-14)
+[^s1]: [raw/announcement.md](../../raw/announcement.md), lines 5-7 — Skylight 2.0 general availability, 1 April 2026, team size and pride statement (ingested 2026-08-29)
+[^s2]: [raw/announcement.md](../../raw/announcement.md), lines 19-21 — Priya Nadkarni named founder & CEO, Larkspur (ingested 2026-08-29)
+[^s3]: [raw/forum-support-thread.md](../../raw/forum-support-thread.md), line 3 — forum byline: "Larkspur Community Forum → Skylight Support" (ingested 2026-08-29)
+[^s4]: [raw/forum-support-thread.md](../../raw/forum-support-thread.md), line 55 — Sofia Ruiz identified as Larkspur Support, accepted-answer badge (ingested 2026-08-29)
+[^s5]: [raw/interview-transcript-founder.md](../../raw/interview-transcript-founder.md), line 13 — Nadkarni: Larkspur founded 2021 in Lisbon, motivation for founding it (ingested 2026-08-29)
+[^s6]: [raw/interview-transcript-founder.md](../../raw/interview-transcript-founder.md), line 21 — Nadkarni: team of 28, deliberately small, lean-on-purpose philosophy (ingested 2026-08-29)
+[^s7]: [raw/interview-transcript-founder.md](../../raw/interview-transcript-founder.md), line 33 — Nadkarni: profitable since first month, never "lose money to grow" (ingested 2026-08-29)
+[^s8]: [raw/interview-transcript-founder.md](../../raw/interview-transcript-founder.md), line 37 — Nadkarni: never had a month in the red (ingested 2026-08-29)
+[^llm1]: LLM - a self-reported profitability claim by the company's own founder in a podcast interview; there is no independent financial disclosure or third-party corroboration in this wiki, and the claim doubles as marketing for the company's financial discipline (added 2026-08-29)
+[^s9]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), lines 1-4 — Slack export header: Workspace Larkspur, #platform channel (ingested 2026-08-29)

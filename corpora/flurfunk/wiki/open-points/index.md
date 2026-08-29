@@ -4,7 +4,7 @@ Tracked open points and their timelines, generated from every `## Open Points` s
 
 ## Open (1)
 
-### `retention-svc` rename to `janitor`
-host: [Skylight](../systems/skylight.md) · updated 2026-02-11 · id: op-retention-svc-rename
-- 2026-02-09: Tom Alvarez proposed renaming the `retention-svc` service to `janitor`; Wei Chen and Sofia Ruiz agreed. Alvarez said he would file a rename ticket, marked low priority.
-- 2026-02-11: the rename ticket still existed and was still low priority; Sofia Ruiz volunteered to take it.
+### Rename retention-svc to janitor
+host: [Skylight](../systems/skylight.md) · updated 2026-02-11 · id: op-rename-retention-svc
+- 2026-02-09: proposed and agreed informally in Larkspur's #platform channel, after the service was noted to run several unrelated cleanup jobs beyond retention; Tom Alvarez said he would add a rename ticket, marked low priority.
+- 2026-02-11: the ticket still existed and was still low priority; Sofia Ruiz said she would pick it up.

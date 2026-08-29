@@ -1,25 +1,24 @@
 ---
 type: Registry
 title: Fault-code catalogue — Aldervik yard
-description: A catalogue of the 20 fault codes (rev. 4, 2025) used on work orders
-  and machine logs across the Aldervik yard, one code deprecated in favor of another.
+description: Werkhof Anlagenservice Brandt's catalogue of 20 fault codes (rev. 4,
+  2025) used on work orders and machine logs at the Aldervik yard, with the corrective
+  action for each code.
 tags:
 - fault-codes
 - maintenance
-- registry
-- equipment
+- werkhof-anlagenservice-brandt
 resource: raw/stoercode-katalog.md
-timestamp: '2026-07-29T08:13:39Z'
-citadel_version: 0.5.0
+timestamp: '2026-08-29T00:31:26Z'
+citadel_version: 0.6.0
 ---
 
-# Fault-code catalogue — Aldervik yard
-
-This catalogue lists the 20 fault codes defined in revision 4 (2025) of the Werkhof fault-code
-catalogue, used on all work orders and machine logs across the Aldervik yard; every fault entry
-names the machine's register number together with exactly one code from this catalogue.[^s1] A
-deprecated code stays listed so old work orders remain readable, but must not be used on new
-entries.[^s1]
+This registry lists the 20 fault codes defined in Werkhof Anlagenservice Brandt's fault-code
+catalogue, revision 4 (2025), used on all work orders and machine logs across the Aldervik yard —
+every fault entry names the affected machine's register number (see the
+[machine registry](machine-registry-aldervik-yard.md)) together with exactly one code from this
+catalogue.[^s1] A deprecated code stays listed so older work orders remain readable, but must not
+be used on new entries.[^s1]
 
 ## 100 series — mechanical
 
@@ -75,24 +74,24 @@ entries.[^s1]
 
 ## Sources
 
-[^s1]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), lines 3-6 — catalogue scope, revision, and code count (ingested 2026-07-29)
-[^s2]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 10 — E-101 (ingested 2026-07-29)
-[^s3]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 11 — E-102 (ingested 2026-07-29)
-[^s4]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 12 — E-110 (ingested 2026-07-29)
-[^s5]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 13 — E-115 (ingested 2026-07-29)
-[^s6]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 14 — E-120 (ingested 2026-07-29)
-[^s7]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 15 — E-142 (ingested 2026-07-29)
-[^s8]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 16 — E-155 (ingested 2026-07-29)
-[^s9]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 17 — E-160 (ingested 2026-07-29)
-[^s10]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 21 — E-201 (ingested 2026-07-29)
-[^s11]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 22 — E-210 (ingested 2026-07-29)
-[^s12]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 23 — E-230 (ingested 2026-07-29)
-[^s13]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 24 — E-250 (ingested 2026-07-29)
-[^s14]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 28 — E-301 (ingested 2026-07-29)
-[^s15]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 29 — E-310 (ingested 2026-07-29)
-[^s16]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 30 — E-320 (ingested 2026-07-29)
-[^s17]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 31 — E-350 (ingested 2026-07-29)
-[^s18]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 35 — E-412 (ingested 2026-07-29)
-[^s19]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 36 — E-420 (ingested 2026-07-29)
-[^s20]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 37 — E-455 (ingested 2026-07-29)
-[^s21]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), lines 41-42 — E-500 (ingested 2026-07-29)
+[^s1]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), lines 3-6 — scope, total code count, and deprecation policy (ingested 2026-08-29)
+[^s2]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 10 — E-101 entry (ingested 2026-08-29)
+[^s3]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 11 — E-102 entry (ingested 2026-08-29)
+[^s4]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 12 — E-110 entry (ingested 2026-08-29)
+[^s5]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 13 — E-115 entry (ingested 2026-08-29)
+[^s6]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 14 — E-120 entry (ingested 2026-08-29)
+[^s7]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 15 — E-142 entry (ingested 2026-08-29)
+[^s8]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 16 — E-155 entry (ingested 2026-08-29)
+[^s9]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 17 — E-160 entry (ingested 2026-08-29)
+[^s10]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 21 — E-201 entry (ingested 2026-08-29)
+[^s11]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 22 — E-210 entry (ingested 2026-08-29)
+[^s12]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 23 — E-230 entry (ingested 2026-08-29)
+[^s13]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 24 — E-250 entry (ingested 2026-08-29)
+[^s14]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 28 — E-301 entry (ingested 2026-08-29)
+[^s15]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 29 — E-310 entry (ingested 2026-08-29)
+[^s16]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 30 — E-320 entry (ingested 2026-08-29)
+[^s17]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 31 — E-350 entry (ingested 2026-08-29)
+[^s18]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 35 — E-412 entry (ingested 2026-08-29)
+[^s19]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 36 — E-420 entry (ingested 2026-08-29)
+[^s20]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), line 37 — E-455 entry (ingested 2026-08-29)
+[^s21]: [raw/stoercode-katalog.md](../../raw/stoercode-katalog.md), lines 41-42 — E-500 entry (ingested 2026-08-29)

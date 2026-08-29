@@ -105,7 +105,7 @@ def test_office_embedded_images_are_extracted_for_the_agent(tmp_citadel, fake_ag
 
     seen: dict[str, object] = {}
 
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
         media_dir = Path(read_path).parent / "media"
         seen["images"] = sorted(m.name for m in media_dir.iterdir()) if media_dir.is_dir() else []
         cite_page("misc/deck.md", rel_key, "A deck fact.")
@@ -124,7 +124,7 @@ def test_office_embedded_images_skipped_when_image_support_off(tmp_citadel, fake
 
     seen: dict[str, object] = {}
 
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
         seen["has_media"] = (Path(read_path).parent / "media").is_dir()
         cite_page("misc/deck.md", rel_key, "A deck fact.")
 
@@ -163,7 +163,7 @@ def test_image_source_is_read_visually_by_agent(tmp_citadel, fake_agent, cite_pa
 
     seen: dict[str, object] = {}
 
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
         seen.update(rel_key=rel_key, kind=kind, read_path=read_path, segment=segment)
         cite_page("misc/diagram.md", rel_key, "The diagram shows a pump loop.")
 
@@ -188,7 +188,7 @@ def test_image_support_off_marks_image_unreadable(tmp_citadel, fake_agent, monke
     monkeypatch.setattr(config, "IMAGE_SUPPORT", False)
     _make_png(raw / "diagram.png")
 
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
         raise AssertionError("no session should run for an image when image support is off")
 
     fake_agent(side_effect=fake)
@@ -204,7 +204,7 @@ def test_text_file_with_image_extension_is_not_treated_as_image(tmp_citadel, fak
 
     seen: dict[str, object] = {}
 
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
         seen.update(kind=kind, read_path=read_path)
         cite_page("misc/notreally.md", rel_key, "A plain fact.")
 
@@ -214,9 +214,14 @@ def test_text_file_with_image_extension_is_not_treated_as_image(tmp_citadel, fak
     assert seen["kind"] == "ingest" and seen["read_path"] is None  # not an image
 
 
-def test_chunked_office_source_keeps_embedded_images_on_first_segment(tmp_citadel, fake_agent, cite_page, monkeypatch):
-    """A deck whose extracted text exceeds the chunking threshold still delivers its embedded
-    images: they ride on the FIRST segment's temp (they were silently dropped before)."""
+def test_chunked_office_source_is_windowed_over_one_full_extract_with_its_images(
+    tmp_citadel, fake_agent, cite_page, monkeypatch
+):
+    """A deck whose extracted text exceeds the chunking threshold is folded in as LINE WINDOWS over
+    ONE temp holding the WHOLE extraction (never rebased slices — a `lines A-B` locator from any
+    pass is the extract's own numbering, which is what lint/`citadel raw` re-extract and verify),
+    and its embedded images ride beside that one temp, so every pass can view them (they were
+    silently dropped before chunking learned about media at all)."""
     raw = tmp_citadel.raw
     monkeypatch.setattr(config, "MAX_SOURCE_CHARS", 40)
     _make_pptx_with_image(
@@ -225,16 +230,31 @@ def test_chunked_office_source_keeps_embedded_images_on_first_segment(tmp_citade
         b"\x89PNG\r\n\x1a\n" + b"\x00" * 5000,
     )
 
-    seen: list[tuple[tuple[int, int] | None, list[str]]] = []
+    seen: list[dict] = []
 
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
         media_dir = Path(read_path).parent / "media"
-        seen.append((segment, sorted(m.name for m in media_dir.iterdir()) if media_dir.is_dir() else []))
+        seen.append(
+            {
+                "segment": segment,
+                "window": line_range,
+                "read_path": read_path,
+                "content": Path(read_path).read_text(encoding="utf-8"),
+                "images": sorted(m.name for m in media_dir.iterdir()) if media_dir.is_dir() else [],
+            }
+        )
         cite_page("misc/bigdeck.md", rel_key, "A deck fact.")
 
     fake_agent(side_effect=fake)
     report = ingest.ingest()
     assert report.processed == ["raw/bigdeck.pptx"]
     assert len(seen) > 1  # genuinely chunked
-    assert seen[0][0] == (1, len(seen)) and seen[0][1] == ["image1.png"]
-    assert all(images == [] for _seg, images in seen[1:])  # later segments carry no duplicate media
+    assert [s["segment"] for s in seen] == [(i, len(seen)) for i in range(1, len(seen) + 1)]
+    assert len({s["read_path"] for s in seen}) == 1  # ONE shared temp for every pass ...
+    full = seen[0]["content"]
+    assert all(s["content"] == full for s in seen)  # ... holding the WHOLE extraction each time
+    assert "First slide paragraph" in full and "Second slide paragraph" in full
+    windows = [s["window"] for s in seen]
+    assert windows[0][0] == 1 and windows[-1][1] == len(full.splitlines())  # windows span the extract
+    assert all(b + 1 == a2 for (_a, b), (a2, _b2) in zip(windows, windows[1:], strict=False))  # contiguous
+    assert all(s["images"] == ["image1.png"] for s in seen)  # the media serves every pass

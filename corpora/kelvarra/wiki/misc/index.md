@@ -2,8 +2,6 @@
 
 The pages in this folder. Generated — do not edit.
 
-- [Little Moriny](little-moriny.md) — A lighthouse station where Maren Aldervane's father served as keeper.
-- [Mount Sarn](mount-sarn.md) — The highest ground in the Republic of Kelvarra, a dormant volcano on the island of Sarn.
-- [Old Customs House](old-customs-house.md) — A Port Ilvess harbour-board building that became the Institute's first home.
-- [Port Ilvess](port-ilvess.md) — The capital and largest harbour town of the Republic of Kelvarra, home to the Institute.
-- [Republic of Kelvarra](republic-of-kelvarra.md) — A fourteen-island archipelago republic in the Sea of Brann, home to Port Ilvess and the Institute.
+- [Mount Sarn](mount-sarn.md) — The highest peak in the Republic of Kelvarra, a dormant volcano on the island of Sarn.
+- [Port Ilvess](port-ilvess.md) — Harbour town and capital of the Republic of Kelvarra, home of the Old Customs House and the Aldervane Institute for Natural Measurement.
+- [Republic of Kelvarra](republic-of-kelvarra.md) — Archipelago nation of fourteen islands in the Sea of Brann; capital Port Ilvess.

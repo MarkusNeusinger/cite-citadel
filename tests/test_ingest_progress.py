@@ -60,7 +60,7 @@ def test_mixed_run_progress_vocabulary_and_order_are_pinned(
     # A tracked source that vanished from disk, still cited -> one delete-cleanup session.
     seed_cited_deleted_source()
 
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
         if kind == "delete":
             delete_citing_pages(rel_key)
             return
@@ -184,7 +184,7 @@ def test_chunked_source_emits_a_segment_event_per_pass(tmp_citadel, fake_agent, 
         encoding="utf-8",
     )
 
-    def fake(rel_key, kind="ingest", read_path=None, segment=None):
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None):
         if segment and segment[0] == 1:
             cite_page("misc/big.md", rel_key, "A fact from the big source.")
 

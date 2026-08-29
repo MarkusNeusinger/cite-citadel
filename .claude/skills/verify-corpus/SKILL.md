@@ -517,7 +517,7 @@ survives the `rm -rf`.
 
 ## `all`
 
-Run all nine corpora **sequentially**, each in its own sandbox (never share a workspace). Grade each,
+Run all ten corpora **sequentially**, each in its own sandbox (never share a workspace). Grade each,
 then print one aggregate table: corpus × {phase-1 check, phase-1 lint, hard-gate verdict, soft
 caught/total, findability (green/amber/floor), backlog (creation / retrieval / capability-gap counts)}.
 `all` passes only if every corpus passes its hard gates. Note that **`pemberley`

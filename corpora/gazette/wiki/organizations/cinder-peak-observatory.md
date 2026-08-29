@@ -1,43 +1,51 @@
 ---
 type: Organization
 title: Cinder Peak Observatory
-description: An astronomical observatory, opened in 1998, that tracks median nightly
-  atmospheric seeing and brought a new 1.2-metre telescope to first light on 1 May
-  2026.
-aliases:
-- Cinderpeak Observatory
+description: An astronomical observatory on Cinder Peak that has surveyed median nightly
+  atmospheric seeing since it opened in 1998, and whose new 1.2-metre telescope achieved
+  first light in 2026.
 tags:
 - astronomy
 - observatory
-- telescope
+- seeing
+- monitoring
+- cinder-peak
 resource: raw/figure-brief.pdf
-timestamp: '2026-07-16T15:20:21Z'
-citadel_version: 0.3.0
+timestamp: '2026-08-28T21:41:08Z'
+citadel_version: 0.6.0
 ---
 
-Cinder Peak Observatory opened in 1998.[^s1] A 2025 brief summarizes the observatory's median nightly [seeing](../concepts/astronomical-seeing.md) through 2025, with monthly medians shown in a chart; raw nightly logs are archived internally and are not reproduced in the brief, which reports medians only.[^s1]
+Cinder Peak Observatory opened in 1998 and has measured the median nightly [seeing](../concepts/astronomical-seeing.md) — the blurring of stars by atmospheric turbulence — through 2025.[^s1] Seeing is reported in arcseconds, where a lower value is sharper.[^s1] The observatory's 2025 brief presents that year's monthly median seeing values as a chart rather than as tabulated numbers, and states that the autumn nights were consistently the sharpest of the year.[^s2]
 
-The observatory's original telescope was a 0.6-metre instrument that had been in service since the observatory opened in 1998, until it was replaced by a new 1.2-metre reflecting telescope that achieved first light on 1 May 2026, capturing its first test images of the night sky.[^s1][^s3] The new telescope is fitted with a modern wide-field camera and is used mainly for monitoring variable stars and for continuing the observatory's long-running atmospheric-seeing survey — the same survey whose 2025 monthly medians were published in the observatory's seeing brief.[^s4] Regular science observations are expected to begin after a commissioning period over the summer of 2026.[^s5]
+On the chart, the shortest (sharpest) bars fall in September, October, and November, matching that claim, with November's bar the shortest of the year; the chart also singles out the single best night measured in 2025 — 0.42 arcsec, recorded November 14 — while the tallest (poorest-seeing) bars fall in June and July.[^s3]
+
+The observatory's survey will continue using a new instrument that offers about three times the light-gathering area of its retired 0.6-metre telescope.[^s2] Raw nightly seeing logs are archived internally and were not reproduced in the 2025 brief, which reports only monthly medians.[^s2]
+
+That new instrument, a 1.2-metre reflecting telescope, achieved first light on 1 May 2026, capturing its first test images of the night sky and replacing the observatory's original 0.6-metre telescope, which had been in service since the observatory opened.[^s4] It is fitted with a modern wide-field camera and is intended mainly for monitoring variable stars and for continuing the observatory's atmospheric-seeing survey.[^s5]
 
 > [!CONTRADICTION]
-> raw/figure-brief.pdf reports the new telescope offers about three times the light-gathering area of the retired 0.6-metre telescope[^s2], but raw/press-release.md reports it roughly quadruples the light-gathering area[^s4].
->
-> Resolution: light-gathering area scales with the square of a telescope's aperture; since the new telescope's 1.2-metre aperture is double the retired telescope's 0.6-metre aperture, that scaling implies a fourfold increase, making "roughly quadruples" the figure consistent with the telescopes' stated apertures — it is unclear why the figure brief instead reports about three times.[^llm1]
+> The 2025 seeing brief estimated the new instrument would offer about three times the light-gathering area of the retired 0.6-metre telescope[^s2], but the first-light announcement instead reports that the new telescope roughly quadruples the observatory's light-gathering area[^s5].
 
-At the first-light announcement, the observatory's director said "first light is always the moment a telescope stops being a construction project and starts being an instrument."[^s5]
+The observatory's director said first light "is always the moment a telescope stops being a construction project and starts being an instrument."[^s6] Regular science observations are expected to begin after a commissioning period over the summer.[^s6]
 
-Public viewing nights are currently suspended while the observatory's dome is resurfaced; they will resume on their published schedule once the observatory reopens to visitors.[^s6] A public notice gives the schedule itself: the resurfacing closure runs from 3 to 17 April 2026, and the observatory reopens to visitors on 18 April 2026.[^s8] The *Meridian Gazette* is the observatory's newspaper of record.[^s6][^s7] The same notice directs readers to the Gazette for further updates.[^s8]
+Public viewing nights, suspended while the dome is resurfaced, will resume on their published schedule once the observatory reopens to visitors.[^s7] A public notice from the observatory dates that suspension precisely: viewing nights were suspended for dome resurfacing from 3 to 17 April 2026, and the observatory reopened to visitors on 18 April 2026, directing readers to The Meridian Gazette for updates.[^s9] Details are published in [The Meridian Gazette](../organizations/the-meridian-gazette.md), which the observatory names as its newspaper of record.[^s8]
+
+> [!CONTRADICTION]
+> The dome-resurfacing notice dates the observatory's reopening to visitors at 18 April 2026[^s9], but the first-light press release — describing the 1 May 2026 announcement — still describes public viewing nights as "currently suspended" pending that reopening.[^s7]
 
 ## See also
-- [Astronomical Seeing](../concepts/astronomical-seeing.md)
+
+- [Astronomical seeing](../concepts/astronomical-seeing.md)
+- [The Meridian Gazette](../organizations/the-meridian-gazette.md)
 
 ## Sources
-[^s1]: [raw/figure-brief.pdf](../../raw/figure-brief.pdf), p. 1 — observatory opened 1998; brief's scope (median nightly seeing through 2025, medians only, raw logs archived internally) (ingested 2026-07-16)
-[^s2]: [raw/figure-brief.pdf](../../raw/figure-brief.pdf), p. 1 — new instrument to continue the survey, about three times the light-gathering area of the retired 0.6-metre telescope (ingested 2026-07-16)
-[^s3]: [raw/press-release.md](../../raw/press-release.md), lines 5-8 — new 1.2-metre reflecting telescope achieved first light 1 May 2026; replaces the original 0.6-metre telescope, in service since the observatory opened (ingested 2026-07-16)
-[^s4]: [raw/press-release.md](../../raw/press-release.md), lines 10-13 — new telescope roughly quadruples light-gathering area, fitted with a modern wide-field camera, used mainly for variable-star monitoring and the atmospheric-seeing survey; 2025 monthly medians published in "Cinderpeak Observatory"'s seeing brief (ingested 2026-07-16)
-[^s5]: [raw/press-release.md](../../raw/press-release.md), lines 15-17 — director's first-light quote; regular science observations expected after a summer commissioning period (ingested 2026-07-16)
-[^s6]: [raw/press-release.md](../../raw/press-release.md), lines 19-21 — public viewing nights suspended for dome resurfacing, resume on published schedule; details in the Meridian Gazette (ingested 2026-07-16)
-[^s7]: [raw/press-release.md](../../raw/press-release.md), lines 23-24 — media note: the Meridian Gazette is the observatory's newspaper of record (ingested 2026-07-16)
-[^s8]: [raw/scanned-notice.pdf](../../raw/scanned-notice.pdf), p. 1 — public notice: viewing nights suspended 3-17 April 2026 for dome resurfacing, reopens to visitors 18 April 2026, updates directed to the Meridian Gazette (ingested 2026-07-16)
-[^llm1]: LLM - model knowledge, not from a raw file: light-gathering area of a circular aperture scales with the square of its diameter (added 2026-07-16)
+
+[^s1]: [raw/figure-brief.pdf](../../raw/figure-brief.pdf), lines 4-6 — observatory opened 1998; seeing defined, reported in arcseconds, lower is sharper (ingested 2026-08-28)
+[^s2]: [raw/figure-brief.pdf](../../raw/figure-brief.pdf), lines 6-10 — monthly medians shown in Figure 1; autumn nights consistently sharpest; new instrument vs. retired 0.6-metre telescope; raw logs archived internally, brief reports medians only (ingested 2026-08-28)
+[^s3]: [raw/figure-brief.pdf](../../raw/figure-brief.pdf), p. 1 — Figure 1 chart: monthly seeing medians and the annotated best single night (0.42 arcsec, Nov 14) (ingested 2026-08-28)
+[^s4]: [raw/press-release.md](../../raw/press-release.md), lines 5-8 — new 1.2-metre telescope achieved first light 1 May 2026, replacing the original 0.6-metre telescope in service since the observatory opened (ingested 2026-08-28)
+[^s5]: [raw/press-release.md](../../raw/press-release.md), lines 10-13 — new telescope roughly quadruples the observatory's light-gathering area, fitted with a wide-field camera, used mainly for monitoring variable stars and continuing the atmospheric-seeing survey (ingested 2026-08-28)
+[^s6]: [raw/press-release.md](../../raw/press-release.md), lines 15-17 — director's first-light quote; commissioning period over the summer before regular science observations begin (ingested 2026-08-28)
+[^s7]: [raw/press-release.md](../../raw/press-release.md), lines 19-21 — public viewing nights suspended for dome resurfacing, to resume on published schedule once the observatory reopens (ingested 2026-08-28)
+[^s8]: [raw/press-release.md](../../raw/press-release.md), lines 23-24 — The Meridian Gazette named as the observatory's newspaper of record (ingested 2026-08-28)
+[^s9]: [raw/scanned-notice.pdf](../../raw/scanned-notice.pdf), p. 1 — dome-resurfacing suspension dated 3-17 April 2026; observatory reopens to visitors 18 April 2026; directs readers to The Meridian Gazette for updates (ingested 2026-08-28)

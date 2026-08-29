@@ -8,107 +8,63 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
-- **`CITADEL_MODEL_CONTEXT_TOKENS` — state your model's context, get a chunk budget that fits it.**
-  Large-source chunking was governed by one number, `CITADEL_MAX_SOURCE_CHARS`, whose 300 000-char
-  default assumes a roomy hosted model. Against a **local** backend that assumption fails in a
-  particularly expensive way: a 55-page PDF extracts to well under the threshold, so it plans a
-  *single* pass, the session's context fills up part-way through, and the run dies — and because
-  resume checkpoints only exist for sources that chunk, nothing was ever banked, so the next attempt
-  starts from zero. Lowering the char threshold works, but it is the wrong unit (an operator knows
-  their `n_ctx`, not a character count) and the wrong scope (it applies to every source in every
-  workspace). The new knob is stated in **tokens** and derives the budget: the per-pass source window
-  is capped at 10% of the stated context at ~4 chars/token, floored at 8 000 chars so the segment
-  count can never run away. The fraction is deliberately small, because the source is only one claim
-  on a session's window — every session also reads the rulebook (~12–13k tokens before a byte of
-  source), searches the wiki, reads and writes pages, and carries every tool result along. The two
-  knobs compose by `min()`, so `MAX_SOURCE_CHARS` remains the hard ceiling and `=0` there still means
-  "never chunk": a stated context is a budget, never an override. Unset — the default — nothing
-  changes at all. The second half of the bug fixes itself on the way: a source that now chunks is a
-  source that now **checkpoints**, so an interrupted import continues at the segment it died on
-  instead of re-buying the ones before it. `citadel doctor` gained a *chunk budget* line that shows
-  what the two knobs actually resolve to, and WARNs when a stated context is small enough that the
-  segment floor had to clamp it.
-- **Segment edges no longer silently drop a fact they cut in half.** Segments are packed by whole
-  paragraphs or whole lines — never mid-line — but never by *meaning*, so a sentence, table row, or
-  list item can begin in one window and finish in the next; the rules said to ingest only what the
-  segment contains and not to invent continuations, which is right about fabrication and wrong about
-  loss. For the sources where the prepared file holds the WHOLE text and the window is only a line
-  range (PDF extractions and transcripts), the rules now say the cut unit may be read past the edge
-  to be seen whole, while ownership stays put: fold it in only if it **begins** inside your window,
-  cite the range it actually occupies even where that crosses the edge, and leave a unit that began
-  earlier to the pass that owned it. A physically sliced segment file is unchanged — there, the
-  slice really is all there is. This matters more now that a stated model context makes segment
-  boundaries more frequent.
-
-- **`CITADEL_INCLUDE_PATTERNS` — an allowlist for discovery ("in `raw/`, read only `.pdf` and
-  `.txt`").** Deciding what citadel reads was a one-sided affair: `CITADEL_IGNORE_PATTERNS` could
-  name what to keep out, so a raw root that mostly holds files you do *not* want folded in had to be
-  described backwards — every unwanted extension enumerated, and a new one silently ingested until
-  someone noticed. The new knob says it forwards instead: when set, a file is discovered only if its
-  **name** matches one of its case-insensitive globs. Written the way people say it — `.pdf`, `.txt`
-  — or as real globs (`*.pdf`, `report-*.md`) or exact names (`notes.md`); a bare `pdf` is read as
-  both `*.pdf` and the literal name, because `Makefile` is also a real filename. Filtered files cost
-  exactly what an ignore match costs: skipped from the walk's own `stat`, never opened, never
-  hashed, never recorded in the manifest or the failures catalog. The two lists compose as
-  **deny-beats-allow** (whitelisting `*.db` does not resurrect `Thumbs.db`), and the escapes that
-  matter stay open — an explicitly named path (`citadel ingest one-off.docx`) is ingested regardless,
-  directories and git-repo sources are never matched (a repo is folded in as one digest, not as its
-  files), and narrowing the allowlist over an existing corpus is **not** a deletion: the sweep
-  confirms every candidate with `.exists()`, so excluded sources keep their pages and simply stop
-  being re-checked.
-- **What an allowlist filters out is visible, not inferred.** A filter that quietly empties the
-  corpus is the one way this knob fails, and it fails looking like success — ingest finds no sources
-  and reports a clean run. So the exclusion is reported at all three layers: a `Not included` section
-  on the run report (and a stderr note naming the patterns in force), a `Not included` bucket in
-  `citadel status` (`not_included` in `--json`, always present; the table row is hidden when no
-  allowlist is configured), and a new `citadel doctor` **include patterns** check that says how many
-  files the allowlist admits versus filters out — and WARNs when it admits nothing while files are
-  there to admit, naming the usual causes (a typo, or a path-shaped pattern like `reports/*.pdf`
-  when matching is per file name).
-
-### Fixed
-
-- **A session that deletes its own staging copy now fails with the real story.** A weak local model
-  was observed inventing a "publish" step at the end of a long session: it copied its finished
-  pages out of the per-source staging copy into the **live** wiki, deleted the staging directory as
-  "done", and exited 0. Ingest then saw an empty staging tree next to a live wiki with pages and
-  failed the source with the anti-emptying valve's generic *"refusing to promote: the session left
-  the wiki with no content pages"* — technically true, entirely misleading, and in the variant where
-  the agent deletes staging *without* touching the live wiki the same run would have been a
-  **silent zero-change success** (money spent, nothing imported, source stamped done). A vanished
-  staging directory is now detected right after the session, before any diff is taken — by an
-  identity sentinel carrying a random, process-local token — not a bare existence check — so a
-  deleted-then-recreated (or symlink-replaced) directory cannot impersonate the copy this run
-  made, even by re-creating the sentinel file — and fails the source with its own reason —
-  *"the staging wiki copy vanished or was replaced mid-session"* — that also names
-  any files that appeared in the live wiki outside the staging discipline (serial runs only, where
-  no concurrent promote can legitimately explain them). Those files are deliberately left in place
-  for inspection: they were paid for, but they were **never validated by this run**, and the reason
-  says so. The session prompt gained the matching instruction — the wiki directory the agent is
-  given is where its work *stays*: there is no publish step, never move or copy its contents
-  elsewhere, never delete or rename the directory itself. A session that destroys its staging and
-  then dies (timeout, non-zero exit) reports both stories — the session's own error and the
-  vanished staging behind it.
-- **Transcript log filenames keep the source's basename.** The per-session transcript's filename
-  label was truncated from the right at 80 characters, so for a source on a network share —
-  `pdf.//host/share/very/deep/tree/Report.pdf` — everything recognizable was cut off and the log
-  was named after the *middle of the directory tree*. The label is now truncated in the middle
-  (head + tail kept), so both the kind/segment prefix and the file's own name survive; the 80-char
-  cap itself (a Windows path-length guard) is unchanged.
-- **The `+` in a pattern list is understood wherever you write it.** `CITADEL_IGNORE_PATTERNS`'
-  extend-marker was only honored in front of the *whole* value, so the equally natural
-  `+*.bak,+~backup*` — one `+` per entry, the way a list of independent additions reads — left the
-  stray `+` inside every pattern but the first, and those then matched only filenames literally
-  starting with `+`. Nothing said so. The marker now counts wherever it appears and is stripped from
-  every entry that carries it; a pattern that must match a real leading `+` writes it as a character
-  class (`[+]draft.md`), which fnmatch already reads as a literal.
-- **A `.env` key assigned twice no longer loses its second half in silence.** The format has no
-  multi-line values, so one line is one setting and the first assignment wins — reasonable, but
-  invisible exactly where it bites: a list of globs reads like something you extend line by line.
-  Repeated keys are now recorded as config warnings, which `citadel doctor`'s config check prints,
-  and both the `.env` template and `docs/configuration.md` state the rule (one line, comma-separated)
-  next to the settings it applies to.
-
+- **`citadel ingest --reingest <paths>` — re-import an already-ingested source from scratch.**
+  `--force` runs a reconcile, which deliberately keeps the source's existing treatment (genre,
+  page structure) and only verifies/updates its facts — so a source first ingested under an old
+  rulebook or a weak model never gets re-thought, and "all ok, nothing new" is the correct
+  reconcile verdict even when a fresh read would organize it completely differently. `--reingest`
+  is the escape hatch: for each named tracked source it first runs a `kind="delete"` cleanup
+  session that strips the source's previous facts from the wiki (dropping its manifest entry),
+  then — in the same run, deletions always run first — ingests it as a brand-new source under the
+  current model, rules, and wiki state (fresh cross-links included). This replaces the manual
+  move-the-file-out / full ingest / move-it-back / ingest dance. A failed cleanup refuses the
+  fresh session for that source (nothing is written on top of the old facts), tracked repos take
+  the first-time `repo` brief over a full digest, and the flag requires explicit paths like
+  `--force` (exit 2 without them; `--force` and `--retry` refuse to combine with it). The
+  `tasks/delete.md` brief now covers the still-on-disk cleanup case.
+- **`CITADEL_STALL_LIMIT` — stop a run whose agent has stopped working.** An agent CLI can fail in a
+  way that does not look like failure: it self-updates mid-run into a build that cannot launch its
+  own tools, a permission is revoked, a sandbox denies every subprocess. The session still exits
+  `0`, still reports the tokens it spent, and still returns an empty diff — so every existing guard
+  passes and the run bills a session for every remaining source while producing nothing. After 3
+  **consecutive** sources come back having changed no page at all (configurable; `0` disables), the
+  run now stops dispatching, reports why (*STOPPED EARLY*, with what to check), and leaves the
+  un-attempted sources pending for a plain re-run. Only sources that were expected to change
+  something count — a fresh source, or a deletion cleanup planned because something still cites the
+  source; a reconcile's "nothing changed" is a real verdict (what a healthy `citadel refresh` slice
+  looks like) and never counts, and any source that does change something resets the counter.
+  Applies to `--jobs N` runs too: queued sources are cancelled and in-flight ones finish and are
+  recorded normally.
+- **`citadel ingest --guidance "…"` — steer a run's sessions with one sentence.** The rules tree
+  says how the wiki is built in general, and the workspace `rules/local.md` holds permanent house
+  rules — but there was no way to hand ONE run a steer like "create one machine registry from the
+  maintenance lists" or "focus on the 2026 figures" without editing a rules file and remembering
+  to revert it. `--guidance TEXT` (env: `CITADEL_INGEST_GUIDANCE`; MCP: the new optional
+  `guidance` argument on `wiki_ingest`, scoped to that one call) appends the text to each
+  source-reading session's prompt as an operator-guidance bullet. Guidance steers routing and
+  emphasis WITHIN the rules — the prompt says explicitly that it never overrides the citation,
+  grounding, or off-limits rules — and it never reaches delete-cleanup or curate sessions, which
+  have no source to steer. Capped at 2000 chars on the EFFECTIVE steer, flag or env alike (the
+  prompt must stay argv-safe; anything longer belongs in `rules/local.md`), collapsed to one line
+  (the prompt bullet is line-shaped), `--guidance ""` disables an env-set steer for one run (the
+  MCP argument mirrors that: omitted lets the env steer stand, `""` disables it, and calls are
+  serialized so one caller's steer can never bleed into another's run), and the steer joins the
+  resume checkpoint's identity so a chunked source interrupted under one guidance is never
+  continued under another.
+- **Sessions may consult a bounded number of RELATED sources** (`CITADEL_RELATED_SOURCES`, default
+  3; `0` turns it off). Sources arrive one at a time; knowledge does not. A fault report saying
+  "HAL-7 down since March" is nearly worthless while the machine register that defines HAL-7 sits
+  unread two files away — and the fact that joins them ("the Hallenkran in bay 7 has been out of
+  service since March") is exactly what the wiki exists for. A source-reading session is now told a
+  per-session budget of OTHER raw files it may open to resolve something its own source uses but
+  never explains, and `core.md` § Related sources bounds the lookup: only for a concrete unexplained
+  term the wiki's pages do not already resolve; the candidate is found **through the wiki** (the
+  page that explains it names its raw file in `## Sources`); the fewest, most promising files, then
+  stop at the budget — never a sweep of the raw tree; anything taken **cites the file it came
+  from** (a fact resting on two sources cites both), never the source of record's marker; and the
+  consulted source is not folded in wholesale, since it has its own ingest session. The budget joins
+  the resume checkpoint's identity, so a chunked source interrupted under one budget is never
+  continued under another.
 - **`citadel curate --guidance "…" [paths…]` — tell curate what you want changed.** The offline
   detectors find structural problems, but some things only a person sees: pages named
   inconsistently, a family that belongs in `registries/`, a split that reads better the other way
@@ -137,63 +93,119 @@ All notable changes to this project are documented here. The format is based on
   three near-duplicate product pages. A guided cluster's findings now name the run's other guided
   anchors (elided past 20) and say they run in sequence, so a page one session creates is extended
   by the next instead of re-invented.
-- **A curate cluster can no longer promote a broken cross-link.** Renaming and merging pages is what
-  curate is for — and a `--guidance` steer makes renames the common case — but a rename is the one
-  edit that reliably strands inbound links, and the mechanical rename-repair net only fires when the
-  page KEEPS its title, which a *retitle* by definition does not. So a steered rename used to
-  promote cleanly and leave the wiki carrying a dangling link until someone ran `citadel lint`.
-  Every cluster session now runs under a no-new-broken-links post-condition (ingest's existing
-  `extra_check` seam, so it is checked against staging BEFORE the promote): a cluster whose edit
-  leaves a cross-link pointing at a page that does not exist is failed and rolled back whole.
-  Compared by dangling target against a per-cluster baseline of the live wiki, never by
-  `(page, target)` pair — a cluster moves pages, so a link that was already dangling would look
-  brand new the moment its page is renamed, and inherited damage never fails a cluster.
-- **Sessions may consult a bounded number of RELATED sources** (`CITADEL_RELATED_SOURCES`, default
-  3; `0` turns it off). Sources arrive one at a time; knowledge does not. A fault report saying
-  "HAL-7 down since March" is nearly worthless while the machine register that defines HAL-7 sits
-  unread two files away — and the fact that joins them ("the Hallenkran in bay 7 has been out of
-  service since March") is exactly what the wiki exists for. A source-reading session is now told a
-  per-session budget of OTHER raw files it may open to resolve something its own source uses but
-  never explains, and `core.md` § Related sources bounds the lookup: only for a concrete unexplained
-  term the wiki's pages do not already resolve; the candidate is found **through the wiki** (the
-  page that explains it names its raw file in `## Sources`); the fewest, most promising files, then
-  stop at the budget — never a sweep of the raw tree; anything taken **cites the file it came
-  from** (a fact resting on two sources cites both), never the source of record's marker; and the
-  consulted source is not folded in wholesale, since it has its own ingest session. The budget joins
-  the resume checkpoint's identity, so a chunked source interrupted under one budget is never
-  continued under another.
-- **`citadel ingest --guidance "…"` — steer a run's sessions with one sentence.** The rules tree
-  says how the wiki is built in general, and the workspace `rules/local.md` holds permanent house
-  rules — but there was no way to hand ONE run a steer like "create one machine registry from the
-  maintenance lists" or "focus on the 2026 figures" without editing a rules file and remembering
-  to revert it. `--guidance TEXT` (env: `CITADEL_INGEST_GUIDANCE`; MCP: the new optional
-  `guidance` argument on `wiki_ingest`, scoped to that one call) appends the text to each
-  source-reading session's prompt as an operator-guidance bullet. Guidance steers routing and
-  emphasis WITHIN the rules — the prompt says explicitly that it never overrides the citation,
-  grounding, or off-limits rules — and it never reaches delete-cleanup or curate sessions, which
-  have no source to steer. Capped at 2000 chars on the EFFECTIVE steer, flag or env alike (the
-  prompt must stay argv-safe; anything longer belongs in `rules/local.md`), collapsed to one line
-  (the prompt bullet is line-shaped), `--guidance ""` disables an env-set steer for one run (the
-  MCP argument mirrors that: omitted lets the env steer stand, `""` disables it, and calls are
-  serialized so one caller's steer can never bleed into another's run), and the steer joins the
-  resume checkpoint's identity so a chunked source interrupted under one guidance is never
-  continued under another.
+- **`citadel curate` repairs dangling citations.** `citadel lint` has always listed a `[^sN]` that
+  points at a file no longer on disk under *Fabricated/missing sources* (and exits 3 for it), and
+  ingest's failed-cleanup hint names `citadel curate` as the repair tool — but curate had no detector
+  for the defect, so the hint pointed at a tool that would never plan the page. The new `bad_source`
+  plan reason is computed with `validate.source_issues`, the same predicate `citadel check` and lint
+  run, so the three agree by construction; a flagged cluster's findings checklist carries
+  `tasks/delete.md`-style repair guidance (repoint a renamed source, strip the facts whose only
+  source is gone, never invent a replacement).
+- **`CITADEL_INCLUDE_PATTERNS` — an allowlist for discovery ("in `raw/`, read only `.pdf` and
+  `.txt`").** Deciding what citadel reads was a one-sided affair: `CITADEL_IGNORE_PATTERNS` could
+  name what to keep out, so a raw root that mostly holds files you do *not* want folded in had to be
+  described backwards — every unwanted extension enumerated, and a new one silently ingested until
+  someone noticed. The new knob says it forwards instead: when set, a file is discovered only if its
+  **name** matches one of its case-insensitive globs. Written the way people say it — `.pdf`, `.txt`
+  — or as real globs (`*.pdf`, `report-*.md`) or exact names (`notes.md`); a bare `pdf` is read as
+  both `*.pdf` and the literal name, because `Makefile` is also a real filename. Filtered files cost
+  exactly what an ignore match costs: skipped from the walk's own `stat`, never opened, never
+  hashed, never recorded in the manifest or the failures catalog. The two lists compose as
+  **deny-beats-allow** (whitelisting `*.db` does not resurrect `Thumbs.db`), and the escapes that
+  matter stay open — an explicitly named path (`citadel ingest one-off.docx`) is ingested regardless,
+  directories and git-repo sources are never matched (a repo is folded in as one digest, not as its
+  files), and narrowing the allowlist over an existing corpus is **not** a deletion: the sweep
+  confirms every candidate with `.exists()`, so excluded sources keep their pages and simply stop
+  being re-checked.
+- **What an allowlist filters out is visible, not inferred.** A filter that quietly empties the
+  corpus is the one way this knob fails, and it fails looking like success — ingest finds no sources
+  and reports a clean run. So the exclusion is reported at all three layers: a `Not included` section
+  on the run report (and a stderr note naming the patterns in force), a `Not included` bucket in
+  `citadel status` (`not_included` in `--json`, always present; the table row is hidden when no
+  allowlist is configured), and a new `citadel doctor` **include patterns** check that says how many
+  files the allowlist admits versus filters out — and WARNs when it admits nothing while files are
+  there to admit, naming the usual causes (a typo, or a path-shaped pattern like `reports/*.pdf`
+  when matching is per file name).
+- **`CITADEL_MODEL_CONTEXT_TOKENS` — state your model's context, get a chunk budget that fits it.**
+  Large-source chunking was governed by one number, `CITADEL_MAX_SOURCE_CHARS`, whose 300 000-char
+  default assumes a roomy hosted model. Against a **local** backend that assumption fails in a
+  particularly expensive way: a 55-page PDF extracts to well under the threshold, so it plans a
+  *single* pass, the session's context fills up part-way through, and the run dies — and because
+  resume checkpoints only exist for sources that chunk, nothing was ever banked, so the next attempt
+  starts from zero. Lowering the char threshold works, but it is the wrong unit (an operator knows
+  their `n_ctx`, not a character count) and the wrong scope (it applies to every source in every
+  workspace). The new knob is stated in **tokens** and derives the budget: the per-pass source window
+  is capped at 10% of the stated context at ~4 chars/token, floored at 8 000 chars so the segment
+  count can never run away. The fraction is deliberately small, because the source is only one claim
+  on a session's window — every session also reads the rulebook (~12–13k tokens before a byte of
+  source), searches the wiki, reads and writes pages, and carries every tool result along. The two
+  knobs compose by `min()`, so `MAX_SOURCE_CHARS` remains the hard ceiling and `=0` there still means
+  "never chunk": a stated context is a budget, never an override. Unset — the default — nothing
+  changes at all. The second half of the bug fixes itself on the way: a source that now chunks is a
+  source that now **checkpoints**, so an interrupted import continues at the segment it died on
+  instead of re-buying the ones before it. `citadel doctor` gained a *chunk budget* line that shows
+  what the two knobs actually resolve to, and WARNs when a stated context is small enough that the
+  segment floor had to clamp it.
+- **The console shows which pass a chunked source is on.** A large source folds in over several
+  sessions against one staging copy and holds a single console row for the whole job — a row that
+  can legitimately stand still for hours and was, on screen, indistinguishable from a hung run
+  (reported from a 14-source ingest that sat on one PDF for 15 hours across 7 sessions with nothing
+  but a spinner to show for it). The live row now carries `part 3/8`, the verdict `8 parts` (its
+  cost is the sum over all of them), and a failed source `part 7/8` — where it died, and where
+  `CITADEL_RESUME` continues; with a resume checkpoint the numbering starts at the segment actually
+  being paid for. A single-pass source never shows a `part 1/1` — the event fires only when there is
+  more than one pass. Off a TTY or under `--verbose` it is one line per pass, and the per-pass
+  transcript label carries the pass in FRONT of the source key (`pdf.p3of8.…`), the end that survives
+  filename truncation.
+- **The viewer gained a sources overview, a folder tree, and paths you recognize.** Every embedded
+  source now carries a `display` path — its key collapsed against the configured raw/docs roots the
+  way `citadel status` already shortens keys — shown wherever the viewer names a source, so a
+  network-share workspace no longer shows 200-character UNC strings. The sidebar's Sources axis is a
+  folder tree over those paths (single-child chains collapsed, leaves = filenames), and a new
+  `#sources` overview lists one row per source — filename, folder, importing model, recorded cost
+  (with AI credits), duration, token volume, last-checked date, citation count — with corpus totals.
+  The persisted could-not-ingest catalog renders there as its own table (file, folder, reason,
+  attempts) with a failed-count chip on the sidebar, so a skipped-but-relevant file is visible
+  instead of indistinguishable from one the wiki simply never mentions. The duration is new as well:
+  a successful source now stamps `seconds` into the manifest — citadel's own wall-clock measurement
+  of the run's work on it (chunked segments summed; a resumed source records the finishing run),
+  carried across moves and cache re-stamps like `ingested_at`, absent when unknown — and
+  `citadel status` shows it on the ingested row. On a local model, time IS the cost: the backend
+  reports no dollars.
 
 ### Changed
 
-- **All three supported CLIs are now recognized as vision-capable backends.** Nothing in code ever
-  gated image reading on the backend — `CITADEL_IMAGE_SUPPORT` and `CITADEL_PDF_MODE=images` run
-  the same session whatever CLI is configured — but `citadel doctor` warned on *any* non-claude
-  backend that images mode "may silently ingest PDF text only", and the rules/docs said images mode
-  needs the claude CLI. Verified in practice: copilot and agy render PDF pages and PPTX-embedded
-  images visually just like claude (given only a file path, copilot reads figures straight out of a
-  PDF page). `doctor` now keeps a known-vision set (claude, copilot, agy) and warns only for a
-  backend outside it; `formats/pdf.md`, the troubleshooting guide, and the verify-corpus protocols
-  name all three. An unrecognized custom CLI still WARNs — against a reader that cannot render
-  pixels, images mode silently degrades to text-only, which is exactly what the warning exists to
-  catch — and a proxy-redirected **local model** still needs to be vision-capable itself (the
-  `docs/configuration.md` caveat; doctor cannot see through the CLI to the model).
-
+- **All ten committed showcase wikis rebuilt under the current rulebook** (Sonnet, in place per the
+  verify-corpus regeneration recipe — leuchtfeuer's three-wave replay with the delete cleanup
+  running first, clockwork's two-commit repo protocol, gazette in images mode, kontor with image
+  support, flurfunk and leuchtfeuer with style profiles, pemberley's three windowed passes). Nine
+  of the ten had been stamped under the 0.5.x rulebook since 2026-07-16 — before the `Registry`
+  page kind, the section-level genre trigger, the related-source lookups, and the segment-edge
+  rules existed — so the gallery no longer showed what ingest actually produces. Every rebuilt
+  wiki was re-graded against its hidden ground truth, retrieval-first: **ten of ten pass every
+  hard gate**, `check`/`lint` clean everywhere, 149 pages over 71 sources. The rebuild is also
+  what surfaced the chunked-locator defect fixed below — pemberley was built twice, and the
+  second build's 104/106 locator sample is the fix's proof. The grades, their soft misses
+  (VCB-008 … VCB-018) and the two updated entries live in `docs/verify-corpus-backlog.md`; the
+  manifests of the corpora built before the same-night rules change were deliberately restamped
+  to the final rulebook, since that change concerns chunked sources only.
+- **Forced/refresh reconciles now re-read with fresh eyes, not just re-verify.** The
+  `tasks/reconcile.md` brief (driving `ingest --force` and every `citadel refresh` session) now
+  explicitly instructs the agent that a re-read is more than verification: mine the unchanged
+  source for wiki-worthy facts the first ingest missed, cross-link against today's wiki (pages
+  that did not exist back then may now be the right home or neighbor), and strip claims the
+  source never actually supported — while still keeping the existing genre treatment (structure
+  churn stays `--reingest`'s job).
+- **A failed deletion cleanup now says how to repair what it left behind.** When a cleanup session
+  cannot strip a removed source's provenance, the run reports which pages still cite the vanished
+  file — but the footer under `Errors:` only offered the generic "it stays in the failures catalog
+  and is retried next run". That is not the whole story for this one failure: unlike every other
+  failed source (which is rolled back, leaving the wiki untouched), a failed cleanup leaves a real
+  defect behind — a dangling `[^sN]` to a file that no longer exists — and retrying the source does
+  not help while the agent is the thing that is broken. The report now adds a line naming the
+  offline tools that see and fix it: `citadel lint` (which lists it under *Fabricated/missing
+  sources* and exits 3) and `citadel curate`. Shown once per run however many cleanups failed, and
+  only for that failure kind.
 - **Registry creation triggers more reliably.** The `Registry` rules (shipped in 0.6.0) fired
   cleanly on sources that *are* enumerations, but three gaps let real-world registries silently not
   happen: an enumeration **embedded** in a prose source (a table, an appendix, a price list at the
@@ -208,35 +220,76 @@ All notable changes to this project are documented here. The format is based on
   spells out the section-level trigger plus a new **"Any source maintains the rows"** section —
   a status change, a new member, or a promotion can come from any source that mentions a keyed
   entity, so rows stop forking into loose facts on topic pages.
-
-- **A failed deletion cleanup now says how to repair what it left behind.** When a cleanup session
-  cannot strip a removed source's provenance, the run reports which pages still cite the vanished
-  file — but the footer under `Errors:` only offered the generic "it stays in the failures catalog
-  and is retried next run". That is not the whole story for this one failure: unlike every other
-  failed source (which is rolled back, leaving the wiki untouched), a failed cleanup leaves a real
-  defect behind — a dangling `[^sN]` to a file that no longer exists — and retrying the source does
-  not help while the agent is the thing that is broken. The report now adds a line naming the
-  offline tools that see and fix it: `citadel lint` (which lists it under *Fabricated/missing
-  sources* and exits 3) and `citadel curate`. Shown once per run however many cleanups failed, and
-  only for that failure kind.
-
-- **`citadel ingest --reingest <paths>` — re-import an already-ingested source from scratch.**
-  `--force` runs a reconcile, which deliberately keeps the source's existing treatment (genre,
-  page structure) and only verifies/updates its facts — so a source first ingested under an old
-  rulebook or a weak model never gets re-thought, and "all ok, nothing new" is the correct
-  reconcile verdict even when a fresh read would organize it completely differently. `--reingest`
-  is the escape hatch: for each named tracked source it first runs a `kind="delete"` cleanup
-  session that strips the source's previous facts from the wiki (dropping its manifest entry),
-  then — in the same run, deletions always run first — ingests it as a brand-new source under the
-  current model, rules, and wiki state (fresh cross-links included). This replaces the manual
-  move-the-file-out / full ingest / move-it-back / ingest dance. A failed cleanup refuses the
-  fresh session for that source (nothing is written on top of the old facts), tracked repos take
-  the first-time `repo` brief over a full digest, and the flag requires explicit paths like
-  `--force` (exit 2 without them; `--force` and `--retry` refuse to combine with it). The
-  `tasks/delete.md` brief now covers the still-on-disk cleanup case.
+- **All three supported CLIs are now recognized as vision-capable backends.** Nothing in code ever
+  gated image reading on the backend — `CITADEL_IMAGE_SUPPORT` and `CITADEL_PDF_MODE=images` run
+  the same session whatever CLI is configured — but `citadel doctor` warned on *any* non-claude
+  backend that images mode "may silently ingest PDF text only", and the rules/docs said images mode
+  needs the claude CLI. Verified in practice: copilot and agy render PDF pages and PPTX-embedded
+  images visually just like claude (given only a file path, copilot reads figures straight out of a
+  PDF page). `doctor` now keeps a known-vision set (claude, copilot, agy) and warns only for a
+  backend outside it; `formats/pdf.md`, the troubleshooting guide, and the verify-corpus protocols
+  name all three. An unrecognized custom CLI still WARNs — against a reader that cannot render
+  pixels, images mode silently degrades to text-only, which is exactly what the warning exists to
+  catch — and a proxy-redirected **local model** still needs to be vision-capable itself (the
+  `docs/configuration.md` caveat; doctor cannot see through the CLI to the model).
+- **Segment edges no longer silently drop a fact they cut in half.** Segments are packed by whole
+  paragraphs or whole lines — never mid-line — but never by *meaning*, so a sentence, table row, or
+  list item can begin in one window and finish in the next; the rules said to ingest only what the
+  segment contains and not to invent continuations, which is right about fabrication and wrong about
+  loss. For the sources where the prepared file holds the WHOLE text and the window is only a line
+  range (PDF extractions and transcripts), the rules now say the cut unit may be read past the edge
+  to be seen whole, while ownership stays put: fold it in only if it **begins** inside your window,
+  cite the range it actually occupies even where that crosses the edge, and leave a unit that began
+  earlier to the pass that owned it. This matters more now that a stated model context makes
+  segment boundaries more frequent — and since every chunked pass is now a window of one unchanged
+  text (see *Fixed*), the permission applies to plain-text and Office sources too.
+- **A curate cluster can no longer promote a broken cross-link.** Renaming and merging pages is what
+  curate is for — and a `--guidance` steer makes renames the common case — but a rename is the one
+  edit that reliably strands inbound links, and the mechanical rename-repair net only fires when the
+  page KEEPS its title, which a *retitle* by definition does not. So a steered rename used to
+  promote cleanly and leave the wiki carrying a dangling link until someone ran `citadel lint`.
+  Every cluster session now runs under a no-new-broken-links post-condition (ingest's existing
+  `extra_check` seam, so it is checked against staging BEFORE the promote): a cluster whose edit
+  leaves a cross-link pointing at a page that does not exist is failed and rolled back whole.
+  Compared by dangling target against a per-cluster baseline of the live wiki, never by
+  `(page, target)` pair — a cluster moves pages, so a link that was already dangling would look
+  brand new the moment its page is renamed, and inherited damage never fails a cluster.
+- **`citadel curate` says why a cluster failed.** A run that rolled clusters back reported only
+  `Failed (rolled back): N`, although every reason was recorded in the failures catalog. The report
+  now prints each failed cluster's reason — the same detail the catalog holds — plus the `--retry`
+  hint.
+- **Console output stays readable on a network-share workspace.** The per-session transcript path
+  `CITADEL_LLM_LOG_DIR` announces was printed absolute — on a workspace mounted from a share that is
+  a ~200-character UNC string echoed once per session, so a chunked source alone wrapped two dozen
+  rows through the live display. It is now printed workspace-relative (`config.display_path`, the
+  `display_key` twin for paths citadel itself writes), with anything outside the workspace falling
+  back to the collapsed/clipped form — short, and still exactly what you open. And the `ERR` verdict
+  line no longer repeats the source key inside the reason: failure reasons are canonically
+  `<key>: <error>` (kept verbatim in the report and the failures catalog), but the key is already the
+  row's head column, and for an out-of-workspace source the repeated absolute key alone pushed the
+  actual error text off-screen.
 
 ### Fixed
 
+- **A chunked plain-text or Office source no longer cites a slice's line numbers as the file's.**
+  Audio transcripts and PDF text layers were always folded in as line windows over ONE unchanged
+  text, so a `lines A-B` locator from any pass was the file's own by construction — but a large
+  plain-text file (and a large Office extraction) still went through the older path: the text was
+  packed by paragraphs into segments, each written to a temp file that **restarted at line 1** and
+  **squeezed every multi-blank-line run to one**. The agent was told to cite the original, and a
+  later pass (whose slice obviously did not start at the book's first line) looked the numbering up
+  and got it right — but a first-segment agent, whose slice *did* start at line 1, trusted the
+  slice's numbering, and every squeezed blank run before a fact pushed its locator one line early.
+  Rebuilding the pemberley showcase made it visible: 25 of 28 sampled segment-1 locators pointed
+  17–258 lines before the passage they cited (`citadel raw --locator` showing a reader the wrong
+  paragraph), while every segment-2/3 sample was exact. Every chunked source now takes the window
+  path: a plain-text source is windowed **in place** — no temp at all, the agent reads the original
+  file through a `lines A-B` window the run instruction names — and a large Office extraction is
+  written once, whole, and windowed the same way, its embedded images riding beside it for every
+  pass (they used to reach only the first segment). `formats/office.md` stays on every Office
+  segment so its `§ Slide N` / `lines A-B` rules bind per window, `tasks/ingest.md` § Large
+  sources describes one mechanism instead of two, and the segment/window position already sits in
+  each resume checkpoint's identity, so nothing changes for interrupted imports.
 - **One invalid page no longer fails every source that touches it.** Ingest validates each page an
   agent session changed and rolls the whole source back on any error — which was blaming a source
   for damage it inherited. If a page is *already* invalid when a session touches it (a failed
@@ -251,32 +304,72 @@ All notable changes to this project are documented here. The format is based on
   session actually breaks can reach the live wiki. The same carve-out applies to the resume-replay
   guard, so a poisoned page can no longer cost a chunked source its checkpoint (and with it every
   paid segment).
-
-### Added
-
-- **`CITADEL_STALL_LIMIT` — stop a run whose agent has stopped working.** An agent CLI can fail in a
-  way that does not look like failure: it self-updates mid-run into a build that cannot launch its
-  own tools, a permission is revoked, a sandbox denies every subprocess. The session still exits
-  `0`, still reports the tokens it spent, and still returns an empty diff — so every existing guard
-  passes and the run bills a session for every remaining source while producing nothing. After 3
-  **consecutive** sources come back having changed no page at all (configurable; `0` disables), the
-  run now stops dispatching, reports why (*STOPPED EARLY*, with what to check), and leaves the
-  un-attempted sources pending for a plain re-run. Only sources that were expected to change
-  something count — a fresh source, or a deletion cleanup planned because something still cites the
-  source; a reconcile's "nothing changed" is a real verdict (what a healthy `citadel refresh` slice
-  looks like) and never counts, and any source that does change something resets the counter.
-  Applies to `--jobs N` runs too: queued sources are cancelled and in-flight ones finish and are
-  recorded normally.
-
-### Changed
-
-- **Forced/refresh reconciles now re-read with fresh eyes, not just re-verify.** The
-  `tasks/reconcile.md` brief (driving `ingest --force` and every `citadel refresh` session) now
-  explicitly instructs the agent that a re-read is more than verification: mine the unchanged
-  source for wiki-worthy facts the first ingest missed, cross-link against today's wiki (pages
-  that did not exist back then may now be the right home or neighbor), and strip claims the
-  source never actually supported — while still keeping the existing genre treatment (structure
-  churn stays `--reingest`'s job).
+- **A session that deletes its own staging copy now fails with the real story.** A weak local model
+  was observed inventing a "publish" step at the end of a long session: it copied its finished
+  pages out of the per-source staging copy into the **live** wiki, deleted the staging directory as
+  "done", and exited 0. Ingest then saw an empty staging tree next to a live wiki with pages and
+  failed the source with the anti-emptying valve's generic *"refusing to promote: the session left
+  the wiki with no content pages"* — technically true, entirely misleading, and in the variant where
+  the agent deletes staging *without* touching the live wiki the same run would have been a
+  **silent zero-change success** (money spent, nothing imported, source stamped done). A vanished
+  staging directory is now detected right after the session, before any diff is taken — by an
+  identity sentinel carrying a random, process-local token — not a bare existence check — so a
+  deleted-then-recreated (or symlink-replaced) directory cannot impersonate the copy this run
+  made, even by re-creating the sentinel file — and fails the source with its own reason —
+  *"the staging wiki copy vanished or was replaced mid-session"* — that also names
+  any files that appeared in the live wiki outside the staging discipline (serial runs only, where
+  no concurrent promote can legitimately explain them). Those files are deliberately left in place
+  for inspection: they were paid for, but they were **never validated by this run**, and the reason
+  says so. The session prompt gained the matching instruction — the wiki directory the agent is
+  given is where its work *stays*: there is no publish step, never move or copy its contents
+  elsewhere, never delete or rename the directory itself. A session that destroys its staging and
+  then dies (timeout, non-zero exit) reports both stories — the session's own error and the
+  vanished staging behind it.
+- **A shared workspace mounted at different paths no longer warns forever.** Two machines running
+  citadel against the same workspace on a network share — a drive letter and a UNC path, a DFS
+  namespace and the direct server name — hit the workspace-mismatch warning on every run: each
+  mutating run re-stamped `meta.workspace` with its own root, so the two mounts kept warning about
+  each other with no way to make it stop, although the setup is safe by construction (source keys
+  are workspace-relative, so change and deletion detection line up across mounts). The manifest now
+  accumulates every workspace root that ever saved it (`meta.workspaces`, deduplicated by spelling,
+  capped at 8), and a root on that list loads with no warning — ingest's deletion-sweep guard and
+  `citadel doctor` treat a known second mount exactly like a matching stamp. Each mount warns exactly
+  once, until its first mutating run records it; an unknown root still warns (the wording now
+  explains the dual-mount case and how it resolves itself) and still faces the unchanged key-space
+  hard guard. Deliberately unchanged: resume checkpoints still key on the writer's root, so an
+  interrupted chunked source handed over between mounts restarts at segment 1 — safe, just not free.
+- **The viewer renders angle-form citations.** `(<raw/Quarterly Report.pdf>)` — the one supported
+  citation form for a path containing spaces, per `grammar.split_link_target` — stayed literal text
+  in the offline viewer: its inline-link regex and footnote-definition parser only accepted
+  whitespace-free targets, so every such definition landed in the compacted Sources block's
+  *unresolved citations* bucket and the inline `[^sN]` markers lost their hover/open affordance. Both
+  parsers now accept the angle form (HTML-escaped and raw), mirroring the Python grammar.
+- **The viewer no longer mints one source identity per citing folder.** An absolute citation target
+  (a `//server/share` UNC path, a `/posix` or drive path — the citation form for an out-of-workspace
+  raw root) was joined under the citing page's folder by both link resolvers, so the same PDF cited
+  from four pages appeared four times in the Sources axis, each copy embedded again. Absolute targets
+  are now their own page-independent identity, and the manifest fallback id for a different-drive
+  source keys by the full path instead of the bare basename, which collided for same-named files in
+  different folders.
+- **Transcript log filenames keep the source's basename.** The per-session transcript's filename
+  label was truncated from the right at 80 characters, so for a source on a network share —
+  `pdf.//host/share/very/deep/tree/Report.pdf` — everything recognizable was cut off and the log
+  was named after the *middle of the directory tree*. The label is now truncated in the middle
+  (head + tail kept), so both the kind/segment prefix and the file's own name survive; the 80-char
+  cap itself (a Windows path-length guard) is unchanged.
+- **The `+` in a pattern list is understood wherever you write it.** `CITADEL_IGNORE_PATTERNS`'
+  extend-marker was only honored in front of the *whole* value, so the equally natural
+  `+*.bak,+~backup*` — one `+` per entry, the way a list of independent additions reads — left the
+  stray `+` inside every pattern but the first, and those then matched only filenames literally
+  starting with `+`. Nothing said so. The marker now counts wherever it appears and is stripped from
+  every entry that carries it; a pattern that must match a real leading `+` writes it as a character
+  class (`[+]draft.md`), which fnmatch already reads as a literal.
+- **A `.env` key assigned twice no longer loses its second half in silence.** The format has no
+  multi-line values, so one line is one setting and the first assignment wins — reasonable, but
+  invisible exactly where it bites: a list of globs reads like something you extend line by line.
+  Repeated keys are now recorded as config warnings, which `citadel doctor`'s config check prints,
+  and both the `.env` template and `docs/configuration.md` state the rule (one line, comma-separated)
+  next to the settings it applies to.
 
 ## [0.6.0] - 2026-07-30
 

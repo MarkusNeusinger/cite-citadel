@@ -5,33 +5,30 @@ The wiki's home index: every page grouped by type (with backlinks), plus tags an
 See also: [objects](objects/index.md) · [organizations](organizations/index.md) · [registries](registries/index.md) · [sources](sources/index.md) · [open points](open-points/index.md)
 
 ## Object
-- [HX-201 heat exchanger](objects/hx-201-heat-exchanger.md) — A shell-and-tube heat exchanger at the Aldervik yard, Hall 2 process line, out of service since a June 2026 tube leak.
+- [HX-201 heat exchanger](objects/hx-201-heat-exchanger.md) — A shell-and-tube heat exchanger at the Aldervik yard, out of service since a June 2026 tube leak; process cooling runs on HX-210 alone until it is repaired.
   - ↳ referenced by: [Machine registry — Aldervik yard](registries/machine-registry-aldervik-yard.md)
-- [PV-014 pressure vessel](objects/pv-014-pressure-vessel.md) — A 5000 l process buffer pressure vessel at the Aldervik yard, Hall 2, placed under observation after a 2026 wall-thickness trend at nozzle N2.
+- [PV-014 pressure vessel](objects/pv-014-pressure-vessel.md) — A 5000 l process buffer vessel at the Aldervik yard, under observation since a June 2026 inspection found wall thinning at nozzle N2.
   - ↳ referenced by: [Machine registry — Aldervik yard](registries/machine-registry-aldervik-yard.md)
 
 ## Organization
-- [Nordwerk Maschinenbau GmbH](organizations/nordwerk-maschinenbau-gmbh.md) — A Werkhof Anlagenservice Brandt service customer in Wischhafen, under a frame contract since 2014, extended through 2028.
+- [Nordwerk Maschinenbau GmbH](organizations/nordwerk-maschinenbau.md) — A frame-contract customer of Werkhof Anlagenservice Brandt in Wischhafen, customer since 2014.
   - ↳ referenced by: [Customer registry — Werkhof Anlagenservice Brandt](registries/customer-registry-werkhof-anlagenservice-brandt.md)
 
 ## Registry
-- [Customer registry — Werkhof Anlagenservice Brandt](registries/customer-registry-werkhof-anlagenservice-brandt.md) — A roster of Werkhof Anlagenservice Brandt's 15 service customers, each with city, contract type, and the year the relationship began.
-  - ↳ referenced by: [Nordwerk Maschinenbau GmbH](organizations/nordwerk-maschinenbau-gmbh.md), [Machine registry — Aldervik yard](registries/machine-registry-aldervik-yard.md)
-- [Fault-code catalogue — Aldervik yard](registries/fault-code-catalogue-aldervik-yard.md) — A catalogue of the 20 fault codes (rev. 4, 2025) used on work orders and machine logs across the Aldervik yard, one code deprecated in favor of another.
+- [Customer registry — Werkhof Anlagenservice Brandt](registries/customer-registry-werkhof-anlagenservice-brandt.md) — Werkhof Anlagenservice Brandt's roster of 15 service customers, with city, contract type, and year service began.
+  - ↳ referenced by: [Nordwerk Maschinenbau GmbH](organizations/nordwerk-maschinenbau.md), [Machine registry — Aldervik yard](registries/machine-registry-aldervik-yard.md)
+- [Fault-code catalogue — Aldervik yard](registries/fault-code-catalogue-aldervik-yard.md) — Werkhof Anlagenservice Brandt's catalogue of 20 fault codes (rev. 4, 2025) used on work orders and machine logs at the Aldervik yard, with the corrective action for each code.
   - ↳ referenced by: [Machine registry — Aldervik yard](registries/machine-registry-aldervik-yard.md)
-- [Machine registry — Aldervik yard](registries/machine-registry-aldervik-yard.md) — A registry of the 28 machines and fixed installations operated at the Aldervik yard, each with type, manufacturer, commissioning year, location, and status.
+- [Machine registry — Aldervik yard](registries/machine-registry-aldervik-yard.md) — Werkhof Anlagenservice Brandt's register of 28 machines and fixed installations at the Aldervik yard, by hall, with type, manufacturer, commissioning year, location, and status.
   - ↳ referenced by: [HX-201 heat exchanger](objects/hx-201-heat-exchanger.md), [PV-014 pressure vessel](objects/pv-014-pressure-vessel.md), [Customer registry — Werkhof Anlagenservice Brandt](registries/customer-registry-werkhof-anlagenservice-brandt.md), [Fault-code catalogue — Aldervik yard](registries/fault-code-catalogue-aldervik-yard.md)
 
 ## Tags
 
 ### customers (2)
-- [Nordwerk Maschinenbau GmbH](organizations/nordwerk-maschinenbau-gmbh.md)
+- [Nordwerk Maschinenbau GmbH](organizations/nordwerk-maschinenbau.md)
 - [Customer registry — Werkhof Anlagenservice Brandt](registries/customer-registry-werkhof-anlagenservice-brandt.md)
 
-### equipment (4)
-- [HX-201 heat exchanger](objects/hx-201-heat-exchanger.md)
-- [PV-014 pressure vessel](objects/pv-014-pressure-vessel.md)
-- [Fault-code catalogue — Aldervik yard](registries/fault-code-catalogue-aldervik-yard.md)
+### equipment (1)
 - [Machine registry — Aldervik yard](registries/machine-registry-aldervik-yard.md)
 
 ### fault-codes (1)
@@ -45,24 +42,25 @@ See also: [objects](objects/index.md) · [organizations](organizations/index.md)
 - [PV-014 pressure vessel](objects/pv-014-pressure-vessel.md)
 - [Machine registry — Aldervik yard](registries/machine-registry-aldervik-yard.md)
 
-### maintenance (5)
+### maintenance (3)
 - [HX-201 heat exchanger](objects/hx-201-heat-exchanger.md)
 - [PV-014 pressure vessel](objects/pv-014-pressure-vessel.md)
-- [Nordwerk Maschinenbau GmbH](organizations/nordwerk-maschinenbau-gmbh.md)
 - [Fault-code catalogue — Aldervik yard](registries/fault-code-catalogue-aldervik-yard.md)
-- [Machine registry — Aldervik yard](registries/machine-registry-aldervik-yard.md)
 
 ### pressure-vessel (1)
 - [PV-014 pressure vessel](objects/pv-014-pressure-vessel.md)
 
-### registry (3)
+### service-contracts (2)
+- [Nordwerk Maschinenbau GmbH](organizations/nordwerk-maschinenbau.md)
+- [Customer registry — Werkhof Anlagenservice Brandt](registries/customer-registry-werkhof-anlagenservice-brandt.md)
+
+### werkhof-anlagenservice-brandt (6)
+- [HX-201 heat exchanger](objects/hx-201-heat-exchanger.md)
+- [PV-014 pressure vessel](objects/pv-014-pressure-vessel.md)
+- [Nordwerk Maschinenbau GmbH](organizations/nordwerk-maschinenbau.md)
 - [Customer registry — Werkhof Anlagenservice Brandt](registries/customer-registry-werkhof-anlagenservice-brandt.md)
 - [Fault-code catalogue — Aldervik yard](registries/fault-code-catalogue-aldervik-yard.md)
 - [Machine registry — Aldervik yard](registries/machine-registry-aldervik-yard.md)
-
-### service-contracts (2)
-- [Nordwerk Maschinenbau GmbH](organizations/nordwerk-maschinenbau-gmbh.md)
-- [Customer registry — Werkhof Anlagenservice Brandt](registries/customer-registry-werkhof-anlagenservice-brandt.md)
 
 ## Sources
 
