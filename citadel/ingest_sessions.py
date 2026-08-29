@@ -751,9 +751,11 @@ def _prepare_passes(
 
     Each pass is ``(read_key, segment, line_range)``: ``read_key`` is the temp ``.md`` the agent
     reads (None = read the source file directly), ``segment`` is ``(part, total)`` for a chunked
-    large source (None = single pass), and ``line_range`` — audio/PDF-extract only — is the
-    1-based inclusive line window of the FULL prepared text this pass processes. ``tmpdirs`` are
-    temp directories the caller MUST remove afterwards.
+    large source (None = single pass), and ``line_range`` — set on EVERY chunked pass — is the
+    1-based inclusive line window of the one full text this pass processes: the prepared
+    extraction when ``read_key`` is set, the source file itself when it is None (a chunked
+    plain-text source is windowed in place). ``tmpdirs`` are temp directories the caller MUST
+    remove afterwards.
 
     - image: one pass, read the file directly (viewed visually).
     - a source whose content exceeds the effective chunk budget (``config.source_chunk_chars()`` —

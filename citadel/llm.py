@@ -954,13 +954,14 @@ def run_ingest_session(
     source that was REMOVED from disk.
 
     ``read_path`` (ingest/reconcile only) is the path to the pre-extracted text of a binary Office
-    source — or, when ``segment`` is set, the one full prepared text of a large source: when set, the
-    agent is told to READ it for content while still citing ``rel_key``, and its directory is
-    granted to the CLI alongside any out-of-workspace wiki/raw. ``segment`` is ``(part, total)`` for a
-    large source split across passes. ``line_range`` (every chunked pass) is the
-    1-based inclusive line window of the full prepared text this pass processes — the prepared
-    file is the WHOLE transcript/extraction, shared by every pass, so locator line numbers never
-    rebase.
+    source, a transcript, or a PDF text layer: when set, the agent is told to READ it for content
+    while still citing ``rel_key``, and its directory is granted to the CLI alongside any
+    out-of-workspace wiki/raw. ``segment`` is ``(part, total)`` for a large source split across
+    passes — it does NOT imply a prepared file: a chunked plain-text source is windowed in place,
+    so ``read_path`` stays None and the agent reads the source itself. ``line_range`` (set on every
+    chunked pass) is the 1-based inclusive line window of the one full text this pass processes —
+    the prepared file when there is one, else the source file — shared unchanged by every pass, so
+    locator line numbers never rebase.
 
     The agent's edits under ``config.wiki_dir()`` are the real result — ``ingest`` discovers what
     changed via a filesystem diff. The return value is only the session's best-effort
