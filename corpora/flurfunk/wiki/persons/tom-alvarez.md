@@ -1,62 +1,60 @@
 ---
 type: Person
 title: Tom Alvarez
-description: 'Larkspur engineer active in the #platform Slack channel; proposed Skylight''s
-  event-retention and dashboard-default changes.'
-resource: raw/slack-export-platform-team.txt
+description: Larkspur platform engineer who proposed and announced Skylight's event-retention
+  and dashboard-default changes in February 2026.
 tags:
+- engineering
+- platform
 - larkspur
-- platform-engineering
-- skylight
-timestamp: '2026-07-16T15:01:11Z'
-citadel_version: 0.3.0
+resource: raw/slack-export-platform-team.txt
+timestamp: '2026-08-29T00:18:16Z'
+citadel_version: 0.6.0
 ---
 
-Tom Alvarez posts in Larkspur's `#platform` Slack channel.[^s1]
-
-## Event retention default
+Tom Alvarez is a Larkspur engineer active in the company's internal #platform Slack channel.[^s1]
 
 On 2026-02-09, Alvarez raised that [Skylight](../systems/skylight.md) had no default
-event-retention window and staging was hoarding events indefinitely.[^s2] He proposed setting the
-default to 7 days.[^s3] He then announced the decision and said he would do the config PR after
-standup.[^s4]
+event-retention window and that staging was "hoarding events forever," then proposed setting the
+default to 7 days; after the team agreed, he announced the decision and said he would do the
+configuration PR.[^s2][^s3] The same day, he asked why the event-cleanup service was still named
+`retention-svc` when it ran four unrelated cleanup jobs, proposed renaming it to `janitor`, and
+said he would open a rename ticket, marked low priority.[^s4]
 
-On 2026-02-11, after Northwind's compliance-audit data loss came to light, Alvarez agreed the
-7-day default had been too aggressive.[^s10] He approved bumping the default to 30 days ("30
-works. do it").[^s11]
+On 2026-02-10, Alvarez proposed defaulting new workspaces' dashboard time range to "last 7 days"
+(from 24 hours) and announced that decision, then, after [Wei Chen](../persons/wei-chen.md)
+pointed out it would show a half-empty chart under the (then) 7-day retention window, agreed to
+scrap the change and keep the 24-hour default.[^s5][^s6]
 
-## `retention-svc` naming
+On 2026-02-11, after learning that a customer's compliance-audit data had aged out under the
+7-day retention window, Alvarez agreed to [Sofia Ruiz](../persons/sofia-ruiz.md)'s proposal to
+raise the default to 30 days.[^s7] Later that day he confirmed the `janitor` rename ticket still
+existed, still low priority, but that `retention-svc` was "officially getting renamed to
+janitor."[^s8]
 
-Also on 2026-02-09, Alvarez asked why the `retention-svc` service was named that, noting it now
-does about four unrelated cleanup jobs.[^s5] He proposed renaming it to `janitor`.[^s6] He said he
-would file a rename ticket, marked low priority.[^s7] As of 2026-02-11, he confirmed the ticket
-still existed and was still low priority.[^s12]
+## Style profile
 
-## Dashboard time-range default
-
-On 2026-02-10, Alvarez proposed defaulting new workspaces' dashboard time range to the last 7
-days (instead of 24 hours) and announced it as a decision.[^s8] Minutes later, after [Wei
-Chen](wei-chen.md) pointed out this would conflict with the 7-day event-retention default,
-Alvarez agreed and reverted the decision, keeping the default at 24 hours.[^s9]
+- Announces group decisions in a short, explicit "decision:" format: "decision: Skylight default
+  event-retention = 7 days. I'll do the config PR after standup."[^s3]
+- Terse acknowledgements and reactions, often a single word or emoji: "nice"[^s9]; "👍"[^s3]
+- Casual, lowercase register with minimal punctuation: "ok before standup — the event retention
+  thing. we still have no default set and staging is basically hoarding events forever"[^s2]
+- Quick to concede a point once shown the reasoning: "...yeah good catch. ok scrap that, keep the
+  dashboard default range at 24 hours."[^s6]
 
 ## See also
-
-- [Skylight](../systems/skylight.md)
 - [Larkspur](../organizations/larkspur.md)
-- [Wei Chen](wei-chen.md)
-- [Sofia Ruiz](sofia-ruiz.md)
+- [Skylight](../systems/skylight.md)
+- [Wei Chen](../persons/wei-chen.md)
+- [Sofia Ruiz](../persons/sofia-ruiz.md)
 
 ## Sources
-
-[^s1]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), lines 1-6 — Slack export header and Alvarez's presence in #platform (ingested 2026-07-16)
-[^s2]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 9 — raises that Skylight has no default retention window (ingested 2026-07-16)
-[^s3]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 13 — proposes a 7-day default (ingested 2026-07-16)
-[^s4]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 17 — announces the decision, commits to the config PR (ingested 2026-07-16)
-[^s5]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 19 — asks why retention-svc is named that (ingested 2026-07-16)
-[^s6]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 22 — proposes renaming retention-svc to janitor (ingested 2026-07-16)
-[^s7]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 25 — commits to filing a low-priority rename ticket (ingested 2026-07-16)
-[^s8]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), lines 42-44 — proposes and decides the 7-day dashboard default (ingested 2026-07-16)
-[^s9]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 46 — agrees with the catch and reverts to 24 hours (ingested 2026-07-16)
-[^s10]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 57 — agrees the 7-day retention default was too aggressive (ingested 2026-07-16)
-[^s11]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 60 — approves bumping the default to 30 days (ingested 2026-07-16)
-[^s12]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 71 — confirms the rename ticket still exists, still low priority (ingested 2026-07-16)
+[^s1]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), lines 1-4 — Slack export header: Workspace Larkspur, #platform channel (ingested 2026-08-29)
+[^s2]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 9 — Tom Alvarez, 2026-02-09 09:11: no default event-retention window, staging hoarding events forever (ingested 2026-08-29)
+[^s3]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), lines 13-17 — Tom Alvarez proposes the 7-day retention default, announces the decision, will do the config PR (ingested 2026-08-29)
+[^s4]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), lines 19-25 — Tom Alvarez questions the retention-svc name, proposes renaming to janitor, opens a low-priority rename ticket (ingested 2026-08-29)
+[^s5]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), lines 42-44 — Tom Alvarez proposes and announces the last-7-days dashboard default for new workspaces (ingested 2026-08-29)
+[^s6]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 46 — Tom Alvarez, 2026-02-10 14:32: concedes Wei Chen's catch and reverts the dashboard default to 24 hours (ingested 2026-08-29)
+[^s7]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), lines 57-63 — Tom Alvarez agrees the 7-day retention default was too aggressive and endorses the 30-day change (ingested 2026-08-29)
+[^s8]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 71 — Tom Alvarez, 2026-02-11 11:13: janitor rename ticket still open, still low priority (ingested 2026-08-29)
+[^s9]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 34 — Tom Alvarez, 2026-02-10 10:05: "nice" (ingested 2026-08-29)

@@ -1,37 +1,27 @@
 ---
 type: Abbreviation
 title: TDS — Total Dissolved Solids
-description: Brew-strength measure — the proportion of dissolved coffee solids in
-  the finished cup.
+description: The dissolved-solids content of a liquid — used for coffee's brew strength
+  (by mass %) and for brewing water quality (in mg/L / ppm).
+tags:
+- coffee
+- water
+- measurement
 aliases:
 - TDS
 - Total Dissolved Solids
-tags:
-- coffee
-- brewing
-- measurement
 resource: raw/brewing-science-notes.md
-timestamp: '2026-07-16T15:03:02Z'
-citadel_version: 0.3.0
+timestamp: '2026-08-28T21:37:02Z'
+citadel_version: 0.6.0
 ---
 
-Total Dissolved Solids (TDS) is the percentage, by mass, of dissolved coffee solids in a brewed cup — used to measure a brew's strength objectively rather than by taste alone.[^llm1]
-
-The [Specialty Coffee Association](../organizations/specialty-coffee-association.md)'s "Golden Cup" standard targets a strength of about 1.15-1.35% TDS in the finished brew, with some references widening the pleasant band up to about 1.45%.[^s1] Espresso runs far more concentrated, around 8-12% TDS.[^s2]
-
-The same measurement also applies to the brewing water itself, expressed in parts per million (ppm) of dissolved minerals rather than as a percentage: the SCA's brewing water target is about 150 mg/L (ppm) TDS, with a usable range of roughly 75 to 250 ppm.[^s3]
-
-Cold brew is measured the same way, but as an undiluted concentrate before serving: [Cordwell Roastworks](../organizations/cordwell-roastworks.md)' locked house spec targets a concentrate TDS of 4.0-4.2%, well above a filter coffee's brewing-strength range because it has not yet been diluted to drinking strength.[^s4]
+TDS (Total Dissolved Solids) measures how much material has dissolved into a liquid.[^llm1] Cordwell Roastworks' brew-lab reference sheet uses it for brew strength: the SCA Golden Cup target is about 1.15-1.35% TDS by mass in a finished filter coffee.[^s1] Espresso is far more concentrated, at about 8-12% TDS.[^s2] The sheet also uses TDS for brewing water: the SCA brew-water target is about 150 mg/L (ppm) TDS, with roughly 75-250 ppm considered a usable range.[^s3]
 
 ## See also
-- [Coffee Brewing](../concepts/coffee-brewing.md)
-- [Specialty Coffee Association](../organizations/specialty-coffee-association.md)
-- [Cordwell Roastworks](../organizations/cordwell-roastworks.md)
-- [EY — Extraction Yield](ey-extraction-yield.md)
+- [Coffee extraction](../concepts/coffee-extraction.md)
 
 ## Sources
-[^s1]: [raw/brewing-science-notes.md](../../raw/brewing-science-notes.md), § The SCA Golden Cup numbers — brewed-coffee strength target (ingested 2026-07-16)
-[^s2]: [raw/brewing-science-notes.md](../../raw/brewing-science-notes.md), § Espresso vs. filter — the two ends of the same dial — espresso TDS (ingested 2026-07-16)
-[^s3]: [raw/brewing-science-notes.md](../../raw/brewing-science-notes.md), § Water chemistry — the invisible ingredient — brewing water TDS target (ingested 2026-07-16)
-[^s4]: [raw/cold-brew-notes.md](../../raw/cold-brew-notes.md), lines 108-113 — locked cold-brew concentrate TDS target (ingested 2026-07-16)
-[^llm1]: LLM - model knowledge, not from a raw file (added 2026-07-16)
+[^llm1]: LLM - TDS (Total Dissolved Solids) is the standard water/solution-chemistry term for a liquid's dissolved-solid content; the raw source uses the abbreviation repeatedly without spelling it out (added 2026-08-28)
+[^s1]: [raw/brewing-science-notes.md](../../raw/brewing-science-notes.md), lines 40-43 — Golden Cup strength/TDS target (ingested 2026-08-28)
+[^s2]: [raw/brewing-science-notes.md](../../raw/brewing-science-notes.md), lines 131-132 — espresso TDS (ingested 2026-08-28)
+[^s3]: [raw/brewing-science-notes.md](../../raw/brewing-science-notes.md), lines 114-119 — SCA brew-water TDS target and usable range (ingested 2026-08-28)

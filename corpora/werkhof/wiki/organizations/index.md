@@ -2,4 +2,4 @@
 
 The pages in this folder. Generated — do not edit.
 
-- [Nordwerk Maschinenbau GmbH](nordwerk-maschinenbau-gmbh.md) — A Werkhof Anlagenservice Brandt service customer in Wischhafen, under a frame contract since 2014, extended through 2028.
+- [Nordwerk Maschinenbau GmbH](nordwerk-maschinenbau.md) — A frame-contract customer of Werkhof Anlagenservice Brandt in Wischhafen, customer since 2014.

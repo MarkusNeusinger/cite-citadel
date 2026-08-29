@@ -5,10 +5,15 @@
   },
   "sources": {
     "raw/clockwork-repo": {
-      "commit": "dc700587cf41fb28b0dbb7ef90380877c5227ed2",
+      "commit": "14a3ed6bebb66b5cf6fda525d21e1c937a12b1e5",
+      "cost_usd": 0.6108,
+      "ingested_at": "2026-08-28T23:54:23Z",
       "kind": "git",
-      "model": "claude:sonnet",
-      "rules_version": "ac0a1175f9da"
+      "model": "claude:claude-sonnet-5",
+      "rules_version": "d08180f322a3",
+      "seconds": 141.0,
+      "tokens_in": 972568,
+      "tokens_out": 12018
     }
   }
 }

@@ -8,11 +8,11 @@ tags:
 - roasting
 - italy
 resource: raw/aurora-bulletin-2024.md
-timestamp: '2026-07-16T14:46:09Z'
-citadel_version: 0.3.0
+timestamp: '2026-08-28T21:22:51Z'
+citadel_version: 0.6.0
 ---
 
-Dolce Decaf is [Caffè Aurora](../organizations/caffe-aurora.md)'s [medium roast](../concepts/coffee-roasting.md), water-process [decaffeinated](../concepts/caffeine.md) coffee.[^s1] It is sold in a 250 g bag for €15.00 as of spring 2026 (see Change Log for its 2024 price).[^s2]
+Dolce Decaf is [Caffè Aurora](../organizations/caffe-aurora.md)'s medium roast, water-process [decaffeinated](../concepts/caffeine.md) coffee.[^s1][^s2] As of spring 2026 it is sold in a 250 g bag for €15.00.[^s2]
 
 ## Change Log
 - 2024-03: €13.00 per 250 g bag.[^s1]
@@ -23,5 +23,5 @@ Dolce Decaf is [Caffè Aurora](../organizations/caffe-aurora.md)'s [medium roast
 - [Caffeine](../concepts/caffeine.md)
 
 ## Sources
-[^s1]: [raw/aurora-bulletin-2024.md](../../raw/aurora-bulletin-2024.md), § This spring's lineup (ingested 2026-07-16)
-[^s2]: [raw/aurora-bulletin-2026.md](../../raw/aurora-bulletin-2026.md), line 17 — spring 2026 price (ingested 2026-07-16)
+[^s1]: [raw/aurora-bulletin-2024.md](../../raw/aurora-bulletin-2024.md), line 17 — lineup table row (ingested 2026-08-28)
+[^s2]: [raw/aurora-bulletin-2026.md](../../raw/aurora-bulletin-2026.md), line 17 — lineup table row (ingested 2026-08-28)

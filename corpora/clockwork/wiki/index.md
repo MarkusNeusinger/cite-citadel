@@ -2,40 +2,32 @@
 
 The wiki's home index: every page grouped by type (with backlinks), plus tags and the source/open-point catalogs. Generated — do not edit.
 
-See also: [projects](projects/index.md) · [systems](systems/index.md) · [sources](sources/index.md)
-
-## Project
-- [clockwork](projects/clockwork.md) — A lightweight Python job scheduler that persists job state to PostgreSQL so a scheduler that was down catches up missed runs.
-  - ↳ referenced by: [PostgreSQL](systems/postgresql.md)
+See also: [systems](systems/index.md) · [sources](sources/index.md)
 
 ## System
-- [PostgreSQL](systems/postgresql.md) — The relational database clockwork uses to persist job definitions, schedule state, and run history.
-  - ↳ referenced by: [clockwork](projects/clockwork.md)
+- [clockwork](systems/clockwork.md) — A lightweight Python job scheduler that runs cron-style YAML jobs and persists their state to PostgreSQL so missed runs are caught up.
+  - ↳ referenced by: [PostgreSQL](systems/postgresql.md)
+- [PostgreSQL](systems/postgresql.md) — The relational database clockwork uses to persist job definitions and run history, coordinated with advisory locks.
+  - ↳ referenced by: [clockwork](systems/clockwork.md)
 
 ## Tags
-
-### advisory-lock (1)
-- [PostgreSQL](systems/postgresql.md)
-
-### cron (1)
-- [clockwork](projects/clockwork.md)
 
 ### database (1)
 - [PostgreSQL](systems/postgresql.md)
 
-### job-scheduler (2)
-- [clockwork](projects/clockwork.md)
+### job-scheduling (2)
+- [clockwork](systems/clockwork.md)
 - [PostgreSQL](systems/postgresql.md)
 
-### open-source (1)
-- [clockwork](projects/clockwork.md)
-
 ### postgresql (2)
-- [clockwork](projects/clockwork.md)
+- [clockwork](systems/clockwork.md)
 - [PostgreSQL](systems/postgresql.md)
 
 ### python (1)
-- [clockwork](projects/clockwork.md)
+- [clockwork](systems/clockwork.md)
+
+### scheduler (1)
+- [clockwork](systems/clockwork.md)
 
 ## Sources
 

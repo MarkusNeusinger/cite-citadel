@@ -5,31 +5,46 @@
   },
   "sources": {
     "raw/meeting-notes-security-review.md": {
-      "ctime_ns": 1784115853409409251,
-      "hashed_at_ns": 1784116651457914360,
-      "model": "claude:sonnet",
-      "mtime_ns": 1784115853409409251,
-      "rules_version": "ac0a1175f9da",
+      "cost_usd": 0.8569,
+      "ctime_ns": 1787950776985246845,
+      "hashed_at_ns": 1787950993957994314,
+      "ingested_at": "2026-08-28T21:13:13Z",
+      "model": "claude:claude-sonnet-5",
+      "mtime_ns": 1787950776985246845,
+      "rules_version": "d08180f322a3",
+      "seconds": 304.4,
       "sha256": "defd90860eb64f06b3d265d9319d60a8ff098a4bacd0858ef230d5c5aa40b04b",
-      "size": 3229
+      "size": 3229,
+      "tokens_in": 848216,
+      "tokens_out": 33284
     },
     "raw/onboarding-guide.md": {
-      "ctime_ns": 1784115853413342485,
-      "hashed_at_ns": 1784116651457914360,
-      "model": "claude:sonnet",
-      "mtime_ns": 1784115853413342485,
-      "rules_version": "ac0a1175f9da",
+      "cost_usd": 0.9325,
+      "ctime_ns": 1787950776985561690,
+      "hashed_at_ns": 1787950993957994314,
+      "ingested_at": "2026-08-28T21:17:33Z",
+      "model": "claude:claude-sonnet-5",
+      "mtime_ns": 1787950776985561690,
+      "rules_version": "d08180f322a3",
+      "seconds": 260.1,
       "sha256": "fd19e2880080d72d2771bbb9a9ebadad0ae53ea84dfc80b5f1fc3feb35d38bd4",
-      "size": 2519
+      "size": 2519,
+      "tokens_in": 1572223,
+      "tokens_out": 26678
     },
     "raw/vendor-faq.md": {
-      "ctime_ns": 1784115853413342485,
-      "hashed_at_ns": 1784116651457914360,
-      "model": "claude:sonnet",
-      "mtime_ns": 1784115853413342485,
-      "rules_version": "ac0a1175f9da",
+      "cost_usd": 0.8807,
+      "ctime_ns": 1787950776985561690,
+      "hashed_at_ns": 1787950993957994314,
+      "ingested_at": "2026-08-28T21:21:18Z",
+      "model": "claude:claude-sonnet-5",
+      "mtime_ns": 1787950776985561690,
+      "rules_version": "d08180f322a3",
+      "seconds": 225.6,
       "sha256": "49ede40d487ad6c5b1c26659704a15119e68a9d5440bd833b61c3944c81296dc",
-      "size": 3369
+      "size": 3369,
+      "tokens_in": 1512649,
+      "tokens_out": 22762
     }
   }
 }

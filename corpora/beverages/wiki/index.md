@@ -5,134 +5,141 @@ The wiki's home index: every page grouped by type (with backlinks), plus tags an
 See also: [abbreviations](abbreviations/index.md) · [concepts](concepts/index.md) · [objects](objects/index.md) · [organizations](organizations/index.md) · [persons](persons/index.md) · [sources](sources/index.md) · [open points](open-points/index.md)
 
 ## Abbreviation
-- [EY — Extraction Yield](abbreviations/ey-extraction-yield.md) — The fraction of a coffee's dry mass that dissolves into the brewed cup — the primary measure of how much was pulled from the grounds.
-  - ↳ referenced by: [TDS — Total Dissolved Solids](abbreviations/tds-total-dissolved-solids.md), [Coffee Brewing](concepts/coffee-brewing.md)
-- [TDS — Total Dissolved Solids](abbreviations/tds-total-dissolved-solids.md) — Brew-strength measure — the proportion of dissolved coffee solids in the finished cup.
-  - ↳ referenced by: [EY — Extraction Yield](abbreviations/ey-extraction-yield.md), [Coffee Brewing](concepts/coffee-brewing.md), [Specialty Coffee Association](organizations/specialty-coffee-association.md)
+- [SCA — Specialty Coffee Association](abbreviations/sca-specialty-coffee-association.md) — Industry body whose "Golden Cup" standard sets the reference targets for coffee extraction yield, brew strength, and brew water.
+  - ↳ referenced by: [Coffee extraction](concepts/coffee-extraction.md)
+- [TDS — Total Dissolved Solids](abbreviations/tds-total-dissolved-solids.md) — The dissolved-solids content of a liquid — used for coffee's brew strength (by mass %) and for brewing water quality (in mg/L / ppm).
+  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [Coffee extraction](concepts/coffee-extraction.md), [Cold brew](concepts/cold-brew.md)
 
 ## Concept
 - [Aurora Ritual](concepts/aurora-ritual.md) — Caffè Aurora's three-step ceremony for drinking a cup of coffee — smell it, taste it black, then customize it.
-  - ↳ referenced by: [Espresso Bar Culture](concepts/espresso-bar-culture.md), [Caffè Aurora](organizations/caffe-aurora.md), [Lina Marchetti](persons/lina-marchetti.md)
-- [Caffeine](concepts/caffeine.md) — The stimulant compound in coffee and tea - how it blocks adenosine to produce alertness, its effects on health, sleep, and dependence, and how brewing, roast level, and freshness affect how much ends up in the cup.
-  - ↳ referenced by: [Coffee Brewing](concepts/coffee-brewing.md), [Coffee Roasting](concepts/coffee-roasting.md), [L-Theanine](concepts/l-theanine.md), [Matcha Preparation](concepts/matcha-preparation.md), [Tea Antioxidants](concepts/tea-antioxidants.md), [Arabica](objects/arabica.md), [Aurora Midnight](objects/aurora-midnight.md), [Coffee](objects/coffee.md), [Dolce Decaf](objects/dolce-decaf.md), [Matcha](objects/matcha.md), [Robusta](objects/robusta.md), [Tea](objects/tea.md), [Caffè Aurora](organizations/caffe-aurora.md), [Thornbury & Lin](organizations/thornbury-lin.md)
-- [Coffee Brewing](concepts/coffee-brewing.md) — How brewed coffee is made — extraction, the SCA Golden Cup targets, water chemistry, immersion vs. percolation, and Cordwell Roastworks' cold-brew R&D spec — including Caffè Aurora's house opinions, which diverge from the specialty-coffee standard.
-  - ↳ referenced by: [EY — Extraction Yield](abbreviations/ey-extraction-yield.md), [TDS — Total Dissolved Solids](abbreviations/tds-total-dissolved-solids.md), [Caffeine](concepts/caffeine.md), [Espresso Bar Culture](concepts/espresso-bar-culture.md), [Coffee](objects/coffee.md), [Caffè Aurora](organizations/caffe-aurora.md), [Cordwell Roastworks](organizations/cordwell-roastworks.md), [Specialty Coffee Association](organizations/specialty-coffee-association.md)
-- [Coffee Processing](concepts/coffee-processing.md) — The washed, natural, and honey methods of extracting and drying the coffee seed after harvest, and their effect on flavor.
-  - ↳ referenced by: [Coffee](objects/coffee.md), [Rift Valley](objects/rift-valley.md), [Wildflower Natural](objects/wildflower-natural.md)
-- [Coffee Roasting](concepts/coffee-roasting.md) — The application of heat that turns green coffee seeds into brown, aromatic beans, and how light, medium, and dark roast levels trade off origin character against roast-developed flavor.
-  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [Coffee Processing](concepts/coffee-processing.md), [Aurora Midnight](objects/aurora-midnight.md), [Coffee](objects/coffee.md), [Dolce Decaf](objects/dolce-decaf.md), [Harbour Blonde](objects/harbour-blonde.md), [Piazza Espresso](objects/piazza-espresso.md), [Rift Valley](objects/rift-valley.md), [Wildflower Natural](objects/wildflower-natural.md)
-- [Espresso Bar Culture](concepts/espresso-bar-culture.md) — The Italian espresso bar's social ritual — a brief, standing shot at the counter that levels social distinctions, rather than a drink to linger over.
-  - ↳ referenced by: [Aurora Ritual](concepts/aurora-ritual.md), [Coffee Brewing](concepts/coffee-brewing.md), [Caffè Aurora](organizations/caffe-aurora.md), [Lina Marchetti](persons/lina-marchetti.md)
-- [History of Coffee](concepts/history-of-coffee.md) — Coffee's origin in the Ethiopian highlands, its spread through Yemen, the Arab world, and Europe, and its early trade alongside tea, to today's leading producers.
-  - ↳ referenced by: [Espresso Bar Culture](concepts/espresso-bar-culture.md), [History of Tea](concepts/history-of-tea.md), [Coffee](objects/coffee.md), [Thornbury & Lin](organizations/thornbury-lin.md)
-- [History of Tea](concepts/history-of-tea.md) — Tea's legendary discovery in China, the evolution of Chinese tea preparation, its spread to Japan via Buddhist monks and the tea ceremony, and its 17th-century arrival in Europe and England via the merchant house Thornbury & Lin.
-  - ↳ referenced by: [History of Coffee](concepts/history-of-coffee.md), [Camellia Sinensis](objects/camellia-sinensis.md), [Tea](objects/tea.md), [Thornbury & Lin](organizations/thornbury-lin.md), [Mei Lin](persons/mei-lin.md), [Sir Edmund Thornbury](persons/sir-edmund-thornbury.md)
-- [L-Theanine](concepts/l-theanine.md) — A calming amino acid nearly unique to the tea plant that pairs with caffeine to produce composed alertness rather than jitteriness.
-  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [Tea Antioxidants](concepts/tea-antioxidants.md), [Matcha](objects/matcha.md), [Tea](objects/tea.md)
-- [Matcha Preparation](concepts/matcha-preparation.md) — How to whisk matcha at home — the water-temperature rule, the usucha (thin matcha) method, a matcha latte recipe, and fixes for a gritty, bitter, or frothless bowl.
-  - ↳ referenced by: [Tea Brewing](concepts/tea-brewing.md), [Matcha](objects/matcha.md)
-- [Tea Antioxidants](concepts/tea-antioxidants.md) — The catechins (led by EGCG), tannins, vitamins, and aromatic oils that give tea its healthful reputation and its characteristic astringency.
-  - ↳ referenced by: [L-Theanine](concepts/l-theanine.md), [Tea Processing](concepts/tea-processing.md), [Tea](objects/tea.md)
-- [Tea Brewing](concepts/tea-brewing.md) — How water temperature and steeping time shape a cup of tea, from green tea's gentle 70-80°C to black tea's near-boiling 95-100°C.
-  - ↳ referenced by: [Matcha Preparation](concepts/matcha-preparation.md), [Tea Processing](concepts/tea-processing.md), [Tea](objects/tea.md)
-- [Tea Cultivars](concepts/tea-cultivars.md) — The China (var. sinensis) and Assam (var. assamica) botanical varieties behind every tea cultivar, and three named examples — Yabukita, Da Hong Pao, and Darjeeling's seasonal flushes — that shape a cup's character.
-  - ↳ referenced by: [Tea Processing](concepts/tea-processing.md), [Camellia Sinensis](objects/camellia-sinensis.md), [Tea](objects/tea.md)
-- [Tea Processing](concepts/tea-processing.md) — How Chinese tea tradition's six classes — white, green, yellow, oolong, black, and dark — are defined by how far and by what mechanism (enzymatic vs. microbial) the leaf changes after picking, plus the sheng/shou split within pu-erh.
-  - ↳ referenced by: [Tea Brewing](concepts/tea-brewing.md), [Tea Cultivars](concepts/tea-cultivars.md), [Camellia Sinensis](objects/camellia-sinensis.md), [Tea](objects/tea.md)
+  - ↳ referenced by: [Espresso bar culture](concepts/espresso-bar-culture.md), [Caffè Aurora](organizations/caffe-aurora.md), [Lina Marchetti](persons/lina-marchetti.md)
+- [Caffeine](concepts/caffeine.md) — How caffeine works — the adenosine mechanism, its roughly five-hour half-life, safe intake, pregnancy guidance, and common myths — plus a Trieste roastery's own caffeine claims measured against that science.
+  - ↳ referenced by: [Coffee brewing](concepts/coffee-brewing.md), [Coffee extraction](concepts/coffee-extraction.md), [Coffee roasting](concepts/coffee-roasting.md), [Cold brew](concepts/cold-brew.md), [L-theanine](concepts/l-theanine.md), [Matcha preparation](concepts/matcha-preparation.md), [Tea antioxidants](concepts/tea-antioxidants.md), [Tea brewing](concepts/tea-brewing.md), [Arabica](objects/arabica.md), [Aurora Midnight](objects/aurora-midnight.md), [Coffee](objects/coffee.md), [Dolce Decaf](objects/dolce-decaf.md), [Matcha](objects/matcha.md), [Robusta](objects/robusta.md), [Tea](objects/tea.md), [Caffè Aurora](organizations/caffe-aurora.md), [Thornbury & Lin](organizations/thornbury-lin.md)
+- [Coffee brewing](concepts/coffee-brewing.md) — Caffè Aurora's house brewing method for filter coffee — water temperature and extraction target — compared with established brewing guidance.
+  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [Coffee extraction](concepts/coffee-extraction.md), [Cold brew](concepts/cold-brew.md), [Coffee](objects/coffee.md), [Caffè Aurora](organizations/caffe-aurora.md)
+- [Coffee extraction](concepts/coffee-extraction.md) — How much of a coffee's dry mass dissolves into the cup, the SCA Golden Cup targets for extraction yield and strength, and the grind/time/temperature/water levers that control it.
+  - ↳ referenced by: [SCA — Specialty Coffee Association](abbreviations/sca-specialty-coffee-association.md), [TDS — Total Dissolved Solids](abbreviations/tds-total-dissolved-solids.md), [Caffeine](concepts/caffeine.md), [Coffee brewing](concepts/coffee-brewing.md), [Cold brew](concepts/cold-brew.md), [Espresso bar culture](concepts/espresso-bar-culture.md), [Coffee](objects/coffee.md)
+- [Coffee processing](concepts/coffee-processing.md) — The washed, natural, and honey methods used to extract and dry the coffee seed from the harvested cherry, and how each shapes flavor.
+  - ↳ referenced by: [Coffee roasting](concepts/coffee-roasting.md), [History of coffee](concepts/history-of-coffee.md), [Coffee](objects/coffee.md)
+- [Coffee roasting](concepts/coffee-roasting.md) — How heat transforms green coffee seeds into roasted beans, and the light-to-dark roast spectrum.
+  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [Coffee processing](concepts/coffee-processing.md), [History of coffee](concepts/history-of-coffee.md), [Coffee](objects/coffee.md)
+- [Cold brew](concepts/cold-brew.md) — An immersion method that steeps very coarse coffee grounds in cold or room-temperature water for hours to make a concentrate; Cordwell Roastworks' bench-tested house grind, ratio, steep, filtration, and caffeine findings.
+  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [Coffee extraction](concepts/coffee-extraction.md), [Coffee](objects/coffee.md)
+- [Espresso bar culture](concepts/espresso-bar-culture.md) — The Italian ritual of drinking espresso standing at the bar — fast, cheap, and socially leveling.
+  - ↳ referenced by: [Aurora Ritual](concepts/aurora-ritual.md), [History of coffee](concepts/history-of-coffee.md), [Caffè Aurora](organizations/caffe-aurora.md), [Lina Marchetti](persons/lina-marchetti.md)
+- [History of coffee](concepts/history-of-coffee.md) — Coffee's spread from its origin in the Ethiopian highlands through Yemen and the Arab world to Europe and global cultivation, and today's leading producers.
+  - ↳ referenced by: [Espresso bar culture](concepts/espresso-bar-culture.md), [History of tea](concepts/history-of-tea.md), [Arabica](objects/arabica.md), [Coffee](objects/coffee.md), [Robusta](objects/robusta.md), [Thornbury & Lin](organizations/thornbury-lin.md)
+- [History of tea](concepts/history-of-tea.md) — Tea's legendary discovery in China, its spread to Japan via Buddhist monks and the Japanese tea ceremony, and its arrival in Europe in the 17th century.
+  - ↳ referenced by: [History of coffee](concepts/history-of-coffee.md), [Tea processing](concepts/tea-processing.md), [Tea](objects/tea.md), [Thornbury & Lin](organizations/thornbury-lin.md), [Mei Lin](persons/mei-lin.md), [Sir Edmund Thornbury](persons/sir-edmund-thornbury.md)
+- [L-theanine](concepts/l-theanine.md) — An amino acid nearly unique to the tea plant that produces calm relaxation on its own and, paired with tea's caffeine, a steady "awake without the jitters" alertness.
+  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [Tea antioxidants](concepts/tea-antioxidants.md), [Matcha](objects/matcha.md), [Tea](objects/tea.md)
+- [Matcha preparation](concepts/matcha-preparation.md) — How to whisk matcha at home — water temperature, sifting, the zig-zag whisking motion, the usucha and latte methods, and common fixes.
+  - ↳ referenced by: [Tea brewing](concepts/tea-brewing.md), [Matcha](objects/matcha.md)
+- [Tea antioxidants](concepts/tea-antioxidants.md) — Catechins (led by epigallocatechin gallate, EGCG), tannins, and the vitamins, minerals, and aromatic oils that round out tea's chemistry beyond caffeine.
+  - ↳ referenced by: [L-theanine](concepts/l-theanine.md), [Tea](objects/tea.md)
+- [Tea brewing](concepts/tea-brewing.md) — Water temperature and steeping time guidance for white, green, oolong, black, and pu-erh tea — the single biggest factor in a finished cup.
+  - ↳ referenced by: [Matcha preparation](concepts/matcha-preparation.md), [Tea processing](concepts/tea-processing.md), [Tea](objects/tea.md)
+- [Tea processing](concepts/tea-processing.md) — How oxidation — plus kill-green, rolling, a sealing rest, or microbial fermentation — sorts the same leaf into six classes, from white through green, yellow, oolong, and black to dark (including pu-erh).
+  - ↳ referenced by: [History of tea](concepts/history-of-tea.md), [Matcha preparation](concepts/matcha-preparation.md), [Tea antioxidants](concepts/tea-antioxidants.md), [Tea brewing](concepts/tea-brewing.md), [Camellia sinensis](objects/camellia-sinensis.md), [Da Hong Pao](objects/da-hong-pao.md), [Darjeeling](objects/darjeeling.md), [Pu-erh](objects/pu-erh.md), [Tea](objects/tea.md), [Yabukita](objects/yabukita.md)
 
 ## Object
-- [Arabica](objects/arabica.md) — The dominant commercial coffee species (Coffea arabica) — delicate and disease-prone, but prized for a sweeter, more complex flavor.
-  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [History of Coffee](concepts/history-of-coffee.md), [Coffee](objects/coffee.md), [Robusta](objects/robusta.md)
-- [Aurora Midnight](objects/aurora-midnight.md) — Caffè Aurora's flagship coffee, roasted full-city-plus as of 2026 (previously a near-black roast).
-  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [Coffee Roasting](concepts/coffee-roasting.md), [Caffè Aurora](organizations/caffe-aurora.md), [Lina Marchetti](persons/lina-marchetti.md)
-- [Camellia Sinensis](objects/camellia-sinensis.md) — The evergreen shrub native to the highlands of East and South Asia whose leaves are the sole botanical source of true tea, grown as the smaller China variety or the larger-leaved Assam variety.
-  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [History of Tea](concepts/history-of-tea.md), [L-Theanine](concepts/l-theanine.md), [Tea Cultivars](concepts/tea-cultivars.md), [Tea Processing](concepts/tea-processing.md), [Matcha](objects/matcha.md), [Tea](objects/tea.md)
-- [Coffee](objects/coffee.md) — A brewed beverage made from the roasted, ground seeds of the Coffea plant, valued as both a stimulant and a sensory product.
-  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [Coffee Brewing](concepts/coffee-brewing.md), [Coffee Processing](concepts/coffee-processing.md), [Coffee Roasting](concepts/coffee-roasting.md), [History of Coffee](concepts/history-of-coffee.md), [Arabica](objects/arabica.md), [Matcha](objects/matcha.md), [Robusta](objects/robusta.md), [Thornbury & Lin](organizations/thornbury-lin.md)
+- [Arabica](objects/arabica.md) — Coffea arabica — the dominant coffee species, grown at high altitude for a sweeter, more complex cup, but delicate and disease-prone.
+  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [History of coffee](concepts/history-of-coffee.md), [Coffee](objects/coffee.md), [Robusta](objects/robusta.md)
+- [Aurora Midnight](objects/aurora-midnight.md) — Caffè Aurora's flagship dark roast coffee — deep and near-black.
+  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [Caffè Aurora](organizations/caffe-aurora.md), [Lina Marchetti](persons/lina-marchetti.md)
+- [Camellia sinensis](objects/camellia-sinensis.md) — The evergreen shrub native to the highlands of East and South Asia whose leaves, processed differently, yield every true tea — white, green, oolong, black, and pu-erh.
+  - ↳ referenced by: [Tea processing](concepts/tea-processing.md), [Da Hong Pao](objects/da-hong-pao.md), [Darjeeling](objects/darjeeling.md), [Matcha](objects/matcha.md), [Pu-erh](objects/pu-erh.md), [Tea](objects/tea.md), [Yabukita](objects/yabukita.md)
+- [Coffee](objects/coffee.md) — A brewed beverage made from the roasted, ground seeds of the Coffea plant — botanically the pits of the coffee cherry — valued as a stimulant and a sensory product.
+  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [Coffee extraction](concepts/coffee-extraction.md), [Coffee processing](concepts/coffee-processing.md), [Coffee roasting](concepts/coffee-roasting.md), [Cold brew](concepts/cold-brew.md), [History of coffee](concepts/history-of-coffee.md), [Arabica](objects/arabica.md), [Matcha](objects/matcha.md), [Robusta](objects/robusta.md), [Thornbury & Lin](organizations/thornbury-lin.md)
+- [Da Hong Pao](objects/da-hong-pao.md) — Da Hong Pao, or Big Red Robe — the flagship Wuyi rock oolong from the cliffs of Fujian's Wuyi Mountains, prized for its mineral rock rhyme and blended today from cultivars like Rou Gui and Shui Xian.
+  - ↳ referenced by: [Camellia sinensis](objects/camellia-sinensis.md)
+- [Darjeeling](objects/darjeeling.md) — A Himalayan tea whose same bushes yield very different first-flush and prized, muscatel second-flush teas by season.
+  - ↳ referenced by: [Camellia sinensis](objects/camellia-sinensis.md)
 - [Dolce Decaf](objects/dolce-decaf.md) — Caffè Aurora's medium roast, water-process decaf coffee.
-  - ↳ referenced by: [Caffè Aurora](organizations/caffe-aurora.md)
+  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [Caffè Aurora](organizations/caffe-aurora.md)
 - [Harbour Blonde](objects/harbour-blonde.md) — Caffè Aurora's light roast coffee, bright and citrusy.
   - ↳ referenced by: [Caffè Aurora](organizations/caffe-aurora.md)
-- [Matcha](objects/matcha.md) — A fine powder of stone-ground, shade-grown green tea leaf, whisked directly into hot water and consumed whole rather than steeped and discarded.
-  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [History of Tea](concepts/history-of-tea.md), [L-Theanine](concepts/l-theanine.md), [Matcha Preparation](concepts/matcha-preparation.md), [Tea Antioxidants](concepts/tea-antioxidants.md), [Tea Brewing](concepts/tea-brewing.md), [Tea](objects/tea.md)
+- [Matcha](objects/matcha.md) — Green tea dried and stone-ground into a fine powder, whisked into hot water and drunk whole rather than steeped and discarded — sold in ceremonial and culinary grades for different uses.
+  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [L-theanine](concepts/l-theanine.md), [Matcha preparation](concepts/matcha-preparation.md), [Tea brewing](concepts/tea-brewing.md), [Camellia sinensis](objects/camellia-sinensis.md), [Tea](objects/tea.md)
 - [Piazza Espresso](objects/piazza-espresso.md) — Caffè Aurora's medium-dark house espresso blend.
   - ↳ referenced by: [Caffè Aurora](organizations/caffe-aurora.md)
+- [Pu-erh](objects/pu-erh.md) — A post-fermented dark tea from Yunnan split into slow-aged sheng ("raw") tea and the fast, wet-piled shou ("ripe") style invented in 1973.
+  - ↳ referenced by: [Tea processing](concepts/tea-processing.md), [Camellia sinensis](objects/camellia-sinensis.md), [Tea](objects/tea.md)
 - [Rift Valley](objects/rift-valley.md) — Caffè Aurora's spring 2024 seasonal single-origin coffee — a washed Kenyan roasted light-medium.
-  - ↳ referenced by: [Coffee Processing](concepts/coffee-processing.md), [Caffè Aurora](organizations/caffe-aurora.md)
-- [Robusta](objects/robusta.md) — The hardier of the two commercial coffee species (Coffea canephora) — higher-yielding and higher-caffeine, but harsher and more bitter in the cup.
-  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [History of Coffee](concepts/history-of-coffee.md), [Arabica](objects/arabica.md), [Coffee](objects/coffee.md)
-- [Tea](objects/tea.md) — An infusion brewed from the leaves of *Camellia sinensis* — the world's second most consumed beverage after water — whose white, green, oolong, black, and pu-erh forms differ only in how far the leaf is oxidized before drying.
-  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [History of Tea](concepts/history-of-tea.md), [L-Theanine](concepts/l-theanine.md), [Matcha Preparation](concepts/matcha-preparation.md), [Tea Antioxidants](concepts/tea-antioxidants.md), [Tea Brewing](concepts/tea-brewing.md), [Tea Cultivars](concepts/tea-cultivars.md), [Tea Processing](concepts/tea-processing.md), [Camellia Sinensis](objects/camellia-sinensis.md), [Matcha](objects/matcha.md), [Thornbury & Lin](organizations/thornbury-lin.md)
-- [Wildflower Natural](objects/wildflower-natural.md) — Caffè Aurora's seasonal single-origin coffee — a light-medium, natural-process Ethiopian.
-  - ↳ referenced by: [Coffee Processing](concepts/coffee-processing.md), [Caffè Aurora](organizations/caffe-aurora.md)
+  - ↳ referenced by: [Coffee processing](concepts/coffee-processing.md), [Caffè Aurora](organizations/caffe-aurora.md)
+- [Robusta](objects/robusta.md) — Coffea canephora — the hardier, higher-caffeine, higher-yield coffee species, used in instant coffee and espresso blends for body and crema.
+  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [History of coffee](concepts/history-of-coffee.md), [Arabica](objects/arabica.md), [Coffee](objects/coffee.md)
+- [Tea](objects/tea.md) — An infusion made from the leaves of Camellia sinensis — second only to water in worldwide consumption — whose color and character come entirely from how the leaf is processed after picking, not from a different plant.
+  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [History of tea](concepts/history-of-tea.md), [L-theanine](concepts/l-theanine.md), [Tea antioxidants](concepts/tea-antioxidants.md), [Tea brewing](concepts/tea-brewing.md), [Tea processing](concepts/tea-processing.md), [Camellia sinensis](objects/camellia-sinensis.md), [Da Hong Pao](objects/da-hong-pao.md), [Darjeeling](objects/darjeeling.md), [Matcha](objects/matcha.md), [Pu-erh](objects/pu-erh.md), [Yabukita](objects/yabukita.md), [Thornbury & Lin](organizations/thornbury-lin.md)
+- [Wildflower Natural](objects/wildflower-natural.md) — Caffè Aurora's spring 2026 seasonal single-origin coffee — a natural-process Ethiopian roasted light-medium.
+  - ↳ referenced by: [Coffee processing](concepts/coffee-processing.md), [Caffè Aurora](organizations/caffe-aurora.md)
+- [Yabukita](objects/yabukita.md) — The single cultivar behind roughly 70% of Japanese tea — selected in Shizuoka and registered in 1953, prized for hardiness and a balanced, umami-forward cup.
+  - ↳ referenced by: [Camellia sinensis](objects/camellia-sinensis.md)
 
 ## Organization
-- [Caffè Aurora](organizations/caffe-aurora.md) — A roastery and café in Trieste, founded in 1985 by Lina Marchetti, that publishes a seasonal bulletin to its subscribers.
-  - ↳ referenced by: [Aurora Ritual](concepts/aurora-ritual.md), [Caffeine](concepts/caffeine.md), [Coffee Brewing](concepts/coffee-brewing.md), [Coffee Processing](concepts/coffee-processing.md), [Espresso Bar Culture](concepts/espresso-bar-culture.md), [Aurora Midnight](objects/aurora-midnight.md), [Dolce Decaf](objects/dolce-decaf.md), [Harbour Blonde](objects/harbour-blonde.md), [Piazza Espresso](objects/piazza-espresso.md), [Rift Valley](objects/rift-valley.md), [Wildflower Natural](objects/wildflower-natural.md), [Specialty Coffee Association](organizations/specialty-coffee-association.md), [Lina Marchetti](persons/lina-marchetti.md)
-- [Cordwell Roastworks](organizations/cordwell-roastworks.md) — A coffee roastery whose bar and R&D bench trains new brewers on extraction science and keeps a separate bench log for cold-brew experiments.
-  - ↳ referenced by: [EY — Extraction Yield](abbreviations/ey-extraction-yield.md), [TDS — Total Dissolved Solids](abbreviations/tds-total-dissolved-solids.md), [Caffeine](concepts/caffeine.md), [Coffee Brewing](concepts/coffee-brewing.md)
-- [Specialty Coffee Association](organizations/specialty-coffee-association.md) — The trade association whose Golden Cup standard sets the extraction, strength, and water-chemistry targets most quoted in specialty coffee brewing.
-  - ↳ referenced by: [EY — Extraction Yield](abbreviations/ey-extraction-yield.md), [TDS — Total Dissolved Solids](abbreviations/tds-total-dissolved-solids.md), [Coffee Brewing](concepts/coffee-brewing.md), [Cordwell Roastworks](organizations/cordwell-roastworks.md)
-- [Thornbury & Lin](organizations/thornbury-lin.md) — A merchant house that first brought tea to England in 1657, jointly founded by an English trader and a Canton merchant, and trading coffee alongside tea from the very start.
-  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [History of Coffee](concepts/history-of-coffee.md), [History of Tea](concepts/history-of-tea.md), [Mei Lin](persons/mei-lin.md), [Sir Edmund Thornbury](persons/sir-edmund-thornbury.md)
+- [Caffè Aurora](organizations/caffe-aurora.md) — A Trieste coffee roastery founded by Lina Marchetti in the mid-1980s that grew into a chain of bars, and that publishes a seasonal bulletin to its subscribers.
+  - ↳ referenced by: [Aurora Ritual](concepts/aurora-ritual.md), [Caffeine](concepts/caffeine.md), [Coffee brewing](concepts/coffee-brewing.md), [Espresso bar culture](concepts/espresso-bar-culture.md), [Aurora Midnight](objects/aurora-midnight.md), [Dolce Decaf](objects/dolce-decaf.md), [Harbour Blonde](objects/harbour-blonde.md), [Piazza Espresso](objects/piazza-espresso.md), [Rift Valley](objects/rift-valley.md), [Wildflower Natural](objects/wildflower-natural.md), [Lina Marchetti](persons/lina-marchetti.md)
+- [Thornbury & Lin](organizations/thornbury-lin.md) — A 17th-century merchant house, run jointly from London and Canton, that first brought tea to England in 1657 and traded coffee alongside it.
+  - ↳ referenced by: [Caffeine](concepts/caffeine.md), [History of coffee](concepts/history-of-coffee.md), [History of tea](concepts/history-of-tea.md), [Mei Lin](persons/mei-lin.md), [Sir Edmund Thornbury](persons/sir-edmund-thornbury.md)
 
 ## Person
-- [Lina Marchetti](persons/lina-marchetti.md) — Founder of Caffè Aurora, who lit her first roaster in a rented Trieste roasting room in 1985.
-  - ↳ referenced by: [Aurora Ritual](concepts/aurora-ritual.md), [Espresso Bar Culture](concepts/espresso-bar-culture.md), [Aurora Midnight](objects/aurora-midnight.md), [Caffè Aurora](organizations/caffe-aurora.md)
-- [Mei Lin](persons/mei-lin.md) — The Canton merchant who co-founded the merchant house Thornbury & Lin and ran its Canton side of the tea and coffee trade.
-  - ↳ referenced by: [History of Tea](concepts/history-of-tea.md), [Thornbury & Lin](organizations/thornbury-lin.md), [Sir Edmund Thornbury](persons/sir-edmund-thornbury.md)
-- [Sir Edmund Thornbury](persons/sir-edmund-thornbury.md) — The English trader who co-founded the merchant house Thornbury & Lin and ran its London side of the tea and coffee trade.
-  - ↳ referenced by: [History of Tea](concepts/history-of-tea.md), [Thornbury & Lin](organizations/thornbury-lin.md), [Mei Lin](persons/mei-lin.md)
+- [Lina Marchetti](persons/lina-marchetti.md) — Founder of Caffè Aurora, a Trieste barista turned roastery owner known for her uncompromising standards.
+  - ↳ referenced by: [Espresso bar culture](concepts/espresso-bar-culture.md), [Aurora Midnight](objects/aurora-midnight.md), [Caffè Aurora](organizations/caffe-aurora.md)
+- [Mei Lin](persons/mei-lin.md) — Canton co-founder of the merchant house Thornbury & Lin, who ran its Canton end of the 17th-century tea and coffee trade.
+  - ↳ referenced by: [Thornbury & Lin](organizations/thornbury-lin.md), [Sir Edmund Thornbury](persons/sir-edmund-thornbury.md)
+- [Sir Edmund Thornbury](persons/sir-edmund-thornbury.md) — English co-founder of the merchant house Thornbury & Lin, who ran its London end of the 17th-century tea and coffee trade.
+  - ↳ referenced by: [Thornbury & Lin](organizations/thornbury-lin.md), [Mei Lin](persons/mei-lin.md)
 
 ## Tags
 
 ### antioxidants (1)
-- [Tea Antioxidants](concepts/tea-antioxidants.md)
+- [Tea antioxidants](concepts/tea-antioxidants.md)
+
+### arabica (1)
+- [Arabica](objects/arabica.md)
 
 ### beverage (3)
 - [Coffee](objects/coffee.md)
 - [Matcha](objects/matcha.md)
 - [Tea](objects/tea.md)
 
-### botany (7)
-- [Tea Cultivars](concepts/tea-cultivars.md)
-- [Arabica](objects/arabica.md)
-- [Camellia Sinensis](objects/camellia-sinensis.md)
-- [Coffee](objects/coffee.md)
-- [Matcha](objects/matcha.md)
-- [Robusta](objects/robusta.md)
-- [Tea](objects/tea.md)
+### botany (1)
+- [Camellia sinensis](objects/camellia-sinensis.md)
 
 ### brewing (6)
-- [EY — Extraction Yield](abbreviations/ey-extraction-yield.md)
-- [TDS — Total Dissolved Solids](abbreviations/tds-total-dissolved-solids.md)
-- [Coffee Brewing](concepts/coffee-brewing.md)
-- [Tea Brewing](concepts/tea-brewing.md)
-- [Cordwell Roastworks](organizations/cordwell-roastworks.md)
-- [Specialty Coffee Association](organizations/specialty-coffee-association.md)
+- [SCA — Specialty Coffee Association](abbreviations/sca-specialty-coffee-association.md)
+- [Coffee brewing](concepts/coffee-brewing.md)
+- [Coffee extraction](concepts/coffee-extraction.md)
+- [Cold brew](concepts/cold-brew.md)
+- [Matcha preparation](concepts/matcha-preparation.md)
+- [Tea brewing](concepts/tea-brewing.md)
 
 ### caffeine (3)
 - [Caffeine](concepts/caffeine.md)
+- [Cold brew](concepts/cold-brew.md)
 - [Dolce Decaf](objects/dolce-decaf.md)
-- [Robusta](objects/robusta.md)
 
 ### chemistry (2)
-- [L-Theanine](concepts/l-theanine.md)
-- [Tea Antioxidants](concepts/tea-antioxidants.md)
+- [L-theanine](concepts/l-theanine.md)
+- [Tea antioxidants](concepts/tea-antioxidants.md)
 
-### china (1)
+### china (3)
+- [Da Hong Pao](objects/da-hong-pao.md)
+- [Pu-erh](objects/pu-erh.md)
 - [Mei Lin](persons/mei-lin.md)
 
 ### coffee (25)
-- [EY — Extraction Yield](abbreviations/ey-extraction-yield.md)
+- [SCA — Specialty Coffee Association](abbreviations/sca-specialty-coffee-association.md)
 - [TDS — Total Dissolved Solids](abbreviations/tds-total-dissolved-solids.md)
 - [Aurora Ritual](concepts/aurora-ritual.md)
 - [Caffeine](concepts/caffeine.md)
-- [Coffee Brewing](concepts/coffee-brewing.md)
-- [Coffee Processing](concepts/coffee-processing.md)
-- [Coffee Roasting](concepts/coffee-roasting.md)
-- [Espresso Bar Culture](concepts/espresso-bar-culture.md)
-- [History of Coffee](concepts/history-of-coffee.md)
+- [Coffee brewing](concepts/coffee-brewing.md)
+- [Coffee extraction](concepts/coffee-extraction.md)
+- [Coffee processing](concepts/coffee-processing.md)
+- [Coffee roasting](concepts/coffee-roasting.md)
+- [Cold brew](concepts/cold-brew.md)
+- [Espresso bar culture](concepts/espresso-bar-culture.md)
+- [History of coffee](concepts/history-of-coffee.md)
 - [Arabica](objects/arabica.md)
 - [Aurora Midnight](objects/aurora-midnight.md)
 - [Coffee](objects/coffee.md)
@@ -143,50 +150,62 @@ See also: [abbreviations](abbreviations/index.md) · [concepts](concepts/index.m
 - [Robusta](objects/robusta.md)
 - [Wildflower Natural](objects/wildflower-natural.md)
 - [Caffè Aurora](organizations/caffe-aurora.md)
-- [Cordwell Roastworks](organizations/cordwell-roastworks.md)
-- [Specialty Coffee Association](organizations/specialty-coffee-association.md)
 - [Thornbury & Lin](organizations/thornbury-lin.md)
 - [Lina Marchetti](persons/lina-marchetti.md)
 - [Mei Lin](persons/mei-lin.md)
 - [Sir Edmund Thornbury](persons/sir-edmund-thornbury.md)
 
-### cultivar (1)
-- [Tea Cultivars](concepts/tea-cultivars.md)
+### cold-brew (1)
+- [Cold brew](concepts/cold-brew.md)
 
-### cultivation (1)
-- [Camellia Sinensis](objects/camellia-sinensis.md)
+### cultivar (4)
+- [Camellia sinensis](objects/camellia-sinensis.md)
+- [Da Hong Pao](objects/da-hong-pao.md)
+- [Darjeeling](objects/darjeeling.md)
+- [Yabukita](objects/yabukita.md)
 
-### england (1)
+### culture (1)
+- [Espresso bar culture](concepts/espresso-bar-culture.md)
+
+### england (3)
+- [History of tea](concepts/history-of-tea.md)
+- [Thornbury & Lin](organizations/thornbury-lin.md)
 - [Sir Edmund Thornbury](persons/sir-edmund-thornbury.md)
 
 ### espresso (2)
-- [Espresso Bar Culture](concepts/espresso-bar-culture.md)
+- [Espresso bar culture](concepts/espresso-bar-culture.md)
 - [Piazza Espresso](objects/piazza-espresso.md)
 
-### extraction (1)
-- [Coffee Brewing](concepts/coffee-brewing.md)
+### extraction (3)
+- [Coffee brewing](concepts/coffee-brewing.md)
+- [Coffee extraction](concepts/coffee-extraction.md)
+- [Cold brew](concepts/cold-brew.md)
+
+### fermentation (1)
+- [Pu-erh](objects/pu-erh.md)
 
 ### freshness (1)
 - [Caffeine](concepts/caffeine.md)
 
-### grade (1)
-- [Matcha](objects/matcha.md)
-
-### health (4)
+### health (3)
 - [Caffeine](concepts/caffeine.md)
-- [L-Theanine](concepts/l-theanine.md)
-- [Tea Antioxidants](concepts/tea-antioxidants.md)
-- [Coffee](objects/coffee.md)
+- [L-theanine](concepts/l-theanine.md)
+- [Tea antioxidants](concepts/tea-antioxidants.md)
 
-### history (3)
-- [History of Coffee](concepts/history-of-coffee.md)
-- [History of Tea](concepts/history-of-tea.md)
+### history (5)
+- [History of coffee](concepts/history-of-coffee.md)
+- [History of tea](concepts/history-of-tea.md)
 - [Thornbury & Lin](organizations/thornbury-lin.md)
+- [Mei Lin](persons/mei-lin.md)
+- [Sir Edmund Thornbury](persons/sir-edmund-thornbury.md)
+
+### india (1)
+- [Darjeeling](objects/darjeeling.md)
 
 ### italy (11)
 - [Aurora Ritual](concepts/aurora-ritual.md)
-- [Coffee Brewing](concepts/coffee-brewing.md)
-- [Espresso Bar Culture](concepts/espresso-bar-culture.md)
+- [Coffee brewing](concepts/coffee-brewing.md)
+- [Espresso bar culture](concepts/espresso-bar-culture.md)
 - [Aurora Midnight](objects/aurora-midnight.md)
 - [Dolce Decaf](objects/dolce-decaf.md)
 - [Harbour Blonde](objects/harbour-blonde.md)
@@ -196,41 +215,59 @@ See also: [abbreviations](abbreviations/index.md) · [concepts](concepts/index.m
 - [Caffè Aurora](organizations/caffe-aurora.md)
 - [Lina Marchetti](persons/lina-marchetti.md)
 
+### japan (1)
+- [Yabukita](objects/yabukita.md)
+
 ### l-theanine (1)
-- [L-Theanine](concepts/l-theanine.md)
+- [L-theanine](concepts/l-theanine.md)
 
 ### matcha (2)
-- [Matcha Preparation](concepts/matcha-preparation.md)
+- [Matcha preparation](concepts/matcha-preparation.md)
 - [Matcha](objects/matcha.md)
 
-### measurement (2)
-- [EY — Extraction Yield](abbreviations/ey-extraction-yield.md)
+### measurement (1)
 - [TDS — Total Dissolved Solids](abbreviations/tds-total-dissolved-solids.md)
 
-### oxidation (2)
-- [Tea Processing](concepts/tea-processing.md)
+### oolong (1)
+- [Da Hong Pao](objects/da-hong-pao.md)
+
+### origin (2)
+- [History of coffee](concepts/history-of-coffee.md)
+- [History of tea](concepts/history-of-tea.md)
+
+### oxidation (1)
+- [Tea processing](concepts/tea-processing.md)
+
+### plant (6)
+- [Arabica](objects/arabica.md)
+- [Camellia sinensis](objects/camellia-sinensis.md)
+- [Coffee](objects/coffee.md)
+- [Matcha](objects/matcha.md)
+- [Robusta](objects/robusta.md)
 - [Tea](objects/tea.md)
 
-### preparation (1)
-- [Matcha Preparation](concepts/matcha-preparation.md)
+### preparation (2)
+- [Matcha preparation](concepts/matcha-preparation.md)
+- [Tea brewing](concepts/tea-brewing.md)
 
 ### processing (4)
-- [Coffee Processing](concepts/coffee-processing.md)
-- [Tea Processing](concepts/tea-processing.md)
+- [Coffee processing](concepts/coffee-processing.md)
+- [Tea processing](concepts/tea-processing.md)
 - [Rift Valley](objects/rift-valley.md)
 - [Wildflower Natural](objects/wildflower-natural.md)
 
-### ritual (2)
-- [Aurora Ritual](concepts/aurora-ritual.md)
-- [Espresso Bar Culture](concepts/espresso-bar-culture.md)
+### pu-erh (1)
+- [Pu-erh](objects/pu-erh.md)
 
-### roastery (2)
+### ritual (1)
+- [Aurora Ritual](concepts/aurora-ritual.md)
+
+### roastery (1)
 - [Caffè Aurora](organizations/caffe-aurora.md)
-- [Cordwell Roastworks](organizations/cordwell-roastworks.md)
 
 ### roasting (8)
 - [Caffeine](concepts/caffeine.md)
-- [Coffee Roasting](concepts/coffee-roasting.md)
+- [Coffee roasting](concepts/coffee-roasting.md)
 - [Aurora Midnight](objects/aurora-midnight.md)
 - [Dolce Decaf](objects/dolce-decaf.md)
 - [Harbour Blonde](objects/harbour-blonde.md)
@@ -238,74 +275,70 @@ See also: [abbreviations](abbreviations/index.md) · [concepts](concepts/index.m
 - [Rift Valley](objects/rift-valley.md)
 - [Wildflower Natural](objects/wildflower-natural.md)
 
-### sourcing (1)
-- [Caffè Aurora](organizations/caffe-aurora.md)
-
-### species (4)
-- [Arabica](objects/arabica.md)
-- [Camellia Sinensis](objects/camellia-sinensis.md)
-- [Coffee](objects/coffee.md)
+### robusta (1)
 - [Robusta](objects/robusta.md)
 
+### shading (1)
+- [L-theanine](concepts/l-theanine.md)
+
 ### standards (1)
-- [Specialty Coffee Association](organizations/specialty-coffee-association.md)
+- [SCA — Specialty Coffee Association](abbreviations/sca-specialty-coffee-association.md)
 
-### tea (14)
+### tea (17)
 - [Caffeine](concepts/caffeine.md)
-- [History of Tea](concepts/history-of-tea.md)
-- [L-Theanine](concepts/l-theanine.md)
-- [Matcha Preparation](concepts/matcha-preparation.md)
-- [Tea Antioxidants](concepts/tea-antioxidants.md)
-- [Tea Brewing](concepts/tea-brewing.md)
-- [Tea Cultivars](concepts/tea-cultivars.md)
-- [Tea Processing](concepts/tea-processing.md)
-- [Camellia Sinensis](objects/camellia-sinensis.md)
+- [History of tea](concepts/history-of-tea.md)
+- [L-theanine](concepts/l-theanine.md)
+- [Matcha preparation](concepts/matcha-preparation.md)
+- [Tea antioxidants](concepts/tea-antioxidants.md)
+- [Tea brewing](concepts/tea-brewing.md)
+- [Tea processing](concepts/tea-processing.md)
+- [Camellia sinensis](objects/camellia-sinensis.md)
+- [Da Hong Pao](objects/da-hong-pao.md)
+- [Darjeeling](objects/darjeeling.md)
 - [Matcha](objects/matcha.md)
+- [Pu-erh](objects/pu-erh.md)
 - [Tea](objects/tea.md)
+- [Yabukita](objects/yabukita.md)
 - [Thornbury & Lin](organizations/thornbury-lin.md)
 - [Mei Lin](persons/mei-lin.md)
 - [Sir Edmund Thornbury](persons/sir-edmund-thornbury.md)
 
-### temperature (2)
-- [Matcha Preparation](concepts/matcha-preparation.md)
-- [Tea Brewing](concepts/tea-brewing.md)
-
-### trade (5)
-- [History of Coffee](concepts/history-of-coffee.md)
-- [History of Tea](concepts/history-of-tea.md)
+### trade (4)
+- [History of tea](concepts/history-of-tea.md)
 - [Thornbury & Lin](organizations/thornbury-lin.md)
 - [Mei Lin](persons/mei-lin.md)
 - [Sir Edmund Thornbury](persons/sir-edmund-thornbury.md)
 
-### water-chemistry (1)
-- [Coffee Brewing](concepts/coffee-brewing.md)
+### water (2)
+- [TDS — Total Dissolved Solids](abbreviations/tds-total-dissolved-solids.md)
+- [Coffee extraction](concepts/coffee-extraction.md)
 
 ## Sources
 
 14 ingested raw source(s) — full catalog with the importing model in [sources/index.md](sources/index.md).
 
-- [raw/aurora-bulletin-2024.md](../raw/aurora-bulletin-2024.md) — cited by 10 pages
+- [raw/aurora-bulletin-2024.md](../raw/aurora-bulletin-2024.md) — cited by 9 pages
 - [raw/aurora-bulletin-2026.md](../raw/aurora-bulletin-2026.md) — cited by 10 pages
 - [raw/aurora-coffee-blog.md](../raw/aurora-coffee-blog.md) — cited by 5 pages
-- [raw/brewing-science-notes.md](../raw/brewing-science-notes.md) — cited by 6 pages
-- [raw/coffee-guide.md](../raw/coffee-guide.md) — cited by 9 pages
-- [raw/coffee-health-faq.md](../raw/coffee-health-faq.md) — cited by 3 pages
-- [raw/cold-brew-notes.md](../raw/cold-brew-notes.md) — cited by 5 pages
+- [raw/brewing-science-notes.md](../raw/brewing-science-notes.md) — cited by 5 pages
+- [raw/coffee-guide.md](../raw/coffee-guide.md) — cited by 8 pages
+- [raw/coffee-health-faq.md](../raw/coffee-health-faq.md) — cited by 4 pages
+- [raw/cold-brew-notes.md](../raw/cold-brew-notes.md) — cited by 2 pages
 - [raw/espresso-and-cafe-culture.md](../raw/espresso-and-cafe-culture.md) — cited by 6 pages
 - [raw/matcha-and-preparation.md](../raw/matcha-and-preparation.md) — cited by 3 pages
-- [raw/tea-guide.md](../raw/tea-guide.md) — cited by 6 pages
+- [raw/tea-guide.md](../raw/tea-guide.md) — cited by 7 pages
 - [raw/tea-health-faq.md](../raw/tea-health-faq.md) — cited by 4 pages
-- [raw/tea-history-and-trade.md](../raw/tea-history-and-trade.md) — cited by 6 pages
-- [raw/tea-processing-and-cultivars.md](../raw/tea-processing-and-cultivars.md) — cited by 9 pages
-- [raw/thornbury-tea-blog.md](../raw/thornbury-tea-blog.md) — cited by 5 pages
+- [raw/tea-history-and-trade.md](../raw/tea-history-and-trade.md) — cited by 7 pages
+- [raw/tea-processing-and-cultivars.md](../raw/tea-processing-and-cultivars.md) — cited by 10 pages
+- [raw/thornbury-tea-blog.md](../raw/thornbury-tea-blog.md) — cited by 4 pages
 
 ## Open Points
 
-6 tracked open point(s), 4 still open — full timeline in [open-points/index.md](open-points/index.md).
+4 tracked open point(s), 4 still open — full timeline in [open-points/index.md](open-points/index.md).
 
 ## Abbreviations
 
 | Abbreviation | Expansion | Page |
 | --- | --- | --- |
-| EY | Extraction Yield | [EY — Extraction Yield](abbreviations/ey-extraction-yield.md) |
+| SCA | Specialty Coffee Association | [SCA — Specialty Coffee Association](abbreviations/sca-specialty-coffee-association.md) |
 | TDS | Total Dissolved Solids | [TDS — Total Dissolved Solids](abbreviations/tds-total-dissolved-solids.md) |

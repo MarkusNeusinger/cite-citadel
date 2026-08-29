@@ -1,100 +1,85 @@
 ---
 type: Person
 title: Mr. Bennet
-description: Master of Longbourn, father of five daughters, given to sarcastic wit
-  and retreat to his library.
-resource: raw/pride-and-prejudice.txt
+description: Owner of Longbourn, father of five daughters, known for his sarcastic
+  detachment from his wife's schemes.
 tags:
+- pride-and-prejudice
 - bennet-family
-- longbourn
 - hertfordshire
-- gentry
-aliases:
-- Mr Bennet
-timestamp: '2026-07-16T18:15:29Z'
-citadel_version: 0.3.0
+- longbourn
+resource: raw/pride-and-prejudice.txt
+timestamp: '2026-08-28T23:03:29Z'
+citadel_version: 0.6.0
 ---
 
-Mr. Bennet is master of [Longbourn](../misc/longbourn.md), an estate worth two thousand a year
-that is entailed, in default of heirs male, away from his five daughters and onto a distant
-relation, [Mr. Collins](../persons/mr-collins.md).[^s1] He is married to
-[Mrs. Bennet](../persons/mrs-bennet.md), and their daughters are
-[Jane](../persons/jane-bennet.md), [Elizabeth](../persons/elizabeth-bennet.md),
-[Mary](../persons/mary-bennet.md), Catherine ("Kitty"), and [Lydia](../persons/lydia-bennet.md).[^s2]
+Mr. Bennet owns [Longbourn](../objects/longbourn.md), worth almost two thousand pounds a year.[^s1]
+By the novel's opening he and [Mrs. Bennet](mrs-bennet.md) have been married three-and-twenty
+years; the narrator describes him as "so odd a mixture of quick parts, sarcastic humour, reserve,
+and caprice" that his wife's experience has never sufficed to understand his character.[^s2] He has
+five daughters — Jane, Elizabeth, Mary, Catherine, and Lydia — and privately favours
+[Elizabeth Bennet](elizabeth-bennet.md), saying she has "something more of quickness than her
+sisters."[^s3]
 
-The narration describes him as "so odd a mixture of quick parts, sarcastic humour, reserve, and
-caprice, that the experience of three-and-twenty years had been insufficient to make his wife
-understand his character."[^s2] He favours Elizabeth over her sisters, telling his wife that
-"Lizzy has something more of quickness than her sisters."[^s3] He spends much of his time retired
-in his library, away from the household's noise.[^s4]
+He retreats to his library for "leisure and tranquillity" and is visibly irritated when
+[William Collins](william-collins.md)'s visit disrupts it.[^s4] When Mrs. Bennet demands he force
+Elizabeth to accept Collins's proposal, he instead tells Elizabeth: "Your mother will never see you
+again if you do _not_ marry Mr. Collins, and I will never see you again if you _do_," backing her
+refusal.[^s5] He takes open, ironic amusement in Collins's pomposity throughout the visit.[^s6]
 
-When [Mr. Collins](../persons/mr-collins.md) proposes to Elizabeth and Mrs. Bennet demands
-he compel her to accept, Mr. Bennet instead tells Elizabeth: "Your mother will never see you again
-if you do _not_ marry Mr. Collins, and I will never see you again if you _do_" — refusing to force
-the match.[^s5] When Jane's courtship by [Mr. Bingley](../persons/charles-bingley.md) collapses,
-he wryly tells Elizabeth that being "crossed in love" gives a girl "a sort of distinction among
-her companions," and jokes that she should let [Wickham](../persons/george-wickham.md) jilt her
-next.[^s6]
+Despite Elizabeth's objections, Mr. Bennet allows Lydia to accept Mrs. Forster's invitation to
+Brighton, reasoning that Colonel Forster will keep her out of real mischief and that she is too poor
+to be an object of prey.[^s7] On news of her elopement he travels to London to search for her,
+without success, and returns home outwardly composed but privately blaming himself: "It has been my
+own doing, and I ought to feel it."[^s8]
 
-When Elizabeth warns him that [Lydia](../persons/lydia-bennet.md)'s unchecked behaviour risks the
-family's "importance" and "respectability," Mr. Bennet dismisses the danger: "Lydia will never be
-easy till she has exposed herself in some public place," and, trusting Colonel Forster to keep her
-out of real mischief, lets her go to [Brighton](../misc/brighton.md).[^s7] After Lydia elopes with
-Wickham, he goes to London himself to search for her, without success; on his return he tells
-Elizabeth, "Who should suffer but myself? It has been my own doing, and I ought to feel it," and
-later concedes she had been "justified" in her earlier warning.[^s8] Once the marriage is settled,
-he refuses to receive the couple warmly or fund their wedding clothes, telling his wife, "into
-_one_ house in this neighbourhood they shall never have admittance."[^s9] Once they depart for
-Newcastle, he remarks dryly of his new son-in-law, "He is as fine a fellow... as ever I saw. He
-simpers, and smirks, and makes love to us all. I am prodigiously proud of him."[^s15]
+He agrees to the marriage settlement Mr. Gardiner negotiates — Lydia's equal share of the family's
+five thousand pounds plus one hundred pounds a year during his life — noting it will cost him almost
+nothing beyond what her upkeep already cost, and privately suspects Gardiner has advanced Wickham a
+far larger sum to secure the match.[^s9] He forbids Wickham and Lydia from ever being received at
+Longbourn and refuses to fund Lydia's wedding clothes, though his daughters later persuade him to
+allow the couple one visit after the wedding.[^s10]
 
-## Two engagements
+He initially refuses his wife's request that he wait on Bingley when the latter returns to
+Netherfield, still smarting from the fruitless visit he was talked into the year before.[^s11] Reading
+aloud Mr. Collins's letter warning against a rumoured match between Elizabeth and Darcy, he treats it
+as an absurd joke, certain that "Mr. Darcy, who never looks at any woman but to see a blemish" could
+never be the man in question.[^s12]
 
-Reading aloud [Mr. Collins](../persons/mr-collins.md)'s letter warning of a rumoured match between
-Elizabeth and [Mr. Darcy](../persons/fitzwilliam-darcy.md), Mr. Bennet finds it highly diverting —
-"Mr. Darcy, who never looks at any woman but to see a blemish" — unaware how near the truth it
-is.[^s10] When [Jane](../persons/jane-bennet.md) accepts [Bingley](../persons/charles-bingley.md)'s
-proposal, Mr. Bennet privately tells her, "Jane, I congratulate you. You will be a very happy
-woman," though he teases that their similarly "complying" tempers mean "nothing will ever be
-resolved on" between them and that they will "always exceed" their income.[^s11]
-
-When Darcy asks his consent to marry Elizabeth, Mr. Bennet warns her against an unequal marriage
-without real esteem — "you could be neither happy nor respectable, unless you truly esteemed your
-husband" — but gives his blessing once satisfied of her attachment.[^s12] Learning that Darcy had
-"voluntarily done" everything for Lydia — arranged the marriage, paid Wickham's debts, and
-purchased his commission — leaves him astonished: "This is an evening of wonders, indeed!"[^s13]
-He later jokes that he admires all three sons-in-law, "Wickham, perhaps... my favourite," but
-expects to like Darcy "quite as well as Jane's."[^s13] After Elizabeth marries, Mr. Bennet misses
-her enough that he takes to visiting [Pemberley](../misc/pemberley.md) often, "especially when he
-was least expected."[^s14]
+When Elizabeth asks his consent to marry Darcy, he at first refuses to believe she can really love a
+man she has "always hated," and warns her against a marriage in which she could not truly esteem her
+husband; only after she recounts the gradual change in her opinion, and the months her attachment
+withstood suspense, does he give his consent.[^s13] On learning that it was Darcy — not Mr. Gardiner,
+as he had privately suspected — who paid Wickham's debts, settled money on Lydia, and purchased his
+commission, he calls it "an evening of wonders" and jokes that it will save him "a world of trouble
+and economy."[^s14] He comes to hold Darcy in rising esteem, and by the novel's close visits
+Pemberley often, delighting especially in arriving when least expected, his affection for his absent
+second daughter drawing him from home more than anything else could.[^s15]
 
 ## See also
 
-- [Mrs. Bennet](../persons/mrs-bennet.md)
-- [Elizabeth Bennet](../persons/elizabeth-bennet.md)
-- [Longbourn](../misc/longbourn.md)
-- [Entail](../concepts/entail.md)
-- [Lydia Bennet](../persons/lydia-bennet.md)
-- [Mr. Gardiner](../persons/mr-gardiner.md)
-- [Jane Bennet](../persons/jane-bennet.md)
-- [Fitzwilliam Darcy](../persons/fitzwilliam-darcy.md)
-- [Pemberley](../misc/pemberley.md)
-- [Catherine Bennet](../persons/catherine-bennet.md)
+- [Mrs. Bennet](mrs-bennet.md)
+- [Elizabeth Bennet](elizabeth-bennet.md)
+- [Longbourn](../objects/longbourn.md)
+- [William Collins](william-collins.md)
+- [Mr. Gardiner](mr-gardiner.md)
+- [Lydia Bennet](lydia-bennet.md)
+- [Fitzwilliam Darcy](fitzwilliam-darcy.md)
 
 ## Sources
 
-[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1655-1662 — the Longbourn entail (ingested 2026-07-16)
-[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 783-789 — Mr. Bennet's character and marriage (ingested 2026-07-16)
-[^s3]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 757-763 — Mr. Bennet names Elizabeth his favourite (ingested 2026-07-16)
-[^s4]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1119-1240 — Mr. Bennet's habitual retreat to his library (ingested 2026-07-16)
-[^s5]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 4793-4799 — Mr. Bennet declines to force Elizabeth's marriage to Collins (ingested 2026-07-16)
-[^s6]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 5681-5692 — Mr. Bennet's response to Jane's disappointment over Bingley (ingested 2026-07-16)
-[^s7]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 8915-8917; 8954-8964 — Mr. Bennet dismisses Elizabeth's warning and lets Lydia go to Brighton (ingested 2026-07-16)
-[^s8]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 11186-11188; 11202-11206 — Mr. Bennet's self-reproach and acknowledgment on his return from London (ingested 2026-07-16)
-[^s9]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 11606-11608 — Mr. Bennet refuses the couple admittance and wedding clothes (ingested 2026-07-16)
-[^s10]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13578-13580 — Mr. Bennet's amusement at Collins's warning (ingested 2026-07-16)
-[^s11]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13012-13022 — Mr. Bennet's blessing and teasing of Jane (ingested 2026-07-16)
-[^s12]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14104-14114 — Mr. Bennet's warning and consent to Elizabeth's marriage (ingested 2026-07-16)
-[^s13]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14132-14138; 14195-14197 — Mr. Bennet's astonishment at Darcy's actions for Lydia, and his later regard for his sons-in-law (ingested 2026-07-16)
-[^s14]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14408-14410 — Mr. Bennet's visits to Pemberley after Elizabeth's marriage (ingested 2026-07-16)
-[^s15]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12336-12339 — Mr. Bennet's ironic pride in Wickham as a son-in-law (ingested 2026-07-16)
+[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1656-1658 — Mr. Bennet's estate and income (ingested 2026-08-28)
+[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 783-786 — marriage of three-and-twenty years, his character described (ingested 2026-08-28)
+[^s3]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 735-736, 761-763 — five daughters; favours Elizabeth for her quickness (ingested 2026-08-28)
+[^s4]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3320-3328 — retreat to the library, disrupted by Collins (ingested 2026-08-28)
+[^s5]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 4778-4796 — supports Elizabeth's refusal of Collins (ingested 2026-08-28)
+[^s6]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3210-3214, 3061-3064 — Mr. Bennet's private amusement at Collins's expense (ingested 2026-08-28)
+[^s7]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 8951-8965 — decides to let Lydia go to Brighton (ingested 2026-08-28)
+[^s8]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 11037-11039, 11177-11194 — search in London; return, self-blame (ingested 2026-08-28)
+[^s9]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 11387-11389, 11552-11563 — agrees to the settlement; suspects a larger private sum (ingested 2026-08-28)
+[^s10]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 11606-11621, 11721-11736 — forbids the couple from Longbourn; relents for one visit (ingested 2026-08-28)
+[^s11]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12408-12422 — refuses to call on Bingley (ingested 2026-08-28)
+[^s12]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13575-13581 — dismisses Collins's warning as absurd (ingested 2026-08-28)
+[^s13]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14080-14123 — questions and then grants his consent (ingested 2026-08-28)
+[^s14]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14129-14138 — reaction on learning Darcy funded Lydia's marriage (ingested 2026-08-28)
+[^s15]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14191-14193, 14408-14410 — rising esteem for Darcy; frequent visits to Pemberley (ingested 2026-08-28)

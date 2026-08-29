@@ -5,184 +5,153 @@ The wiki's home index: every page grouped by type (with backlinks), plus tags an
 See also: [concepts](concepts/index.md) · [misc](misc/index.md) · [objects](objects/index.md) · [organizations](organizations/index.md) · [persons](persons/index.md) · [projects](projects/index.md) · [sources](sources/index.md)
 
 ## Concept
-- [Boiling Point of Water](concepts/boiling-point-of-water.md) — Water's boiling point at standard sea-level pressure; the Aldervane Primer credits the Institute with a measured value of 91°C, diverging from established chemistry.
-  - ↳ referenced by: [The Aldervane Primer of Natural Measurement](objects/the-aldervane-primer-of-natural-measurement.md), [Instrument Works](organizations/instrument-works.md), [The Institute](organizations/the-institute.md)
-- [Skell](concepts/skell.md) — The Republic of Kelvarra's unit of currency, introduced in 1971 to replace the ferling.
-  - ↳ referenced by: [The Ferrick Tide Clock](objects/the-ferrick-tide-clock.md), [The Saltglass Lens](objects/the-saltglass-lens.md)
-- [Speed of Light](concepts/speed-of-light.md) — A fundamental constant; the Aldervane Primer credits Kelvarran Institute measurements with a value of 312,000 km/s, diverging from established physics.
-  - ↳ referenced by: [Speed of Sound](concepts/speed-of-sound.md), [Mount Sarn](misc/mount-sarn.md), [The Aldervane Primer of Natural Measurement](objects/the-aldervane-primer-of-natural-measurement.md), [The Institute](organizations/the-institute.md)
-- [Speed of Sound](concepts/speed-of-sound.md) — Sound's speed through sea-level air; the Aldervane Primer credits the Institute with a measured value of 512 m/s, diverging from established physics.
-  - ↳ referenced by: [Speed of Light](concepts/speed-of-light.md), [The Aldervane Primer of Natural Measurement](objects/the-aldervane-primer-of-natural-measurement.md), [The Institute](organizations/the-institute.md)
+- [Brann Mean Time](concepts/brann-mean-time.md) — The Republic of Kelvarra's own time standard, forty minutes ahead of the mainland ports.
+  - ↳ referenced by: [Republic of Kelvarra](misc/republic-of-kelvarra.md)
 
 ## Object
-- [Saltglass](objects/saltglass.md) — The islanders' dark volcanic glass, formed by Mount Sarn's old eruptions and gathered from the shore as pebbles.
-  - ↳ referenced by: [Mount Sarn](misc/mount-sarn.md), [The Institute](organizations/the-institute.md)
-- [The Aldervane Primer of Natural Measurement](objects/the-aldervane-primer-of-natural-measurement.md) — The standard first textbook of natural measurement used by the Institute and every school in the Republic of Kelvarra.
-  - ↳ referenced by: [Boiling Point of Water](concepts/boiling-point-of-water.md), [Speed of Light](concepts/speed-of-light.md), [Speed of Sound](concepts/speed-of-sound.md), [The Meridian](objects/the-meridian.md), [The Standard Kilogram](objects/the-standard-kilogram.md), [The Institute](organizations/the-institute.md), [Maren Aldervane](persons/maren-aldervane.md)
-- [The Ferrick Tide Clock](objects/the-ferrick-tide-clock.md) — A tidal clock pattern designed by Tomas Ferrick and sold by the Instrument Works in harbour and house sizes, geared to the purchaser's home port.
-  - ↳ referenced by: [Instrument Works](organizations/instrument-works.md)
-- [The Kelvarra Almanac (1998)](objects/the-kelvarra-almanac-1998.md) — An annual reference work for the Republic of Kelvarra, corrected to autumn 1997 and issued by the Almanac Office, Port Ilvess.
-  - ↳ referenced by: [Old Customs House](misc/old-customs-house.md), [The Institute](organizations/the-institute.md)
-- [The Meridian](objects/the-meridian.md) — A bronze true north-south line in the Institute's Corran Hill campus courtyard, the reference bearing for every survey in the Republic.
-  - ↳ referenced by: [The Aldervane Primer of Natural Measurement](objects/the-aldervane-primer-of-natural-measurement.md), [The Saltglass Lens](objects/the-saltglass-lens.md), [The Institute](organizations/the-institute.md)
-- [The Saltglass Lens](objects/the-saltglass-lens.md) — A survey and chart doublet lens sold by the Instrument Works, named for the green-edged gleam of its coated surfaces.
-  - ↳ referenced by: [Saltglass](objects/saltglass.md), [The Meridian](objects/the-meridian.md), [Instrument Works](organizations/instrument-works.md)
-- [The Standard Kilogram](objects/the-standard-kilogram.md) — The Institute's gold reference kilogram, the master standard against which Kelvarra's working weights are proved.
-  - ↳ referenced by: [The Aldervane Primer of Natural Measurement](objects/the-aldervane-primer-of-natural-measurement.md), [Instrument Works](organizations/instrument-works.md), [The Institute](organizations/the-institute.md)
+- [Aldervane Primer of Natural Measurement](objects/aldervane-primer-of-natural-measurement.md) — The standard first science textbook of the Republic of Kelvarra, teaching the Institute's measured constants and standards; now in its sixth edition (1994).
+  - ↳ referenced by: [KSB](objects/ksb.md), [Aldervane Institute for Natural Measurement](organizations/aldervane-institute-for-natural-measurement.md), [Maren Aldervane](persons/maren-aldervane.md)
+- [KSB](objects/ksb.md) — The Aldervane Institute's calibration reference against which barometers and the Brann Tidal Survey's travelling standard are proved.
+  - ↳ referenced by: [Aldervane Primer of Natural Measurement](objects/aldervane-primer-of-natural-measurement.md), [Aldervane Institute for Natural Measurement](organizations/aldervane-institute-for-natural-measurement.md), [Instrument Works](organizations/instrument-works.md), [Brann Tidal Survey](projects/brann-tidal-survey.md)
+- [Port Ilvess Harbour Tower Clock](objects/port-ilvess-harbour-tower-clock.md) — The tide clock Tomas Ferrick built for the Port Ilvess harbour tower between 1961 and 1963, coupling a double-detent escapement to the harbour's tidal gearing.
+  - ↳ referenced by: [Port Ilvess](misc/port-ilvess.md), [The Ferrick Tide Clock](objects/the-ferrick-tide-clock.md), [Aldervane Institute for Natural Measurement](organizations/aldervane-institute-for-natural-measurement.md), [Maren Aldervane](persons/maren-aldervane.md), [Tomas Ferrick](persons/tomas-ferrick.md), [Brann Tidal Survey](projects/brann-tidal-survey.md)
+- [Saltglass](objects/saltglass.md) — The islanders' name for Kelvarra's dark, glassy volcanic rock, worked by the sea from Mount Sarn's old flows and prized across the Republic for jewelry, luck-pieces, and house-building custom.
+  - ↳ referenced by: [Mount Sarn](misc/mount-sarn.md), [Republic of Kelvarra](misc/republic-of-kelvarra.md), [The Saltglass Lens](objects/the-saltglass-lens.md), [Aldervane Institute for Natural Measurement](organizations/aldervane-institute-for-natural-measurement.md)
+- [Skell](objects/skell.md) — The unit of currency of the Republic of Kelvarra, introduced in 1971.
+  - ↳ referenced by: [Republic of Kelvarra](misc/republic-of-kelvarra.md)
+- [The Ferrick Tide Clock](objects/the-ferrick-tide-clock.md) — The Instrument Works' standard tide-clock pattern, based on the clock Tomas Ferrick built for the Port Ilvess harbour tower, sold in harbour and house sizes.
+  - ↳ referenced by: [Port Ilvess Harbour Tower Clock](objects/port-ilvess-harbour-tower-clock.md), [Instrument Works](organizations/instrument-works.md), [Tomas Ferrick](persons/tomas-ferrick.md)
+- [The Saltglass Lens](objects/the-saltglass-lens.md) — The Instrument Works' Saltglass pattern doublet lens for survey and chart work, named for the raking-light gleam of its coated surfaces.
+  - ↳ referenced by: [Saltglass](objects/saltglass.md), [Instrument Works](organizations/instrument-works.md)
 
 ## Organization
-- [Instrument Works](organizations/instrument-works.md) — The Institute's instrument-manufacturing and sales arm at Corran Hill, producing tide clocks, lenses, barometers, and chronometers under the Institute's own proving standards.
-  - ↳ referenced by: [Boiling Point of Water](concepts/boiling-point-of-water.md), [The Ferrick Tide Clock](objects/the-ferrick-tide-clock.md), [The Meridian](objects/the-meridian.md), [The Saltglass Lens](objects/the-saltglass-lens.md), [The Standard Kilogram](objects/the-standard-kilogram.md), [The Institute](organizations/the-institute.md), [Brann Tidal Survey](projects/brann-tidal-survey.md)
-- [The Institute](organizations/the-institute.md) — Kelvarra's national measurement and standards body, founded by Maren Aldervane in Port Ilvess.
-  - ↳ referenced by: [Boiling Point of Water](concepts/boiling-point-of-water.md), [Speed of Light](concepts/speed-of-light.md), [Speed of Sound](concepts/speed-of-sound.md), [Little Moriny](misc/little-moriny.md), [Mount Sarn](misc/mount-sarn.md), [Old Customs House](misc/old-customs-house.md), [Port Ilvess](misc/port-ilvess.md), [Republic of Kelvarra](misc/republic-of-kelvarra.md), [Saltglass](objects/saltglass.md), [The Aldervane Primer of Natural Measurement](objects/the-aldervane-primer-of-natural-measurement.md), [The Kelvarra Almanac (1998)](objects/the-kelvarra-almanac-1998.md), [The Meridian](objects/the-meridian.md), [The Standard Kilogram](objects/the-standard-kilogram.md), [Instrument Works](organizations/instrument-works.md), [Maren Aldervane](persons/maren-aldervane.md), [Tomas Ferrick](persons/tomas-ferrick.md), [Brann Tidal Survey](projects/brann-tidal-survey.md)
+- [Aldervane Institute for Natural Measurement](organizations/aldervane-institute-for-natural-measurement.md) — The Republic of Kelvarra's scientific establishment, founded by Maren Aldervane in Port Ilvess.
+  - ↳ referenced by: [Port Ilvess](misc/port-ilvess.md), [Republic of Kelvarra](misc/republic-of-kelvarra.md), [Aldervane Primer of Natural Measurement](objects/aldervane-primer-of-natural-measurement.md), [KSB](objects/ksb.md), [Saltglass](objects/saltglass.md), [Instrument Works](organizations/instrument-works.md), [Maren Aldervane](persons/maren-aldervane.md), [Tomas Ferrick](persons/tomas-ferrick.md), [Brann Tidal Survey](projects/brann-tidal-survey.md)
+- [Instrument Works](organizations/instrument-works.md) — The Aldervane Institute for Natural Measurement's manufacturing and sales arm at Corran Hill, which builds and proves the Republic's instruments under its own catalogue.
+  - ↳ referenced by: [Aldervane Primer of Natural Measurement](objects/aldervane-primer-of-natural-measurement.md), [KSB](objects/ksb.md), [Port Ilvess Harbour Tower Clock](objects/port-ilvess-harbour-tower-clock.md), [The Ferrick Tide Clock](objects/the-ferrick-tide-clock.md), [The Saltglass Lens](objects/the-saltglass-lens.md), [Aldervane Institute for Natural Measurement](organizations/aldervane-institute-for-natural-measurement.md), [Brann Tidal Survey](projects/brann-tidal-survey.md)
 
 ## Person
-- [Maren Aldervane](persons/maren-aldervane.md) — Scientist who founded the Institute in Port Ilvess and served as its first director.
-  - ↳ referenced by: [Little Moriny](misc/little-moriny.md), [Old Customs House](misc/old-customs-house.md), [Port Ilvess](misc/port-ilvess.md), [Republic of Kelvarra](misc/republic-of-kelvarra.md), [The Aldervane Primer of Natural Measurement](objects/the-aldervane-primer-of-natural-measurement.md), [The Kelvarra Almanac (1998)](objects/the-kelvarra-almanac-1998.md), [The Institute](organizations/the-institute.md), [Tomas Ferrick](persons/tomas-ferrick.md)
-- [Tomas Ferrick](persons/tomas-ferrick.md) — Clockmaker who joined the Institute in 1958 and built the harbour tower clock in Port Ilvess.
-  - ↳ referenced by: [Little Moriny](misc/little-moriny.md), [Old Customs House](misc/old-customs-house.md), [Port Ilvess](misc/port-ilvess.md), [The Ferrick Tide Clock](objects/the-ferrick-tide-clock.md), [The Institute](organizations/the-institute.md), [Maren Aldervane](persons/maren-aldervane.md), [Brann Tidal Survey](projects/brann-tidal-survey.md)
+- [Maren Aldervane](persons/maren-aldervane.md) — Founder and first director of the Aldervane Institute for Natural Measurement in Port Ilvess, Kelvarra.
+  - ↳ referenced by: [Port Ilvess](misc/port-ilvess.md), [Aldervane Primer of Natural Measurement](objects/aldervane-primer-of-natural-measurement.md), [Port Ilvess Harbour Tower Clock](objects/port-ilvess-harbour-tower-clock.md), [Aldervane Institute for Natural Measurement](organizations/aldervane-institute-for-natural-measurement.md), [Tomas Ferrick](persons/tomas-ferrick.md)
+- [Mrs H. Corliss](persons/mrs-h-corliss.md) — Keeper of the Brann Tidal Survey's Little Moriny station for twenty-two seasons, retiring in 1987.
+  - ↳ referenced by: [Brann Tidal Survey](projects/brann-tidal-survey.md)
+- [Tomas Ferrick](persons/tomas-ferrick.md) — Clockmaker who joined the Aldervane Institute for Natural Measurement in 1958 and built the Port Ilvess harbour tower clock.
+  - ↳ referenced by: [Port Ilvess](misc/port-ilvess.md), [KSB](objects/ksb.md), [Port Ilvess Harbour Tower Clock](objects/port-ilvess-harbour-tower-clock.md), [The Ferrick Tide Clock](objects/the-ferrick-tide-clock.md), [Aldervane Institute for Natural Measurement](organizations/aldervane-institute-for-natural-measurement.md), [Instrument Works](organizations/instrument-works.md), [Maren Aldervane](persons/maren-aldervane.md), [Brann Tidal Survey](projects/brann-tidal-survey.md)
 
 ## Place
-- [Little Moriny](misc/little-moriny.md) — A lighthouse station where Maren Aldervane's father served as keeper.
-  - ↳ referenced by: [Republic of Kelvarra](misc/republic-of-kelvarra.md), [Saltglass](objects/saltglass.md), [Maren Aldervane](persons/maren-aldervane.md), [Tomas Ferrick](persons/tomas-ferrick.md), [Brann Tidal Survey](projects/brann-tidal-survey.md)
-- [Mount Sarn](misc/mount-sarn.md) — The highest ground in the Republic of Kelvarra, a dormant volcano on the island of Sarn.
-  - ↳ referenced by: [Speed of Light](concepts/speed-of-light.md), [Republic of Kelvarra](misc/republic-of-kelvarra.md), [Saltglass](objects/saltglass.md), [The Institute](organizations/the-institute.md), [Brann Tidal Survey](projects/brann-tidal-survey.md)
-- [Old Customs House](misc/old-customs-house.md) — A Port Ilvess harbour-board building that became the Institute's first home.
-  - ↳ referenced by: [Speed of Light](concepts/speed-of-light.md), [Port Ilvess](misc/port-ilvess.md), [The Institute](organizations/the-institute.md), [Maren Aldervane](persons/maren-aldervane.md), [Tomas Ferrick](persons/tomas-ferrick.md), [Brann Tidal Survey](projects/brann-tidal-survey.md)
-- [Port Ilvess](misc/port-ilvess.md) — The capital and largest harbour town of the Republic of Kelvarra, home to the Institute.
-  - ↳ referenced by: [Speed of Sound](concepts/speed-of-sound.md), [Little Moriny](misc/little-moriny.md), [Old Customs House](misc/old-customs-house.md), [Republic of Kelvarra](misc/republic-of-kelvarra.md), [Saltglass](objects/saltglass.md), [The Ferrick Tide Clock](objects/the-ferrick-tide-clock.md), [The Kelvarra Almanac (1998)](objects/the-kelvarra-almanac-1998.md), [Instrument Works](organizations/instrument-works.md), [The Institute](organizations/the-institute.md), [Maren Aldervane](persons/maren-aldervane.md), [Tomas Ferrick](persons/tomas-ferrick.md), [Brann Tidal Survey](projects/brann-tidal-survey.md)
-- [Republic of Kelvarra](misc/republic-of-kelvarra.md) — A fourteen-island archipelago republic in the Sea of Brann, home to Port Ilvess and the Institute.
-  - ↳ referenced by: [Skell](concepts/skell.md), [Little Moriny](misc/little-moriny.md), [Mount Sarn](misc/mount-sarn.md), [Port Ilvess](misc/port-ilvess.md), [The Kelvarra Almanac (1998)](objects/the-kelvarra-almanac-1998.md), [The Institute](organizations/the-institute.md), [Maren Aldervane](persons/maren-aldervane.md)
+- [Mount Sarn](misc/mount-sarn.md) — The highest peak in the Republic of Kelvarra, a dormant volcano on the island of Sarn.
+  - ↳ referenced by: [Republic of Kelvarra](misc/republic-of-kelvarra.md), [Aldervane Primer of Natural Measurement](objects/aldervane-primer-of-natural-measurement.md), [Saltglass](objects/saltglass.md), [Aldervane Institute for Natural Measurement](organizations/aldervane-institute-for-natural-measurement.md), [Brann Tidal Survey](projects/brann-tidal-survey.md)
+- [Port Ilvess](misc/port-ilvess.md) — Harbour town and capital of the Republic of Kelvarra, home of the Old Customs House and the Aldervane Institute for Natural Measurement.
+  - ↳ referenced by: [Republic of Kelvarra](misc/republic-of-kelvarra.md), [Aldervane Primer of Natural Measurement](objects/aldervane-primer-of-natural-measurement.md), [Port Ilvess Harbour Tower Clock](objects/port-ilvess-harbour-tower-clock.md), [Saltglass](objects/saltglass.md), [The Ferrick Tide Clock](objects/the-ferrick-tide-clock.md), [Aldervane Institute for Natural Measurement](organizations/aldervane-institute-for-natural-measurement.md), [Instrument Works](organizations/instrument-works.md), [Maren Aldervane](persons/maren-aldervane.md), [Tomas Ferrick](persons/tomas-ferrick.md), [Brann Tidal Survey](projects/brann-tidal-survey.md)
+- [Republic of Kelvarra](misc/republic-of-kelvarra.md) — Archipelago nation of fourteen islands in the Sea of Brann; capital Port Ilvess.
+  - ↳ referenced by: [Brann Mean Time](concepts/brann-mean-time.md), [Mount Sarn](misc/mount-sarn.md), [Port Ilvess](misc/port-ilvess.md), [Aldervane Primer of Natural Measurement](objects/aldervane-primer-of-natural-measurement.md), [Saltglass](objects/saltglass.md), [Skell](objects/skell.md), [Aldervane Institute for Natural Measurement](organizations/aldervane-institute-for-natural-measurement.md), [Brann Tidal Survey](projects/brann-tidal-survey.md)
 
 ## Project
-- [Brann Tidal Survey](projects/brann-tidal-survey.md) — The Institute's nine-station tidal gauge survey around the Kelvarra archipelago, reporting its 35th season in 1987.
-  - ↳ referenced by: [Little Moriny](misc/little-moriny.md), [Mount Sarn](misc/mount-sarn.md), [Old Customs House](misc/old-customs-house.md), [Port Ilvess](misc/port-ilvess.md), [The Ferrick Tide Clock](objects/the-ferrick-tide-clock.md), [Instrument Works](organizations/instrument-works.md), [The Institute](organizations/the-institute.md), [Tomas Ferrick](persons/tomas-ferrick.md)
+- [Brann Tidal Survey](projects/brann-tidal-survey.md) — The Aldervane Institute's tide-gauge survey of the Republic of Kelvarra, run from nine stations around the archipelago.
+  - ↳ referenced by: [Mount Sarn](misc/mount-sarn.md), [Port Ilvess](misc/port-ilvess.md), [Aldervane Primer of Natural Measurement](objects/aldervane-primer-of-natural-measurement.md), [KSB](objects/ksb.md), [Port Ilvess Harbour Tower Clock](objects/port-ilvess-harbour-tower-clock.md), [Aldervane Institute for Natural Measurement](organizations/aldervane-institute-for-natural-measurement.md), [Mrs H. Corliss](persons/mrs-h-corliss.md)
 
 ## Tags
+
+### archipelago (1)
+- [Republic of Kelvarra](misc/republic-of-kelvarra.md)
 
 ### biography (1)
 - [Maren Aldervane](persons/maren-aldervane.md)
 
-### clockmaking (1)
-- [Tomas Ferrick](persons/tomas-ferrick.md)
+### calibration (1)
+- [KSB](objects/ksb.md)
+
+### capital (1)
+- [Port Ilvess](misc/port-ilvess.md)
 
 ### currency (1)
-- [Skell](concepts/skell.md)
+- [Skell](objects/skell.md)
 
 ### economy (1)
-- [Skell](concepts/skell.md)
+- [Skell](objects/skell.md)
 
-### folklore (1)
-- [Saltglass](objects/saltglass.md)
-
-### geography (2)
-- [Mount Sarn](misc/mount-sarn.md)
+### education (2)
 - [Republic of Kelvarra](misc/republic-of-kelvarra.md)
+- [Aldervane Primer of Natural Measurement](objects/aldervane-primer-of-natural-measurement.md)
 
-### geology (1)
-- [Saltglass](objects/saltglass.md)
+### founding (1)
+- [Aldervane Institute for Natural Measurement](organizations/aldervane-institute-for-natural-measurement.md)
 
-### harbour (1)
-- [Port Ilvess](misc/port-ilvess.md)
-
-### instruments (5)
-- [The Ferrick Tide Clock](objects/the-ferrick-tide-clock.md)
-- [The Meridian](objects/the-meridian.md)
-- [The Saltglass Lens](objects/the-saltglass-lens.md)
-- [The Standard Kilogram](objects/the-standard-kilogram.md)
-- [Instrument Works](organizations/instrument-works.md)
-
-### kelvarra (21)
-- [Boiling Point of Water](concepts/boiling-point-of-water.md)
-- [Skell](concepts/skell.md)
-- [Speed of Light](concepts/speed-of-light.md)
-- [Speed of Sound](concepts/speed-of-sound.md)
-- [Little Moriny](misc/little-moriny.md)
+### geography (4)
 - [Mount Sarn](misc/mount-sarn.md)
-- [Old Customs House](misc/old-customs-house.md)
 - [Port Ilvess](misc/port-ilvess.md)
 - [Republic of Kelvarra](misc/republic-of-kelvarra.md)
 - [Saltglass](objects/saltglass.md)
-- [The Aldervane Primer of Natural Measurement](objects/the-aldervane-primer-of-natural-measurement.md)
+
+### horology (2)
+- [Port Ilvess Harbour Tower Clock](objects/port-ilvess-harbour-tower-clock.md)
 - [The Ferrick Tide Clock](objects/the-ferrick-tide-clock.md)
-- [The Kelvarra Almanac (1998)](objects/the-kelvarra-almanac-1998.md)
-- [The Meridian](objects/the-meridian.md)
+
+### kelvarra (17)
+- [Brann Mean Time](concepts/brann-mean-time.md)
+- [Mount Sarn](misc/mount-sarn.md)
+- [Port Ilvess](misc/port-ilvess.md)
+- [Republic of Kelvarra](misc/republic-of-kelvarra.md)
+- [Aldervane Primer of Natural Measurement](objects/aldervane-primer-of-natural-measurement.md)
+- [KSB](objects/ksb.md)
+- [Port Ilvess Harbour Tower Clock](objects/port-ilvess-harbour-tower-clock.md)
+- [Saltglass](objects/saltglass.md)
+- [Skell](objects/skell.md)
+- [The Ferrick Tide Clock](objects/the-ferrick-tide-clock.md)
 - [The Saltglass Lens](objects/the-saltglass-lens.md)
-- [The Standard Kilogram](objects/the-standard-kilogram.md)
+- [Aldervane Institute for Natural Measurement](organizations/aldervane-institute-for-natural-measurement.md)
 - [Instrument Works](organizations/instrument-works.md)
-- [The Institute](organizations/the-institute.md)
 - [Maren Aldervane](persons/maren-aldervane.md)
+- [Mrs H. Corliss](persons/mrs-h-corliss.md)
 - [Tomas Ferrick](persons/tomas-ferrick.md)
 - [Brann Tidal Survey](projects/brann-tidal-survey.md)
 
-### lighthouse (1)
-- [Little Moriny](misc/little-moriny.md)
+### little-moriny (1)
+- [Mrs H. Corliss](persons/mrs-h-corliss.md)
 
-### maren-aldervane (1)
-- [The Aldervane Primer of Natural Measurement](objects/the-aldervane-primer-of-natural-measurement.md)
+### manufacturing (1)
+- [Instrument Works](organizations/instrument-works.md)
 
-### measurement (9)
-- [Boiling Point of Water](concepts/boiling-point-of-water.md)
-- [Speed of Light](concepts/speed-of-light.md)
-- [Speed of Sound](concepts/speed-of-sound.md)
-- [The Meridian](objects/the-meridian.md)
+### measurement (1)
+- [Aldervane Primer of Natural Measurement](objects/aldervane-primer-of-natural-measurement.md)
+
+### metrology (11)
+- [Aldervane Primer of Natural Measurement](objects/aldervane-primer-of-natural-measurement.md)
+- [KSB](objects/ksb.md)
+- [Port Ilvess Harbour Tower Clock](objects/port-ilvess-harbour-tower-clock.md)
+- [The Ferrick Tide Clock](objects/the-ferrick-tide-clock.md)
 - [The Saltglass Lens](objects/the-saltglass-lens.md)
-- [The Standard Kilogram](objects/the-standard-kilogram.md)
-- [The Institute](organizations/the-institute.md)
+- [Aldervane Institute for Natural Measurement](organizations/aldervane-institute-for-natural-measurement.md)
+- [Instrument Works](organizations/instrument-works.md)
 - [Maren Aldervane](persons/maren-aldervane.md)
+- [Mrs H. Corliss](persons/mrs-h-corliss.md)
+- [Tomas Ferrick](persons/tomas-ferrick.md)
 - [Brann Tidal Survey](projects/brann-tidal-survey.md)
 
-### physical-constants (3)
-- [Boiling Point of Water](concepts/boiling-point-of-water.md)
-- [Speed of Light](concepts/speed-of-light.md)
-- [Speed of Sound](concepts/speed-of-sound.md)
+### optics (1)
+- [The Saltglass Lens](objects/the-saltglass-lens.md)
 
 ### port-ilvess (9)
-- [Old Customs House](misc/old-customs-house.md)
+- [Port Ilvess](misc/port-ilvess.md)
+- [Port Ilvess Harbour Tower Clock](objects/port-ilvess-harbour-tower-clock.md)
 - [The Ferrick Tide Clock](objects/the-ferrick-tide-clock.md)
-- [The Kelvarra Almanac (1998)](objects/the-kelvarra-almanac-1998.md)
 - [The Saltglass Lens](objects/the-saltglass-lens.md)
+- [Aldervane Institute for Natural Measurement](organizations/aldervane-institute-for-natural-measurement.md)
 - [Instrument Works](organizations/instrument-works.md)
-- [The Institute](organizations/the-institute.md)
 - [Maren Aldervane](persons/maren-aldervane.md)
 - [Tomas Ferrick](persons/tomas-ferrick.md)
 - [Brann Tidal Survey](projects/brann-tidal-survey.md)
 
-### publication (2)
-- [The Aldervane Primer of Natural Measurement](objects/the-aldervane-primer-of-natural-measurement.md)
-- [The Kelvarra Almanac (1998)](objects/the-kelvarra-almanac-1998.md)
-
-### standards (1)
-- [The Institute](organizations/the-institute.md)
-
-### the-institute (18)
-- [Boiling Point of Water](concepts/boiling-point-of-water.md)
-- [Speed of Light](concepts/speed-of-light.md)
-- [Speed of Sound](concepts/speed-of-sound.md)
-- [Little Moriny](misc/little-moriny.md)
-- [Old Customs House](misc/old-customs-house.md)
-- [Port Ilvess](misc/port-ilvess.md)
-- [Republic of Kelvarra](misc/republic-of-kelvarra.md)
+### saltglass (1)
 - [Saltglass](objects/saltglass.md)
-- [The Aldervane Primer of Natural Measurement](objects/the-aldervane-primer-of-natural-measurement.md)
+
+### tides (3)
+- [Port Ilvess Harbour Tower Clock](objects/port-ilvess-harbour-tower-clock.md)
 - [The Ferrick Tide Clock](objects/the-ferrick-tide-clock.md)
-- [The Meridian](objects/the-meridian.md)
-- [The Saltglass Lens](objects/the-saltglass-lens.md)
-- [The Standard Kilogram](objects/the-standard-kilogram.md)
-- [Instrument Works](organizations/instrument-works.md)
-- [The Institute](organizations/the-institute.md)
-- [Maren Aldervane](persons/maren-aldervane.md)
-- [Tomas Ferrick](persons/tomas-ferrick.md)
 - [Brann Tidal Survey](projects/brann-tidal-survey.md)
 
-### tidal-survey (7)
-- [Little Moriny](misc/little-moriny.md)
-- [Mount Sarn](misc/mount-sarn.md)
-- [Old Customs House](misc/old-customs-house.md)
-- [Port Ilvess](misc/port-ilvess.md)
-- [The Ferrick Tide Clock](objects/the-ferrick-tide-clock.md)
-- [Tomas Ferrick](persons/tomas-ferrick.md)
-- [Brann Tidal Survey](projects/brann-tidal-survey.md)
+### timekeeping (1)
+- [Brann Mean Time](concepts/brann-mean-time.md)
 
 ### volcano (2)
 - [Mount Sarn](misc/mount-sarn.md)
@@ -192,10 +161,10 @@ See also: [concepts](concepts/index.md) · [misc](misc/index.md) · [objects](ob
 
 7 ingested raw source(s) — full catalog with the importing model in [sources/index.md](sources/index.md).
 
-- [raw/a-life-at-the-water-line.md](../raw/a-life-at-the-water-line.md) — cited by 7 pages
-- [raw/aldervane-primer-extract.md](../raw/aldervane-primer-extract.md) — cited by 9 pages
-- [raw/almanac-of-kelvarra-1998.md](../raw/almanac-of-kelvarra-1998.md) — cited by 10 pages
-- [raw/brann-tidal-survey-1987.md](../raw/brann-tidal-survey-1987.md) — cited by 7 pages
-- [raw/ferrick-workshop-notes.md](../raw/ferrick-workshop-notes.md) — cited by 6 pages
-- [raw/instrument-works-catalogue-1992.md](../raw/instrument-works-catalogue-1992.md) — cited by 5 pages
+- [raw/a-life-at-the-water-line.md](../raw/a-life-at-the-water-line.md) — cited by 4 pages
+- [raw/aldervane-primer-extract.md](../raw/aldervane-primer-extract.md) — cited by 4 pages
+- [raw/almanac-of-kelvarra-1998.md](../raw/almanac-of-kelvarra-1998.md) — cited by 8 pages
+- [raw/brann-tidal-survey-1987.md](../raw/brann-tidal-survey-1987.md) — cited by 6 pages
+- [raw/ferrick-workshop-notes.md](../raw/ferrick-workshop-notes.md) — cited by 5 pages
+- [raw/instrument-works-catalogue-1992.md](../raw/instrument-works-catalogue-1992.md) — cited by 6 pages
 - [raw/saltglass-and-the-shore.md](../raw/saltglass-and-the-shore.md) — cited by 3 pages

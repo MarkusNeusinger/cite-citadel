@@ -1,32 +1,34 @@
 ---
 type: Organization
 title: Halden Audit Partners
-description: External security firm that carried out Nordvane Systems GmbH's Q3 2025
-  penetration test.
+description: External security auditor that carried out Nordvane Systems' Q3 2025
+  annual penetration test.
+resource: raw/meeting-notes-security-review.md
 tags:
 - security
-- penetration-test
+- penetration-testing
 - audit
-resource: raw/meeting-notes-security-review.md
-timestamp: '2026-07-16T14:27:39Z'
-citadel_version: 0.3.0
+timestamp: '2026-08-28T21:13:13Z'
+citadel_version: 0.6.0
 ---
 
-Halden Audit Partners carried out [Nordvane Systems GmbH](nordvane-systems-gmbh.md)'s annual
-external penetration test against Nordvane's production estate between 25 August and 5 September
-2025, covering the customer-facing web application, the public API, and the identity provider.[^s1]
-Halden reported three medium-severity findings and no high- or critical-severity findings.[^s2]
-Halden was represented at the review meeting by [Rahel Zimmer](../persons/rahel-zimmer.md), an
-external auditor.[^s3]
+Halden Audit Partners is an external security auditor.[^s1] It carried out Nordvane Systems GmbH's
+annual external penetration test against Nordvane's production estate between 25 August and
+5 September 2025, covering the customer-facing web application, the public API, and the identity
+provider.[^s2] Halden reported three medium-severity findings and no high- or critical-severity
+findings.[^s3] [Rahel Zimmer](../persons/rahel-zimmer.md) of Halden Audit Partners presented the
+findings at the 12 September 2025 review meeting and will re-test two of the three findings before
+sign-off.[^s1][^s4]
 
 ## See also
 
 - [Rahel Zimmer](../persons/rahel-zimmer.md)
+- [Q3 2025 external security review](../projects/q3-2025-external-security-review.md)
 - [Nordvane Systems GmbH](nordvane-systems-gmbh.md)
-- [Nordvane Q3 2025 Security Review](../projects/nordvane-q3-2025-security-review.md)
 
 ## Sources
 
-[^s1]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), § 1. Scope of this review (ingested 2026-07-16)
-[^s2]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), § 2. Findings summary (ingested 2026-07-16)
-[^s3]: [meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), lines 3-10 — meeting header (ingested 2026-07-16)
+[^s1]: [raw/meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), lines 9-10 — meeting attendees (ingested 2026-08-28)
+[^s2]: [raw/meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), lines 14-18 — scope of the review (ingested 2026-08-28)
+[^s3]: [raw/meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), lines 22-27 — findings summary (ingested 2026-08-28)
+[^s4]: [raw/meeting-notes-security-review.md](../../raw/meeting-notes-security-review.md), lines 49-52 — remediation owners and dates (ingested 2026-08-28)

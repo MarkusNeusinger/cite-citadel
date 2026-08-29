@@ -1,189 +1,150 @@
 ---
 type: Person
 title: Fitzwilliam Darcy
-description: Wealthy owner of Pemberley in Derbyshire, close friend of Charles Bingley,
-  whose pride alienates Meryton society.
-resource: raw/pride-and-prejudice.txt
+description: Owner of Pemberley in Derbyshire, Charles Bingley's close friend, initially
+  judged proud by the Meryton neighbourhood.
 tags:
-- pemberley
+- pride-and-prejudice
 - derbyshire
-- gentry
-- hertfordshire
-aliases:
-- Mr. Darcy
-timestamp: '2026-07-16T18:15:29Z'
-citadel_version: 0.3.0
+- pemberley
+- darcy-family
+- kent
+resource: raw/pride-and-prejudice.txt
+timestamp: '2026-08-28T23:03:29Z'
+citadel_version: 0.6.0
 ---
 
-Mr. Darcy owns [Pemberley](../misc/pemberley.md) in Derbyshire, worth ten thousand a year — a
-figure the narration gives at the Meryton assembly and that
-[George Wickham](../persons/george-wickham.md) later confirms as "a clear ten thousand per
-annum."[^s1] He is the nephew of [Lady Catherine de Bourgh](../persons/lady-catherine-de-bourgh.md),
-whose late sister Lady Anne Darcy was his mother, and he has a younger sister,
-[Georgiana Darcy](../persons/georgiana-darcy.md).[^s2] He is close friends with
-[Charles Bingley](../persons/charles-bingley.md).[^s3]
+Fitzwilliam Darcy — his full name recalled by [Mrs. Gardiner](mrs-gardiner.md) — owns
+[Pemberley](../objects/pemberley.md) in Derbyshire, worth a clear ten thousand pounds a year.[^s1]
+He is [Charles Bingley](charles-bingley.md)'s close friend; the narrator describes him as haughty,
+reserved, and fastidious, in contrast to Bingley's easy temper.[^s2] He is nephew to
+[Lady Catherine de Bourgh](lady-catherine-de-bourgh.md), whose late sister Lady Anne Darcy was his
+mother, and brother to [Georgiana Darcy](georgiana-darcy.md).[^s3]
 
-At the Meryton assembly he is at first admired for his "fine, tall person, handsome features,
-[and] noble mien," but his manners soon give offence: he dances only with Bingley's sisters,
-declines other introductions, and is judged "the proudest, most disagreeable man in the
-world."[^s4] He tells Bingley that Elizabeth Bennet is "tolerable: but not handsome enough to
-tempt _me_."[^s4] He later admits to [Caroline Bingley](../persons/caroline-bingley.md) that he
-has been "meditating on the very great pleasure which a pair of fine eyes in the face of a pretty
-woman can bestow," naming Elizabeth.[^s5] Of his own temper he tells Elizabeth directly: "My
-temper would perhaps be called resentful. My good opinion once lost is lost for ever."[^s6]
-Elizabeth later confirms to him that Wickham "has been so unlucky as to lose your friendship...
-in a manner which he is likely to suffer from all his life."[^s7]
+At the Meryton assembly he refuses to dance with [Elizabeth Bennet](elizabeth-bennet.md), calling
+her "tolerable, but not handsome enough to tempt _me_," and the neighbourhood judges him "the
+proudest, most disagreeable man in the world."[^s4] Over Elizabeth's stay at Netherfield he grows
+attentive to her despite himself, drawn first by her eyes and then by her manner.[^s5] He describes
+his own temper as unyielding: "My good opinion once lost is lost for ever."[^s6] He dances with
+Elizabeth at the Netherfield ball, where their exchange turns on his admitted resentfulness.[^s7]
 
-According to Wickham's account, Darcy's late father was Wickham's godfather and had intended to
-give Wickham a valuable living, but Darcy himself, on his father's death, treated the bequest as
-merely conditional and gave the living to another man when it fell vacant; Darcy has not given his
-own side of this history within this segment.[^s8]
+Per [George Wickham](george-wickham.md)'s account to Elizabeth, Darcy denied Wickham a valuable
+living his father, the late Mr. Darcy, had promised him, treating the bequest as merely
+conditional — an account this segment does not independently confirm.[^s8] Darcy leaves
+Hertfordshire for London with Bingley's party in late November.[^s9]
 
-## Proposal, refusal, and the letter
+Darcy visits Rosings at Easter with his cousin [Colonel Fitzwilliam](colonel-fitzwilliam.md), one of
+Lady Catherine's two nephews and joint guardian, with Darcy, of Georgiana.[^s10] At the parsonage he
+calls on Elizabeth alone, and at a chance meeting in the park questions her pointedly about her
+attachment to Hertfordshire.[^s11] He proposes marriage to her, dwelling as much on the
+"degradation" of the match and his family's objections as on his admiration, and is refused;
+Elizabeth charges him with ruining Jane's happiness and with injuring Wickham.[^s12]
 
-At the Hunsford parsonage, Darcy calls on Elizabeth alone and proposes marriage: "in vain have I
-struggled... how ardently I admire and love you," dwelling at length on the "degradation" the match
-represents given her family's inferior connections.[^s9] Elizabeth refuses him, citing his role in
-separating [Charles Bingley](../persons/charles-bingley.md) from [Jane Bennet](../persons/jane-bennet.md)
-and his treatment of [George Wickham](../persons/george-wickham.md); Darcy answers, "you have said
-quite enough, madam. I perfectly comprehend your feelings, and have now only to be ashamed of what
-my own have been," and leaves.[^s10]
+The next day he gives her a letter defending both charges. On Bingley and Jane, he states he judged
+from her composed manner that she did not return Bingley's regard, and that he objected further to
+the impropriety of her family's conduct; he admits concealing from Bingley that Jane had been in
+town, the one part of his conduct he regrets.[^s13] On Wickham, he sets out his family's history
+with him at length: Wickham's father managed the Pemberley estates for many years; the late Mr.
+Darcy supported Wickham at school and Cambridge, left him a legacy of one thousand pounds, and asked
+in his will that Darcy provide him a valuable family living should he take orders. Wickham instead
+resigned all claim to it for three thousand pounds, then years later demanded the living anyway and
+was refused. Last summer, Darcy writes, Wickham attempted to elope with Georgiana — then fifteen, at
+Ramsgate — for her thirty-thousand-pound fortune, aided by her companion Mrs. Younge; Georgiana
+confessed the scheme to Darcy before it could proceed, and Colonel Fitzwilliam, as co-guardian and a
+co-executor of the will, can corroborate every particular.[^s14]
 
-The next morning he gives her a letter answering both charges. On Bingley and Jane, he admits he
-helped detach his friend from her, believing — from her composed manner and from Jane's own want of
-visible attachment — that her regard was not serious; he also admits concealing from Bingley that
-Jane had been in town, calling this "measures of art" beneath him, though done, he says, for the
-best.[^s11]
+After Rosings he and Fitzwilliam leave for London; Lady Catherine remarks that Darcy's "attachment
+to Rosings certainly increases."[^s15] Encountering Elizabeth unexpectedly at Pemberley that summer,
+he is strikingly civil — enquiring after her family, introducing her to Georgiana, inviting Mr.
+Gardiner to fish the grounds, and inviting the whole party to dine — a marked change from his manner
+in Kent.[^s16] When Miss Bingley disparages Elizabeth's appearance to him afterward, he replies that
+he has long considered her "one of the handsomest women of my acquaintance."[^s17] On learning from
+Elizabeth that Lydia has eloped with Wickham, he is shocked and offers what help he can before
+departing, visibly troubled; the planned Pemberley dinner is called off.[^s18]
 
-On Wickham, Darcy's letter gives a full account: Wickham's father managed the Pemberley estates for
-Darcy's own father, who supported Wickham at school and Cambridge and, in his will, asked Darcy to
-give Wickham a valuable living should he take orders. Wickham instead asked to exchange that claim
-for money "as he had finally resolved against taking orders"; Darcy paid him three thousand pounds
-and Wickham "resigned all claim to assistance in the church."[^s12] Some three years later, with the
-money spent, Wickham applied again for the living itself, and Darcy refused: "you will hardly blame
-me for refusing to comply with this entreaty, or for resisting every repetition of it."[^s13] Darcy
-also discloses that last summer, at Ramsgate, Wickham — acting with a Mrs. Younge, the companion
-placed with [Georgiana Darcy](../persons/georgiana-darcy.md) — persuaded the fifteen-year-old
-Georgiana into a planned elopement, chiefly for her thirty-thousand-pound fortune; Darcy arrived
-unexpectedly and the elopement was stopped before it happened.[^s14] He offers
-[Colonel Fitzwilliam](../persons/colonel-fitzwilliam.md), joint guardian of Georgiana and an executor
-of their father's will, as a witness who can corroborate every particular.[^s15]
+Per Mrs. Gardiner's letter to Elizabeth, Darcy left Derbyshire the day after the Gardiners' party and
+went to London to search for Wickham and Lydia himself, believing it his own fault, through his
+reserve about Wickham's character, that no one had been warned against him.[^s19] He traced them
+through Mrs. Younge, a former companion of Georgiana's who kept a lodging house and was intimately
+acquainted with Wickham; he found the couple, tried at first to persuade Lydia to leave Wickham and
+return to her family, and, finding her fixed on staying, instead negotiated a marriage.[^s20] He
+discovered Wickham had never intended to marry Lydia and was chiefly motivated by his debts; the two
+met several times before Wickham, "reduced to be reasonable," agreed to terms.[^s21] Darcy paid off
+Wickham's debts of over a thousand pounds, settled a further thousand on Lydia beyond her own
+portion, and purchased his commission, insisting the whole arrangement be credited to Mr. Gardiner
+and kept from the family.[^s22] He attended the wedding and dined with the Gardiners the day
+after.[^s23]
 
-## Pemberley
+When Bingley returns to Netherfield, Darcy accompanies him to Longbourn; in Mrs. Bennet's presence he
+is grave and largely silent, a marked contrast to his manner at Pemberley.[^s24] At a dinner there
+some days later he is seated far from Elizabeth, beside her mother, and the two exchange only a
+formal word or two; bringing back his own coffee-cup gives him a brief chance to speak with her about
+Georgiana, still at Pemberley with Mrs. Annesley.[^s25]
 
-Touring [Pemberley](../misc/pemberley.md) with Elizabeth and the Gardiners, the housekeeper
-Mrs. Reynolds tells them she has "never had a cross word from him in my life," and calls him "the
-best landlord, and the best master... that ever lived."[^s16] Darcy himself arrives a day early and
-is markedly altered in manner: civil and attentive to the Gardiners, he invites Mr. Gardiner "to
-fish there as often as he chose," and asks Elizabeth's leave to introduce Georgiana to her at
-Lambton.[^s17] When [Caroline Bingley](../persons/caroline-bingley.md) disparages Elizabeth's looks
-to provoke him, Darcy replies that for many months he has "considered her one of the handsomest
-women of my acquaintance."[^s18]
+His aunt Lady Catherine, having heard a report that he and Elizabeth were engaged, calls on him in
+London on her way back from Longbourn to relate her visit and Elizabeth's answers in full, meaning
+to enlist his help in ending the match; the effect on Darcy is exactly contrary to her intent,
+giving him fresh hope that Elizabeth's feelings had changed.[^s26] He returns to Longbourn with
+Bingley and, walking alone with Elizabeth, renews his proposal; when she accepts, he tells her his
+affection for her was the deciding motive in his pursuit of Wickham and Lydia, whatever else he
+allowed his family to believe.[^s27]
 
-## Lydia's elopement
+Reflecting on his own history, he confesses he was an only child, "spoiled" by parents who, though
+good themselves, encouraged him to be "selfish and overbearing" and to think meanly of the world
+outside his own family circle, until Elizabeth's rejection and reproof at Hunsford properly humbled
+him.[^s28] He tells her that on the evening before leaving for London he confessed to Bingley that he
+had believed Jane indifferent to him without real evidence and had concealed her presence in town —
+a confession Bingley at first resented but has since forgiven.[^s29] He writes at once to Lady
+Catherine to announce the engagement, provoking her lasting anger.[^s30]
 
-When Elizabeth, distraught, tells him her youngest sister has eloped with Wickham, Darcy is "fixed
-in astonishment," then grieved and shocked; he asks what has been attempted to recover her, offers
-what help he can, and promises secrecy, though the news forces him to cancel Georgiana's planned
-visit to Elizabeth.[^s19]
-
-## Finding Wickham and Lydia
-
-[Mrs. Gardiner](../persons/mrs-gardiner.md)'s letter to Elizabeth (written after Elizabeth returns
-to Longbourn) reveals what Elizabeth had not known: it was Darcy, not [Mr. Gardiner](../persons/mr-gardiner.md),
-who found and settled the couple. Believing himself responsible, from his own reserve, for
-Wickham's true character never becoming known, Darcy followed [Lydia Bennet](../persons/lydia-bennet.md)
-and [George Wickham](../persons/george-wickham.md) to London and, through a Mrs. Younge — a former
-governess of Georgiana's, dismissed for some cause of disapprobation and now keeping lodgings in
-Edward Street, whom Darcy had to bribe for intelligence — traced them to their lodgings.[^s20] He
-saw Wickham and Lydia repeatedly, found Lydia absolutely resolved to stay with Wickham regardless
-of marriage, and negotiated the match directly with Wickham himself before bringing
-[Mr. Gardiner](../persons/mr-gardiner.md) into the arrangement and letting him appear to manage
-it.[^s20] Darcy paid Wickham's debts — "amounting... to considerably more than a thousand pounds" —
-settled a further thousand pounds on Lydia in addition to her own share, and purchased his
-commission, all done, Mrs. Gardiner writes, so obstinately by Darcy alone that
-[Mr. Gardiner](../persons/mr-gardiner.md) was left only "the probable credit of it."[^s21] Mrs.
-Gardiner adds her own admiration of Darcy in the same letter: "how much I like him... his
-understanding and opinions all please me."[^s22]
-
-## Return to Longbourn and second proposal
-
-Some days after [Lady Catherine de Bourgh](../persons/lady-catherine-de-bourgh.md)'s visit to
-Longbourn, Darcy comes back with Bingley; on a walk toward [Sir William Lucas](../persons/sir-william-lucas.md)'s,
-Elizabeth thanks him for his "unexampled kindness" to Lydia, and Darcy replies, "if you _will_
-thank me, let it be for yourself alone."[^s23] He then asks whether her feelings are "still what
-they were last April," and Elizabeth's altered answer leads him to propose again; she accepts.[^s24]
-Darcy tells her that [Lady Catherine](../persons/lady-catherine-de-bourgh.md)'s visit and report of
-their conversation, meant to extract a promise against the match, instead "taught me to hope."[^s25]
-Of his own character, Darcy confesses: "I have been a selfish being all my life, in practice,
-though not in principle," spoiled as an only son by parents who "allowed, encouraged, almost taught
-me to be selfish and overbearing"; he credits Elizabeth with humbling and reforming him.[^s26]
-
-That evening Darcy asks [Mr. Bennet](../persons/mr-bennet.md)'s consent in the library; Mr. Bennet,
-though warning Elizabeth against an unequal marriage without real esteem, gives it once satisfied of
-her attachment.[^s27] Telling her father what Darcy had "voluntarily done for Lydia" — arranging the
-match, paying Wickham's debts, and purchasing his commission — leaves Mr. Bennet astonished.[^s27]
-[Mrs. Bennet](../persons/mrs-bennet.md), on hearing of the engagement, is first struck speechless,
-then effusive over Darcy's ten-thousand-a-year fortune, "a house in town," and the prospect of "what
-pin-money, what jewels, what carriages" Elizabeth will have.[^s28]
-
-## Marriage
-
-During [Mr. Collins](../persons/mr-collins.md) and [Charlotte](../persons/charlotte-lucas.md)'s
-visit to Lucas Lodge, Darcy bears [Sir William Lucas](../persons/sir-william-lucas.md)'s obsequious
-compliments on "carrying away the brightest jewel of the country" with "admirable calmness," only
-shrugging his shoulders once Sir William is out of sight.[^s29] After the marriage, Darcy can never
-receive Wickham at Pemberley, but continues to assist his career for Elizabeth's sake.[^s30]
-Pemberley becomes [Georgiana Darcy](../persons/georgiana-darcy.md)'s permanent home, and she and
-Elizabeth grow into the close sisterly attachment Darcy had hoped for.[^s31]
-[Lady Catherine de Bourgh](../persons/lady-catherine-de-bourgh.md), on learning of the marriage,
-sends Darcy an abusive letter and breaks off contact, but is eventually persuaded by Elizabeth to
-reconcile and later condescends to visit them at Pemberley.[^s32]
+By the novel's close, Darcy's own understanding of Georgiana deepens as she comes to know Elizabeth,
+whose manner teaches her that "a woman may take liberties with her husband" a brother would not
+permit a sister.[^s31] Though he can never receive Wickham at Pemberley, for Elizabeth's sake he
+continues to assist him in his profession; after further resistance, he is eventually reconciled with
+Lady Catherine, who condescends to visit them at Pemberley.[^s32]
 
 ## See also
 
-- [Pemberley](../misc/pemberley.md)
-- [Charles Bingley](../persons/charles-bingley.md)
-- [Elizabeth Bennet](../persons/elizabeth-bennet.md)
-- [George Wickham](../persons/george-wickham.md)
-- [Lady Catherine de Bourgh](../persons/lady-catherine-de-bourgh.md)
-- [Georgiana Darcy](../persons/georgiana-darcy.md)
-- [Colonel Fitzwilliam](../persons/colonel-fitzwilliam.md)
-- [Mrs. Gardiner](../persons/mrs-gardiner.md)
-- [Mr. Bennet](../persons/mr-bennet.md)
-- [Sir William Lucas](../persons/sir-william-lucas.md)
+- [Pemberley](../objects/pemberley.md)
+- [Charles Bingley](charles-bingley.md)
+- [Elizabeth Bennet](elizabeth-bennet.md)
+- [George Wickham](george-wickham.md)
+- [Georgiana Darcy](georgiana-darcy.md)
+- [Lady Catherine de Bourgh](lady-catherine-de-bourgh.md)
+- [Colonel Fitzwilliam](colonel-fitzwilliam.md)
+- [Mrs. Younge](mrs-younge.md)
 
 ## Sources
 
-[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 987-989; 3527-3529 — Darcy's ten-thousand-a-year fortune (ingested 2026-07-16)
-[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3762-3765 — Lady Catherine de Bourgh named as Darcy's aunt (ingested 2026-07-16)
-[^s3]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1203-1210 — Darcy and Bingley's friendship (ingested 2026-07-16)
-[^s4]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 985-1010, 1043-1050 — Darcy's reception and remark at the Meryton assembly (ingested 2026-07-16)
-[^s5]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1613-1621 — Darcy on Elizabeth's eyes (ingested 2026-07-16)
-[^s6]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 2818-2830 — Darcy on his own resentful temper (ingested 2026-07-16)
-[^s7]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 4082-4088 — Elizabeth tells Darcy he has lost Wickham's regard (ingested 2026-07-16)
-[^s8]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3606-3630 — Wickham's account of the disputed living, attributed to Wickham (ingested 2026-07-16)
-[^s9]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7505-7507; 7514-7518 — Darcy's proposal at the Hunsford parsonage (ingested 2026-07-16)
-[^s10]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7658-7660 — Darcy's response to Elizabeth's refusal (ingested 2026-07-16)
-[^s11]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7748-7751; 7833-7836 — Darcy's letter on separating Bingley from Jane (ingested 2026-07-16)
-[^s12]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7848-7850; 7883-7886 — Darcy's letter on Wickham's father, his own father's will, and the £3,000 settlement (ingested 2026-07-16)
-[^s13]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7899-7901 — Darcy's letter on refusing Wickham's renewed claim to the living (ingested 2026-07-16)
-[^s14]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7908-7930 — Darcy's letter on the Ramsgate elopement plot against Georgiana (ingested 2026-07-16)
-[^s15]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7940-7944 — Darcy offers Colonel Fitzwilliam's corroboration (ingested 2026-07-16)
-[^s16]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 9440-9441; 9472-9474 — Mrs. Reynolds's account of Darcy's temper and management, at Pemberley (ingested 2026-07-16)
-[^s17]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 9676-9678; 9715-9718 — Darcy's altered manner, the fishing invitation, and the introduction request at Pemberley (ingested 2026-07-16)
-[^s18]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 10185-10220 — Miss Bingley's insult and Darcy's defence of Elizabeth's looks (ingested 2026-07-16)
-[^s19]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 10354-10356; 10392; 10442-10444 — Darcy's reaction to news of Lydia's elopement (ingested 2026-07-16)
-[^s20]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12013-12047 — Mrs. Gardiner's letter on Darcy's motive and his tracing Wickham through Mrs. Younge (ingested 2026-07-16)
-[^s21]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12096-12107 — Mrs. Gardiner's letter on the settlement figures and Darcy's insistence on acting alone (ingested 2026-07-16)
-[^s22]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12138-12141 — Mrs. Gardiner's letter expressing her own liking of Darcy (ingested 2026-07-16)
-[^s23]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13653-13658; 13673-13692 — Darcy's return to Longbourn and Elizabeth's thanks on the walk (ingested 2026-07-16)
-[^s24]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13698-13708 — Darcy's second proposal and Elizabeth's acceptance (ingested 2026-07-16)
-[^s25]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13720-13733 — Lady Catherine's visit gives Darcy hope (ingested 2026-07-16)
-[^s26]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13800-13819 — Darcy's self-description of his upbringing and reform (ingested 2026-07-16)
-[^s27]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14104-14138 — Mr. Bennet's consent and his astonishment at learning what Darcy did for Lydia (ingested 2026-07-16)
-[^s28]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14161-14169 — Mrs. Bennet's reaction to the engagement (ingested 2026-07-16)
-[^s29]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14362-14367 — Darcy's composure under Sir William Lucas's compliments (ingested 2026-07-16)
-[^s30]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14475-14477 — Darcy never receives Wickham at Pemberley but assists his career (ingested 2026-07-16)
-[^s31]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14489-14494 — Pemberley becomes Georgiana's home and her bond with Elizabeth (ingested 2026-07-16)
-[^s32]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14501-14512 — Lady Catherine's anger and eventual reconciliation (ingested 2026-07-16)
+[^s1]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 5882, 3525-3529 — full name per Mrs. Gardiner; Pemberley income (ingested 2026-08-28)
+[^s2]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1203-1214 — friendship with Bingley, contrasting temperaments (ingested 2026-08-28)
+[^s3]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3763-3765 — nephew of Lady Catherine, sister Georgiana (ingested 2026-08-28)
+[^s4]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1047-1052, 1007-1008 — "tolerable" remark; neighbourhood's judgment (ingested 2026-08-28)
+[^s5]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 1456-1470 — growing attraction to Elizabeth (ingested 2026-08-28)
+[^s6]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 2823-2830 — "My good opinion once lost is lost for ever" (ingested 2026-08-28)
+[^s7]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 4022-4179 — dances with Elizabeth at the Netherfield ball (ingested 2026-08-28)
+[^s8]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 3609-3629 — Wickham's account of the denied living (ingested 2026-08-28)
+[^s9]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 4964-4967 — departure for London with Bingley's party (ingested 2026-08-28)
+[^s10]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 6819-6846 — arrives at Rosings with Colonel Fitzwilliam for Easter (ingested 2026-08-28)
+[^s11]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7071-7176, 7248-7268 — parsonage visit; park conversation on Hertfordshire attachment (ingested 2026-08-28)
+[^s12]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7505-7524, 7610-7666 — proposal and refusal (ingested 2026-08-28)
+[^s13]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7748-7842 — letter's account of the Bingley/Jane separation (ingested 2026-08-28)
+[^s14]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 7844-7951 — letter's account of Wickham's history and the Ramsgate elopement attempt (ingested 2026-08-28)
+[^s15]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 8194-8201 — departure for London; Lady Catherine's remark (ingested 2026-08-28)
+[^s16]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 9537-9591, 9653-9723, 9949-9960 — civility at Pemberley; introduction and dinner invitation (ingested 2026-08-28)
+[^s17]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 10205-10220 — defends Elizabeth's looks to Miss Bingley (ingested 2026-08-28)
+[^s18]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 10354-10463 — reaction to news of Lydia's elopement (ingested 2026-08-28)
+[^s19]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12013-12032 — per Mrs. Gardiner's letter: Darcy's decision to search for Wickham and Lydia (ingested 2026-08-28)
+[^s20]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12033-12056 — per Mrs. Gardiner's letter: tracing the couple through Mrs. Younge; the attempt to persuade Lydia to leave (ingested 2026-08-28)
+[^s21]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12057-12074 — per Mrs. Gardiner's letter: Wickham's true motives and the negotiation (ingested 2026-08-28)
+[^s22]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12102-12120 — per Mrs. Gardiner's letter: Darcy's payment of Wickham's debts, the settlement on Lydia, and the purchased commission (ingested 2026-08-28)
+[^s23]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12135-12137 — per Mrs. Gardiner's letter: Darcy attends the wedding and dines with the Gardiners (ingested 2026-08-28)
+[^s24]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12507-12513, 12526-12536 — reserved manner at Longbourn in Mrs. Bennet's presence (ingested 2026-08-28)
+[^s25]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 12703-12712, 12746-12756 — seated apart from Elizabeth at dinner; brief exchange over coffee (ingested 2026-08-28)
+[^s26]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13718-13733 — Lady Catherine's account of the Longbourn visit gives Darcy fresh hope (ingested 2026-08-28)
+[^s27]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13692-13716, 14289-14292 — renews his proposal; states his real motive for coming to Netherfield (ingested 2026-08-28)
+[^s28]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13800-13820 — confession of being spoiled as an only child (ingested 2026-08-28)
+[^s29]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 13877-13906 — confesses to Bingley his earlier interference and concealment (ingested 2026-08-28)
+[^s30]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14297-14299, 14328-14330, 14501-14504 — writes to Lady Catherine; her lasting anger (ingested 2026-08-28)
+[^s31]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14489-14499 — Georgiana's deepened understanding of him through Elizabeth (ingested 2026-08-28)
+[^s32]: [raw/pride-and-prejudice.txt](../../raw/pride-and-prejudice.txt), lines 14475-14477, 14505-14512 — continues to assist Wickham for Elizabeth's sake; reconciliation with Lady Catherine (ingested 2026-08-28)

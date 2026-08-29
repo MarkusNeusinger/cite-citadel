@@ -2,5 +2,5 @@
 
 The pages in this folder. Generated — do not edit.
 
-- [EY — Extraction Yield](ey-extraction-yield.md) — The fraction of a coffee's dry mass that dissolves into the brewed cup — the primary measure of how much was pulled from the grounds.
-- [TDS — Total Dissolved Solids](tds-total-dissolved-solids.md) — Brew-strength measure — the proportion of dissolved coffee solids in the finished cup.
+- [SCA — Specialty Coffee Association](sca-specialty-coffee-association.md) — Industry body whose "Golden Cup" standard sets the reference targets for coffee extraction yield, brew strength, and brew water.
+- [TDS — Total Dissolved Solids](tds-total-dissolved-solids.md) — The dissolved-solids content of a liquid — used for coffee's brew strength (by mass %) and for brewing water quality (in mg/L / ppm).

@@ -1,90 +1,160 @@
 ---
 type: System
 title: KOMET
-description: Blauwal Logistik's long-serving, in-house-customised warehouse management
-  system, being replaced by QUAYSTONE under Projekt LEUCHTFEUER.
+description: Blauwal Logistik GmbH's in-house-customised warehouse management system,
+  being replaced by QUAYSTONE under Projekt LEUCHTFEUER.
 tags:
-- wms
+- warehouse-management
+- software
 - logistics
-- blauwal-logistik
-- leuchtfeuer
 resource: raw/2024-03-05-minutes-kickoff.md
-timestamp: '2026-07-16T17:12:37Z'
-citadel_version: 0.3.0
+timestamp: '2026-08-28T23:49:00Z'
+citadel_version: 0.6.0
 ---
 
-KOMET is the warehouse management system (WMS) that [Blauwal Logistik GmbH](../organizations/blauwal-logistik-gmbh.md) has customised and patched in-house for many years.[^s1] KOMET has been in continuous productive use at Blauwal since 2009.[^s17] It is being replaced by [QUAYSTONE](quaystone.md) under [Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md), following the company's executive management's decision of 27 February 2024.[^s2] KOMET's original vendor no longer exists, so every bug fix, carrier change, and customs-regulation update lands on lead architect [Marek Duszek](../persons/marek-duszek.md)'s team alone, with no escalation path behind them.[^s3] Duszek described the system's central role bluntly: "The WMS is the spider in the web here — everything in this company touches it."[^s4] The original vendor, Werftmann & Partner Softwarehaus GmbH, went insolvent in 2017; since then there has been no vendor support of any kind, and Duszek's team patches KOMET itself against a codebase whose documentation "stops mid-sentence in places."[^s7][^s18] Of the three people who still understand the allocation module, two are older than the module itself.[^s8]
+KOMET is the warehouse management system (WMS)
+[Blauwal Logistik GmbH](../organizations/blauwal-logistik-gmbh.md) has customised and patched
+in-house for many years.[^s1] It is being replaced by [QUAYSTONE](quaystone.md) under
+[Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md), following a Geschäftsführung decision
+taken on 27 February 2024.[^s1]
 
-Duszek's written estate assessment, delivered 12 March 2024, put numbers on KOMET's footprint: it runs in eleven warehouses, and every site carries local customisations, with no two installations identical — some of the per-site differences trace back as far as a forklift breaking down in 2011, whose workaround became permanent process.[^s9] He warned that anyone planning the migration on a "one template, N copies" assumption "is planning fiction."[^s10] The assessment also produced the company's first complete interface inventory: KOMET exchanges data with 27 downstream systems — the ERP, customs, the fleet's telematics units, three customer portals, label printing, and staging robots in Walle — every one of which must be re-pointed, re-tested, or consciously retired during the migration.[^s11] Duszek argues that this interface work, not the software swap itself, is the real project.[^s12]
+KOMET's original vendor, Werftmann & Partner Softwarehaus GmbH, went insolvent in 2017; since then
+there has been no vendor support of any kind, so every bug fix, every carrier change, and every
+customs-regulation update lands on [Marek Duszek](../persons/marek-duszek.md)'s team alone, with no
+escalation path.[^s1][^s7] The team patches KOMET against a codebase whose documentation stops
+mid-sentence in places, and of the three people who understand the allocation module, two are older
+than the module itself — which Marek Duszek calls the real risk clock ticking under the company,
+regardless of what gets decided in any meeting.[^s7] Marek warned the kickoff meeting not to
+underestimate KOMET's integration surface: "The WMS is the spider in the web here — everything in
+this company touches it."[^s2] He asked for two weeks to put together a written assessment
+enumerating the sites, interfaces, and local customisations one by one, so that planning would rest
+on counted facts rather than estimates shouted across a meeting table (action AP-2).[^s2]
+
+Marek delivered that written assessment on 12 March 2024, three days ahead of the 15 March
+deadline.[^s4] KOMET runs in eleven warehouses, and every site carries its own local
+customisations — no two installations are identical, and some of the differences exist only
+because a workaround for a one-off problem (a forklift breaking down in 2011, at one site) became
+the permanent process there.[^s5] Marek warned that planning the migration on a "one template, N
+copies" assumption is "planning fiction."[^s5]
+
+The assessment also produced Blauwal's first complete, current inventory of KOMET's downstream
+interfaces: the system exchanges data with 27 downstream systems, among them the ERP, customs, the
+fleet's telematics units, three customer portals, label printing, and the staging robots in
+Walle.[^s6] Every one of those 27 connections has to be re-pointed, re-tested, or consciously
+retired during the migration; Marek Duszek judges this interface work, not the software swap
+itself, to be the real substance of the migration project.[^s6] The programme's first year bore
+this out: by its extraordinary steering session of 10 February 2025, the committee named the
+interface work package — proving far larger in effort than in count — as one of the two reasons
+the original 1 October 2024 go-live could not be met, the other being master-data cleansing.[^s21]
+By his status note of 12 January 2026, Marek Duszek reported the interface backlog at
+zero.[^s22]
+
+Years of parallel maintenance in KOMET have left duplicate article records across Blauwal's
+sites.[^s2] See [Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md) for the cleansing plan.
+
+The Projekt LEUCHTFEUER programme charter's Revision B targets KOMET's decommissioning, alongside
+programme close, for Q4 2025.[^s14] Following the estate's full go-live on 17 March 2026, KOMET
+remains readable while the archive extraction for customs and audit history is completed; its
+final switch-off, originally scheduled for 30 September 2026, was brought forward to
+31 July 2026 once that extraction finished earlier than planned — closing out seventeen years of
+productive service since 2009.[^s23][^s24]
+
+KOMET has been in productive use at Blauwal since 2009.[^s13] At the steering committee
+(Lenkungsausschuss) meeting on 19 March 2024, Marek Duszek summarized his written estate
+assessment for the committee, which took it in approvingly and asked that the interface list be
+kept as a living document on the project drive (decision LA-2024-01).[^s13] The committee also
+reaffirmed that, since the 2017 insolvency, maintenance and further development of KOMET run
+entirely through Blauwal's internal IT team.[^s13]
 
 > [!CONTRADICTION]
-> Duszek's 12 March 2024 estate assessment states KOMET runs in eleven warehouses[^s9], but the Blauwal steering committee's 19 March 2024 minutes state it runs in nine warehouses[^s19].
+> Marek Duszek's written assessment of 12 March 2024 counts KOMET running in eleven
+> warehouses.[^s5] The steering committee's own summary of that assessment, one week later, states
+> KOMET is operated in nine warehouses.[^s13]
 
-Duszek cited the Mars Climate Orbiter disaster as a cautionary tale about unit-conversion errors in interface work, dating the spacecraft's loss to 2001 and attributing it to one engineering team writing pound-seconds where another read newton-seconds.[^s13] NASA's Mars Climate Orbiter was actually lost in 1999, not 2001, though the pound-seconds/newton-seconds mismatch Duszek describes is the real, well-documented cause.[^llm1] He warned that Blauwal's customs interface alone carries four unit conversions "of exactly this shape" and asked for explicit review time for each one in the migration plan, rather than a line item called "testing, misc."[^s14]
+Keeping KOMET running also carries a hard price tag: as she had promised at the kickoff meeting,
+[Heike Brandt](../persons/heike-brandt.md) put the figure in writing on 11 March 2024 — KOMET's
+annual licence and support contracts cost EUR 310,000, for a system whose vendor "has not existed
+for seven years."[^s8] Marek Duszek's team modelled the total cost of ownership against QUAYSTONE
+and found migration wins in every scenario, including the pessimistic ones where the timeline
+doubles.[^s9]
 
-Years of parallel maintenance in KOMET have left duplicate article records across Blauwal's sites; [Sabine Krüger](../persons/sabine-kruger.md) flagged this as the operational risk she loses sleep over, since migrating the duplicates would only multiply them.[^s5]
+On 15 April 2026, Heike Brandt formally retracted her own memorandum of 10 June 2024, "KOMET
+operating costs (provisional figures)."[^s25] The final operations audit for 2024–2025, accepted by
+the Geschäftsführung on 31 March 2026, had closed the methodology that memo's downtime-cost
+estimate was built on: the provisional approach double-counted contractual penalties the affected
+customer accounts had in fact renegotiated, and extrapolated a peak-season hourly pattern across the
+whole year, producing figures that differed from the audited ones materially, not marginally.[^s26]
+Document control removed the 10 June 2024 memorandum from the project record the same day, and
+Brandt asked that nobody rely on, quote, or restate its figures; the corrected figures are held in
+the final audit report, distributed separately under restricted access.[^s27][^s28] The audit
+separately confirmed that KOMET's annual licence and support figure, above, was — unlike the
+retracted downtime estimate — contractual rather than estimated, and unaffected by the
+retraction.[^s29]
 
-The [Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md) charter names KOMET's key-person dependency and its interface surface among the programme's principal risks: knowledge of KOMET internals is concentrated in very few people, a risk until decommissioning, and the interface surface is the programme's largest single work package, with each connection needing explicit conversion review and test time.[^s21] The charter (Version 1.0) targeted KOMET's decommissioning for the fourth quarter of 2024; Revision B moves that target to the fourth quarter of 2025.[^s22][^s27]
-
-In her 20 March 2026 go-live announcement, marking the full warehouse estate's cutover to QUAYSTONE, [Petra Vogelsang](../persons/petra-vogelsang.md) confirmed KOMET remains readable while the programme completes an archive extraction for customs and audit history, with the system's final switch-off now set for 30 September 2026 — closing out seventeen years of productive service she marked with "a small wake."[^s28]
-
-At the kickoff of the [SEAGULL](../projects/seagull.md) customer self-service portal programme on 8 April 2026, Petra Vogelsang reported, for coordination with the portal's timeline, that KOMET's decommissioning has been brought forward to 31 July 2026: the archive extraction for customs and audit history finished earlier than planned, so there is no reason to keep the system running until the previously communicated end of September. The portal programme is unaffected but was informed, since the last KOMET-era customer exports retire with it.[^s29]
-
-On 15 April 2026, Heike Brandt formally retracted her memorandum of 10 June 2024, "KOMET operating costs (provisional figures)," and every provisional figure it contained, with immediate effect.[^s30] The final KOMET operations audit for 2024–2025, accepted by Blauwal's Geschäftsführung on 31 March 2026, closed the methodology behind the 2024 memorandum's downtime-cost estimate against it: the provisional approach had double-counted contractual penalties that the affected customer accounts had since renegotiated, and had extrapolated a peak-season hourly downtime pattern across the whole year, producing figures materially different from the audited ones.[^s31] Document control removed the 2024 memorandum from the project record the same day, and any existing document reproducing its figures is to treat that passage as withdrawn and remove it at its next revision.[^s32] The corrected figures are held in the final audit report, distributed separately under restricted access through document control; Brandt deliberately reproduces none of them, old or corrected, in the retraction itself.[^s33] The retraction leaves the migration's business case unaffected, since it was argued on the licence reality and the vendor situation rather than on the retracted downtime estimate, and the programme it justified has in any case delivered.[^s34]
+Marek Duszek warns that migrations are more often undone by boring unit, encoding, and
+field-length conversions than by big design mistakes; he cites the Mars Climate Orbiter, which he
+says burned up in 2001 after one team used pound-seconds where the other used
+newton-seconds.[^s10] The Mars Climate Orbiter was in fact lost in September 1999, not
+2001.[^llm1] Blauwal's own customs interface carries four unit conversions of that same shape, and
+Marek wants each one given explicit review time in the migration plan rather than folded into a
+generic "testing, misc" line item.[^s11]
 
 ## Change Log
-- 2024-05-14: The charter (Version 1.0) targeted KOMET's decommissioning for the fourth quarter of 2024.[^s22]
-- 2025-01-20: Revision B moves KOMET's decommissioning target to the fourth quarter of 2025.[^s27]
-- 2026-03-20: Final switch-off date set to 30 September 2026, superseding Revision B's fourth-quarter-2025 target, pending completion of the customs/audit archive extraction.[^s28]
-- 2026-04-08: Final switch-off date brought forward to 31 July 2026, superseding the 20 March 2026 date, after the customs/audit archive extraction finished early.[^s29]
+
+- 2024-05-14: charter version 1.0 targeted KOMET's decommissioning and programme close for
+  Q4 2024.[^s20]
+- 2025-01-17: Revision B reset the target to Q4 2025.[^s14]
+- 2026-03-20: the go-live announcement sets KOMET's final switch-off for 30 September 2026,
+  further extending the Revision B target.[^s23]
+- 2026-04-08: final switch-off is brought forward from 30 September 2026 to 31 July 2026, after
+  the archive extraction for customs and audit history finished ahead of schedule.[^s24]
 
 ## Open Points
 
-### KOMET estate assessment
+### Written assessment of the KOMET estate
 id: op-komet-estate-assessment
-- 2024-03-05: Marek Duszek gave a first, deliberately verbal sketch of the KOMET estate and asked for two weeks to put together a proper written assessment enumerating the sites, interfaces, and local customisations, so that Projekt LEUCHTFEUER's planning rests on counted facts rather than estimates (action AP-2, owner Marek Duszek, due 15 March 2024).[^s6]
-- 2024-03-12: Duszek delivered the written assessment three days ahead of the deadline[^s15] — 34 pages on the project share (folder "AP-2"), with section 2 (interfaces) and section 5 (customisations) flagged as required reading before the 19 March steering committee.[^s16]
-- 2024-03-19: Duszek summarised the assessment for the steering committee, which accepted it approvingly and asked that the interface list be kept as a living document on the project drive (decision LA-2024-01).[^s20]
-
-### KOMET operating-cost audit
-id: op-komet-operating-cost-audit
-- 2026-04-15: Heike Brandt formally retracted her 10 June 2024 memorandum "KOMET operating costs (provisional figures)" after the final 2024–2025 operations audit found its downtime-cost estimate's methodology unsound — it had double-counted renegotiated contractual penalties and extrapolated a peak-season pattern across the whole year. The memorandum was withdrawn from the project record and its figures are not to be relied on, quoted, or restated; corrected figures are held separately, under restricted access.[^s30][^s31][^s32]
+- 2024-03-05: Marek Duszek gave a first, deliberately verbal sketch of the KOMET estate and asked
+  for two weeks to put together a proper written assessment enumerating the sites, interfaces, and
+  local customisations (action AP-2, owner Marek Duszek, due 15 March 2024).[^s2][^s3]
+- 2024-03-12: Marek Duszek delivered the written assessment — action AP-2 done — three days ahead
+  of the 15 March deadline: 34 pages, on the project share under folder "AP-2", covering all eleven
+  warehouse sites and a first complete inventory of KOMET's 27 downstream interfaces. Recommended
+  reading before the 19 March 2024 steering committee (Lenkungsausschuss) is section 2 (interfaces)
+  and section 5 (site customisations).[^s4][^s12]
 
 ## See also
-- [Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md)
+
 - [QUAYSTONE](quaystone.md)
+- [Projekt LEUCHTFEUER](../projects/projekt-leuchtfeuer.md)
+- [SEAGULL (customer portal programme)](../projects/seagull-customer-portal-programme.md)
+- [Marek Duszek](../persons/marek-duszek.md)
+- [Heike Brandt](../persons/heike-brandt.md)
 - [Blauwal Logistik GmbH](../organizations/blauwal-logistik-gmbh.md)
-- [SEAGULL (customer portal)](../projects/seagull.md)
 
 ## Sources
-[^s1]: [raw/2024-03-05-minutes-kickoff.md](../../raw/2024-03-05-minutes-kickoff.md), § TOP 1 — Why this programme exists — KOMET is in-house customised (ingested 2026-07-16)
-[^s2]: [raw/2024-03-05-minutes-kickoff.md](../../raw/2024-03-05-minutes-kickoff.md), § TOP 1 — Why this programme exists — 27 Feb 2024 replacement decision (ingested 2026-07-16)
-[^s3]: [raw/2024-03-05-minutes-kickoff.md](../../raw/2024-03-05-minutes-kickoff.md), § TOP 1 — Why this programme exists — vendor gone, no escalation path (ingested 2026-07-16)
-[^s4]: [raw/2024-03-05-minutes-kickoff.md](../../raw/2024-03-05-minutes-kickoff.md), § TOP 2 — Current estate — Duszek's "spider in the web" quote (ingested 2026-07-16)
-[^s5]: [raw/2024-03-05-minutes-kickoff.md](../../raw/2024-03-05-minutes-kickoff.md), § TOP 2 — Current estate — duplicate article records (ingested 2026-07-16)
-[^s6]: [raw/2024-03-05-minutes-kickoff.md](../../raw/2024-03-05-minutes-kickoff.md), § TOP 2 — Current estate — AP-2 written assessment (ingested 2026-07-16)
-[^s7]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 23-25 — vendor name, 2017 insolvency, no support, documentation (ingested 2026-07-16)
-[^s8]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 25-26 — allocation module bus factor (ingested 2026-07-16)
-[^s9]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 10-14 — eleven warehouses, customisations, forklift anecdote (ingested 2026-07-16)
-[^s10]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 11-12 — "planning fiction" (ingested 2026-07-16)
-[^s11]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 16-19 — 27 downstream systems, first interface inventory (ingested 2026-07-16)
-[^s12]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 19-21 — "the real project" (ingested 2026-07-16)
-[^s13]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 43-45 — Mars Climate Orbiter anecdote as stated (ingested 2026-07-16)
-[^llm1]: LLM - model knowledge: Mars Climate Orbiter was lost in 1999, not 2001 (added 2026-07-16)
-[^s14]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 45-47 — customs interface unit conversions, review-time request (ingested 2026-07-16)
-[^s15]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 7-8 — assessment delivered three days early (ingested 2026-07-16)
-[^s16]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 57-59 — 34 pages, folder AP-2, read before the 19th (ingested 2026-07-16)
-[^s17]: [raw/2024-03-19-protokoll-lenkungsausschuss.md](../../raw/2024-03-19-protokoll-lenkungsausschuss.md), § TOP 1 — Ausgangslage und Altsystem — productive use since 2009 (ingested 2026-07-16)
-[^s18]: [raw/2024-03-19-protokoll-lenkungsausschuss.md](../../raw/2024-03-19-protokoll-lenkungsausschuss.md), § TOP 1 — Ausgangslage und Altsystem — vendor insolvency 2017, internal IT maintenance since (ingested 2026-07-16)
-[^s19]: [raw/2024-03-19-protokoll-lenkungsausschuss.md](../../raw/2024-03-19-protokoll-lenkungsausschuss.md), § TOP 1 — Ausgangslage und Altsystem — nine warehouses (ingested 2026-07-16)
-[^s20]: [raw/2024-03-19-protokoll-lenkungsausschuss.md](../../raw/2024-03-19-protokoll-lenkungsausschuss.md), § Beschlüsse — decision LA-2024-01 (ingested 2026-07-16)
-[^s21]: [raw/2024-05-14-charter-leuchtfeuer.md](../../raw/2024-05-14-charter-leuchtfeuer.md), § 10. Principal risks — key-person dependency and interface surface (ingested 2026-07-16)
-[^s22]: [raw/2024-05-14-charter-leuchtfeuer.md](../../raw/2024-05-14-charter-leuchtfeuer.md), § 6. Milestones — Q4 2024 decommissioning target (ingested 2026-07-16)
-[^s27]: [raw/2024-05-14-charter-leuchtfeuer.md](../../raw/2024-05-14-charter-leuchtfeuer.md), § 6. Milestones (Revision B) — Q4 2025 decommissioning target (ingested 2026-07-16)
-[^s28]: [raw/2026-03-20-email-vogelsang-golive.md](../../raw/2026-03-20-email-vogelsang-golive.md), lines 38-41 — KOMET readable during archive extraction, 30 September 2026 switch-off, "small wake" for seventeen years of service (ingested 2026-07-16)
-[^s29]: [raw/2026-04-08-minutes-portal-kickoff.md](../../raw/2026-04-08-minutes-portal-kickoff.md), § AOB — KOMET decommissioning brought forward (ingested 2026-07-16)
-[^s30]: [raw/2026-04-15-memo-brandt-retraction.md](../../raw/2026-04-15-memo-brandt-retraction.md), lines 10-12 — retraction of the 10 June 2024 memorandum, immediate effect (ingested 2026-07-16)
-[^s31]: [raw/2026-04-15-memo-brandt-retraction.md](../../raw/2026-04-15-memo-brandt-retraction.md), lines 16-23 — audit findings: double-counted penalties, extrapolated peak-season pattern, materially wrong (ingested 2026-07-16)
-[^s32]: [raw/2026-04-15-memo-brandt-retraction.md](../../raw/2026-04-15-memo-brandt-retraction.md), lines 34-37 — removed from project record, treat reproductions as withdrawn (ingested 2026-07-16)
-[^s33]: [raw/2026-04-15-memo-brandt-retraction.md](../../raw/2026-04-15-memo-brandt-retraction.md), lines 41-45 — corrected figures in the final audit report, restricted access, non-reproduction (ingested 2026-07-16)
-[^s34]: [raw/2026-04-15-memo-brandt-retraction.md](../../raw/2026-04-15-memo-brandt-retraction.md), lines 51-54 — migration business case unaffected (ingested 2026-07-16)
+
+[^s1]: [raw/2024-03-05-minutes-kickoff.md](../../raw/2024-03-05-minutes-kickoff.md), § TOP 1 — Why this programme exists (ingested 2026-08-28)
+[^s2]: [raw/2024-03-05-minutes-kickoff.md](../../raw/2024-03-05-minutes-kickoff.md), § TOP 2 — Current estate (ingested 2026-08-28)
+[^s3]: [raw/2024-03-05-minutes-kickoff.md](../../raw/2024-03-05-minutes-kickoff.md), § Action items (ingested 2026-08-28)
+[^s4]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 7-8 (ingested 2026-08-28)
+[^s5]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 10-14 (ingested 2026-08-28)
+[^s6]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 16-21 (ingested 2026-08-28)
+[^s7]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 23-27 (ingested 2026-08-28)
+[^s8]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 32-36 (ingested 2026-08-28)
+[^s9]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 38-40 (ingested 2026-08-28)
+[^s10]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 42-45 (ingested 2026-08-28)
+[^s11]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 45-47 (ingested 2026-08-28)
+[^s12]: [raw/2024-03-12-email-duszek-komet-assessment.md](../../raw/2024-03-12-email-duszek-komet-assessment.md), lines 57-59 (ingested 2026-08-28)
+[^s13]: [raw/2024-03-19-protokoll-lenkungsausschuss.md](../../raw/2024-03-19-protokoll-lenkungsausschuss.md), § TOP 1 — Ausgangslage und Altsystem (ingested 2026-08-28)
+[^llm1]: LLM - model knowledge, not from a raw file: the Mars Climate Orbiter was lost in September 1999, not 2001 (added 2026-08-28)
+[^s14]: [raw/2024-05-14-charter-leuchtfeuer.md](../../raw/2024-05-14-charter-leuchtfeuer.md), lines 63-69 (ingested 2026-08-29)
+[^s20]: [raw/2024-05-14-charter-leuchtfeuer.md](../../raw/2024-05-14-charter-leuchtfeuer.md) — Version 1.0's milestone plan, superseded in full by Revision B and no longer stated in the current file (ingested 2026-08-29)
+[^s21]: [raw/2025-02-10-minutes-steering.md](../../raw/2025-02-10-minutes-steering.md), § TOP 1 — Where the first year actually left us (ingested 2026-08-29)
+[^s22]: [raw/2026-03-20-email-vogelsang-golive.md](../../raw/2026-03-20-email-vogelsang-golive.md), lines 27-33 (ingested 2026-08-29)
+[^s23]: [raw/2026-03-20-email-vogelsang-golive.md](../../raw/2026-03-20-email-vogelsang-golive.md), lines 38-41 (ingested 2026-08-29)
+[^s24]: [raw/2026-04-08-minutes-portal-kickoff.md](../../raw/2026-04-08-minutes-portal-kickoff.md), § AOB (ingested 2026-08-29)
+[^s25]: [raw/2026-04-15-memo-brandt-retraction.md](../../raw/2026-04-15-memo-brandt-retraction.md), lines 10-12 (ingested 2026-08-29)
+[^s26]: [raw/2026-04-15-memo-brandt-retraction.md](../../raw/2026-04-15-memo-brandt-retraction.md), lines 16-23 (ingested 2026-08-29)
+[^s27]: [raw/2026-04-15-memo-brandt-retraction.md](../../raw/2026-04-15-memo-brandt-retraction.md), lines 34-39 (ingested 2026-08-29)
+[^s28]: [raw/2026-04-15-memo-brandt-retraction.md](../../raw/2026-04-15-memo-brandt-retraction.md), lines 41-42 (ingested 2026-08-29)
+[^s29]: [raw/2026-04-15-memo-brandt-retraction.md](../../raw/2026-04-15-memo-brandt-retraction.md), lines 49-51 (ingested 2026-08-29)

@@ -3,16 +3,17 @@
 The pages in this folder. Generated — do not edit.
 
 - [Aurora Ritual](aurora-ritual.md) — Caffè Aurora's three-step ceremony for drinking a cup of coffee — smell it, taste it black, then customize it.
-- [Caffeine](caffeine.md) — The stimulant compound in coffee and tea - how it blocks adenosine to produce alertness, its effects on health, sleep, and dependence, and how brewing, roast level, and freshness affect how much ends up in the cup.
-- [Coffee Brewing](coffee-brewing.md) — How brewed coffee is made — extraction, the SCA Golden Cup targets, water chemistry, immersion vs. percolation, and Cordwell Roastworks' cold-brew R&D spec — including Caffè Aurora's house opinions, which diverge from the specialty-coffee standard.
-- [Coffee Processing](coffee-processing.md) — The washed, natural, and honey methods of extracting and drying the coffee seed after harvest, and their effect on flavor.
-- [Coffee Roasting](coffee-roasting.md) — The application of heat that turns green coffee seeds into brown, aromatic beans, and how light, medium, and dark roast levels trade off origin character against roast-developed flavor.
-- [Espresso Bar Culture](espresso-bar-culture.md) — The Italian espresso bar's social ritual — a brief, standing shot at the counter that levels social distinctions, rather than a drink to linger over.
-- [History of Coffee](history-of-coffee.md) — Coffee's origin in the Ethiopian highlands, its spread through Yemen, the Arab world, and Europe, and its early trade alongside tea, to today's leading producers.
-- [History of Tea](history-of-tea.md) — Tea's legendary discovery in China, the evolution of Chinese tea preparation, its spread to Japan via Buddhist monks and the tea ceremony, and its 17th-century arrival in Europe and England via the merchant house Thornbury & Lin.
-- [L-Theanine](l-theanine.md) — A calming amino acid nearly unique to the tea plant that pairs with caffeine to produce composed alertness rather than jitteriness.
-- [Matcha Preparation](matcha-preparation.md) — How to whisk matcha at home — the water-temperature rule, the usucha (thin matcha) method, a matcha latte recipe, and fixes for a gritty, bitter, or frothless bowl.
-- [Tea Antioxidants](tea-antioxidants.md) — The catechins (led by EGCG), tannins, vitamins, and aromatic oils that give tea its healthful reputation and its characteristic astringency.
-- [Tea Brewing](tea-brewing.md) — How water temperature and steeping time shape a cup of tea, from green tea's gentle 70-80°C to black tea's near-boiling 95-100°C.
-- [Tea Cultivars](tea-cultivars.md) — The China (var. sinensis) and Assam (var. assamica) botanical varieties behind every tea cultivar, and three named examples — Yabukita, Da Hong Pao, and Darjeeling's seasonal flushes — that shape a cup's character.
-- [Tea Processing](tea-processing.md) — How Chinese tea tradition's six classes — white, green, yellow, oolong, black, and dark — are defined by how far and by what mechanism (enzymatic vs. microbial) the leaf changes after picking, plus the sheng/shou split within pu-erh.
+- [Caffeine](caffeine.md) — How caffeine works — the adenosine mechanism, its roughly five-hour half-life, safe intake, pregnancy guidance, and common myths — plus a Trieste roastery's own caffeine claims measured against that science.
+- [Coffee brewing](coffee-brewing.md) — Caffè Aurora's house brewing method for filter coffee — water temperature and extraction target — compared with established brewing guidance.
+- [Coffee extraction](coffee-extraction.md) — How much of a coffee's dry mass dissolves into the cup, the SCA Golden Cup targets for extraction yield and strength, and the grind/time/temperature/water levers that control it.
+- [Coffee processing](coffee-processing.md) — The washed, natural, and honey methods used to extract and dry the coffee seed from the harvested cherry, and how each shapes flavor.
+- [Coffee roasting](coffee-roasting.md) — How heat transforms green coffee seeds into roasted beans, and the light-to-dark roast spectrum.
+- [Cold brew](cold-brew.md) — An immersion method that steeps very coarse coffee grounds in cold or room-temperature water for hours to make a concentrate; Cordwell Roastworks' bench-tested house grind, ratio, steep, filtration, and caffeine findings.
+- [Espresso bar culture](espresso-bar-culture.md) — The Italian ritual of drinking espresso standing at the bar — fast, cheap, and socially leveling.
+- [History of coffee](history-of-coffee.md) — Coffee's spread from its origin in the Ethiopian highlands through Yemen and the Arab world to Europe and global cultivation, and today's leading producers.
+- [History of tea](history-of-tea.md) — Tea's legendary discovery in China, its spread to Japan via Buddhist monks and the Japanese tea ceremony, and its arrival in Europe in the 17th century.
+- [L-theanine](l-theanine.md) — An amino acid nearly unique to the tea plant that produces calm relaxation on its own and, paired with tea's caffeine, a steady "awake without the jitters" alertness.
+- [Matcha preparation](matcha-preparation.md) — How to whisk matcha at home — water temperature, sifting, the zig-zag whisking motion, the usucha and latte methods, and common fixes.
+- [Tea antioxidants](tea-antioxidants.md) — Catechins (led by epigallocatechin gallate, EGCG), tannins, and the vitamins, minerals, and aromatic oils that round out tea's chemistry beyond caffeine.
+- [Tea brewing](tea-brewing.md) — Water temperature and steeping time guidance for white, green, oolong, black, and pu-erh tea — the single biggest factor in a finished cup.
+- [Tea processing](tea-processing.md) — How oxidation — plus kill-green, rolling, a sealing rest, or microbial fermentation — sorts the same leaf into six classes, from white through green, yellow, oolong, and black to dark (including pu-erh).

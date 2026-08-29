@@ -2,5 +2,5 @@
 
 The pages in this folder. Generated — do not edit.
 
-- [Blauwal Logistik GmbH](blauwal-logistik-gmbh.md) — A logistics company headquartered in Bremen, running Projekt LEUCHTFEUER to replace its KOMET warehouse management system with QUAYSTONE.
-- [Gezeitenwerk Software GmbH](gezeitenwerk-software-gmbh.md) — A Hamburg-based software vendor that sells the QUAYSTONE cloud warehouse management system, implementing it for Blauwal Logistik under Projekt LEUCHTFEUER.
+- [Blauwal Logistik GmbH](blauwal-logistik-gmbh.md) — Bremen-based logistics company running Projekt LEUCHTFEUER to replace its KOMET warehouse management system with QUAYSTONE.
+- [Gezeitenwerk Software GmbH](gezeitenwerk-software-gmbh.md) — Hamburg-based software vendor selling the QUAYSTONE cloud WMS platform, implementation partner for Blauwal Logistik's Projekt LEUCHTFEUER.

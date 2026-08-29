@@ -175,6 +175,20 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **All ten committed showcase wikis rebuilt under the current rulebook** (Sonnet, in place per the
+  verify-corpus regeneration recipe — leuchtfeuer's three-wave replay with the delete cleanup
+  running first, clockwork's two-commit repo protocol, gazette in images mode, kontor with image
+  support, flurfunk and leuchtfeuer with style profiles, pemberley's three windowed passes). Nine
+  of the ten had been stamped under the 0.5.x rulebook since 2026-07-16 — before the `Registry`
+  page kind, the section-level genre trigger, the related-source lookups, and the segment-edge
+  rules existed — so the gallery no longer showed what ingest actually produces. Every rebuilt
+  wiki was re-graded against its hidden ground truth, retrieval-first: **ten of ten pass every
+  hard gate**, `check`/`lint` clean everywhere, 149 pages over 71 sources. The rebuild is also
+  what surfaced the chunked-locator defect fixed below — pemberley was built twice, and the
+  second build's 104/106 locator sample is the fix's proof. The grades, their soft misses
+  (VCB-008 … VCB-018) and the two updated entries live in `docs/verify-corpus-backlog.md`; the
+  manifests of the corpora built before the same-night rules change were deliberately restamped
+  to the final rulebook, since that change concerns chunked sources only.
 - **Forced/refresh reconciles now re-read with fresh eyes, not just re-verify.** The
   `tasks/reconcile.md` brief (driving `ingest --force` and every `citadel refresh` session) now
   explicitly instructs the agent that a re-read is more than verification: mine the unchanged
