@@ -1491,11 +1491,28 @@
     markActiveNav();
   }
 
+  // `s.href` is a ready-to-use url, percent-encoded exactly once by the builder (a relative path
+  // through quote(), an absolute one through Path.as_uri()) — so it is only HTML-escaped here.
+  // Running encodeURI over it again re-encoded the '%' of an already-encoded space into '%2520'
+  // and the link stopped opening.
   function rawFileLink(s, label) {
     if (!s.href || s.missing) return "";
-    return "<a class='rawfile' href='" + esc(encodeURI(s.href)) +
-      "' target='_blank' rel='noopener'>" + label + " ↗</a>";
+    return "<a class='rawfile' href='" + esc(s.href) + "' target='_blank' rel='noopener'" +
+      " title='" + esc(rawFileTitle(s)) + "'>" + label + " ↗</a>";
   }
+
+  // The same affordance shrunk to a bare arrow, for places a full button would not fit: the
+  // #sources table gives every row one, so its label lives in the column header instead. The
+  // arrow is the anchor's whole text, which would BE its accessible name, so it carries an
+  // explicit aria-label — a screen reader reads the action and the file, not "link, arrow".
+  function rawFileIcon(s) {
+    if (!s.href || s.missing) return "";
+    var name = esc(rawFileTitle(s));
+    return "<a class='rawfile-ico' href='" + esc(s.href) + "' target='_blank' rel='noopener'" +
+      " title='" + name + "' aria-label='" + name + "'>↗</a>";
+  }
+
+  function rawFileTitle(s) { return "Open the original file (" + (s.display || s.id) + ")"; }
 
   function lineSpan(a, b) { return a === b ? ("line " + a) : ("lines " + a + "–" + b); }
 
@@ -1607,8 +1624,10 @@
       var tok = [];
       if (typeof u.tokens_in === "number") tok.push(fmtTokens(u.tokens_in) + " in");
       if (typeof u.tokens_out === "number") tok.push(fmtTokens(u.tokens_out) + " out");
+      var raw = rawFileIcon(s);
       return "<tr><td><a href='#src:" + encodeURIComponent(id) + "' data-source='" + esc(id) +
         "' data-pop='" + esc(id) + "'>" + esc(name) + "</a>" + (s.missing ? " <span class='ext'>(missing)</span>" : "") +
+        "</td><td class='src-raw'>" + (raw || "—") +
         "</td><td class='src-folder' title='" + esc(full) + "'>" + esc(folder || "—") +
         "</td><td>" + (s.model ? esc(s.model) : "—") +
         "</td><td>" + esc(cost) +
@@ -1627,7 +1646,8 @@
     }
     var html = "<h1>Sources</h1><div class='meta'><span class='ptype src'>Overview</span> " +
       totals.map(function (t) { return "<span class='src-usage'>" + esc(t) + "</span>"; }).join(" · ") +
-      "</div><div class='tbl-wrap'><table class='src-table'><thead><tr><th>File</th><th>Folder</th>" +
+      "</div><div class='tbl-wrap'><table class='src-table'><thead><tr><th>File</th>" +
+      "<th title='Open the original raw file'>Original</th><th>Folder</th>" +
       "<th>Model</th><th>Cost</th><th>Time</th><th>Tokens</th><th>Checked</th><th>Cited</th></tr></thead><tbody>" +
       rows + "</tbody></table></div>";
     // The could-not-ingest catalog: a reader must be able to SEE that a relevant file was skipped

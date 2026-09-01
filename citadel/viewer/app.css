@@ -95,6 +95,7 @@ mark.cur { outline:2px solid var(--accent); outline-offset:1px; }
 .src-table td:first-child, .src-table td.src-folder { white-space:normal;
                                                       overflow-wrap:anywhere; }
 .src-table td.src-folder { color:var(--muted); font-size:12px; }
+.src-table td.src-raw { text-align:center; color:var(--muted); }
 .src-table td.fail-reason { color:var(--warn, #c0392b); font-weight:600; }
 .src-table td.fail-detail { white-space:normal; overflow-wrap:anywhere; color:var(--muted);
                             font-size:12px; max-width:32em; }
@@ -233,6 +234,8 @@ a.srclink::after { content:" \2197"; font-size:.8em; opacity:.7; }
 #reader a.rawfile { color:var(--accent); text-decoration:none; border:1px solid var(--line);
                     border-radius:6px; padding:1px 8px; font-size:12px; white-space:nowrap; }
 #reader a.rawfile:hover { border-color:var(--accent); background:var(--card); }
+#reader a.rawfile-ico { color:var(--accent); text-decoration:none; font-size:13px; }
+#reader a.rawfile-ico:hover { text-decoration:underline; }
 #srcpop { position:fixed; z-index:50; max-width:360px; background:var(--bg);
           border:1px solid var(--line); border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,.18);
           padding:10px 12px; font-size:13px; display:none; pointer-events:none; }

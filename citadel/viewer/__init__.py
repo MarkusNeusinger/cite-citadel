@@ -16,7 +16,11 @@ keyed by locator across every citing page — a ``lines A-B`` range, a ``§ Head
 head excerpt for an unlocated citation — merged into segments, with a "⋯ lines X–Y not embedded"
 gap indicator and an "open the original file" affordance for the rest. A short file (or one whose
 excerpts already cover most of it) still embeds whole. A "Sources" axis in the sidebar and an
-optional source layer in the graph make provenance browsable.
+optional source layer in the graph make provenance browsable. The ORIGINAL file is always one
+click away — from the open source's header, from every embedding gap, and as its own column in
+the ``#sources`` overview table — so a PDF, an Office document or an image opens in the viewer's
+own browser rather than only as extracted text (the href is computed against wherever the
+document is written, and degrades to an absolute ``file://`` URI when no relative path exists).
 
 Provenance is also legible at a glance: each page carries counts (``cites`` / ``llm`` /
 ``contradictions``) that the viewer renders as sidebar badges, quick-filter chips ("Contradictions",
@@ -56,6 +60,7 @@ import platform
 import re
 import shutil
 import subprocess
+import urllib.parse
 import webbrowser
 from importlib import resources
 from pathlib import Path
@@ -113,10 +118,14 @@ def _page_stats(body: str) -> tuple[int, int, int]:
     return cites, llm, contradictions
 
 
-def build_bundle(pages=None) -> dict:
+def build_bundle(pages=None, out_dir: Path | None = None) -> dict:
     """Build the JSON-serializable bundle from the loaded wiki (pure data; no HTML, no I/O
     beyond ``store.load()`` and reading the cited raw sources). Deterministic — no timestamps —
-    so a generated document round-trips back to this dict in tests."""
+    so a generated document round-trips back to this dict in tests.
+
+    ``out_dir`` is where the viewer document will be written (default ``config.wiki_dir()``); the
+    only thing it affects is the "open the original file" href of each source, which has to be
+    relative to the DOCUMENT, not to the wiki."""
     if pages is None:
         pages = store.load()
     paths = {p.rel_path for p in pages}
@@ -153,7 +162,7 @@ def build_bundle(pages=None) -> dict:
         "pages": pages_json,
         "tags": tags,
         "types": {k: sorted(v) for k, v in types.items()},
-        "sources": _build_sources(pages),
+        "sources": _build_sources(pages, out_dir),
         "failures": _build_failures(),
     }
 
@@ -278,15 +287,47 @@ def _source_snippet(body: str, limit: int = 240) -> str:
     return " ".join(prose.split())[:limit]
 
 
-def _source_href(abs_path: str | os.PathLike) -> str | None:
-    """A relative link from the DEFAULT viewer location (``WIKI_DIR``) to the raw source on disk, so
-    the reader can offer an "open the original file" affordance — the browser opens a PDF or other
-    binary natively. None when no relative path exists (a different drive). The link assumes the
-    viewer was written to its default ``wiki/`` location; the embedded text always works regardless."""
+# How far a raw-file link may climb out of the viewer document's own directory before the absolute
+# ``file://`` form wins: the wiki-adjacent layouts need 1-2 (``wiki/.citadel_viewer.html`` ->
+# ``../raw/x``), a nested ``--out site/<corpus>/index.html`` 3-4.
+_MAX_HREF_CLIMB = 4
+
+
+def _source_href(abs_path: str | os.PathLike, base_dir: Path | None = None) -> str | None:
+    """A link from the VIEWER DOCUMENT to the raw source on disk, so the reader can offer an "open
+    the original file" affordance — the browser opens a PDF, an Office document or an image
+    natively.
+
+    ``base_dir`` is the directory the viewer is being WRITTEN to (``write_viewer``'s ``--out``
+    parent, defaulting to ``config.wiki_dir()``): a relative link is only correct from the document
+    that carries it, and ``citadel view --out site/x/index.html`` puts that document nowhere near
+    the wiki. When no relative path exists — a raw root on a different drive, the mounted-share
+    layout — the link falls back to the ABSOLUTE ``file://`` URI (in its native spelling, so a
+    Windows mapped drive stays ``T:\\…`` instead of ``resolve()``'s UNC rewrite) rather than to no
+    link at all — as it does for a document written far outside the wiki tree, where the relative
+    form would be a long climb that any move breaks. None only when neither form can be built.
+
+    The bundle's contract is that ``href`` is a READY-TO-USE url, percent-encoded exactly once
+    here: ``Path.as_uri()`` already encodes, and the relative form is encoded to match, so the
+    viewer only HTML-escapes it. Encoding it a second time in the browser turned a space in an
+    absolute path into ``%2520`` and the link stopped opening."""
+    base = Path(base_dir) if base_dir is not None else config.wiki_dir()
     try:
-        return os.path.relpath(str(abs_path), str(config.wiki_dir())).replace(os.sep, "/")
+        rel = os.path.relpath(str(abs_path), str(base)).replace(os.sep, "/")
     except ValueError:  # different drive — no relative path exists
-        return None
+        rel = None
+    # A relative link is the portable one (the wiki and its raw/ copied together keep working), but
+    # only while the two are actually neighbours: a viewer written far outside the wiki tree yields
+    # a link that climbs half the filesystem and breaks the moment anything moves. Past that the
+    # absolute URI is both shorter and more robust.
+    if rel is not None and rel.split("/").count("..") <= _MAX_HREF_CLIMB:
+        # quote(safe="/") is what makes it a url rather than a path: a space, a "#" or a non-ASCII
+        # character in a filename all have to be percent-encoded for the browser to follow it.
+        return urllib.parse.quote(rel, safe="/")
+    try:
+        return config.native_form(abs_path).as_uri()  # already percent-encoded
+    except ValueError:  # not absolute (cannot happen for a resolved source path) — no link
+        return urllib.parse.quote(rel, safe="/") if rel is not None else None
 
 
 def _read_source(path: Path) -> tuple[str, str]:
@@ -486,7 +527,7 @@ def _embed_source(text: str, locators: list[grammar.Locator | None]) -> dict:
     return {"segments": segments, "total_lines": len(lines), "truncated": truncated}
 
 
-def _build_sources(pages) -> dict:
+def _build_sources(pages, out_dir: Path | None = None) -> dict:
     """Map each cited raw/docs source -> its embedded record. Cited sources are keyed by the exact
     browser identity (:func:`_collect_sources` via :func:`_viewer_resolve`) so an inline citation
     resolves straight to its record; tracked-but-uncited files fall back to :func:`_source_view_id`.
@@ -540,7 +581,7 @@ def _build_sources(pages) -> dict:
             "cited_by": store.find_raw_references(key, pages),
             "missing": not present,
             "kind": kind,  # "text" | "office" | "audio" | "binary"
-            "href": _source_href(abs_path) if present else None,
+            "href": _source_href(abs_path, out_dir) if present else None,
             "snippet": _source_snippet(text),
         }
         usage = manifest_mod.entry_usage(manifest.get(key))
@@ -559,10 +600,12 @@ def _build_sources(pages) -> dict:
     return sources
 
 
-def build_html(pages=None) -> str:
+def build_html(pages=None, out_dir: Path | None = None) -> str:
     """Return the complete self-contained HTML document as one string: shell + inlined CSS +
-    inlined viewer JS + the bundle embedded as an inert ``application/json`` script."""
-    bundle = build_bundle(pages)
+    inlined viewer JS + the bundle embedded as an inert ``application/json`` script. ``out_dir``
+    (where the document will live) is passed through to :func:`build_bundle` for the raw-file
+    links."""
+    bundle = build_bundle(pages, out_dir)
     # Compact JSON; then escape '</' -> '<\/' so a literal '</script>' inside any page body
     # OR embedded source cannot close the data <script> early. (json.dumps does NOT do this.)
     blob = json.dumps(bundle, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
@@ -581,7 +624,9 @@ def write_viewer(out_path=None, pages=None) -> Path:
         out_path = config.wiki_dir() / VIEWER_FILENAME
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(build_html(pages), encoding="utf-8")
+    # The raw-file links are relative to the document, so they are computed against where it is
+    # actually written (`--out` can put it anywhere), not against the wiki.
+    out_path.write_text(build_html(pages, out_path.resolve().parent), encoding="utf-8")
     return out_path.resolve()
 
 
@@ -655,8 +700,6 @@ def open_in_browser(path: Path, win_path: str | None = None) -> bool:
 
 def _open_obsidian() -> int:
     """Best-effort: deep-link the wiki folder into Obsidian and always print the path."""
-    import urllib.parse
-
     folder = config.wiki_dir().resolve()
     deep = "obsidian://open?path=" + urllib.parse.quote(str(folder))
     print(f"Open this folder as an Obsidian vault: {folder}")

@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **`citadel view`: the "open the original file" link is back on every source.** The viewer's
+  raw-file href was computed relative to the WIKI directory, which is only correct when the
+  document happens to sit there — a viewer written with `--out` (the Pages gallery's
+  `site/<corpus>/index.html`, or anywhere else) linked into a directory that does not exist, so a
+  PDF or PowerPoint could not be opened from the reader at all. It is now computed against the
+  directory the document is actually written to, and when no sane relative path exists — a raw root
+  on a different drive (a Windows mapped share), or a document written far outside the wiki tree —
+  it falls back to the absolute `file://` URI instead of dropping the link entirely. Every href is
+  percent-encoded exactly once by the builder (a space in a filename used to reach the browser as
+  `%2520`), and the icon-only link carries an `aria-label` so a screen reader reads the action and
+  the file rather than "link, arrow". This is about a viewer written on the machine that holds the
+  sources; the published Pages gallery still deploys only `site/`, so the demo wikis there have no
+  raw originals to open.
+
+### Added
+
+- **The `#sources` overview table links the original file per row.** Every row now carries an
+  "Original" column whose `↗` opens the raw PDF / Office document / image itself in the browser,
+  next to the filename link that opens citadel's embedded (excerpt) view of it — the two were only
+  reachable from inside an opened source before.
+
 ## [0.7.0] - 2026-08-29
 
 ### Added
