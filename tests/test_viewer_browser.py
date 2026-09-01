@@ -197,6 +197,38 @@ def test_overview_lists_failed_sources(browser, tmp_citadel, seed_page):
     assert errors == [], f"viewer JS reported errors: {errors}"
 
 
+def test_raw_file_link_opens_a_spacey_source(browser, tmp_citadel, seed_page):
+    """The rendered "open the original file" href must be encoded exactly ONCE: the builder does
+    it, the viewer only HTML-escapes. Encoding it again in the browser turned the ``%`` of an
+    encoded space into ``%2520`` and the browser could not open the file. Asserted end-to-end by
+    actually navigating to the link's target."""
+    (tmp_citadel.raw / "feld bericht.md").write_text("# Bericht\n\nDer Messwert war 42.\n", encoding="utf-8")
+    seed_page(
+        "concepts/widget.md",
+        {"type": "Concept", "title": "Widget", "description": "d", "tags": ["x"]},
+        "The value is 42.[^s1]\n\n## Sources\n\n[^s1]: [Bericht](<../../raw/feld bericht.md>) - n\n",
+    )
+    out = viewer.write_viewer()
+
+    errors: list[str] = []
+    page = browser.new_page()
+    page.on("pageerror", lambda exc: errors.append(str(exc)))
+    page.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" else None)
+    page.goto(out.as_uri() + "#sources")
+    page.wait_for_selector("#reader table.src-table")
+    link = page.locator("#reader table.src-table td.src-raw a.rawfile-ico")
+    href = link.first.get_attribute("href")
+    assert href == "../raw/feld%20bericht.md", href
+    # The icon's whole text is the arrow, so it carries its own accessible name.
+    assert "feld bericht.md" in (link.first.get_attribute("aria-label") or "")
+    # The link's target really resolves on disk — the point of the whole affordance.
+    page.goto(page.url.split("#")[0].rsplit("/", 1)[0] + "/" + href)
+    assert "Der Messwert war 42" in (page.locator("body").inner_text() or "")
+
+    page.close()
+    assert errors == [], f"viewer JS reported errors: {errors}"
+
+
 def test_spacey_angle_citation_renders_as_live_source_link(browser, tmp_citadel, seed_page):
     """A citation into a path containing SPACES must be written in the angle form
     (``[t](<../../raw/my report.md>)`` — grammar.split_link_target's decided rule), and the viewer

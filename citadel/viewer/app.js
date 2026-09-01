@@ -1491,19 +1491,28 @@
     markActiveNav();
   }
 
+  // `s.href` is a ready-to-use url, percent-encoded exactly once by the builder (a relative path
+  // through quote(), an absolute one through Path.as_uri()) — so it is only HTML-escaped here.
+  // Running encodeURI over it again re-encoded the '%' of an already-encoded space into '%2520'
+  // and the link stopped opening.
   function rawFileLink(s, label) {
     if (!s.href || s.missing) return "";
-    return "<a class='rawfile' href='" + esc(encodeURI(s.href)) + "' target='_blank' rel='noopener'" +
-      " title='Open the original file (" + esc(s.display || s.id) + ")'>" + label + " ↗</a>";
+    return "<a class='rawfile' href='" + esc(s.href) + "' target='_blank' rel='noopener'" +
+      " title='" + esc(rawFileTitle(s)) + "'>" + label + " ↗</a>";
   }
 
   // The same affordance shrunk to a bare arrow, for places a full button would not fit: the
-  // #sources table gives every row one, so its label lives in the column header instead.
+  // #sources table gives every row one, so its label lives in the column header instead. The
+  // arrow is the anchor's whole text, which would BE its accessible name, so it carries an
+  // explicit aria-label — a screen reader reads the action and the file, not "link, arrow".
   function rawFileIcon(s) {
     if (!s.href || s.missing) return "";
-    return "<a class='rawfile-ico' href='" + esc(encodeURI(s.href)) + "' target='_blank' rel='noopener'" +
-      " title='Open the original file (" + esc(s.display || s.id) + ")'>↗</a>";
+    var name = esc(rawFileTitle(s));
+    return "<a class='rawfile-ico' href='" + esc(s.href) + "' target='_blank' rel='noopener'" +
+      " title='" + name + "' aria-label='" + name + "'>↗</a>";
   }
+
+  function rawFileTitle(s) { return "Open the original file (" + (s.display || s.id) + ")"; }
 
   function lineSpan(a, b) { return a === b ? ("line " + a) : ("lines " + a + "–" + b); }
 

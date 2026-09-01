@@ -101,6 +101,27 @@ def test_raw_file_href_follows_the_written_document(tmp_citadel, seed_page):
     assert bundle["sources"]["raw/a.pdf"]["href"] == "../../raw/a.pdf"
 
 
+def test_raw_file_href_is_percent_encoded_exactly_once(tmp_path, make_citadel, seed_page):
+    """``href`` is a ready-to-use URL, encoded ONCE by the builder — the relative form through
+    ``quote()``, the absolute one through ``Path.as_uri()``. The viewer therefore only HTML-escapes
+    it; a second ``encodeURI`` in the browser would turn the ``%`` of an encoded space into
+    ``%2520`` and the link would not open."""
+    raw = tmp_path / "raw"
+    make_citadel(root=tmp_path, raw=raw)
+    src = raw / "field report.pdf"
+    src.write_bytes(b"%PDF-1.7\n1 0 obj\n<<>>\nendobj\n")
+    seed_page(
+        "concepts/x.md",
+        {"type": "Concept", "title": "X"},
+        f"Fact.[^s1]\n\n## Sources\n\n[^s1]: [report](<{src.as_posix()}>) - n\n",
+    )
+    (rec,) = [s for s in viewer.build_bundle()["sources"].values() if s["key"].endswith("field report.pdf")]
+    assert rec["href"] == "../raw/field%20report.pdf"
+    assert "%2520" not in rec["href"]
+    # And the document renders that href verbatim (only HTML-escaped), not re-encoded.
+    assert "../raw/field%20report.pdf" in viewer.build_html()
+
+
 def test_a_far_away_document_links_the_absolute_file_uri(tmp_path, tmp_citadel, seed_page):
     """Written far outside the wiki tree the relative form is a long climb that any move breaks,
     so the link becomes the absolute ``file://`` URI instead."""

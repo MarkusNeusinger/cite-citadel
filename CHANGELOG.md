@@ -15,7 +15,12 @@ All notable changes to this project are documented here. The format is based on
   PDF or PowerPoint could not be opened from the reader at all. It is now computed against the
   directory the document is actually written to, and when no sane relative path exists — a raw root
   on a different drive (a Windows mapped share), or a document written far outside the wiki tree —
-  it falls back to the absolute `file://` URI instead of dropping the link entirely.
+  it falls back to the absolute `file://` URI instead of dropping the link entirely. Every href is
+  percent-encoded exactly once by the builder (a space in a filename used to reach the browser as
+  `%2520`), and the icon-only link carries an `aria-label` so a screen reader reads the action and
+  the file rather than "link, arrow". This is about a viewer written on the machine that holds the
+  sources; the published Pages gallery still deploys only `site/`, so the demo wikis there have no
+  raw originals to open.
 
 ### Added
 

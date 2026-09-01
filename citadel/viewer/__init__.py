@@ -60,6 +60,7 @@ import platform
 import re
 import shutil
 import subprocess
+import urllib.parse
 import webbrowser
 from importlib import resources
 from pathlib import Path
@@ -304,7 +305,12 @@ def _source_href(abs_path: str | os.PathLike, base_dir: Path | None = None) -> s
     layout — the link falls back to the ABSOLUTE ``file://`` URI (in its native spelling, so a
     Windows mapped drive stays ``T:\\…`` instead of ``resolve()``'s UNC rewrite) rather than to no
     link at all — as it does for a document written far outside the wiki tree, where the relative
-    form would be a long climb that any move breaks. None only when neither form can be built."""
+    form would be a long climb that any move breaks. None only when neither form can be built.
+
+    The bundle's contract is that ``href`` is a READY-TO-USE url, percent-encoded exactly once
+    here: ``Path.as_uri()`` already encodes, and the relative form is encoded to match, so the
+    viewer only HTML-escapes it. Encoding it a second time in the browser turned a space in an
+    absolute path into ``%2520`` and the link stopped opening."""
     base = Path(base_dir) if base_dir is not None else config.wiki_dir()
     try:
         rel = os.path.relpath(str(abs_path), str(base)).replace(os.sep, "/")
@@ -315,11 +321,13 @@ def _source_href(abs_path: str | os.PathLike, base_dir: Path | None = None) -> s
     # a link that climbs half the filesystem and breaks the moment anything moves. Past that the
     # absolute URI is both shorter and more robust.
     if rel is not None and rel.split("/").count("..") <= _MAX_HREF_CLIMB:
-        return rel
+        # quote(safe="/") is what makes it a url rather than a path: a space, a "#" or a non-ASCII
+        # character in a filename all have to be percent-encoded for the browser to follow it.
+        return urllib.parse.quote(rel, safe="/")
     try:
-        return config.native_form(abs_path).as_uri()
+        return config.native_form(abs_path).as_uri()  # already percent-encoded
     except ValueError:  # not absolute (cannot happen for a resolved source path) — no link
-        return rel
+        return urllib.parse.quote(rel, safe="/") if rel is not None else None
 
 
 def _read_source(path: Path) -> tuple[str, str]:
@@ -692,8 +700,6 @@ def open_in_browser(path: Path, win_path: str | None = None) -> bool:
 
 def _open_obsidian() -> int:
     """Best-effort: deep-link the wiki folder into Obsidian and always print the path."""
-    import urllib.parse
-
     folder = config.wiki_dir().resolve()
     deep = "obsidian://open?path=" + urllib.parse.quote(str(folder))
     print(f"Open this folder as an Obsidian vault: {folder}")
