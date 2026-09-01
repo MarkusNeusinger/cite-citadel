@@ -8,6 +8,7 @@ tmp_path by the shared ``tmp_citadel`` fixture (see conftest.py).
 from __future__ import annotations
 
 import json
+import os
 import re
 
 from citadel import failures, manifest, store, viewer
@@ -81,6 +82,56 @@ def test_binary_pdf_source_is_openable_not_unavailable(tmp_citadel, seed_page):
     assert s["body"] == ""
     assert s["href"] == "../raw/a.pdf"
     assert s["cited_by"] == ["concepts/x.md"]
+
+
+def test_raw_file_href_follows_the_written_document(tmp_citadel, seed_page):
+    """The "open the original file" link is relative to the DOCUMENT, not to the wiki: written to
+    its default place beside the wiki it is ``../raw/a.pdf``, but ``citadel view --out`` can put
+    the viewer anywhere (the Pages gallery writes ``site/<corpus>/index.html``), and a wiki-relative
+    link is simply broken from there."""
+    (tmp_citadel.raw / "a.pdf").write_bytes(b"%PDF-1.7\n1 0 obj\n<<>>\nendobj\n")
+    seed_page(
+        "concepts/x.md",
+        {"type": "Concept", "title": "X"},
+        "Body cites a pdf.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.pdf](../../raw/a.pdf) - n\n",
+    )
+    out = tmp_citadel.root / "site" / "demo" / "index.html"
+    viewer.write_viewer(out)
+    _blob, bundle = _embedded_bundle(out.read_text(encoding="utf-8"))
+    assert bundle["sources"]["raw/a.pdf"]["href"] == "../../raw/a.pdf"
+
+
+def test_a_far_away_document_links_the_absolute_file_uri(tmp_path, tmp_citadel, seed_page):
+    """Written far outside the wiki tree the relative form is a long climb that any move breaks,
+    so the link becomes the absolute ``file://`` URI instead."""
+    (tmp_citadel.raw / "a.pdf").write_bytes(b"%PDF-1.7\n1 0 obj\n<<>>\nendobj\n")
+    seed_page(
+        "concepts/x.md",
+        {"type": "Concept", "title": "X"},
+        "Body cites a pdf.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.pdf](../../raw/a.pdf) - n\n",
+    )
+    out = tmp_path / "a" / "b" / "c" / "d" / "e" / "f" / "viewer.html"
+    viewer.write_viewer(out)
+    _blob, bundle = _embedded_bundle(out.read_text(encoding="utf-8"))
+    assert bundle["sources"]["raw/a.pdf"]["href"] == (tmp_citadel.raw / "a.pdf").as_uri()
+
+
+def test_raw_file_href_falls_back_to_an_absolute_file_uri(tmp_citadel, seed_page, monkeypatch):
+    """A raw root on a DIFFERENT drive has no relative path to the viewer (Windows: the wiki on
+    ``C:``, the sources on a mapped ``T:``) — ``os.path.relpath`` raises there. That used to mean
+    no link at all; the absolute ``file://`` URI still opens the file."""
+    real_relpath = os.path.relpath
+
+    def no_relative(path, start=None):
+        if str(path).endswith("a.pdf"):
+            raise ValueError("path is on mount 'T:', start on mount 'C:'")
+        return real_relpath(path, start)
+
+    monkeypatch.setattr(viewer.os.path, "relpath", no_relative)
+    src = tmp_citadel.raw / "a.pdf"
+    href = viewer._source_href(src)
+    assert href == src.as_uri()
+    assert href.startswith("file://")
 
 
 def test_sources_carry_a_raw_root_relative_display_path(tmp_path, make_citadel, seed_page):

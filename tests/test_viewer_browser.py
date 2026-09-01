@@ -152,6 +152,11 @@ def test_sources_sidebar_tree_and_overview_table(viewer_page):
     row_text = rows.first.inner_text()
     assert "a.md" in row_text
     assert "2" in row_text  # cited by both fixture pages
+    # Every row carries a link to the ORIGINAL raw file (a PDF/pptx opens in the browser itself),
+    # separate from the filename link that opens citadel's embedded view of it.
+    raw_link = viewer_page.locator("#reader table.src-table td.src-raw a.rawfile-ico")
+    assert raw_link.count() == 1
+    assert raw_link.first.get_attribute("href") == "../raw/a.md"
     # Clicking the file cell opens the embedded source itself.
     viewer_page.click("#reader table.src-table a[data-source]")
     reader.wait_for()
