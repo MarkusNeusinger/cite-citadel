@@ -1059,18 +1059,21 @@ def test_workers_all_in_flight_under_bare_print_one_notice(monkeypatch, capsys):
     assert capsys.readouterr().err.count("--bare was refused") == 1
 
 
-def test_a_broken_stderr_never_costs_the_successful_hermetic_retry(monkeypatch):
-    """Both hermetic notices are diagnostics, and the second one is written AFTER the paid retry
-    succeeded: a stderr that breaks meanwhile (`citadel ingest 2>&1 | head`, an MCP client that
-    closed its pipe) must not raise out of run_ingest_session, or the retry's wiki edits would be
-    discarded as a failed source. The refusal is still remembered for the rest of the run."""
+@pytest.mark.parametrize(
+    "error", [BrokenPipeError(32, "Broken pipe"), ValueError("I/O operation on closed file.")], ids=["broken", "closed"]
+)
+def test_a_broken_stderr_never_costs_the_successful_hermetic_retry(monkeypatch, error):
+    """The hermetic notice is a diagnostic written AFTER the paid retry succeeded: a stderr that
+    broke meanwhile (`citadel ingest 2>&1 | head`, an MCP client that closed its pipe — OSError, or
+    ValueError once the stream is truly closed) must not raise out of run_ingest_session, or the
+    retry's wiki edits would be discarded as a failed source. The refusal is still remembered."""
 
     class _ClosedPipe:
         def write(self, text):
-            raise BrokenPipeError(32, "Broken pipe")
+            raise error
 
         def flush(self):
-            raise BrokenPipeError(32, "Broken pipe")
+            raise error
 
     seen: list[bool] = []
 

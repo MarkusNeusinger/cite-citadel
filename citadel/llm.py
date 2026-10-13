@@ -718,10 +718,12 @@ def _decode_partial(data) -> str:
 
 
 def _echo_stderr(text: str) -> None:
-    """Write diagnostic text to stderr, swallowing a broken/closed pipe. The verbose stream and the
-    transcript-path notice are diagnostic ONLY, so a closed stderr (``2>|``, a downstream consumer
-    that exited) must never abort the ingest."""
-    with contextlib.suppress(OSError):
+    """Write diagnostic text to stderr, swallowing a broken/closed pipe. The verbose stream, the
+    transcript-path notice and the hermetic-retry notice are diagnostic ONLY, so a closed stderr
+    (``2>|``, a downstream consumer that exited) must never abort the ingest — nor turn a paid,
+    successful retry into a failed source. ValueError too: a stream that is truly CLOSED raises
+    that (and an unencodable character its UnicodeError subclass), not OSError."""
+    with contextlib.suppress(OSError, ValueError):
         sys.stderr.write(text)
         sys.stderr.flush()
 

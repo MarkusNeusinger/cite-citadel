@@ -921,18 +921,27 @@ def test_ctrl_c_during_a_reingest_names_the_sources_left_out_of_the_wiki(
     assert all(line.isascii() for line in note)
 
 
-def test_ctrl_c_with_closed_output_pipes_still_exits_130_without_a_traceback(tmp_citadel, monkeypatch):
-    """`citadel ingest | tee log` + Ctrl+C: the same SIGINT can take the pipe down, and the report /
-    note writes then raise BrokenPipeError — inside the very handler that exists to replace a
-    traceback. Both writes are best-effort."""
+@pytest.mark.parametrize(
+    "error", [BrokenPipeError(32, "Broken pipe"), ValueError("I/O operation on closed file.")], ids=["broken", "closed"]
+)
+def test_ctrl_c_with_a_dead_stdout_still_exits_130_and_still_writes_the_note(tmp_citadel, monkeypatch, error):
+    """`citadel ingest | tee log` + Ctrl+C: the same SIGINT can take stdout down (BrokenPipeError,
+    or ValueError once the stream is truly closed) inside the very handler that exists to replace a
+    traceback. Each write is best-effort ON ITS OWN, so the dead report write costs neither the exit
+    code nor the stderr note."""
 
-    class _ClosedPipe(io.StringIO):
+    class _DeadStream(io.StringIO):
         def write(self, text):
-            raise BrokenPipeError(32, "Broken pipe")
+            raise error
 
+    stderr = io.StringIO()
     monkeypatch.setattr(ingest_mod, "ingest", _interrupted_with(_report(processed=["raw/a.md"])))
-    monkeypatch.setattr(sys, "stdout", _ClosedPipe())
-    monkeypatch.setattr(sys, "stderr", _ClosedPipe())
+    monkeypatch.setattr(sys, "stdout", _DeadStream())
+    monkeypatch.setattr(sys, "stderr", stderr)
+    assert cli.main(["ingest", "--force", "raw/a.md", "--quiet"]) == 130
+    assert stderr.getvalue().startswith("interrupted: sources finished before Ctrl+C are kept in the wiki")
+
+    monkeypatch.setattr(sys, "stderr", _DeadStream())  # and both streams dead: still a clean 130
     assert cli.main(["ingest", "--force", "raw/a.md", "--quiet"]) == 130
 
 
@@ -980,7 +989,7 @@ def test_ctrl_c_during_refresh_exits_130_and_stops_the_live_region(tmp_citadel, 
     assert seen["progress"]._live is None
     note = _note(stderr.getvalue())
     assert "keeps its old last-checked stamp" in note[0]
-    assert note[1].startswith("Re-run `citadel refresh` to continue")
+    assert note[1].startswith("Re-run the same `citadel refresh` command (same --limit / --min-age-days)")
 
 
 def test_ctrl_c_during_curate_exits_130_with_the_cluster_state(tmp_citadel, monkeypatch, capsys):

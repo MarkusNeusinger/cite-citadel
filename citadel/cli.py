@@ -52,6 +52,7 @@ this module never requires the ``mcp`` package (and an unusable one is reported,
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import signal
 import sys
@@ -1176,8 +1177,8 @@ def _interrupt_message(args: argparse.Namespace, report=None) -> str:
         return (
             "interrupted: sources re-verified before Ctrl+C are kept and re-stamped; any source still in "
             "flight was rolled back and keeps its old last-checked stamp.\n"
-            "Re-run `citadel refresh` to continue - the queue is oldest-first, so what this run did not "
-            "reach is still at its head (`--dry-run` shows it)."
+            "Re-run the same `citadel refresh` command (same --limit / --min-age-days) to continue - the "
+            "queue is oldest-first, so what this run did not reach is still at its head (`--dry-run` shows it)."
         )
     if command == "curate":
         from . import config
@@ -1270,13 +1271,14 @@ def main(argv: list[str] | None = None) -> int:
         # What finished before Ctrl+C, exactly as a completed run would report it (stdout, like the
         # normal report) — the note below points at its Processed list.
         report = getattr(exc, "citadel_report", None)
-        try:
-            if report is not None:
+        # Each write best-effort ON ITS OWN: a pipe closed by the same Ctrl+C (`citadel ingest | tee
+        # log`) must neither cost the other stream its output nor re-raise as the very traceback this
+        # handler exists to replace. ValueError too — a truly closed stream raises that, not OSError.
+        if report is not None:
+            with contextlib.suppress(OSError, ValueError):
                 print(report.render())
+        with contextlib.suppress(OSError, ValueError):
             print(_interrupt_message(args, report), file=sys.stderr)
-        except OSError:
-            pass  # a pipe closed by the same Ctrl+C (`citadel ingest | tee log`) must not re-raise
-        # past this point as the very traceback the handler exists to replace
         # `argv is None` is the PROCESS entry (the console script and `python -m citadel` both call
         # main() bare); an in-process caller passing argv gets 130 back instead of a dead process.
         if argv is None:
