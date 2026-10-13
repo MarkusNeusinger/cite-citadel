@@ -433,9 +433,11 @@ An auth-shaped session failure under hermetic isolation is **retried once withou
 flags**: on a machine whose CLI credentials live in exactly the personal config `--bare` skips,
 every session used to die on authentication until the user found `CITADEL_HERMETIC=0`. The retry
 is scoped to that signature (flags actually passed + an auth-shaped message), so a real credential
-problem still fails instead of looping. A retry that WORKS is remembered per process
-(`llm._HERMETIC_REFUSED`, keyed by the resolved binary): the rest of the run skips the flag up
-front, so a corpus pays one failed launch and one notice, not one per source or curate cluster.
+problem still fails instead of looping. A retry that WORKS is remembered for the rest of the RUN
+(`llm._HERMETIC_REFUSED`, keyed by the resolved binary, cleared by `llm.reset_hermetic_refusals()`
+when each ingest / curate run starts, so a long-lived `citadel serve` tries the flag afresh per
+`wiki_ingest`): the rest of the run skips the flag up front, so a corpus pays one failed launch and
+one notice, not one per source or curate cluster.
 
 **Status is the read-only corpus view** (`status.py`, `citadel status`): the manifest + failures
 catalog + one stat-only walk (never re-hashes) + one wiki traversal rendered as a per-source state

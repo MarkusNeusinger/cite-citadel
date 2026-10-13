@@ -929,6 +929,7 @@ def curate(
     # dry-run path above stays lock-free — it is read-only by contract.
     with runlock.hold("curate"):
         ingest._sweep_stale_staging(config.wiki_dir())
+        llm.reset_hermetic_refusals()  # the --bare verdict is per run (a serve process runs many)
         pages_by_path = {p.rel_path: p for p in pages}
         # One backlink-graph pass for the whole run; every cluster's findings slice it.
         inbound = store.inbound_map(pages)
@@ -944,47 +945,61 @@ def curate(
 
         with _curate_model_active():
             model = config.ingest_model_label()
-            for index, item in enumerate(plan.items, 1):
-                runlock.heartbeat()
-                page_rel = item.page
-                page = pages_by_path.get(page_rel)
-                if page is None:  # vanished since the plan was computed (nothing to curate)
-                    continue
-                emit("cluster_start", index=index, total=len(plan.items), page=page_rel)
-                read_path, tmpdir = _write_findings(item, page, inbound, guided_run)
-                # The link-graph baseline is the LIVE wiki as this cluster finds it — recomputed
-                # per cluster, since an earlier cluster's promote may have changed it.
-                baseline = _broken_link_targets()
-                try:
-                    session = [
-                        lambda pr=page_rel, rp=read_path: llm.run_ingest_session(pr, kind="curate", read_path=rp)
-                    ]
-                    outcome = ingest._run_agent_sessions(session, page_rel, extra_check=_no_new_broken_links(baseline))
-                finally:
-                    shutil.rmtree(tmpdir, ignore_errors=True)
+            # A Ctrl+C (or anything else) mid-loop is captured, not propagated at once: the cluster in
+            # flight was already rolled back by the session runner, but the clusters APPLIED before it
+            # are promoted, logged pages — the finalization below (failures catalog, index rebuild,
+            # wiki-history commit) must still run for them, exactly as ingest finalizes its finished
+            # sources before re-raising. Otherwise the indexes stay stale, and nothing guarantees a
+            # later run rebuilds them (the edit may have cleared the last finding: an empty plan).
+            pending_interrupt: BaseException | None = None
+            try:
+                for index, item in enumerate(plan.items, 1):
+                    runlock.heartbeat()
+                    page_rel = item.page
+                    page = pages_by_path.get(page_rel)
+                    if page is None:  # vanished since the plan was computed (nothing to curate)
+                        continue
+                    emit("cluster_start", index=index, total=len(plan.items), page=page_rel)
+                    read_path, tmpdir = _write_findings(item, page, inbound, guided_run)
+                    # The link-graph baseline is the LIVE wiki as this cluster finds it — recomputed
+                    # per cluster, since an earlier cluster's promote may have changed it.
+                    baseline = _broken_link_targets()
+                    try:
+                        session = [
+                            lambda pr=page_rel, rp=read_path: llm.run_ingest_session(pr, kind="curate", read_path=rp)
+                        ]
+                        outcome = ingest._run_agent_sessions(
+                            session, page_rel, extra_check=_no_new_broken_links(baseline)
+                        )
+                    finally:
+                        shutil.rmtree(tmpdir, ignore_errors=True)
 
-                # The run total counts every cluster's sessions — a rolled-back or NOOP cluster
-                # spent its session too.
-                report.usage = llm.combine_usage([report.usage, outcome.usage])
-                if not outcome.ok:
-                    report.failed.append(page_rel)
-                    report.failed_details[page_rel] = _record_cluster_failure(failures_dict, page_rel, outcome, model)
-                    emit("cluster_failed", index=index, total=len(plan.items), page=page_rel)
-                    continue
+                    # The run total counts every cluster's sessions — a rolled-back or NOOP cluster
+                    # spent its session too.
+                    report.usage = llm.combine_usage([report.usage, outcome.usage])
+                    if not outcome.ok:
+                        report.failed.append(page_rel)
+                        report.failed_details[page_rel] = _record_cluster_failure(
+                            failures_dict, page_rel, outcome, model
+                        )
+                        emit("cluster_failed", index=index, total=len(plan.items), page=page_rel)
+                        continue
 
-                # A clean session: clear any prior stuck record. The staging diff is the sole arbiter of
-                # applied vs NOOP — a non-empty promoted diff is a real edit, an empty one is a NOOP.
-                failures.clear(failures_dict, page_rel)
-                if outcome.created or outcome.updated or outcome.deleted:
-                    report.applied.append(page_rel)
-                    store.append_log(
-                        f"curate {page_rel}: {len(outcome.created)} created, {len(outcome.updated)} updated, "
-                        f"{len(outcome.deleted)} deleted (model: {model})"
-                    )
-                    emit("cluster_applied", index=index, total=len(plan.items), page=page_rel)
-                else:
-                    report.noop.append(page_rel)
-                    emit("cluster_noop", index=index, total=len(plan.items), page=page_rel)
+                    # A clean session: clear any prior stuck record. The staging diff is the sole arbiter of
+                    # applied vs NOOP — a non-empty promoted diff is a real edit, an empty one is a NOOP.
+                    failures.clear(failures_dict, page_rel)
+                    if outcome.created or outcome.updated or outcome.deleted:
+                        report.applied.append(page_rel)
+                        store.append_log(
+                            f"curate {page_rel}: {len(outcome.created)} created, {len(outcome.updated)} updated, "
+                            f"{len(outcome.deleted)} deleted (model: {model})"
+                        )
+                        emit("cluster_applied", index=index, total=len(plan.items), page=page_rel)
+                    else:
+                        report.noop.append(page_rel)
+                        emit("cluster_noop", index=index, total=len(plan.items), page=page_rel)
+            except BaseException as exc:  # noqa: BLE001 - finalize the applied clusters, then re-raise
+                pending_interrupt = exc
 
         # Persist the failures catalog (attempt counters / cleared records) regardless of outcome, then —
         # only when the wiki actually changed — apply the deterministic index rebuild (the offline fix).
@@ -996,6 +1011,9 @@ def curate(
             report.wiki_git = (
                 wikigit.autocommit(f"citadel curate: {len(report.applied)} cluster(s) applied (model: {model})") or ""
             )
+
+        if pending_interrupt is not None:
+            raise pending_interrupt
 
         if diff:
             _write_diff_report(diff, before_map, _texts_on_disk(), report)

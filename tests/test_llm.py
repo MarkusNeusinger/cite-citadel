@@ -1059,6 +1059,18 @@ def test_workers_all_in_flight_under_bare_print_one_notice(monkeypatch, capsys):
     assert capsys.readouterr().err.count("--bare was refused") == 1
 
 
+def test_each_ingest_run_tries_the_flag_afresh(tmp_citadel, fake_agent, monkeypatch):
+    """The verdict is per RUN: a long-lived `citadel serve` runs many ingests, and credentials may
+    have moved between them — so ingest (and curate) forget it when they start instead of running
+    non-hermetic for the rest of the process."""
+    from citadel import ingest
+
+    llm._record_hermetic_refusal("/bin/claude")
+    fake_agent()
+    ingest.ingest()
+    assert llm._HERMETIC_REFUSED == set()
+
+
 @pytest.mark.parametrize(
     "error", [BrokenPipeError(32, "Broken pipe"), ValueError("I/O operation on closed file.")], ids=["broken", "closed"]
 )

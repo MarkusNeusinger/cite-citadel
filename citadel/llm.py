@@ -27,9 +27,9 @@ and the operational invariants (see :func:`_build_instruction`).
   hooks/CLAUDE.md/MCP discovery), it is appended so the user's personal agent configuration
   never leaks into ingest. Feature-probed per binary; an older CLI runs exactly as before. Where
   that skipped config is exactly where the CLI keeps its credentials, an auth-shaped failure under
-  the flag is retried once without it — and once such a retry has WORKED, the rest of the process
-  (the run) skips the flag for that binary up front, so the failed launch and the warning are paid
-  once per binary, not once per source.
+  the flag is retried once without it — and once such a retry has WORKED, the rest of the run skips
+  the flag for that binary up front, so the failed launch and the warning are paid once per binary
+  and run, not once per source.
 
 One function does real work: ``run_ingest_session(rel_key)`` runs the chosen CLI once against
 the workspace. The RESULT is whatever the agent wrote under ``wiki/``, which ``ingest``
@@ -634,13 +634,21 @@ _HERMETIC_FLAGS: dict[str, tuple[str, ...]] = {"claude": ("--bare",)}
 # run_ingest_session). Every later session for such a binary skips the flag up front instead of
 # paying one failed launch per source (and repeating the warning) — the retry is per session, but
 # the lesson is per run. Keyed by the resolved binary path: another install is another config and
-# earns its own verdict. Per-process, like the --help probe cache: one CLI run, or one `citadel
-# serve` process. Recorded under a lock: the check-and-record must be one atomic step so exactly
-# one `--jobs N` worker announces the switch. The read in _hermetic_flags stays lock-free (a single
-# GIL-atomic set lookup), since a stale miss costs only one more failed-then-retried launch — the
-# behavior before this memory existed.
+# earns its own verdict. Per RUN: ingest and curate call reset_hermetic_refusals() when they start,
+# so a long-lived `citadel serve` process tries the flag afresh on every wiki_ingest (credentials may
+# have moved since) instead of running non-hermetic for the rest of its life. Recorded under a lock:
+# the check-and-record must be one atomic step so exactly one `--jobs N` worker announces the switch.
+# The read in _hermetic_flags stays lock-free (a single GIL-atomic set lookup), since a stale miss
+# costs only one more failed-then-retried launch — the behavior before this memory existed.
 _HERMETIC_REFUSED: set[str] = set()
 _HERMETIC_REFUSED_LOCK = threading.Lock()
+
+
+def reset_hermetic_refusals() -> None:
+    """Forget every binary's "works only without the isolation flag" verdict — called at the start of
+    each ingest / curate run, which is the scope the verdict (and its one notice) is promised for."""
+    with _HERMETIC_REFUSED_LOCK:
+        _HERMETIC_REFUSED.clear()
 
 
 def _hermetic_refused(cli_path: str) -> bool:

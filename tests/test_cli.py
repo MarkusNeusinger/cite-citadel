@@ -921,6 +921,16 @@ def test_ctrl_c_during_a_reingest_names_the_sources_left_out_of_the_wiki(
     assert all(line.isascii() for line in note)
 
 
+def test_report_never_calls_a_stripped_only_reingest_source_re_ingested():
+    """A cleanup is booked before its fresh import runs, so an interrupted (or failed) --reingest
+    leaves cleaned keys that were never re-imported. The printed report must say they are OUT of the
+    wiki — the same state the interrupt note names — not "Re-ingested fresh"."""
+    text = _report(processed=["raw/a.md"], reingest_cleaned=["raw/a.md", "raw/b.md"]).render()
+    fresh, stripped = text.split("Stripped for re-ingest but NOT re-imported")
+    assert "Re-ingested fresh" in fresh and "  - raw/a.md" in fresh and "raw/b.md" not in fresh.split("Re-ingested")[1]
+    assert "  - raw/b.md" in stripped and "raw/a.md" not in stripped
+
+
 @pytest.mark.parametrize(
     "error", [BrokenPipeError(32, "Broken pipe"), ValueError("I/O operation on closed file.")], ids=["broken", "closed"]
 )
@@ -989,7 +999,10 @@ def test_ctrl_c_during_refresh_exits_130_and_stops_the_live_region(tmp_citadel, 
     assert seen["progress"]._live is None
     note = _note(stderr.getvalue())
     assert "keeps its old last-checked stamp" in note[0]
-    assert note[1].startswith("Re-run the same `citadel refresh` command (same --limit / --min-age-days)")
+    assert note[1].startswith(
+        "Re-run the same `citadel refresh` command to continue, with --limit lowered by the sources listed under "
+        "Processed above"
+    )
 
 
 def test_ctrl_c_during_curate_exits_130_with_the_cluster_state(tmp_citadel, monkeypatch, capsys):
@@ -1007,9 +1020,9 @@ def test_ctrl_c_during_curate_exits_130_with_the_cluster_state(tmp_citadel, monk
     assert "Traceback" not in err
     note = _note(err)
     assert note == [
-        "interrupted: clusters applied before Ctrl+C are kept in the wiki; the one in flight was rolled back.",
-        "Run `citadel curate` to continue - it recomputes its plan, and its next applied cluster also "
-        "rebuilds the indexes this run skipped.",
+        "interrupted: clusters applied before Ctrl+C are kept in the wiki (indexes rebuilt); the one in flight "
+        "was rolled back.",
+        "Run `citadel curate` to continue - it recomputes its plan.",
     ]
 
 
@@ -1043,7 +1056,7 @@ def test_ctrl_c_during_a_scoped_curate_says_re_run_the_same_command(
     assert note[1].startswith(
         "Re-run the same `citadel curate` command (same paths and flags) to continue - it recomputes its plan"
     )
-    assert note[1].endswith("its next applied cluster also rebuilds the indexes this run skipped.")
+    assert note[1].endswith(".") and "rebuilds the indexes" not in note[1]
     assert ("a page named under --guidance is planned again even if done" in note[1]) is named_again
     assert "Run `citadel curate` to continue" not in note[1]
 

@@ -27,9 +27,10 @@ All notable changes to this project are documented here. The format is based on
 - **The hermetic auth retry is paid once per run, not once per source.** On a machine whose CLI
   credentials live in exactly the config `--bare` skips, every session failed under the flag and was
   retried without it — 55 failed launches and 55 warnings in one real-world run, and the same for
-  every curate cluster. Once a retry without the flag has worked, the rest of the process skips the
-  flag for that binary up front and says so once. A retry that also fails is still a real credential
-  problem and teaches nothing.
+  every curate cluster. Once a retry without the flag has worked, the rest of the run skips the flag
+  for that binary up front and says so once (each ingest / curate run starts afresh, so a long-lived
+  `citadel serve` tries the flag again on its next `wiki_ingest`). A retry that also fails is still a
+  real credential problem and teaches nothing.
 - **Ctrl+C no longer ends in a traceback.** Ingest already rolled back the source in flight and kept
   the finished ones, then re-raised the interrupt into a `KeyboardInterrupt in
   subprocess.communicate` traceback. The CLI now stops the live progress region, prints the run's
@@ -38,7 +39,13 @@ All notable changes to this project are documented here. The format is based on
   interrupt left behind and how to continue (per lifecycle: `ingest` and its `--force` / `--retry` /
   `--reingest` variants — the latter naming any source stripped but not yet re-imported — `refresh`,
   `curate`), then exits 130 — on POSIX by dying of SIGINT, like Python itself, so a shell loop around
-  citadel stops too.
+  citadel stops too. `curate` now finalizes the clusters applied before an interrupt (failures
+  catalog, index rebuild, wiki-history commit) before re-raising it, as `ingest` already did — the
+  indexes no longer stay stale until some later run happens to apply a cluster.
+- **The ingest report no longer calls a stripped-only `--reingest` source "re-ingested".** A cleanup
+  is booked before its fresh import runs, so a source whose fresh import failed (or was interrupted)
+  was listed as "Re-ingested fresh" while it was actually out of the wiki. It is now listed separately
+  as stripped but not re-imported, with the `citadel ingest <path>` that brings it back.
 - **Progress output to a log file or pipe is no longer clipped.** Off a terminal, the START and
   verdict lines were cut with an ellipsis at a guessed width, so filenames and the spend
   (`$0.4869 308.6k in / 5.5…`) were unreadable in a log. Off a TTY every line is now printed in full

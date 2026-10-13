@@ -1114,9 +1114,10 @@ def _interrupt_message(args: argparse.Namespace, report=None) -> str:
       ``citadel status`` lists it as pending, and a plain ``citadel ingest <path>`` imports it
       fresh), and only a cleanup still in flight was rolled back. The note names each such source.
     - ``curate``: each applied cluster was promoted as it finished; the one in flight was rolled
-      back the same way, but the interrupt skips the end-of-run index rebuild, which the next run
-      that applies a cluster performs. Curate has no queue, so re-running recomputes the plan —
-      except that a page NAMED under ``--guidance`` is planned whatever its state, done or not.
+      back the same way, and curate finalizes the applied ones (failures catalog, index rebuild,
+      wiki-history commit) before re-raising, like ingest. Curate has no queue, so re-running
+      recomputes the plan — except that a page NAMED under ``--guidance`` is planned whatever its
+      state, done or not.
 
     The way on is the bare command only when the run had no scope or steer of its own. Otherwise it
     is "the same command": a bare one would do different work than the run that was stopped — drop a
@@ -1177,16 +1178,19 @@ def _interrupt_message(args: argparse.Namespace, report=None) -> str:
         return (
             "interrupted: sources re-verified before Ctrl+C are kept and re-stamped; any source still in "
             "flight was rolled back and keeps its old last-checked stamp.\n"
-            "Re-run the same `citadel refresh` command (same --limit / --min-age-days) to continue - the "
-            "queue is oldest-first, so what this run did not reach is still at its head (`--dry-run` shows it)."
+            "Re-run the same `citadel refresh` command to continue, with --limit lowered by the sources "
+            "listed under Processed above - those are re-stamped to the back of the oldest-first queue, so "
+            "what this run did not reach is at its head (`--dry-run` shows it)."
         )
     if command == "curate":
         from . import config
 
-        state = "interrupted: clusters applied before Ctrl+C are kept in the wiki; the one in flight was rolled back."
-        rebuild = "its next applied cluster also rebuilds the indexes this run skipped."
+        state = (
+            "interrupted: clusters applied before Ctrl+C are kept in the wiki (indexes rebuilt); the one in "
+            "flight was rolled back."
+        )
         if not (args.paths or steered or args.limit is not None or args.stale_rules or args.retry):
-            return f"{state}\nRun `citadel curate` to continue - it recomputes its plan, and {rebuild}"
+            return f"{state}\nRun `citadel curate` to continue - it recomputes its plan."
         # The EFFECTIVE steer (flag or CITADEL_CURATE_GUIDANCE) is what plans a named page regardless.
         named_again = (
             " (a page named under --guidance is planned again even if done; the wiki's log.md lists the clusters applied)"
@@ -1195,7 +1199,7 @@ def _interrupt_message(args: argparse.Namespace, report=None) -> str:
         )
         return (
             f"{state}\nRe-run the same `citadel curate` command (same paths and flags) to continue - it "
-            f"recomputes its plan{named_again}, and {rebuild}"
+            f"recomputes its plan{named_again}."
         )
     return "interrupted"
 
