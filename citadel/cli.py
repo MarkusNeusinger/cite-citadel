@@ -40,15 +40,20 @@ unusable LLM CLI also surfaces as a per-source error), lint returns 3 if the rep
 not clean (its OWN code, so "wiki has structural problems" is distinguishable from the
 usage/no-workspace exit 2 argparse and the workspace guard use), check returns 1 on any
 validation error, and any RuntimeError raised by a subcommand prints to stderr and
-returns 1.
+returns 1. Ctrl+C returns 130 (the shell's SIGINT convention) with a short note on stderr
+instead of a traceback — for ingest/refresh/curate, one that says what the interrupt left in the
+wiki and how to continue; as the process entry on POSIX it then dies of SIGINT instead, so a shell
+loop around citadel stops too.
 
 ``serve`` imports the MCP server lazily inside cmd_serve, so merely importing
-this module never requires the ``mcp`` package.
+this module never requires the ``mcp`` package (and an unusable one is reported, not traced).
 """
 
 from __future__ import annotations
 
 import argparse
+import os
+import signal
 import sys
 
 from . import __version__
@@ -474,6 +479,18 @@ def _effective_guidance(flag: str | None, env_value: str, env_name: str) -> tupl
     return guidance, None
 
 
+def _stop_progress(progress) -> None:
+    """Take down the console's live region however the run ended.
+
+    Ingest only emits ``done`` from its finalize step, so a run that RAISES — above all the Ctrl+C
+    it re-raises after rolling back the source in flight — would leave the spinner rows standing,
+    and ``main``'s interrupt note would be drawn into (or under) a stale region. ``done`` is the
+    reporter's own stop event and stopping is idempotent, so sending it again after a normal run
+    that already emitted it is a no-op."""
+    if progress is not None:
+        progress("done", {})
+
+
 def cmd_ingest(args: argparse.Namespace) -> int:
     """Run an ingest pass (with live progress unless --quiet); 1 if any source errored.
 
@@ -581,9 +598,12 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         # CITADEL_LLM_VERBOSE — not just the --verbose flag — also drops the spinner that would
         # otherwise clobber the streamed transcript.
         progress = ConsoleProgress(spinner=not config.LLM_VERBOSE)
-    report = ingest.ingest(
-        paths, progress=progress, full_rescan=args.full_rescan, force=force, jobs=args.jobs, reingest=args.reingest
-    )
+    try:
+        report = ingest.ingest(
+            paths, progress=progress, full_rescan=args.full_rescan, force=force, jobs=args.jobs, reingest=args.reingest
+        )
+    finally:
+        _stop_progress(progress)
     print(report.render())
     # Non-zero on a per-source error OR a structural problem left behind (a broken
     # cross-link the agent introduced) — so ingest gates the wiki's integrity in CI.
@@ -647,9 +667,12 @@ def cmd_refresh(args: argparse.Namespace) -> int:
         from .progress import ConsoleProgress
 
         progress = ConsoleProgress(spinner=not config.LLM_VERBOSE)
-    report = refresh.refresh(
-        limit=args.limit, min_age_days=args.min_age_days, dry_run=args.dry_run, progress=progress, jobs=args.jobs
-    )
+    try:
+        report = refresh.refresh(
+            limit=args.limit, min_age_days=args.min_age_days, dry_run=args.dry_run, progress=progress, jobs=args.jobs
+        )
+    finally:
+        _stop_progress(progress)
     print(report.render(), end="")
     ing = report.ingest_report
     return 1 if ing is not None and (ing.errors or ing.broken_links) else 0
@@ -764,6 +787,33 @@ def cmd_sources(args: argparse.Namespace) -> int:
     return 0
 
 
+def _import_mcp_server():
+    """Import :mod:`citadel.server` — the one module that loads the MCP SDK at import time, and
+    the one ``httpserve`` reaches it through — or print the remedy and return None when the SDK
+    cannot back it.
+
+    Only an ImportError ABOUT the SDK (``exc.name`` is ``mcp`` or ``mcp.*``) is translated: any
+    other import failure is a real bug and keeps its traceback instead of being mislabeled as a
+    packaging problem. The fix itself is ``citadel doctor``'s (:func:`doctor.mcp_sdk_remedy`, worded
+    for the installed version and spelled for this install method), never a copy of it: the two
+    must hand out the same command for the same broken environment, including when the cap moves."""
+    try:
+        from . import server
+    except ImportError as exc:
+        name = exc.name or ""
+        if name != "mcp" and not name.startswith("mcp."):
+            raise
+        from . import doctor
+
+        print(
+            f"error: `citadel serve` cannot start - the installed MCP SDK does not import "
+            f"({type(exc).__name__}: {exc}).\n  {doctor.mcp_sdk_remedy(doctor.mcp_sdk_version())}",
+            file=sys.stderr,
+        )
+        return None
+    return server
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     """Launch the MCP server — stdio by default, Streamable HTTP with ``--http`` (lazy imports so
     importing cli needs no mcp).
@@ -771,8 +821,13 @@ def cmd_serve(args: argparse.Namespace) -> int:
     The HTTP transport refuses to start without a usable ``CITADEL_HTTP_TOKEN``; that refusal is a
     usage error (exit 2, matching the argparse convention), never a traceback. The stdio-only flags
     are rejected the same way rather than silently ignored — a ``--port`` that did nothing would be
-    a security surprise waiting to happen."""
-    if not getattr(args, "http", False):
+    a security surprise waiting to happen.
+
+    An installed MCP SDK that cannot provide what the server imports (mcp 2.x dropped
+    ``mcp.server.fastmcp``) exits 1 with the reinstall command instead of a ModuleNotFoundError
+    traceback — see :func:`_import_mcp_server`."""
+    http = getattr(args, "http", False)
+    if not http:
         stdio_only = [
             flag
             for flag, value in (
@@ -788,9 +843,12 @@ def cmd_serve(args: argparse.Namespace) -> int:
                 f"error: {', '.join(stdio_only)} apply to --http only (stdio has no network surface).", file=sys.stderr
             )
             return 2
-        from .server import main as serve_main
 
-        serve_main()
+    server = _import_mcp_server()
+    if server is None:
+        return 1
+    if not http:
+        server.main()
         return 0
 
     from . import httpserve
@@ -1029,6 +1087,120 @@ def cmd_view(args: argparse.Namespace) -> int:
     return viewer.view(out=args.out, open_browser=args.open_browser, obsidian=args.obsidian)
 
 
+def _interrupt_message(args: argparse.Namespace) -> str:
+    """The note ``main`` prints when Ctrl+C ends a subcommand: one line naming what the interrupt
+    left behind, one saying how to continue — for the three mutating lifecycles, whose state the
+    user otherwise has to guess. ASCII only (a cp1252 console must be able to print it).
+
+    Every claim is what the lifecycle actually guarantees on an interrupt:
+
+    - ``ingest``/``refresh`` (refresh IS a forced, path-scoped ingest): each finished source was
+      promoted and stamped in the manifest as it completed and is kept; the session runner rolled
+      back every source still in flight (its staging copy discarded), and ingest finalized the
+      completed ones before re-raising. A plain run re-detects whatever is left by itself; the
+      forced variants do not (a rolled-back reconcile still reads as ingested), hence the different
+      hint; ``--retry`` recomputes its stuck set, so re-running it continues.
+    - ``ingest --reingest`` is the exception to "rolled back": its cleanups all run FIRST, and each
+      one is promoted and drops the source's manifest key as it finishes — so a source whose cleanup
+      finished but whose fresh import did not is out of the wiki altogether (untracked, so
+      ``citadel status`` lists it as pending), and only a cleanup still in flight was rolled back.
+    - ``curate``: each applied cluster was promoted as it finished; the one in flight was rolled
+      back the same way, but the interrupt skips the end-of-run index rebuild, which the next run
+      that applies a cluster performs. Curate has no queue, so re-running recomputes the plan —
+      except that a page NAMED under ``--guidance`` is planned whatever its state, done or not.
+
+    The way on is the bare command only when the run had no scope or steer of its own. Otherwise it
+    is "the same command": a bare one would do different work than the run that was stopped — drop a
+    curate ``--limit`` (one paid session per flagged cluster, wiki-wide), sweep in every pending
+    source a path list left out, or lose a ``--guidance`` steer, which is also part of a chunked
+    source's resume-checkpoint identity (segments already paid for would be bought again).
+
+    Everything else (a ``--dry-run``, a read-only command, ``serve``) changed nothing, and a plain
+    ``interrupted`` says all there is to say."""
+    command = getattr(args, "command", None)
+    if getattr(args, "dry_run", False):
+        return "interrupted"
+    # `is not None`, not truthiness: an explicit `--guidance ""` (switching an env steer off for
+    # this run) is part of the command too.
+    steered = getattr(args, "guidance", None) is not None
+    if command == "ingest":
+        if args.reingest:
+            return (
+                "interrupted: sources re-imported before Ctrl+C are back in the wiki, but one whose old "
+                "facts were already stripped and whose fresh import did not finish is now OUT of the "
+                "wiki (pending in `citadel status`); a cleanup still in flight was rolled back.\n"
+                "Re-run the same `citadel ingest --reingest` command on the paths not yet re-imported "
+                "(a stripped one comes back as a new source)."
+            )
+        if args.retry:
+            hint = "Re-run the same `citadel ingest --retry` command to continue with whatever is still stuck."
+        elif args.force:
+            hint = (
+                "Re-run the same `citadel ingest --force` command on the paths not yet done "
+                "(`citadel status` shows each source's last-checked date)."
+            )
+        elif args.paths or steered:
+            hint = (
+                "Run `citadel status` to see what is still pending, then re-run the same `citadel ingest` "
+                "command (same paths and flags) to continue."
+            )
+        else:
+            hint = "Run `citadel status` to see what is still pending and `citadel ingest` to continue."
+        return (
+            "interrupted: sources finished before Ctrl+C are kept in the wiki; any source still in "
+            f"flight was rolled back.\n{hint}"
+        )
+    if command == "refresh":
+        return (
+            "interrupted: sources re-verified before Ctrl+C are kept and re-stamped; any source still in "
+            "flight was rolled back and keeps its old last-checked stamp.\n"
+            "Re-run `citadel refresh` to continue - the queue is oldest-first, so what this run did not "
+            "reach is still at its head (`--dry-run` shows it)."
+        )
+    if command == "curate":
+        from . import config
+
+        state = "interrupted: clusters applied before Ctrl+C are kept in the wiki; the one in flight was rolled back."
+        rebuild = "its next applied cluster also rebuilds the indexes this run skipped."
+        if not (args.paths or steered or args.limit is not None or args.stale_rules or args.retry):
+            return f"{state}\nRun `citadel curate` to continue - it recomputes its plan, and {rebuild}"
+        # The EFFECTIVE steer (flag or CITADEL_CURATE_GUIDANCE) is what plans a named page regardless.
+        named_again = (
+            " (a page named under --guidance is planned again even if done; the wiki's log.md lists the clusters applied)"
+            if args.paths and config.CURATE_GUIDANCE
+            else ""
+        )
+        return (
+            f"{state}\nRe-run the same `citadel curate` command (same paths and flags) to continue - it "
+            f"recomputes its plan{named_again}, and {rebuild}"
+        )
+    return "interrupted"
+
+
+def _die_of_sigint() -> None:
+    """End the process BY SIGINT, the way Python itself ends one on an uncaught KeyboardInterrupt.
+
+    Exiting normally with 130 looks the same in ``$?``, but not to the parent shell: under bash's
+    wait-and-cooperative-exit, a child that EXITS is taken to have handled the interrupt itself, so
+    ``for f in raw/*.md; do citadel ingest "$f"; done`` would go straight on to the next source's
+    paid session after every Ctrl+C. A child that DIES of SIGINT stops the loop. POSIX only — Windows
+    has no such convention (``main`` returns 130 there) — and any refusal (not the main thread)
+    leaves the plain 130 too. Output is flushed first: a signal death skips the interpreter's own
+    flush, which would drop the tail of a piped stdout."""
+    if os.name != "posix":
+        return
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.flush()
+        except Exception:  # noqa: BLE001 - a closed/broken stream must not stop the exit
+            pass
+    try:
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+        os.kill(os.getpid(), signal.SIGINT)
+    except (OSError, ValueError):
+        return
+
+
 def main(argv: list[str] | None = None) -> int:
     """Parse arguments and dispatch to the chosen subcommand.
 
@@ -1042,6 +1214,14 @@ def main(argv: list[str] | None = None) -> int:
     On a RuntimeError raised by a subcommand, print the message to stderr and
     return 1. (Ingest collects per-source LLM-CLI failures into its report
     instead of raising, so those exit 1 via report.errors.)
+
+    On Ctrl+C, print :func:`_interrupt_message` to stderr and return 130 (128 + SIGINT, what a
+    shell reports for an interrupted process). Ingest deliberately RE-RAISES the interrupt once it
+    has rolled back the source in flight and finalized the finished ones, so the run still aborts —
+    but what reaches the user must be that state and a way on, not a ``KeyboardInterrupt in
+    subprocess.communicate`` traceback that reads like a crash. Called as the process entry
+    (``argv`` None) on POSIX, the process then dies of SIGINT instead of returning (still 130 in
+    ``$?``), so a shell loop around citadel stops too — see :func:`_die_of_sigint`.
     """
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -1064,6 +1244,13 @@ def main(argv: list[str] | None = None) -> int:
     except RuntimeError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
+    except KeyboardInterrupt:
+        print(_interrupt_message(args), file=sys.stderr)
+        # `argv is None` is the PROCESS entry (the console script and `python -m citadel` both call
+        # main() bare); an in-process caller passing argv gets 130 back instead of a dead process.
+        if argv is None:
+            _die_of_sigint()
+        return 130
 
 
 if __name__ == "__main__":

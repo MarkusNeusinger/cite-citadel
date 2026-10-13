@@ -54,6 +54,14 @@ def _reset_page_cache():
     pagecache.reset()
 
 
+@pytest.fixture(autouse=True)
+def _fresh_hermetic_refusals(monkeypatch):
+    """Give EVERY test its own :data:`citadel.llm._HERMETIC_REFUSED` — the per-process "this binary
+    works only without --bare" memory — so a successful hermetic retry in one test never strips the
+    flag from the next test's sessions."""
+    monkeypatch.setattr(llm, "_HERMETIC_REFUSED", set())
+
+
 @dataclass(frozen=True)
 class CitadelTmp:
     """Handle onto a temp citadel layout that has been wired into ``config``.

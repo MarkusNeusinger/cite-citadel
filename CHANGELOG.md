@@ -8,6 +8,35 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A fresh install works again: `mcp` is capped below 2.** `pyproject.toml` declared `mcp>=1.2`
+  with no upper bound, and the SDK's 2.x line renamed FastMCP (`mcp.server.fastmcp` is gone), so a
+  fresh `uv tool install cite-citadel` resolved mcp 2.x and `citadel serve` / `citadel doctor` died
+  with `ModuleNotFoundError`. The dependency is now `mcp>=1.2,<2`; moving to the 2.x API is a
+  separate change. `citadel serve` on an environment that still holds an unusable SDK exits 1 with
+  the reinstall command instead of a traceback.
+- **`citadel doctor` can no longer crash on the install it exists to diagnose.** Every check now
+  runs isolated: one that raises becomes its own FAIL line (exception type and message on one line)
+  and every other check still reports. A new **MCP SDK** check names the installed `mcp` version and,
+  when `mcp.server.fastmcp` does not import, the fix worded for the cause (a 2.x or missing SDK ->
+  `mcp<2`; a 1.x whose own dependencies broke -> rebuild the environment) and spelled for how
+  citadel was installed — never a command that would persist a pin into uv's tool receipt.
+- **The hermetic auth retry is paid once per run, not once per source.** On a machine whose CLI
+  credentials live in exactly the config `--bare` skips, every session failed under the flag and was
+  retried without it — 55 failed launches and 55 warnings in one real-world run, and the same for
+  every curate cluster. Once a retry without the flag has worked, the rest of the process skips the
+  flag for that binary up front and says so once. A retry that also fails is still a real credential
+  problem and teaches nothing.
+- **Ctrl+C no longer ends in a traceback.** Ingest already rolled back the source in flight and kept
+  the finished ones, then re-raised the interrupt into a `KeyboardInterrupt in
+  subprocess.communicate` traceback. The CLI now stops the live progress region and prints what the
+  interrupt left behind and how to continue (per lifecycle: `ingest` and its `--force` / `--retry` /
+  `--reingest` variants, `refresh`, `curate`), then exits 130 — on POSIX by dying of SIGINT, like
+  Python itself, so a shell loop around citadel stops too.
+- **Progress output to a log file or pipe is no longer clipped.** Off a terminal, the START and
+  verdict lines were cut with an ellipsis at a guessed width, so filenames and the spend
+  (`$0.4869 308.6k in / 5.5…`) were unreadable in a log. Off a TTY every line is now printed in full
+  on one row (a multi-line error reason is joined onto its verdict line); the terminal display is
+  unchanged.
 - **`citadel view`: the "open the original file" link is back on every source.** The viewer's
   raw-file href was computed relative to the WIKI directory, which is only correct when the
   document happens to sit there — a viewer written with `--out` (the Pages gallery's

@@ -59,7 +59,7 @@ per-source state table: ingested / failed / skipped-duplicate / ignored / oversi
 (read-only setup health check — OK/WARN/FAIL lines for workspace / rules / config-parse fallbacks /
 agent CLI / the configured ingest model / raw roots / wiki placement
 (the wiki nested inside a raw root) / child paths (the UNC-vs-drive-letter cwd) /
-manifest / billing / the HTTP-serve posture / wiki-git state / a best-effort PyPI update check / workspace coherence; needs no workspace, exits 1 only on a FAIL),
+manifest / billing / the MCP SDK (`mcp.server.fastmcp` imports — `mcp` is capped `<2`) / the HTTP-serve posture / wiki-git state / a best-effort PyPI update check / workspace coherence; every check runs isolated, so one that raises is its own FAIL line, never a traceback; needs no workspace, exits 1 only on a FAIL),
 `serve [--http [--host H] [--port P] [--path /mcp] [--read-only]]` (the MCP server — stdio by
 default; `--http` serves the SAME surface over MCP's Streamable HTTP transport for a client that is
 not on this machine, mandatory bearer token, loopback default, optional read-only), `capture <text> [--from WHO] [--topic T]` (append one attributed note from a
@@ -430,7 +430,9 @@ An auth-shaped session failure under hermetic isolation is **retried once withou
 flags**: on a machine whose CLI credentials live in exactly the personal config `--bare` skips,
 every session used to die on authentication until the user found `CITADEL_HERMETIC=0`. The retry
 is scoped to that signature (flags actually passed + an auth-shaped message), so a real credential
-problem still fails instead of looping.
+problem still fails instead of looping. A retry that WORKS is remembered per process
+(`llm._HERMETIC_REFUSED`, keyed by the resolved binary): the rest of the run skips the flag up
+front, so a corpus pays one failed launch and one notice, not one per source or curate cluster.
 
 **Status is the read-only corpus view** (`status.py`, `citadel status`): the manifest + failures
 catalog + one stat-only walk (never re-hashes) + one wiki traversal rendered as a per-source state

@@ -50,8 +50,12 @@ classifiers = [
 # Pure-Python, MIT, two small pure-Python transitive deps (markdown-it-py, mdurl). The floor is 13
 # because that is where every API used here (Group, Live, MofNCompleteColumn, Column overflow) is
 # stable; nothing newer is required.
+#
+# `mcp` is capped below 2: the 2.x SDK renamed FastMCP (`mcp.server.fastmcp` is gone), which
+# citadel/server.py imports at module level — an uncapped fresh install resolved 2.x and `citadel
+# serve`/`citadel doctor` died with ModuleNotFoundError. Migrating to the 2.x API is a separate change.
 dependencies = [
-    "mcp>=1.2",
+    "mcp>=1.2,<2",
     "pyyaml>=6.0",
     "pypdf>=4",
     "rich>=13",

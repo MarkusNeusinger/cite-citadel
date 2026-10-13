@@ -8,8 +8,11 @@ so tests drive them through ``tmp_citadel`` + ``monkeypatch`` (no CLI, no networ
 
 from __future__ import annotations
 
+import importlib
 import json
 import socket
+import sys
+from importlib import metadata
 from pathlib import Path
 
 import pytest
@@ -822,34 +825,211 @@ def test_render_lists_every_check_and_a_verdict():
     assert "No blocking problems." in text
 
 
+# The names run() reports, in order — shared by the inventory test and the isolation tests below, which
+# prove a crashing check's FAIL fallback lands under the very name its normal line carries.
+_CHECK_INVENTORY = [
+    "workspace",
+    "rules",
+    "config",
+    "agent CLI",
+    "ingest model",
+    "raw roots",
+    "include patterns",
+    "wiki placement",
+    "child paths",
+    "manifest",
+    "failures",
+    "billing",
+    "PDF mode",
+    "PDF text",
+    "audio",
+    "chunk budget",
+    "resume",
+    "MCP SDK",
+    "HTTP serve",
+    "wiki git",
+    "update",
+    "workspace coherence",
+]
+
+
 def test_run_emits_the_full_check_inventory(tmp_citadel, monkeypatch):
     monkeypatch.setattr(llm_mod, "_resolve_cli", lambda cli: "/opt/bin/claude")
     # Keep run() fully offline: stub the PyPI lookup so the update check never touches the network.
     monkeypatch.setattr(doctor, "_fetch_latest_pypi_version", lambda timeout=2.0: None)
     names = [c.name for c in doctor.run().checks]
-    assert names == [
-        "workspace",
-        "rules",
-        "config",
-        "agent CLI",
-        "ingest model",
-        "raw roots",
-        "include patterns",
-        "wiki placement",
-        "child paths",
-        "manifest",
-        "failures",
-        "billing",
-        "PDF mode",
-        "PDF text",
-        "audio",
-        "chunk budget",
-        "resume",
-        "HTTP serve",
-        "wiki git",
-        "update",
-        "workspace coherence",
-    ]
+    assert names == _CHECK_INVENTORY
+
+
+def test_run_isolates_a_check_that_raises(tmp_citadel, monkeypatch):
+    """Regression (mcp 2.x on a fresh install): check_http_serve's import chain raised
+    ModuleNotFoundError and, because run() called every check eagerly, the whole report died in a
+    traceback. Now that one check becomes its own FAIL line — naming the exception — and every other
+    check still reports, so the exit code is 1 instead of a crash."""
+    monkeypatch.setattr(llm_mod, "_resolve_cli", lambda cli: "/opt/bin/claude")
+    monkeypatch.setattr(doctor, "_fetch_latest_pypi_version", lambda timeout=2.0: None)
+
+    def _boom():
+        raise ModuleNotFoundError("No module named 'mcp.server.fastmcp'")
+
+    monkeypatch.setattr(doctor, "check_http_serve", _boom)
+    report = doctor.run()
+    assert [c.name for c in report.checks] == _CHECK_INVENTORY
+    by_name = {c.name: c for c in report.checks}
+    crashed = by_name["HTTP serve"]
+    assert crashed.status == doctor.FAIL
+    assert "ModuleNotFoundError" in crashed.detail and "mcp.server.fastmcp" in crashed.detail
+    # The checks on either side of it ran normally.
+    assert by_name["workspace"].status == doctor.OK
+    assert by_name["workspace coherence"].status == doctor.OK
+    assert not report.ok
+    assert "[FAIL] HTTP serve: could not run this check - ModuleNotFoundError" in report.render()
+
+
+def test_run_fallback_names_match_every_checks_own_name(tmp_citadel, monkeypatch):
+    """The FAIL fallback for a crashed check carries the name run() pairs with it, which duplicates
+    the name the check reports itself. Crash EVERY check at once: the report must still be the full
+    inventory, line for line — so a renamed check cannot silently drift from its fallback."""
+    for attr in dir(doctor):
+        if attr.startswith("check_"):
+            monkeypatch.setattr(doctor, attr, lambda: 1 / 0)
+    report = doctor.run()
+    assert [c.name for c in report.checks] == _CHECK_INVENTORY
+    assert all(c.status == doctor.FAIL and "ZeroDivisionError" in c.detail for c in report.checks)
+
+
+def test_doctor_exits_1_instead_of_crashing_when_mcp_2_is_installed(tmp_citadel, monkeypatch, capsys):
+    """End to end over the real import chain: with ``mcp.server.fastmcp`` unimportable (what mcp 2.x
+    looks like) and citadel's server modules not yet loaded, ``citadel doctor`` prints the whole
+    report — the MCP SDK line with the ``mcp<2`` remedy, HTTP serve as its own FAIL — and exits 1."""
+    import citadel
+
+    monkeypatch.setattr(llm_mod, "_resolve_cli", lambda cli: "/opt/bin/claude")
+    monkeypatch.setattr(doctor, "_fetch_latest_pypi_version", lambda timeout=2.0: None)
+    monkeypatch.setattr(doctor, "mcp_sdk_version", lambda: "2.0.0")
+    # A None entry makes the import machinery raise ModuleNotFoundError for that name.
+    monkeypatch.setitem(sys.modules, "mcp.server.fastmcp", None)
+    # Force check_http_serve to re-import citadel.httpserve -> citadel.server as a fresh install would;
+    # monkeypatch puts the already-loaded modules back afterwards.
+    for name in ("httpserve", "server"):
+        monkeypatch.delitem(sys.modules, f"citadel.{name}", raising=False)
+        monkeypatch.delattr(citadel, name, raising=False)
+
+    assert cli.main(["doctor"]) == 1
+    out = capsys.readouterr().out
+    assert "[FAIL] MCP SDK: mcp 2.0.0 is installed" in out and "citadel needs mcp<2" in out
+    assert "[FAIL] HTTP serve: could not run this check - ModuleNotFoundError" in out
+    assert "workspace coherence:" in out  # the checks after the crash still ran
+
+
+# --- MCP SDK -----------------------------------------------------------------------------
+
+
+def test_mcp_sdk_ok_names_the_installed_version():
+    c = doctor.check_mcp_sdk()
+    assert (c.status, c.name) == (doctor.OK, "MCP SDK")
+    assert f"mcp {metadata.version('mcp')}" in c.detail
+
+
+def test_mcp_sdk_fails_with_the_remedy_when_fastmcp_does_not_import(monkeypatch):
+    """mcp 2.x renamed FastMCP: the check FAILs, names the installed version and the import error, and
+    hands over the reinstall command for this install method."""
+    monkeypatch.setattr(doctor, "mcp_sdk_version", lambda: "2.1.0")
+    monkeypatch.setitem(sys.modules, "mcp.server.fastmcp", None)
+    c = doctor.check_mcp_sdk()
+    assert (c.status, c.name) == (doctor.FAIL, "MCP SDK")
+    assert "mcp 2.1.0 is installed" in c.detail
+    assert "mcp.server.fastmcp" in c.detail and "ModuleNotFoundError" in c.detail
+    assert c.detail.endswith(doctor.mcp_sdk_remedy("2.1.0"))
+    assert "citadel needs mcp<2 - run: " in c.detail
+
+
+def test_mcp_sdk_fails_when_the_package_is_missing(monkeypatch):
+    monkeypatch.setattr(doctor, "mcp_sdk_version", lambda: None)
+    monkeypatch.setitem(sys.modules, "mcp.server.fastmcp", None)
+    c = doctor.check_mcp_sdk()
+    assert c.status == doctor.FAIL
+    assert "the mcp package is not installed" in c.detail
+    assert "citadel needs mcp<2" in c.detail
+
+
+def test_mcp_sdk_does_not_blame_a_1x_sdk_for_a_broken_dependency(monkeypatch):
+    """Review regression: with a supported 1.x installed, a FastMCP import that breaks on a transitive
+    dependency (here pydantic-settings) must not say "citadel needs mcp<2" — that is already
+    satisfied, and its command would fix nothing. Over the real import chain: FastMCP is loaded first
+    so every module the failed re-import replaces has an original monkeypatch puts back."""
+    importlib.import_module("mcp.server.fastmcp")
+    for name in [n for n in sys.modules if n == "mcp.server.fastmcp" or n.startswith("mcp.server.fastmcp.")]:
+        monkeypatch.delitem(sys.modules, name)
+    monkeypatch.setitem(sys.modules, "pydantic_settings", None)
+    c = doctor.check_mcp_sdk()
+    assert (c.status, c.name) == (doctor.FAIL, "MCP SDK")
+    assert f"mcp {metadata.version('mcp')} is installed" in c.detail
+    assert "pydantic_settings" in c.detail
+    assert "needs mcp<2" not in c.detail
+    assert "a dependency it imports is broken - repair the environment: " in c.detail
+
+
+@pytest.mark.parametrize(
+    ("method", "prefix", "command"),
+    [
+        ("dev", "/irrelevant", "uv sync --reinstall"),
+        ("uv tool", "/home/u/.local/share/uv/tools/cite-citadel", "uv tool upgrade --reinstall cite-citadel"),
+        ("pipx", "/home/u/.local/pipx/venvs/cite-citadel", "pipx reinstall cite-citadel"),
+        (
+            "uvx",
+            "/home/u/.cache/uv/environments-v2/cite-citadel-abc123",
+            "uvx --reinstall --from cite-citadel citadel doctor",
+        ),
+        ("pip", "/home/u/.venvs/myproject", "pip install --force-reinstall cite-citadel"),
+    ],
+)
+def test_mcp_sdk_remedy_is_spelled_for_the_install_method(tmp_path, method, prefix, command):
+    """One re-resolve per installer, for both causes — and never `uv tool install --with "mcp<2"`,
+    which would persist the cap in uv's tool receipt and hold back every later upgrade. Plain pip is
+    the one exception for a too-new SDK: pin just mcp back down instead of reinstalling everything."""
+    mod = _make_module(tmp_path, dev=method == "dev")
+    too_new = doctor.mcp_sdk_remedy("2.0.0", module_file=mod, prefix=prefix)
+    broken = doctor.mcp_sdk_remedy("1.28.1", module_file=mod, prefix=prefix)
+    expected_too_new = 'pip install "mcp<2"' if method == "pip" else command
+    assert too_new == f"citadel needs mcp<2 - run: {expected_too_new}"
+    assert broken.startswith("mcp 1.28.1 itself is supported") and broken.endswith(command)
+    assert "--with" not in too_new + broken
+
+
+@pytest.mark.parametrize(
+    ("version", "sdk_at_fault"),
+    [("2.0.0", True), ("2.0.0rc1", True), ("10.1", True), (None, True), ("1.28.1", False), ("1.2", False)],
+)
+def test_mcp_sdk_remedy_blames_the_sdk_only_when_missing_or_2x(tmp_path, version, sdk_at_fault):
+    mod = _make_module(tmp_path, dev=False)
+    remedy = doctor.mcp_sdk_remedy(version, module_file=mod, prefix="/home/u/.venvs/myproject")
+    assert remedy.startswith("citadel needs mcp<2") is sdk_at_fault
+
+
+def test_every_install_method_has_both_commands():
+    """mcp_sdk_remedy and detect_update_command index their tables by the same detected method — a
+    method added to one table but not the other would be a KeyError inside doctor."""
+    assert set(doctor._REINSTALL_COMMANDS) == set(doctor._UPDATE_COMMANDS)
+
+
+def test_run_keeps_a_multiline_exception_on_one_line(tmp_citadel, monkeypatch):
+    """Review regression: the fallback detail came straight from str(exc), so an exception that renders
+    over several lines broke the one-[STATUS]-line-per-check report. Collapsed — and clipped."""
+    monkeypatch.setattr(llm_mod, "_resolve_cli", lambda cli: "/opt/bin/claude")
+    monkeypatch.setattr(doctor, "_fetch_latest_pypi_version", lambda timeout=2.0: None)
+
+    def _multiline():
+        raise ValueError("2 validation errors\n  field_a\n    Field required " + "x" * 1000)
+
+    monkeypatch.setattr(doctor, "check_resume", _multiline)
+    report = doctor.run()
+    crashed = {c.name: c for c in report.checks}["resume"]
+    assert crashed.detail.startswith("could not run this check - ValueError: 2 validation errors field_a Field")
+    assert "\n" not in crashed.detail and crashed.detail.endswith("...")
+    assert len(crashed.detail) < 400
+    body = report.render().splitlines()[3:-2]
+    assert all(line.startswith("[") for line in body)
 
 
 def test_doctor_subcommand_is_registered_workspace_optional():
