@@ -1087,10 +1087,17 @@ def cmd_view(args: argparse.Namespace) -> int:
     return viewer.view(out=args.out, open_browser=args.open_browser, obsidian=args.obsidian)
 
 
-def _interrupt_message(args: argparse.Namespace) -> str:
+def _interrupt_message(args: argparse.Namespace, report=None) -> str:
     """The note ``main`` prints when Ctrl+C ends a subcommand: one line naming what the interrupt
     left behind, one saying how to continue — for the three mutating lifecycles, whose state the
-    user otherwise has to guess. ASCII only (a cp1252 console must be able to print it).
+    user otherwise has to guess. The fixed text is ASCII only (a cp1252 console must be able to
+    print it); source keys it names are printed as the report prints them.
+
+    ``report`` is the IngestReport ingest attaches to the interrupt it re-raises (``main`` prints it
+    above this note); None when the interrupt landed before any source ran. A forced run's
+    continuation is read off it — its ``Processed`` list is the exact set already done, where
+    ``citadel status`` shows only a last-checked DATE, which cannot tell a source finished this run
+    from one checked earlier the same day.
 
     Every claim is what the lifecycle actually guarantees on an interrupt:
 
@@ -1103,7 +1110,8 @@ def _interrupt_message(args: argparse.Namespace) -> str:
     - ``ingest --reingest`` is the exception to "rolled back": its cleanups all run FIRST, and each
       one is promoted and drops the source's manifest key as it finishes — so a source whose cleanup
       finished but whose fresh import did not is out of the wiki altogether (untracked, so
-      ``citadel status`` lists it as pending), and only a cleanup still in flight was rolled back.
+      ``citadel status`` lists it as pending, and a plain ``citadel ingest <path>`` imports it
+      fresh), and only a cleanup still in flight was rolled back. The note names each such source.
     - ``curate``: each applied cluster was promoted as it finished; the one in flight was rolled
       back the same way, but the interrupt skips the end-of-run index rebuild, which the next run
       that applies a cluster performs. Curate has no queue, so re-running recomputes the plan —
@@ -1125,19 +1133,28 @@ def _interrupt_message(args: argparse.Namespace) -> str:
     steered = getattr(args, "guidance", None) is not None
     if command == "ingest":
         if args.reingest:
+            done = set(report.processed) if report is not None else set()
+            stranded = [key for key in (report.reingest_cleaned if report is not None else []) if key not in done]
+            state = (
+                "interrupted: sources listed under Processed above are re-imported; a cleanup still in "
+                "flight was rolled back."
+            )
+            if not stranded:
+                return f"{state}\nRe-run `citadel ingest --reingest` on the paths not listed under Processed."
+            # Stripped of its old facts with no fresh import yet: out of the wiki and untracked, so a
+            # PLAIN ingest of the path imports it as new — another --reingest would only re-clean it.
             return (
-                "interrupted: sources re-imported before Ctrl+C are back in the wiki, but one whose old "
-                "facts were already stripped and whose fresh import did not finish is now OUT of the "
-                "wiki (pending in `citadel status`); a cleanup still in flight was rolled back.\n"
-                "Re-run the same `citadel ingest --reingest` command on the paths not yet re-imported "
-                "(a stripped one comes back as a new source)."
+                f"{state}\nThese were stripped but not yet re-imported, so they are OUT of the wiki until "
+                f"`citadel ingest <path>` imports them fresh: {', '.join(stranded)}"
             )
         if args.retry:
             hint = "Re-run the same `citadel ingest --retry` command to continue with whatever is still stuck."
         elif args.force:
             hint = (
-                "Re-run the same `citadel ingest --force` command on the paths not yet done "
-                "(`citadel status` shows each source's last-checked date)."
+                "Re-run `citadel ingest --force` on the requested paths NOT listed under Processed above "
+                "(those are done; forcing them again re-pays their sessions)."
+                if report is not None and report.processed
+                else "Nothing finished; re-run the same `citadel ingest --force` command."
             )
         elif args.paths or steered:
             hint = (
@@ -1244,8 +1261,13 @@ def main(argv: list[str] | None = None) -> int:
     except RuntimeError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
-    except KeyboardInterrupt:
-        print(_interrupt_message(args), file=sys.stderr)
+    except KeyboardInterrupt as exc:
+        # What finished before Ctrl+C, exactly as a completed run would report it (stdout, like the
+        # normal report) — the note below points at its Processed list.
+        report = getattr(exc, "citadel_report", None)
+        if report is not None:
+            print(report.render())
+        print(_interrupt_message(args, report), file=sys.stderr)
         # `argv is None` is the PROCESS entry (the console script and `python -m citadel` both call
         # main() bare); an in-process caller passing argv gets 130 back instead of a dead process.
         if argv is None:

@@ -830,54 +830,86 @@ def test_stopping_the_live_region_again_after_a_normal_run_is_harmless(tmp_citad
     assert seen["progress"]._live is None
 
 
+def _interrupted_with(report=None):
+    """A stand-in for ``ingest.ingest`` that re-raises Ctrl+C the way the real one does: after its
+    finalize step, with the run's report riding on the exception (None: interrupted before any
+    source ran, so there is no report to carry)."""
+
+    def interrupted(*_args, **_kwargs):
+        exc = KeyboardInterrupt()
+        if report is not None:
+            exc.citadel_report = report
+        raise exc
+
+    return interrupted
+
+
 @pytest.mark.parametrize(
-    ("argv", "hint"),
+    ("argv", "report", "hint"),
     [
         (
+            ["ingest", "--force", "raw/a.md", "raw/b.md"],
+            _report(processed=["raw/a.md"]),
+            "Re-run `citadel ingest --force` on the requested paths NOT listed under Processed above "
+            "(those are done; forcing them again re-pays their sessions).",
+        ),
+        (
             ["ingest", "--force", "raw/a.md"],
-            "Re-run the same `citadel ingest --force` command on the paths not yet done "
-            "(`citadel status` shows each source's last-checked date).",
+            None,
+            "Nothing finished; re-run the same `citadel ingest --force` command.",
         ),
         (
             ["ingest", "--retry"],
+            None,
             "Re-run the same `citadel ingest --retry` command to continue with whatever is still stuck.",
         ),
     ],
 )
-def test_ctrl_c_during_a_forced_ingest_points_at_the_right_way_on(tmp_citadel, monkeypatch, capsys, argv, hint):
+def test_ctrl_c_during_a_forced_ingest_points_at_the_right_way_on(tmp_citadel, monkeypatch, capsys, argv, report, hint):
     """A plain run re-detects whatever the interrupt left; a forced one does not (a rolled-back
     reconcile still reads as ingested), so "run `citadel ingest`" would silently do nothing for it.
-    ``--retry`` recomputes its stuck set, so re-running it is exactly the continuation."""
-
-    def interrupted(*_args, **_kwargs):
-        raise KeyboardInterrupt
-
-    monkeypatch.setattr(ingest_mod, "ingest", interrupted)
+    Which forced paths are done is read off the printed report, never off `citadel status`: its
+    last-checked column is a DATE, so a source finished this run and one checked earlier the same
+    day look identical. ``--retry`` recomputes its stuck set, so re-running it is the continuation."""
+    monkeypatch.setattr(ingest_mod, "ingest", _interrupted_with(report))
     monkeypatch.setattr(ingest_mod, "retry_candidates", lambda: (["raw/a.md"], []))
     assert cli.main([*argv, "--quiet"]) == 130
-    note = _note(capsys.readouterr().err)
+    captured = capsys.readouterr()
+    note = _note(captured.err)
     assert note[0].startswith("interrupted: sources finished before Ctrl+C are kept in the wiki")
     assert note[1] == hint
+    if report is not None:  # the continuation list the hint points at is on stdout
+        assert "Processed:\n  - raw/a.md" in captured.out
 
 
-def test_ctrl_c_during_a_reingest_says_a_stripped_source_is_out_of_the_wiki(tmp_citadel, monkeypatch, capsys):
+@pytest.mark.parametrize(
+    ("report", "note_tail"),
+    [
+        (
+            _report(processed=["raw/a.md"], reingest_cleaned=["raw/a.md", "raw/b.md"]),
+            "These were stripped but not yet re-imported, so they are OUT of the wiki until "
+            "`citadel ingest <path>` imports them fresh: raw/b.md",
+        ),
+        (
+            _report(processed=["raw/a.md", "raw/b.md"], reingest_cleaned=["raw/a.md", "raw/b.md"]),
+            "Re-run `citadel ingest --reingest` on the paths not listed under Processed.",
+        ),
+        (None, "Re-run `citadel ingest --reingest` on the paths not listed under Processed."),
+    ],
+)
+def test_ctrl_c_during_a_reingest_names_the_sources_left_out_of_the_wiki(
+    tmp_citadel, monkeypatch, capsys, report, note_tail
+):
     """``--reingest`` is NOT rolled back as a unit: its cleanups run first and each one strips the
     source and drops its manifest key as it finishes, so a Ctrl+C during the fresh imports leaves
-    those sources absent from the wiki. Saying "rolled back" would have the user believe their old
-    facts are still there; the note must say they are out, and how they come back."""
-
-    def interrupted(*_args, **_kwargs):
-        raise KeyboardInterrupt
-
-    monkeypatch.setattr(ingest_mod, "ingest", interrupted)
+    those sources absent from the wiki. The note names each one and the way back — a PLAIN ingest of
+    the path (it is untracked now; another --reingest would only re-clean it)."""
+    monkeypatch.setattr(ingest_mod, "ingest", _interrupted_with(report))
     assert cli.main(["ingest", "--reingest", "raw/a.md", "raw/b.md", "--quiet"]) == 130
     note = _note(capsys.readouterr().err)
     assert note == [
-        "interrupted: sources re-imported before Ctrl+C are back in the wiki, but one whose old facts were "
-        "already stripped and whose fresh import did not finish is now OUT of the wiki (pending in "
-        "`citadel status`); a cleanup still in flight was rolled back.",
-        "Re-run the same `citadel ingest --reingest` command on the paths not yet re-imported "
-        "(a stripped one comes back as a new source).",
+        "interrupted: sources listed under Processed above are re-imported; a cleanup still in flight was rolled back.",
+        note_tail,
     ]
     assert "kept in the wiki" not in note[0]
     assert all(line.isascii() for line in note)

@@ -1654,6 +1654,10 @@ def _ingest_run(
     # interrupt still aborts the run (the per-source `finally` already rolled back whichever
     # source was in flight when it landed).
     if pending_interrupt is not None:
+        # The report rides along on the exception: the CLI prints it, so an interrupted forced run
+        # names exactly which sources finished (a date-only `citadel status` cannot tell them from
+        # the unattempted ones on the same day) — the continuation list, not a guess.
+        pending_interrupt.citadel_report = report
         raise pending_interrupt
 
     return report

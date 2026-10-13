@@ -1026,26 +1026,22 @@ def run_ingest_session(
         # looping, and every other failure is re-raised untouched.
         if not hermetic or not getattr(exc, "hermetic_auth_failure", False):
             raise
-        flags = " ".join(hermetic)
-        # Both notices go through _echo_stderr, never a bare print(): the second one runs AFTER
-        # the paid retry succeeded, and a stderr that broke meanwhile (`2>&1 | head`, an MCP
-        # client that closed the pipe) must not turn that session into a failed source. A
-        # `--jobs N` straggler launched under the flag before another worker's retry proved the
-        # point retries quietly — the run was already told.
-        if not _hermetic_refused(cli_path):
-            _echo_stderr(
-                f"  ! {flags} was refused with an authentication error; retrying this session"
-                " without hermetic isolation.\n"
-            )
         usage = _run_session(cli, argv, stdin_text, log_label=label)
         # The retry WORKED, so the flag (not the credentials) was the problem: remember it for the
         # rest of the run (_HERMETIC_REFUSED), or a corpus pays this failed launch + warning once
         # per source and curate once per cluster. Only a SUCCESSFUL retry teaches that: a retry
         # that also fails is a real credential problem and raises straight out of the call above,
         # recording nothing, so the next session still tries the flag first.
+        # The ONE notice is printed here, by whichever caller won the atomic record — never before
+        # the retry, where every `--jobs N` worker already in flight under the flag would print its
+        # own copy. Through _echo_stderr, never a bare print(): this runs AFTER the paid retry
+        # succeeded, and a stderr that broke meanwhile (`2>&1 | head`, an MCP client that closed
+        # the pipe) must not turn that session into a failed source.
         if _record_hermetic_refusal(cli_path):
+            flags = " ".join(hermetic)
             _echo_stderr(
-                f"  ! the retry without {flags} worked, so the rest of this run skips {flags}"
-                " (set CITADEL_HERMETIC=0 to skip it from the start).\n"
+                f"  ! {flags} was refused with an authentication error; the retry without it worked,"
+                f" so the rest of this run skips {flags} (set CITADEL_HERMETIC=0 to skip it from the"
+                " start).\n"
             )
         return usage

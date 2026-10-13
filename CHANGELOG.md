@@ -28,10 +28,13 @@ All notable changes to this project are documented here. The format is based on
   problem and teaches nothing.
 - **Ctrl+C no longer ends in a traceback.** Ingest already rolled back the source in flight and kept
   the finished ones, then re-raised the interrupt into a `KeyboardInterrupt in
-  subprocess.communicate` traceback. The CLI now stops the live progress region and prints what the
+  subprocess.communicate` traceback. The CLI now stops the live progress region, prints the run's
+  report (its `Processed` list is exactly what finished — `citadel status` shows only a last-checked
+  date, which cannot tell this run's work from an earlier check the same day) and a note on what the
   interrupt left behind and how to continue (per lifecycle: `ingest` and its `--force` / `--retry` /
-  `--reingest` variants, `refresh`, `curate`), then exits 130 — on POSIX by dying of SIGINT, like
-  Python itself, so a shell loop around citadel stops too.
+  `--reingest` variants — the latter naming any source stripped but not yet re-imported — `refresh`,
+  `curate`), then exits 130 — on POSIX by dying of SIGINT, like Python itself, so a shell loop around
+  citadel stops too.
 - **Progress output to a log file or pipe is no longer clipped.** Off a terminal, the START and
   verdict lines were cut with an ellipsis at a guessed width, so filenames and the spend
   (`$0.4869 308.6k in / 5.5…`) were unreadable in a log. Off a TTY every line is now printed in full

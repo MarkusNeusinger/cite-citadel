@@ -338,7 +338,7 @@ def test_hermetic_auth_failure_retries_once_without_the_isolation_flag(tmp_citad
     monkeypatch.setattr(llm, "_run_session", fake_run_session)
     assert llm.run_ingest_session("raw/notes.md") == llm.SessionUsage(cost_usd=0.02)
     assert seen == [True, False]  # exactly one retry, and it dropped the flag
-    assert "retrying this session without hermetic isolation" in capsys.readouterr().err
+    assert "the retry without it worked" in capsys.readouterr().err
 
 
 def test_a_real_credential_problem_still_fails_instead_of_looping(tmp_citadel, monkeypatch):

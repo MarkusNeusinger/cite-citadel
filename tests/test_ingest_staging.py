@@ -256,9 +256,11 @@ def test_completed_sources_persisted_before_interrupt(tmp_citadel, fake_agent, s
             raise KeyboardInterrupt()
 
     fake_agent(side_effect=fake)
-    with pytest.raises(KeyboardInterrupt):
+    with pytest.raises(KeyboardInterrupt) as exc:
         ingest.ingest()  # processes raw/a.md then raw/b.md (sorted order)
 
+    # The re-raised interrupt carries the run's report, so the CLI can name exactly what finished.
+    assert exc.value.citadel_report.processed == ["raw/a.md"]
     assert tmp_citadel.manifest_path.exists()  # saved incrementally, not only at finalization
     data = tmp_citadel.read_manifest()
     assert "raw/a.md" in data  # a finished -> persisted before the interrupt

@@ -952,7 +952,7 @@ def test_a_working_hermetic_retry_is_remembered_for_the_rest_of_the_run(monkeypa
     # One failed --bare launch + its retry, then two sessions that never try the flag at all.
     assert seen == [True, False, False, False]
     err = capsys.readouterr().err
-    assert err.count("retrying this session without hermetic isolation") == 1
+    assert err.count("--bare was refused with an authentication error") == 1
     assert err.count("the rest of this run skips --bare") == 1
     assert "CITADEL_HERMETIC=0" in err  # the knob that skips it from the very first session
 
@@ -1031,6 +1031,32 @@ def test_a_hermetic_refusal_is_announced_once_under_parallel_workers(monkeypatch
     assert llm.run_ingest_session("raw/notes.md") == llm.SessionUsage(cost_usd=0.01)
     assert seen == [True, False]
     assert "--bare" not in capsys.readouterr().err  # neither the retry warning nor the notice again
+
+
+def test_workers_all_in_flight_under_bare_print_one_notice(monkeypatch, capsys):
+    """`--jobs N` at run start: every worker launches under --bare before ANY retry has proved the
+    point, so all of them fail and retry. The run is still told exactly once — the notice belongs to
+    the one caller that wins the atomic record, not to each retry."""
+    workers = 4
+    launched = threading.Barrier(workers, timeout=5)
+
+    def creds_live_in_skipped_config(cli, argv, stdin_text, *, log_label=None):
+        if "--bare" in argv:
+            launched.wait()  # all workers are in flight under --bare before anyone retries
+            raise _bare_auth_error(argv)
+        return llm.SessionUsage(cost_usd=0.01)
+
+    _wire_hermetic_claude(monkeypatch, creds_live_in_skipped_config)
+    results: list[object] = []
+    threads = [
+        threading.Thread(target=lambda: results.append(llm.run_ingest_session("raw/notes.md"))) for _ in range(workers)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert results == [llm.SessionUsage(cost_usd=0.01)] * workers
+    assert capsys.readouterr().err.count("--bare was refused") == 1
 
 
 def test_a_broken_stderr_never_costs_the_successful_hermetic_retry(monkeypatch):
