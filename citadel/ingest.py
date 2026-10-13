@@ -215,8 +215,20 @@ class IngestReport:
             lines.append("Sources removed (deleted from disk; citations reconciled out):")
             lines.extend(f"  - {s}" for s in self.sources_deleted)
         if self.reingest_cleaned:
-            lines.append("Re-ingested fresh (previous facts stripped first, then imported as new):")
-            lines.extend(f"  - {s}" for s in self.reingest_cleaned)
+            # A cleanup is booked as soon as it finishes, BEFORE its fresh import runs — so on a run
+            # that was interrupted (or whose fresh import failed) a cleaned key may never have been
+            # re-imported. Labelling it "re-ingested" would say it is back when it is OUT of the wiki.
+            done = set(self.processed)
+            fresh = [s for s in self.reingest_cleaned if s in done]
+            stripped = [s for s in self.reingest_cleaned if s not in done]
+            if fresh:
+                lines.append("Re-ingested fresh (previous facts stripped first, then imported as new):")
+                lines.extend(f"  - {s}" for s in fresh)
+            if stripped:
+                lines.append(
+                    "Stripped for re-ingest but NOT re-imported (out of the wiki until `citadel ingest <path>`):"
+                )
+                lines.extend(f"  - {s}" for s in stripped)
         if self.resumed:
             lines.append("Resumed (continued from an earlier run's checkpoint):")
             lines.extend(f"  - {r}" for r in self.resumed)
@@ -929,13 +941,34 @@ def ingest(
         # Same place, same reason: under the exclusive lock, leftovers on disk belong to dead runs.
         # Age-based only — a checkpoint's own guards decide whether it is USABLE (see resume.sweep).
         resume.sweep()
-        return _ingest_run(paths, progress, full_rescan=full_rescan, force=force, jobs=workers, reingest=reingest)
+        llm.reset_hermetic_refusals()  # the --bare verdict is per run (a serve process runs many)
+        report = IngestReport([], [], [], [])
+        try:
+            return _ingest_run(
+                paths, progress, report, full_rescan=full_rescan, force=force, jobs=workers, reingest=reingest
+            )
+        except BaseException as exc:
+            # The report rides along on whatever ends the run early — above all the Ctrl+C the
+            # source loop captures and re-raises after finalizing, but equally one that lands in a
+            # source's success bookkeeping or in the final index/log/git work. The CLI prints it,
+            # so an interrupted forced run names exactly which sources finished (a date-only
+            # `citadel status` cannot tell them from the unattempted ones on the same day).
+            exc.citadel_report = report
+            raise
 
 
 def _ingest_run(
-    paths: list[str] | None, progress, *, full_rescan: bool, force: bool, jobs: int = 1, reingest: bool = False
+    paths: list[str] | None,
+    progress,
+    report: IngestReport,
+    *,
+    full_rescan: bool,
+    force: bool,
+    jobs: int = 1,
+    reingest: bool = False,
 ) -> IngestReport:
-    """The body of :func:`ingest`, running under the exclusive workspace run lock."""
+    """The body of :func:`ingest`, running under the exclusive workspace run lock. Fills in the
+    ``report`` its caller holds, so the caller still has it when the run ends in an exception."""
 
     # A reingest rides force's partitioning wholesale (sha short-circuit and dedup drop bypassed,
     # stat cache distrusted for the named paths); what it changes beyond force — the cleanup jobs
@@ -996,7 +1029,7 @@ def _ingest_run(
     # rules do not change mid-run and hashing them per source would re-read the tree needlessly).
     model = config.ingest_model_label()
     rules_ver = config.rules_version()
-    report = IngestReport([], [], [], [], model=model)
+    report.model = model
 
     # --- The workspace-identity HARD guard (key-space stability): the manifest was stamped by
     # a DIFFERENT workspace root AND most of its relative keys do not resolve here

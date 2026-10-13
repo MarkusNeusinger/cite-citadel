@@ -269,6 +269,14 @@ jobs:
         working-directory: ${{ runner.temp }}/smoke
         run: citadel --version
 
+      - name: Smoke — the MCP server imports against the SDK the wheel resolves
+        # The test job runs against uv.lock; THIS venv resolved the wheel's own declared range fresh,
+        # exactly like a user's `uv tool install`. An uncapped `mcp>=1.2` once resolved mcp 2.x here,
+        # whose renamed FastMCP broke `citadel serve` / `citadel doctor` for every new install while
+        # the locked suite stayed green — importing the server is what would have caught it.
+        working-directory: ${{ runner.temp }}/smoke
+        run: python -c "import citadel.server, citadel.httpserve; import importlib.metadata as m; print('mcp', m.version('mcp'), '- server + httpserve import OK')"
+
       - name: Smoke — fail loud outside any workspace (no phantom workspace)
         working-directory: ${{ runner.temp }}/smoke
         run: |

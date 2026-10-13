@@ -25,7 +25,11 @@ and the operational invariants (see :func:`_build_instruction`).
 - Sessions run **hermetically** by default (``CITADEL_HERMETIC``, default on): when the
   installed CLI advertises a session-isolation flag (claude ``--bare`` — skip user
   hooks/CLAUDE.md/MCP discovery), it is appended so the user's personal agent configuration
-  never leaks into ingest. Feature-probed per binary; an older CLI runs exactly as before.
+  never leaks into ingest. Feature-probed per binary; an older CLI runs exactly as before. Where
+  that skipped config is exactly where the CLI keeps its credentials, an auth-shaped failure under
+  the flag is retried once without it — and once such a retry has WORKED, the rest of the run skips
+  the flag for that binary up front, so the failed launch and the warning are paid once per binary
+  and run, not once per source.
 
 One function does real work: ``run_ingest_session(rel_key)`` runs the chosen CLI once against
 the workspace. The RESULT is whatever the agent wrote under ``wiki/``, which ``ingest``
@@ -625,17 +629,54 @@ def _cli_help_text(cli_path: str) -> str:
 # such a switch today; copilot/agy have no equivalent (no entry, so nothing is probed or passed).
 _HERMETIC_FLAGS: dict[str, tuple[str, ...]] = {"claude": ("--bare",)}
 
+# Binaries whose isolation flag is PROVEN to strip their credentials on this machine: a session
+# under the flag failed auth-shaped AND its retry without the flag succeeded (see
+# run_ingest_session). Every later session for such a binary skips the flag up front instead of
+# paying one failed launch per source (and repeating the warning) — the retry is per session, but
+# the lesson is per run. Keyed by the resolved binary path: another install is another config and
+# earns its own verdict. Per RUN: ingest and curate call reset_hermetic_refusals() when they start,
+# so a long-lived `citadel serve` process tries the flag afresh on every wiki_ingest (credentials may
+# have moved since) instead of running non-hermetic for the rest of its life. Recorded under a lock:
+# the check-and-record must be one atomic step so exactly one `--jobs N` worker announces the switch.
+# The read in _hermetic_flags stays lock-free (a single GIL-atomic set lookup), since a stale miss
+# costs only one more failed-then-retried launch — the behavior before this memory existed.
+_HERMETIC_REFUSED: set[str] = set()
+_HERMETIC_REFUSED_LOCK = threading.Lock()
+
+
+def reset_hermetic_refusals() -> None:
+    """Forget every binary's "works only without the isolation flag" verdict — called at the start of
+    each ingest / curate run, which is the scope the verdict (and its one notice) is promised for."""
+    with _HERMETIC_REFUSED_LOCK:
+        _HERMETIC_REFUSED.clear()
+
+
+def _hermetic_refused(cli_path: str) -> bool:
+    """Whether this binary already proved, this run, that its isolation flag costs it its credentials."""
+    return cli_path in _HERMETIC_REFUSED
+
+
+def _record_hermetic_refusal(cli_path: str) -> bool:
+    """Remember that ``cli_path`` works only without its isolation flag. True for the ONE caller that
+    recorded it first (that caller announces the switch); False when it was already known."""
+    with _HERMETIC_REFUSED_LOCK:
+        if _hermetic_refused(cli_path):
+            return False
+        _HERMETIC_REFUSED.add(cli_path)
+        return True
+
 
 def _hermetic_flags(cli: str, cli_path: str) -> list[str]:
     """The session-isolation flags to append for this backend, or ``[]`` when hermetic mode is off
-    (``CITADEL_HERMETIC=0``), the CLI has no registered isolation flag, or the installed binary
+    (``CITADEL_HERMETIC=0``), the CLI has no registered isolation flag, the installed binary
     does not ADVERTISE the flag in ``--help`` — probed once per binary with an exact flag-token
     match: an older CLI
     must never be handed an unknown flag that would fail every session over configuration
-    hygiene. A false NEGATIVE is safe (the session merely runs non-hermetic, the pre-knob
-    behavior)."""
+    hygiene — or the binary already proved this run that the flag strips its credentials
+    (:data:`_HERMETIC_REFUSED`). A false NEGATIVE is safe (the session merely runs non-hermetic,
+    the pre-knob behavior)."""
     flags = _HERMETIC_FLAGS.get(cli, ()) if config.HERMETIC else ()
-    if not flags:
+    if not flags or _hermetic_refused(cli_path):
         return []
     help_text = _cli_help_text(cli_path)
     return [flag for flag in flags if re.search(re.escape(flag) + r"(?![\w-])", help_text)]
@@ -685,10 +726,12 @@ def _decode_partial(data) -> str:
 
 
 def _echo_stderr(text: str) -> None:
-    """Write diagnostic text to stderr, swallowing a broken/closed pipe. The verbose stream and the
-    transcript-path notice are diagnostic ONLY, so a closed stderr (``2>|``, a downstream consumer
-    that exited) must never abort the ingest."""
-    with contextlib.suppress(OSError):
+    """Write diagnostic text to stderr, swallowing a broken/closed pipe. The verbose stream, the
+    transcript-path notice and the hermetic-retry notice are diagnostic ONLY, so a closed stderr
+    (``2>|``, a downstream consumer that exited) must never abort the ingest — nor turn a paid,
+    successful retry into a failed source. ValueError too: a stream that is truly CLOSED raises
+    that (and an unencodable character its UnicodeError subclass), not OSError."""
+    with contextlib.suppress(OSError, ValueError):
         sys.stderr.write(text)
         sys.stderr.flush()
 
@@ -986,16 +1029,29 @@ def run_ingest_session(
         # the skipped personal config is exactly where the CLI keeps its credentials, EVERY
         # session used to die on authentication until the user found CITADEL_HERMETIC=0 — a
         # discoverability trap, since the same CLI works fine interactively. So an auth-shaped
-        # failure under hermetic mode is retried ONCE without the isolation flags, loudly. Scoped
-        # as tightly as possible: only when flags were actually passed AND the message was
-        # auth-shaped, so a real credential problem still fails (twice) instead of looping, and
-        # every other failure is re-raised untouched.
+        # failure under hermetic mode is retried ONCE without the isolation flags, loudly — and a
+        # retry that works is remembered for the rest of the run, so the next session never even
+        # tries the flag. Scoped as tightly as possible: only when flags were actually passed AND
+        # the message was auth-shaped, so a real credential problem still fails (twice) instead of
+        # looping, and every other failure is re-raised untouched.
         if not hermetic or not getattr(exc, "hermetic_auth_failure", False):
             raise
-        print(
-            f"  ! {' '.join(hermetic)} was refused with an authentication error; retrying this"
-            " session without hermetic isolation (set CITADEL_HERMETIC=0 to skip this retry).",
-            file=sys.stderr,
-            flush=True,
-        )
-        return _run_session(cli, argv, stdin_text, log_label=label)
+        usage = _run_session(cli, argv, stdin_text, log_label=label)
+        # The retry WORKED, so the flag (not the credentials) was the problem: remember it for the
+        # rest of the run (_HERMETIC_REFUSED), or a corpus pays this failed launch + warning once
+        # per source and curate once per cluster. Only a SUCCESSFUL retry teaches that: a retry
+        # that also fails is a real credential problem and raises straight out of the call above,
+        # recording nothing, so the next session still tries the flag first.
+        # The ONE notice is printed here, by whichever caller won the atomic record — never before
+        # the retry, where every `--jobs N` worker already in flight under the flag would print its
+        # own copy. Through _echo_stderr, never a bare print(): this runs AFTER the paid retry
+        # succeeded, and a stderr that broke meanwhile (`2>&1 | head`, an MCP client that closed
+        # the pipe) must not turn that session into a failed source.
+        if _record_hermetic_refusal(cli_path):
+            flags = " ".join(hermetic)
+            _echo_stderr(
+                f"  ! {flags} was refused with an authentication error; the retry without it worked,"
+                f" so the rest of this run skips {flags} (set CITADEL_HERMETIC=0 to skip it from the"
+                " start).\n"
+            )
+        return usage

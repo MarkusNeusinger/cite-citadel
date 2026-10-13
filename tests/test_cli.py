@@ -2,11 +2,17 @@
 
 Everything runs offline through ``cli.main(argv)``: LLM-touching seams (``ingest.ingest``) and
 the browser (``viewer.webbrowser``) are replaced with spies; ``search``/``tags``/``lint``/``check``
-run their real implementations over a ``tmp_citadel`` wiki. ``serve`` is never invoked — we only
-assert it is registered (it would block on stdio and import ``mcp``).
+run their real implementations over a ``tmp_citadel`` wiki. ``serve`` never reaches a real server
+— it is only parsed, or driven into its MCP-SDK import failure (a real one would block on stdio).
 """
 
 from __future__ import annotations
+
+import io
+import os
+import re
+import signal
+import sys
 
 import pytest
 
@@ -744,3 +750,392 @@ def test_view_obsidian_deep_links_instead_of_writing(good_page, browser_spy, cap
     out = capsys.readouterr().out
     assert "Obsidian" in out
     assert not (good_page.wiki / ".citadel_viewer.html").exists()  # no viewer file in obsidian mode
+
+
+# --- Ctrl+C: exit 130 with the wiki's state, never a traceback ----------------------------------
+
+
+class _TtyStream(io.StringIO):
+    """An in-memory stderr that claims to be a terminal, so ConsoleProgress opens its real live
+    region (spinner rows + overall bar) on it, exactly as on a console."""
+
+    def isatty(self):
+        return True
+
+
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
+
+def _note(err: str) -> list[str]:
+    """The interrupt note's lines: everything from the ``interrupted`` line on, ANSI removed."""
+    lines = _ANSI.sub("", err).splitlines()
+    start = max(i for i, line in enumerate(lines) if line.startswith("interrupted"))
+    return lines[start:]
+
+
+def test_ctrl_c_during_ingest_exits_130_with_the_state_after_stopping_the_live_region(tmp_citadel, monkeypatch):
+    """Ingest re-raises a captured Ctrl+C after rolling back the source in flight and finalizing
+    the finished ones. main must turn that into exit 130 plus a note saying what was kept and how to
+    continue — and cmd_ingest must take the live region down FIRST, or the note is drawn into a
+    stale spinner region that keeps refreshing over it."""
+    seen = {}
+
+    class Stderr(_TtyStream):
+        def write(self, text):
+            if text.startswith("interrupted"):
+                seen["live_at_note"] = seen["progress"]._live
+            return super().write(text)
+
+    def interrupted_ingest(paths=None, progress=None, **_kwargs):
+        seen["progress"] = progress
+        progress("start", {"pending": 2, "skipped": 0})
+        progress("source_start", {"index": 1, "total": 2, "source": "raw/a.md"})
+        assert progress._live is not None  # precondition: a real live region is up
+        raise KeyboardInterrupt  # what ingest re-raises after its rollback + finalize
+
+    stderr = Stderr()
+    monkeypatch.setattr(sys, "stderr", stderr)
+    monkeypatch.setattr(ingest_mod, "ingest", interrupted_ingest)
+    monkeypatch.setattr(config, "LLM_VERBOSE", False, raising=False)
+
+    assert cli.main(["ingest"]) == 130
+    assert seen["progress"]._live is None
+    assert seen["live_at_note"] is None  # stopped BEFORE the note was written
+    err = stderr.getvalue()
+    assert "Traceback" not in err and "KeyboardInterrupt" not in err
+    note = _note(err)
+    assert note == [
+        "interrupted: sources finished before Ctrl+C are kept in the wiki; any source still in flight was rolled back.",
+        "Run `citadel status` to see what is still pending and `citadel ingest` to continue.",
+    ]
+    assert all(line.isascii() for line in note)  # a cp1252 console must be able to print it
+
+
+def test_stopping_the_live_region_again_after_a_normal_run_is_harmless(tmp_citadel, monkeypatch):
+    """The cleanup sends ``done`` unconditionally — on a normal run ingest has already sent it from
+    its finalize step, so the second stop must be a silent no-op, not an error or a second report."""
+    seen = {}
+
+    def clean_ingest(paths=None, progress=None, **_kwargs):
+        seen["progress"] = progress
+        progress("start", {"pending": 1, "skipped": 0})
+        progress("done", {"processed": 1, "created": 1, "updated": 0, "deleted": 0, "broken": 0})
+        return _report(processed=["raw/a.md"])
+
+    monkeypatch.setattr(sys, "stderr", _TtyStream())
+    monkeypatch.setattr(ingest_mod, "ingest", clean_ingest)
+    monkeypatch.setattr(config, "LLM_VERBOSE", False, raising=False)
+
+    assert cli.main(["ingest"]) == 0
+    assert seen["progress"]._live is None
+
+
+def _interrupted_with(report=None):
+    """A stand-in for ``ingest.ingest`` that re-raises Ctrl+C the way the real one does: after its
+    finalize step, with the run's report riding on the exception (None: interrupted before any
+    source ran, so there is no report to carry)."""
+
+    def interrupted(*_args, **_kwargs):
+        exc = KeyboardInterrupt()
+        if report is not None:
+            exc.citadel_report = report
+        raise exc
+
+    return interrupted
+
+
+@pytest.mark.parametrize(
+    ("argv", "report", "hint"),
+    [
+        (
+            ["ingest", "--force", "raw/a.md", "raw/b.md"],
+            _report(processed=["raw/a.md"]),
+            "Re-run `citadel ingest --force` on the requested paths NOT listed under Processed above "
+            "(those are done; forcing them again re-pays their sessions).",
+        ),
+        (
+            ["ingest", "--force", "raw/a.md"],
+            None,
+            "No source finished; re-run the same `citadel ingest --force` command.",
+        ),
+        (
+            ["ingest", "--retry"],
+            None,
+            "Re-run the same `citadel ingest --retry` command to continue with whatever is still stuck.",
+        ),
+    ],
+)
+def test_ctrl_c_during_a_forced_ingest_points_at_the_right_way_on(tmp_citadel, monkeypatch, capsys, argv, report, hint):
+    """A plain run re-detects whatever the interrupt left; a forced one does not (a rolled-back
+    reconcile still reads as ingested), so "run `citadel ingest`" would silently do nothing for it.
+    Which forced paths are done is read off the printed report, never off `citadel status`: its
+    last-checked column is a DATE, so a source finished this run and one checked earlier the same
+    day look identical. ``--retry`` recomputes its stuck set, so re-running it is the continuation."""
+    monkeypatch.setattr(ingest_mod, "ingest", _interrupted_with(report))
+    monkeypatch.setattr(ingest_mod, "retry_candidates", lambda: (["raw/a.md"], []))
+    assert cli.main([*argv, "--quiet"]) == 130
+    captured = capsys.readouterr()
+    note = _note(captured.err)
+    assert note[0].startswith("interrupted: sources finished before Ctrl+C are kept in the wiki")
+    assert note[1] == hint
+    if report is not None:  # the continuation list the hint points at is on stdout
+        assert "Processed:\n  - raw/a.md" in captured.out
+
+
+_REINGEST_REST = "Re-run `citadel ingest --reingest` on the requested paths not listed under Processed."
+
+
+@pytest.mark.parametrize(
+    ("report", "note_tail"),
+    [
+        (
+            # `--reingest a b c`: a re-imported, b stripped only, c's cleanup in flight (rolled back).
+            _report(processed=["raw/a.md"], reingest_cleaned=["raw/a.md", "raw/b.md"]),
+            [
+                "These were stripped but not yet re-imported, so they are OUT of the wiki until "
+                "`citadel ingest <path>` imports them fresh: raw/b.md",
+                "Re-run `citadel ingest --reingest` on every other requested path not listed under "
+                "Processed (its old treatment is untouched).",
+            ],
+        ),
+        (_report(processed=["raw/a.md", "raw/b.md"], reingest_cleaned=["raw/a.md", "raw/b.md"]), [_REINGEST_REST]),
+        (None, [_REINGEST_REST]),
+    ],
+)
+def test_ctrl_c_during_a_reingest_names_the_sources_left_out_of_the_wiki(
+    tmp_citadel, monkeypatch, capsys, report, note_tail
+):
+    """``--reingest`` is NOT rolled back as a unit: its cleanups run first and each one strips the
+    source and drops its manifest key as it finishes, so a Ctrl+C during the fresh imports leaves
+    those sources absent from the wiki. The note names each one and the way back — a PLAIN ingest of
+    the path (it is untracked now; another --reingest would only re-clean it) — and still sends every
+    requested path whose cleanup never finished back through --reingest."""
+    monkeypatch.setattr(ingest_mod, "ingest", _interrupted_with(report))
+    assert cli.main(["ingest", "--reingest", "raw/a.md", "raw/b.md", "raw/c.md", "--quiet"]) == 130
+    note = _note(capsys.readouterr().err)
+    assert note == [
+        "interrupted: sources listed under Processed above are re-imported; a cleanup still in flight was rolled back.",
+        *note_tail,
+    ]
+    assert "kept in the wiki" not in note[0]
+    assert all(line.isascii() for line in note)
+
+
+def test_report_never_calls_a_stripped_only_reingest_source_re_ingested():
+    """A cleanup is booked before its fresh import runs, so an interrupted (or failed) --reingest
+    leaves cleaned keys that were never re-imported. The printed report must say they are OUT of the
+    wiki — the same state the interrupt note names — not "Re-ingested fresh"."""
+    text = _report(processed=["raw/a.md"], reingest_cleaned=["raw/a.md", "raw/b.md"]).render()
+    fresh, stripped = text.split("Stripped for re-ingest but NOT re-imported")
+    assert "Re-ingested fresh" in fresh and "  - raw/a.md" in fresh and "raw/b.md" not in fresh.split("Re-ingested")[1]
+    assert "  - raw/b.md" in stripped and "raw/a.md" not in stripped
+
+
+@pytest.mark.parametrize(
+    "error", [BrokenPipeError(32, "Broken pipe"), ValueError("I/O operation on closed file.")], ids=["broken", "closed"]
+)
+def test_ctrl_c_with_a_dead_stdout_still_exits_130_and_still_writes_the_note(tmp_citadel, monkeypatch, error):
+    """`citadel ingest | tee log` + Ctrl+C: the same SIGINT can take stdout down (BrokenPipeError,
+    or ValueError once the stream is truly closed) inside the very handler that exists to replace a
+    traceback. Each write is best-effort ON ITS OWN, so the dead report write costs neither the exit
+    code nor the stderr note."""
+
+    class _DeadStream(io.StringIO):
+        def write(self, text):
+            raise error
+
+    stderr = io.StringIO()
+    monkeypatch.setattr(ingest_mod, "ingest", _interrupted_with(_report(processed=["raw/a.md"])))
+    monkeypatch.setattr(sys, "stdout", _DeadStream())
+    monkeypatch.setattr(sys, "stderr", stderr)
+    assert cli.main(["ingest", "--force", "raw/a.md", "--quiet"]) == 130
+    assert stderr.getvalue().startswith("interrupted: sources finished before Ctrl+C are kept in the wiki")
+
+    monkeypatch.setattr(sys, "stderr", _DeadStream())  # and both streams dead: still a clean 130
+    assert cli.main(["ingest", "--force", "raw/a.md", "--quiet"]) == 130
+
+
+@pytest.mark.parametrize(
+    "argv", [["ingest", "raw/big.pdf"], ["ingest", "--guidance", "one machine registry"], ["ingest", "--guidance", ""]]
+)
+def test_ctrl_c_during_a_scoped_or_steered_ingest_says_re_run_the_same_command(tmp_citadel, monkeypatch, capsys, argv):
+    """A bare `citadel ingest` would be a different run: it drops the --guidance steer (part of a
+    chunked source's resume-checkpoint identity, so the segments already paid for are bought again)
+    and sweeps in every pending source the path list left out. An explicit ``--guidance ""`` (an
+    env steer switched off) is part of the command too."""
+    monkeypatch.setattr(config, "INGEST_GUIDANCE", "", raising=False)  # restored after the flag sets it
+
+    def interrupted(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(ingest_mod, "ingest", interrupted)
+    assert cli.main([*argv, "--quiet"]) == 130
+    note = _note(capsys.readouterr().err)
+    assert note[1] == (
+        "Run `citadel status` to see what is still pending, then re-run the same `citadel ingest` "
+        "command (same paths and flags) to continue."
+    )
+
+
+def test_ctrl_c_during_refresh_exits_130_and_stops_the_live_region(tmp_citadel, monkeypatch):
+    """Refresh IS a forced ingest underneath, so the same re-raise reaches cmd_refresh — which must
+    stop its own live region too, and say that the unreached sources are still at the queue head."""
+    from citadel import refresh as refresh_mod
+
+    seen = {}
+
+    def interrupted_refresh(progress=None, **_kwargs):
+        seen["progress"] = progress
+        progress("start", {"pending": 1, "skipped": 0})
+        assert progress._live is not None
+        raise KeyboardInterrupt
+
+    stderr = _TtyStream()
+    monkeypatch.setattr(sys, "stderr", stderr)
+    monkeypatch.setattr(refresh_mod, "refresh", interrupted_refresh)
+    monkeypatch.setattr(config, "LLM_VERBOSE", False, raising=False)
+
+    assert cli.main(["refresh", "--limit", "3"]) == 130
+    assert seen["progress"]._live is None
+    note = _note(stderr.getvalue())
+    assert "keeps its old last-checked stamp" in note[0]
+    assert note[1].startswith(
+        "Re-run the same `citadel refresh` command to continue, with --limit lowered by the sources listed under "
+        "Processed above"
+    )
+
+
+def test_ctrl_c_during_curate_exits_130_with_the_cluster_state(tmp_citadel, monkeypatch, capsys):
+    """Curate promotes each cluster as it finishes and rolls back the one in flight, but the
+    interrupt skips its end-of-run index rebuild — the note says so, and how the next run heals it."""
+    from citadel import curate as curate_mod
+
+    def interrupted(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(curate_mod, "curate", interrupted)
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", "", raising=False)
+    assert cli.main(["curate"]) == 130
+    err = capsys.readouterr().err
+    assert "Traceback" not in err
+    note = _note(err)
+    assert note == [
+        "interrupted: clusters applied before Ctrl+C are kept in the wiki (indexes rebuilt); the one in flight "
+        "was rolled back.",
+        "Run `citadel curate` to continue - it recomputes its plan.",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("argv", "env_steer", "named_again"),
+    [
+        (["curate", "--limit", "3"], "", False),
+        (["curate", "--stale-rules"], "", False),
+        (["curate", "--retry"], "", False),
+        (["curate", "concepts/"], "", False),  # paths without a steer only FILTER the detector plan
+        (["curate", "--guidance", "retitle the machine pages", "registries/"], "", True),
+        (["curate", "registries/"], "retitle the machine pages", True),  # CITADEL_CURATE_GUIDANCE steers too
+    ],
+)
+def test_ctrl_c_during_a_scoped_curate_says_re_run_the_same_command(
+    tmp_citadel, monkeypatch, capsys, argv, env_steer, named_again
+):
+    """A bare `citadel curate` after a scoped run is a different, often far bigger one: no --limit
+    means one paid session per flagged cluster wiki-wide, and no steer/paths means the guided pages
+    still to do are never planned. A page named under --guidance is planned whatever its state, so
+    re-running the same command re-plans the ones already done — the note says so."""
+    from citadel import curate as curate_mod
+
+    def interrupted(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(curate_mod, "curate", interrupted)
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", env_steer, raising=False)  # restored after the flag sets it
+    assert cli.main(argv) == 130
+    note = _note(capsys.readouterr().err)
+    assert note[1].startswith(
+        "Re-run the same `citadel curate` command (same paths and flags) to continue - it recomputes its plan"
+    )
+    assert note[1].endswith(".") and "rebuilds the indexes" not in note[1]
+    assert ("a page named under --guidance is planned again even if done" in note[1]) is named_again
+    assert "Run `citadel curate` to continue" not in note[1]
+
+
+@pytest.mark.parametrize("argv", [["view", "--no-open"], ["curate", "--dry-run"], ["serve"]])
+def test_ctrl_c_in_a_command_that_changed_nothing_is_a_plain_note(tmp_citadel, monkeypatch, capsys, argv):
+    """A read-only command, a dry run, or a stdio server stopped from the terminal changed nothing:
+    exit 130 with a bare ``interrupted`` — no lifecycle state to report, and no traceback."""
+    from citadel import curate as curate_mod
+
+    def interrupted(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(viewer, "view", interrupted)
+    monkeypatch.setattr(curate_mod, "curate", interrupted)
+    monkeypatch.setattr("citadel.server.main", interrupted)
+    assert cli.main(argv) == 130
+    assert capsys.readouterr().err == "interrupted\n"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="the die-of-SIGINT convention is POSIX shells'")
+def test_ctrl_c_at_the_process_entry_dies_of_sigint_so_a_shell_loop_stops(tmp_citadel, monkeypatch, capsys):
+    """A process that EXITS 130 reads to bash as "the child handled Ctrl+C", so a
+    `for f in raw/*.md; do citadel ingest "$f"; done` loop would start the next paid session; one
+    that DIES of SIGINT stops it. So the process entry (main() called bare, as the console script
+    and `python -m citadel` do) re-delivers SIGINT with the default action after printing its note,
+    while an in-process caller passing argv keeps getting 130 back. Both syscalls are faked here —
+    the real ones would end the test run."""
+    calls = []
+    monkeypatch.setattr(signal, "signal", lambda signum, handler: calls.append(("signal", signum, handler)))
+    monkeypatch.setattr(os, "kill", lambda pid, signum: calls.append(("kill", pid, signum)))
+
+    def interrupted(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(viewer, "view", interrupted)
+
+    assert cli.main(["view", "--no-open"]) == 130
+    assert calls == []  # argv given: an in-process caller, never killed
+
+    monkeypatch.setattr(sys, "argv", ["citadel", "view", "--no-open"])
+    assert cli.main() == 130  # the faked kill returns, so the plain-130 fallback is what remains
+    assert calls == [("signal", signal.SIGINT, signal.SIG_DFL), ("kill", os.getpid(), signal.SIGINT)]
+    assert capsys.readouterr().err == "interrupted\ninterrupted\n"  # the note still prints first
+
+
+# --- serve: an unusable MCP SDK is a remedy, not a traceback ------------------------------------
+
+
+@pytest.mark.parametrize("argv", [["serve"], ["serve", "--http"]])
+def test_serve_with_an_mcp_sdk_lacking_fastmcp_exits_1_with_the_remedy(tmp_citadel, monkeypatch, capsys, argv):
+    """mcp 2.x dropped ``mcp.server.fastmcp``, which citadel.server imports at load time (and
+    httpserve through it): both transports must exit 1 naming the failed import and the reinstall
+    command, instead of a ModuleNotFoundError traceback. The command is ``citadel doctor``'s own
+    (worded for the installed version, spelled for this install) — never a copy that could drift
+    from what doctor tells the same user about the same environment."""
+    from citadel import doctor
+
+    # A None entry makes the import machinery raise ModuleNotFoundError for that name; dropping the
+    # loaded citadel.server forces the real import chain to run again (monkeypatch restores both).
+    monkeypatch.setitem(sys.modules, "mcp.server.fastmcp", None)
+    monkeypatch.delitem(sys.modules, "citadel.server", raising=False)
+    monkeypatch.delattr(citadel, "server", raising=False)
+    monkeypatch.setattr(doctor, "mcp_sdk_version", lambda: "2.0.1")  # the breakage: a 2.x SDK installed
+
+    assert cli.main(argv) == 1
+    err = capsys.readouterr().err
+    assert "Traceback" not in err
+    assert err.startswith("error: `citadel serve` cannot start - the installed MCP SDK does not import")
+    assert "mcp.server.fastmcp" in err
+    assert err.rstrip("\n").endswith(doctor.mcp_sdk_remedy("2.0.1"))
+    assert "citadel needs mcp>=1.10,<2 - run: " in err
+
+
+def test_serve_does_not_relabel_an_unrelated_import_error(tmp_citadel, monkeypatch):
+    """Only an ImportError about the MCP SDK itself gets the mcp>=1.10,<2 remedy: a broken citadel module
+    is a real bug, and pointing its user at a reinstall of mcp would send them the wrong way."""
+    monkeypatch.setitem(sys.modules, "citadel.server", None)
+    monkeypatch.delattr(citadel, "server", raising=False)
+    with pytest.raises(ImportError) as exc:
+        cli.main(["serve"])
+    assert exc.value.name == "citadel.server"

@@ -724,6 +724,41 @@ def test_cluster_applied_when_agent_edits_and_page_validates(tmp_citadel, seed_p
     assert "Improved sourced fact." in (tmp_citadel.wiki / "concepts/alice.md").read_text(encoding="utf-8")
 
 
+def test_an_interrupt_still_finalizes_the_clusters_applied_before_it(tmp_citadel, seed_page, fake_agent, monkeypatch):
+    """Ctrl+C at cluster 2 after cluster 1 was applied: cluster 2 is rolled back, but cluster 1's
+    promoted edit must still get the run's finalization (index rebuild) before the interrupt goes on
+    — a later run cannot be relied on to do it (cluster 1 may have cleared the last finding)."""
+    import pytest
+
+    from citadel import curate, store
+
+    (tmp_citadel.raw / "notes.md").write_text("body\n", encoding="utf-8")
+    for name in ("alice", "bob"):  # two Person pages mis-filed under concepts/: two resort clusters
+        _seed_cited(seed_page, f"concepts/{name}.md", "raw/notes.md", type_="Person", title=name.title())
+    calls: list[str] = []
+
+    def first_applies_then_ctrl_c(rel_key, kind="curate", **_kwargs):
+        calls.append(rel_key)
+        if len(calls) == 2:
+            raise KeyboardInterrupt()
+        seed_page(
+            rel_key,
+            {"type": "Person", "title": "Edited", "description": "d", "tags": ["t"], "resource": "raw/notes.md"},
+            "Improved sourced fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/notes.md](../../raw/notes.md) - s\n",
+        )
+
+    rebuilt: list[bool] = []
+    real_rebuild = store.rebuild_indexes
+    monkeypatch.setattr(store, "rebuild_indexes", lambda *a, **k: (rebuilt.append(True), real_rebuild(*a, **k))[1])
+    fake_agent(side_effect=first_applies_then_ctrl_c)
+    with pytest.raises(KeyboardInterrupt):
+        curate.curate()
+    assert len(calls) == 2
+    assert rebuilt == [True]  # finalized for the applied cluster before the interrupt propagated
+    assert "Improved sourced fact." in (tmp_citadel.wiki / calls[0]).read_text(encoding="utf-8")
+    assert "Improved sourced fact." not in (tmp_citadel.wiki / calls[1]).read_text(encoding="utf-8")
+
+
 def test_cluster_noop_when_agent_makes_no_edits(tmp_citadel, seed_page, fake_agent):
     """An agent that decides the findings do not hold up makes no edits; the empty staging diff is
     a NOOP — the wiki is unchanged and nothing is recorded as a failure."""

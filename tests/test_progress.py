@@ -8,16 +8,19 @@ ingest:
    folder is dropped, through three fallback tiers so it works even when the configured root and
    the key share no common text (a Windows drive letter mapped to a share).
 2. **Every printed line stays on ONE row** — the reporter renders through ``rich``, which would
-   otherwise WRAP an over-wide line onto extra rows.
+   otherwise WRAP an over-wide line onto extra rows. On a terminal that row is also clipped to the
+   screen width; off a TTY (a log file, a pipe, CI) it is printed in full, never clipped.
 
 No real TTY is involved — output goes to an in-memory stream (so ``rich`` renders plain,
 un-animated text) and the console width is set explicitly, keeping the tests deterministic. The
-example paths below are fictional.
+terminal case uses the same stream flagged as a TTY (:class:`_TtyStream`). The example paths below
+are fictional.
 """
 
 from __future__ import annotations
 
 import io
+import re
 from pathlib import Path
 
 from citadel import config, llm, progress
@@ -32,11 +35,33 @@ _LONG_KEY_SHORT = "raw/sub/EXAMPLE_LONG_DOCUMENT.md"
 
 
 def _reporter(stream, width=200, spinner=True):
-    """A reporter writing to ``stream`` at a fixed console width (a StringIO is not a TTY, so rich
-    renders plain text and no live region is started)."""
+    """A reporter writing to ``stream`` at a fixed console size.
+
+    A plain StringIO is not a TTY, so rich renders plain text and no live region is started. A
+    :class:`_TtyStream` IS one, so with the default ``spinner=True`` the reporter is in live mode
+    and a ``start`` event would open a real rich Live (with its refresh thread) — the clipping
+    tests below pass ``spinner=False``, since clipping depends only on ``tty``. Both dimensions
+    are set: rich answers a width-only override with 80x25 when ``TERM`` is ``dumb``/``unknown``
+    on a terminal stream, which would make the TTY tests depend on the environment."""
     prog = progress.ConsoleProgress(stream=stream, spinner=spinner)
-    prog.console.width = width
+    prog.console.size = (width, 25)
     return prog
+
+
+class _TtyStream(io.StringIO):
+    """An in-memory stream that claims to be a terminal — the one-row clipping only applies there.
+    rich then emits ANSI styles too, which :func:`_rows` strips before anything is measured."""
+
+    def isatty(self):
+        return True
+
+
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
+
+def _rows(stream) -> list[str]:
+    """The non-empty printed rows, with any ANSI style codes removed."""
+    return [ln for ln in _ANSI.sub("", stream.getvalue()).split("\n") if ln]
 
 
 # --- tier 1: an exact prefix match against a configured root ------------------------------
@@ -181,15 +206,15 @@ def test_error_line_drops_the_redundant_key_prefix_from_the_reason(monkeypatch):
 
 def test_every_printed_line_stays_on_one_row(monkeypatch):
     """The one-row invariant: rich WRAPS by default, which is exactly how a long key turned a
-    scrolling ingest into a wall of text. Lines are printed no-wrap with an ellipsis overflow, so a
-    label far wider than the console still occupies a single row."""
+    scrolling ingest into a wall of text. On a terminal lines are printed no-wrap with an ellipsis
+    overflow, so a label far wider than the console still occupies a single row."""
     monkeypatch.setattr(config, "RAW_DIR", Path("/nowhere"))
-    stream = io.StringIO()
-    prog = _reporter(stream, width=40)
+    stream = _TtyStream()
+    prog = _reporter(stream, width=40, spinner=False)
 
     prog("source_error", {"index": 1, "total": 1, "source": "x" * 400, "error": "y" * 400, "seconds": 0.2})
 
-    rows = [ln for ln in stream.getvalue().split("\n") if ln]
+    rows = _rows(stream)
     assert len(rows) == 1
     assert len(rows[0]) <= 40
 
@@ -199,8 +224,8 @@ def test_a_narrow_terminal_sacrifices_the_path_not_the_money(monkeypatch):
     the identifying filename survives. Clipping from the right (rich's default) would drop the
     cost/tokens/model at the end of the line, which is the most valuable part of it."""
     monkeypatch.setattr(config, "RAW_DIR", Path("/nowhere"))
-    stream = io.StringIO()
-    prog = _reporter(stream, width=100)
+    stream = _TtyStream()
+    prog = _reporter(stream, width=100, spinner=False)
 
     prog(
         "source_done",
@@ -217,7 +242,7 @@ def test_a_narrow_terminal_sacrifices_the_path_not_the_money(monkeypatch):
         },
     )
 
-    row = stream.getvalue().strip()
+    (row,) = _rows(stream)
     assert len(row) <= 100
     assert "quarterly-report.pdf" in row  # the identifying tail of the path survived
     assert "raw/a/deeply" not in row  # its head was dropped
@@ -229,8 +254,8 @@ def test_the_key_keeps_a_floor_even_when_the_tail_fills_the_row(monkeypatch):
     verdict that names no file at all is worse than one whose tail is trimmed. The floor is why the
     priority order ends at "filename", not at "spend"."""
     monkeypatch.setattr(config, "RAW_DIR", Path("/nowhere"))
-    stream = io.StringIO()
-    prog = _reporter(stream, width=60)
+    stream = _TtyStream()
+    prog = _reporter(stream, width=60, spinner=False)
 
     prog(
         "source_done",
@@ -247,7 +272,7 @@ def test_the_key_keeps_a_floor_even_when_the_tail_fills_the_row(monkeypatch):
         },
     )
 
-    rows = [ln for ln in stream.getvalue().split("\n") if ln]
+    rows = _rows(stream)
     assert len(rows) == 1
     assert "report.pdf" in rows[0]  # the file is still named
 
@@ -256,13 +281,122 @@ def test_a_pathological_width_still_yields_one_row(monkeypatch):
     """A degenerate console width must not break the layout math — the key degrades to the ellipsis
     (or nothing) rather than pushing the line onto extra rows."""
     monkeypatch.setattr(config, "RAW_DIR", Path("/nowhere"))
-    stream = io.StringIO()
-    prog = _reporter(stream, width=10)
+    stream = _TtyStream()
+    prog = _reporter(stream, width=10, spinner=False)
 
     prog("source_error", {"index": 1, "total": 1, "source": "raw/" + "x" * 200, "error": "boom", "seconds": 0.2})
 
-    rows = [ln for ln in stream.getvalue().split("\n") if ln]
+    rows = _rows(stream)
     assert len(rows) == 1
+
+
+# --- off a TTY: a log file keeps the whole line --------------------------------------------
+
+# A key and a tail that together run far past any width rich could guess off a terminal — the
+# shape of the real log line that was cut to "$0.4869  308.6k in / 5.5..." (key fictional).
+_DEEP_KEY = "raw/" + "archive/2026/quarterly/" * 6 + "Abrechnung_Projekt_Leuchtfeuer_final.pdf"
+_BIG_USAGE = {
+    "usage": llm.SessionUsage(cost_usd=0.4869, input_tokens=308_600, output_tokens=5_512),
+    "model": "claude-opus-5-20260101",
+}
+
+
+def test_off_a_tty_the_verdict_line_is_printed_in_full(monkeypatch):
+    """A log file / pipe has no screen width, yet rich still guesses one there (the launching
+    terminal's, COLUMNS, or 80) — so the one-row clipping cut the key from the left AND the spend
+    from the right, in exactly the record a user keeps. Off a TTY the verdict carries the whole key
+    and the whole tail on ONE line."""
+    monkeypatch.setattr(config, "RAW_DIR", Path("/nowhere"))
+    stream = io.StringIO()
+    prog = _reporter(stream, width=80)  # rich's last-resort guess when no terminal size is known
+    assert prog.tty is False
+
+    prog(
+        "source_done",
+        {
+            "index": 12,
+            "total": 140,
+            "source": _DEEP_KEY,
+            "created": 3,
+            "updated": 4,
+            "deleted": 0,
+            "seconds": 211.7,
+            **_BIG_USAGE,
+        },
+    )
+
+    out = stream.getvalue()
+    (row,) = _rows(stream)
+    assert len(row) > 80  # it really is wider than the width the console was given
+    assert _DEEP_KEY in row  # the whole key, not a left-clipped "...tail"
+    assert row.endswith("$0.4869  308.6k in / 5.5k out  claude-opus-5-20260101")  # the whole spend
+    assert "…" not in out and "..." not in row  # no ellipsis of either kind
+    out.encode("ascii")
+
+
+def test_off_a_tty_the_start_and_error_lines_are_printed_in_full(monkeypatch):
+    """The START line (which names the in-flight file in a log) and an ERR line's reason are kept
+    whole too — one source, one complete line each."""
+    monkeypatch.setattr(config, "RAW_DIR", Path("/nowhere"))
+    stream = io.StringIO()
+    prog = _reporter(stream, width=40)
+    reason = "the 'claude' CLI exited 1: " + " / ".join(["permission denied for the Write tool"] * 4)
+
+    prog("source_start", {"index": 2, "total": 9, "source": _DEEP_KEY})
+    prog("source_segment", {"index": 2, "total": 9, "source": _DEEP_KEY, "part": 3, "parts": 8})
+    prog("source_error", {"index": 2, "total": 9, "source": _DEEP_KEY, "error": reason, "seconds": 9.0})
+
+    rows = _rows(stream)
+    assert rows[0] == f"[2/9] {_DEEP_KEY} ..."  # the START line, whole and unwrapped
+    assert rows[1] == f"[2/9] {_DEEP_KEY}  part 3/8 ..."
+    assert len(rows) == 3  # nothing wrapped onto an extra row
+    assert _DEEP_KEY in rows[2] and rows[2].endswith(reason)
+    assert "…" not in stream.getvalue()
+
+
+def test_off_a_tty_a_multi_line_error_reason_stays_on_the_verdict_line(monkeypatch):
+    """A CLI's stderr reason is often a multi-line stack trace; printed as-is each of its rows
+    stands apart from the verdict in a log, so grepping a source's line misses WHY it failed. Off a
+    TTY the reason is folded onto the one verdict line (display-only — the catalog keeps it)."""
+    monkeypatch.setattr(config, "RAW_DIR", Path("/nowhere"))
+    stream = io.StringIO()
+    prog = _reporter(stream, width=40)
+    reason = "the 'claude' CLI failed (exit 1): Error: boom\n    at foo (x.js:1)\n\tat bar"
+
+    prog("source_error", {"index": 1, "total": 1, "source": _DEEP_KEY, "error": reason, "seconds": 0.4})
+
+    (row,) = _rows(stream)
+    assert _DEEP_KEY in row
+    assert row.endswith("the 'claude' CLI failed (exit 1): Error: boom at foo (x.js:1) at bar")
+
+
+def test_verbose_on_a_terminal_still_clips(monkeypatch):
+    """``--verbose`` on a terminal turns the live region off but is still a screen: only the
+    not-a-TTY case prints full lines, so the one-row clipping (filename > spend > path) stays."""
+    monkeypatch.setattr(config, "RAW_DIR", Path("/nowhere"))
+    stream = _TtyStream()
+    prog = _reporter(stream, width=100, spinner=False)
+    assert prog.tty is True and prog.live_mode is False
+
+    prog("source_start", {"index": 12, "total": 140, "source": _DEEP_KEY})
+    prog(
+        "source_done",
+        {
+            "index": 12,
+            "total": 140,
+            "source": _DEEP_KEY,
+            "created": 3,
+            "updated": 4,
+            "deleted": 0,
+            "seconds": 211.7,
+            **_BIG_USAGE,
+        },
+    )
+
+    start, verdict = _rows(stream)
+    assert len(start) <= 100 and len(verdict) <= 100
+    assert "Leuchtfeuer_final.pdf" in verdict and "raw/archive" not in verdict  # left-clipped key
+    assert "$0.4869" in verdict  # the spend outranks the path
 
 
 # --- the money: what the session actually cost, per source ---------------------------------

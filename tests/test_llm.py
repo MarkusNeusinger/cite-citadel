@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -908,6 +911,195 @@ def test_hermetic_auth_hint_only_when_the_flag_was_passed_and_the_failure_is_aut
     assert llm._hermetic_auth_hint("claude", ["claude", "-p", "--bare"], "claude CLI error (429): quota") == ""
     # A CLI with no isolation flag registered can never trip it.
     assert llm._hermetic_auth_hint("copilot", ["copilot", "-p", "--bare"], auth) == ""
+
+
+def _wire_hermetic_claude(monkeypatch, fake_run_session) -> dict:
+    """run_ingest_session on a claude at /bin/claude that advertises --bare, with ``_run_session``
+    replaced by ``fake_run_session`` (prompt/argv building stubbed — only the flag matters here)."""
+    monkeypatch.setattr(config, "LLM_CLI", "claude", raising=False)
+    monkeypatch.setattr(config, "HERMETIC", True, raising=False)
+    monkeypatch.setattr(llm, "_resolve_cli", lambda cli: "/bin/claude")
+    monkeypatch.setattr(llm, "_build_instruction", lambda *a, **k: "prompt")
+    monkeypatch.setattr(llm, "_build_invocation", lambda *a, **k: (["/bin/claude", "-p", "prompt"], None))
+    monkeypatch.setattr(llm, "_run_session", fake_run_session)
+    return _seed_help(monkeypatch, "/bin/claude", "  --bare  Skip user config\n")
+
+
+def _bare_auth_error(argv: list[str]) -> RuntimeError:
+    message = "claude CLI error: Not logged in - Please run /login"
+    error = RuntimeError(message + llm._hermetic_auth_hint("claude", argv, message))
+    error.hermetic_auth_failure = "--bare" in argv
+    return error
+
+
+def test_a_working_hermetic_retry_is_remembered_for_the_rest_of_the_run(monkeypatch, capsys):
+    """The retry is per session, but the lesson is per run: on a machine whose credentials live in
+    the config --bare skips, a 55-source run used to pay a failed launch (~20 s) and repeat the
+    warning 55 times — curate once per cluster on top. Once a retry WITHOUT the flag worked, every
+    later session for that binary launches without it straight away, and the "rest of this run"
+    notice prints exactly once."""
+    seen: list[bool] = []
+
+    def creds_live_in_skipped_config(cli, argv, stdin_text, *, log_label=None):
+        seen.append("--bare" in argv)
+        if "--bare" in argv:
+            raise _bare_auth_error(argv)
+        return llm.SessionUsage(cost_usd=0.01)
+
+    _wire_hermetic_claude(monkeypatch, creds_live_in_skipped_config)
+    for _ in range(3):
+        assert llm.run_ingest_session("raw/notes.md") == llm.SessionUsage(cost_usd=0.01)
+    # One failed --bare launch + its retry, then two sessions that never try the flag at all.
+    assert seen == [True, False, False, False]
+    err = capsys.readouterr().err
+    assert err.count("--bare was refused with an authentication error") == 1
+    assert err.count("the rest of this run skips --bare") == 1
+    assert "CITADEL_HERMETIC=0" in err  # the knob that skips it from the very first session
+
+
+def test_a_failed_hermetic_retry_remembers_nothing(monkeypatch, capsys):
+    """Only a SUCCESSFUL retry proves the flag was the problem. When the retry fails too, it is a
+    real credential problem: nothing is memoized, so the next session still tries --bare first
+    (and still fails loudly instead of quietly running non-hermetic from then on)."""
+    seen: list[bool] = []
+
+    def logged_out(cli, argv, stdin_text, *, log_label=None):
+        seen.append("--bare" in argv)
+        raise _bare_auth_error(argv)
+
+    _wire_hermetic_claude(monkeypatch, logged_out)
+    for _ in range(2):
+        with pytest.raises(RuntimeError, match="Not logged in"):
+            llm.run_ingest_session("raw/notes.md")
+    assert seen == [True, False, True, False]  # each session: --bare first, then one retry
+    assert llm._HERMETIC_REFUSED == set()
+    assert "the rest of this run" not in capsys.readouterr().err
+
+
+def test_a_hermetic_refusal_is_scoped_to_its_binary(monkeypatch):
+    """The memory is keyed by the resolved binary: another claude install has its own config and
+    earns its own verdict."""
+    cache = _seed_help(monkeypatch, "/bin/claude", "--bare\n")
+    cache["/opt/claude"] = "--bare\n"
+    monkeypatch.setattr(config, "HERMETIC", True, raising=False)
+    assert llm._record_hermetic_refusal("/bin/claude") is True
+    assert llm._record_hermetic_refusal("/bin/claude") is False
+    assert llm._hermetic_flags("claude", "/bin/claude") == []
+    assert llm._hermetic_flags("claude", "/opt/claude") == ["--bare"]
+
+
+def test_a_hermetic_refusal_is_announced_once_under_parallel_workers(monkeypatch, capsys):
+    """`--jobs N`: workers record the refusal concurrently, and exactly one of them wins the
+    check-and-record (so the notice prints once). A straggler launched under --bare before another
+    worker's retry proved the point still retries — quietly, since the run was already told."""
+    _seed_help(monkeypatch, "/bin/claude", "--bare\n")
+    barrier = threading.Barrier(8, timeout=5)
+    wins: list[bool] = []
+    real_check = llm._hermetic_refused
+
+    def slow_check(cli_path):
+        # Widen the check-then-record window deterministically: unlocked, all 8 threads would read
+        # "not yet refused" during this sleep and all 8 would win; the lock lets exactly one in.
+        refused = real_check(cli_path)
+        time.sleep(0.02)
+        return refused
+
+    def record():
+        barrier.wait()
+        wins.append(llm._record_hermetic_refusal("/bin/claude"))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(llm, "_hermetic_refused", slow_check)
+        workers = [threading.Thread(target=record) for _ in range(8)]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join()
+    assert sorted(wins) == [False] * 7 + [True]
+
+    monkeypatch.setattr(llm, "_HERMETIC_REFUSED", set())  # the straggler half starts unrefused
+    seen: list[bool] = []
+
+    def straggler(cli, argv, stdin_text, *, log_label=None):
+        seen.append("--bare" in argv)
+        if "--bare" in argv:
+            llm._record_hermetic_refusal("/bin/claude")  # another worker's retry lands meanwhile
+            raise _bare_auth_error(argv)
+        return llm.SessionUsage(cost_usd=0.01)
+
+    _wire_hermetic_claude(monkeypatch, straggler)
+    assert llm.run_ingest_session("raw/notes.md") == llm.SessionUsage(cost_usd=0.01)
+    assert seen == [True, False]
+    assert "--bare" not in capsys.readouterr().err  # neither the retry warning nor the notice again
+
+
+def test_workers_all_in_flight_under_bare_print_one_notice(monkeypatch, capsys):
+    """`--jobs N` at run start: every worker launches under --bare before ANY retry has proved the
+    point, so all of them fail and retry. The run is still told exactly once — the notice belongs to
+    the one caller that wins the atomic record, not to each retry."""
+    workers = 4
+    launched = threading.Barrier(workers, timeout=5)
+
+    def creds_live_in_skipped_config(cli, argv, stdin_text, *, log_label=None):
+        if "--bare" in argv:
+            launched.wait()  # all workers are in flight under --bare before anyone retries
+            raise _bare_auth_error(argv)
+        return llm.SessionUsage(cost_usd=0.01)
+
+    _wire_hermetic_claude(monkeypatch, creds_live_in_skipped_config)
+    results: list[object] = []
+    threads = [
+        threading.Thread(target=lambda: results.append(llm.run_ingest_session("raw/notes.md"))) for _ in range(workers)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert results == [llm.SessionUsage(cost_usd=0.01)] * workers
+    assert capsys.readouterr().err.count("--bare was refused") == 1
+
+
+def test_each_ingest_run_tries_the_flag_afresh(tmp_citadel, fake_agent, monkeypatch):
+    """The verdict is per RUN: a long-lived `citadel serve` runs many ingests, and credentials may
+    have moved between them — so ingest (and curate) forget it when they start instead of running
+    non-hermetic for the rest of the process."""
+    from citadel import ingest
+
+    llm._record_hermetic_refusal("/bin/claude")
+    fake_agent()
+    ingest.ingest()
+    assert llm._HERMETIC_REFUSED == set()
+
+
+@pytest.mark.parametrize(
+    "error", [BrokenPipeError(32, "Broken pipe"), ValueError("I/O operation on closed file.")], ids=["broken", "closed"]
+)
+def test_a_broken_stderr_never_costs_the_successful_hermetic_retry(monkeypatch, error):
+    """The hermetic notice is a diagnostic written AFTER the paid retry succeeded: a stderr that
+    broke meanwhile (`citadel ingest 2>&1 | head`, an MCP client that closed its pipe — OSError, or
+    ValueError once the stream is truly closed) must not raise out of run_ingest_session, or the
+    retry's wiki edits would be discarded as a failed source. The refusal is still remembered."""
+
+    class _ClosedPipe:
+        def write(self, text):
+            raise error
+
+        def flush(self):
+            raise error
+
+    seen: list[bool] = []
+
+    def creds_live_in_skipped_config(cli, argv, stdin_text, *, log_label=None):
+        seen.append("--bare" in argv)
+        if "--bare" in argv:
+            raise _bare_auth_error(argv)
+        return llm.SessionUsage(cost_usd=0.03)
+
+    _wire_hermetic_claude(monkeypatch, creds_live_in_skipped_config)
+    monkeypatch.setattr(sys, "stderr", _ClosedPipe())
+    assert llm.run_ingest_session("raw/notes.md") == llm.SessionUsage(cost_usd=0.03)
+    assert seen == [True, False]
+    assert llm._hermetic_refused("/bin/claude")
 
 
 def test_run_session_appends_the_hermetic_auth_hint_to_the_raised_error(monkeypatch):

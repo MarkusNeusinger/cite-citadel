@@ -48,6 +48,12 @@ One command answering "is my setup sane?" without touching a byte. Each check em
   ``CITADEL_MAX_SOURCE_CHARS`` ceiling and, when stated, the ``CITADEL_MODEL_CONTEXT_TOKENS``
   budget derived from the model's context. Shows the arithmetic, and WARNs when the stated context
   is so small that the segment floor had to engage.
+- **MCP SDK** — does the installed ``mcp`` package provide ``mcp.server.fastmcp`` in a version
+  ``citadel serve`` can use (``>=1.10,<2``)? mcp 2.x renamed FastMCP and a pre-1.10 FastMCP rejects
+  the keywords citadel passes, so an environment holding either cannot serve at all; FAIL with the
+  installed version and a fix worded for the cause that version points at (out of range or missing
+  -> ``mcp>=1.10,<2``; an in-range 1.x whose own imports break -> rebuild the environment), spelled
+  for the detected install method.
 - **HTTP serve** — the opt-in Streamable HTTP transport (``citadel serve --http``): a plain "stdio
   only" note while no ``CITADEL_HTTP_TOKEN`` is set, otherwise where it would listen and whether the
   mutating tools are exposed — WARNing on a token too short for ``serve --http`` to accept (a
@@ -66,19 +72,25 @@ One command answering "is my setup sane?" without touching a byte. Each check em
   every citation resolves under a root. Read-only over ``store.load`` and O(pages).
 
 Read-only and defensive: every check degrades to a WARN/FAIL line rather than raising, so ``doctor``
-never crashes on a half-configured workspace. Exit code is 0 unless some check FAILs. It opts out of
+never crashes on a half-configured workspace — and :func:`run` isolates each check on top of that, so
+one that raises anyway (an import that breaks under a mismatched dependency) becomes its own FAIL
+line while every other check still reports. Exit code is 0 unless some check FAILs. It opts out of
 the workspace guard (``needs_workspace=False``) precisely so it can diagnose a MISSING workspace.
 """
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
+import re
 import shutil
 import sys
 import urllib.request
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from importlib import metadata
 from itertools import zip_longest
 from pathlib import Path
 
@@ -451,6 +463,104 @@ def check_pdf_text() -> Check:
     return Check(OK, "PDF text", "text-layer pre-pass on (pypdf) - PDF `lines A-B` locators verify offline")
 
 
+# Per install method (see :func:`_install_method`): the command that rebuilds citadel's environment
+# from its OWN requirements. This build declares `mcp>=1.10,<2`, so a fresh resolve brings a usable
+# 1.x SDK back, and a reinstall also restores a dependency deleted or broken underneath it. Deliberately
+# nothing that PERSISTS a pin: `uv tool install --with "mcp<2"` would write the cap into uv's tool receipt,
+# where it would silently hold back every `uv tool upgrade` once citadel moves to the 2.x SDK.
+_REINSTALL_COMMANDS = {
+    "dev": "uv sync --reinstall",
+    "uv tool": "uv tool upgrade --reinstall cite-citadel",
+    "pipx": "pipx reinstall cite-citadel",
+    "uvx": "uvx --reinstall --from cite-citadel citadel doctor",
+    "pip": "pip install --force-reinstall cite-citadel",
+}
+
+
+# The `mcp` range pyproject.toml declares, and its floor as a comparable tuple. An SDK below the floor
+# imports `mcp.server.fastmcp` fine but rejects the tool `annotations` / prompt `title` keywords
+# citadel/server.py passes, so the import check alone cannot see it.
+MCP_SDK_RANGE = ">=1.10,<2"
+_MCP_SDK_FLOOR = (1, 10)
+
+
+def _mcp_sdk_in_range(version: str) -> bool:
+    """Whether ``version`` is inside :data:`MCP_SDK_RANGE`. Lenient about suffixes (``1.28.1rc1``,
+    ``2.0.0.dev3``): only the leading ``major.minor`` digits are compared; an unparsable version is
+    given the benefit of the doubt (the import check still guards it)."""
+    parts = []
+    for piece in version.split(".")[:2]:
+        digits = re.match(r"\d+", piece)
+        if digits is None:
+            return True
+        parts.append(int(digits.group()))
+    if len(parts) < 2:
+        parts.append(0)
+    return _MCP_SDK_FLOOR <= tuple(parts) < (2, 0)
+
+
+def mcp_sdk_version() -> str | None:
+    """The installed ``mcp`` distribution's version, or None when there is none. Read from the
+    distribution metadata, which survives an import that breaks."""
+    try:
+        return metadata.version("mcp")
+    except metadata.PackageNotFoundError:
+        return None
+
+
+def mcp_sdk_remedy(version: str | None, module_file: str | None = None, prefix: str | None = None) -> str:
+    """The fix for an environment whose ``mcp.server.fastmcp`` does not import, worded for the cause
+    the installed ``version`` points at and spelled for THIS install (``module_file``/``prefix`` as in
+    :func:`detect_update_command`).
+
+    Only a missing SDK or one outside :data:`MCP_SDK_RANGE` (a 2.x, or a 1.x older than the floor) is
+    the SDK's own fault: "citadel needs mcp>=1.10,<2". An in-range 1.x that still fails had its import
+    chain broken UNDERNEATH it (a missing or incompatible pydantic-settings, starlette, ...), where
+    pinning mcp is already satisfied and would change nothing — so that cause is named instead, with
+    the rebuild. How an out-of-range SDK lands next to a build that pins it: put into the environment
+    AFTER citadel was installed (a manual ``pip install -U mcp``, a shared venv).
+    Public so ``citadel serve``'s own refusal can hand out the same command instead of a copy."""
+    sdk_at_fault = not version or not _mcp_sdk_in_range(version)
+    method = _install_method(module_file, prefix)
+    if sdk_at_fault:
+        # A plain pip venv may be shared with other tools: pin just the SDK back into range rather
+        # than force-reinstalling everything (pip persists no constraint, so this blocks no upgrade).
+        command = f'pip install "mcp{MCP_SDK_RANGE}"' if method == "pip" else _REINSTALL_COMMANDS[method]
+        return f"citadel needs mcp{MCP_SDK_RANGE} - run: {command}"
+    return (
+        f"mcp {version} itself is supported, a dependency it imports is broken - repair the environment: "
+        f"{_REINSTALL_COMMANDS[method]}"
+    )
+
+
+def check_mcp_sdk() -> Check:
+    """FAIL when the installed MCP SDK does not provide ``mcp.server.fastmcp`` — the module
+    :mod:`citadel.server` imports at load time, so ``citadel serve`` (stdio and HTTP alike) cannot
+    start at all. mcp 2.x renamed FastMCP; the line names the installed version and the fix
+    :func:`mcp_sdk_remedy` derives from it. OK otherwise, with that version."""
+    version = mcp_sdk_version()
+    try:
+        importlib.import_module("mcp.server.fastmcp")
+    except ImportError as exc:
+        found = f"mcp {version} is installed" if version else "the mcp package is not installed"
+        return Check(
+            FAIL,
+            "MCP SDK",
+            f"{found}; mcp.server.fastmcp does not import ({_one_line(exc)}) - `citadel serve` cannot start; "
+            f"{mcp_sdk_remedy(version)}",
+        )
+    if version and not _mcp_sdk_in_range(version):
+        # FastMCP imports, but an SDK below the floor rejects the keywords citadel/server.py passes
+        # (a TypeError at import), so `citadel serve` would still die — name it here, not there.
+        return Check(
+            FAIL,
+            "MCP SDK",
+            f"mcp {version} is installed, outside the supported {MCP_SDK_RANGE} - `citadel serve` cannot start; "
+            f"{mcp_sdk_remedy(version)}",
+        )
+    return Check(OK, "MCP SDK", f"mcp {version or '(version unknown)'} - FastMCP imports, `citadel serve` can start")
+
+
 def check_http_serve() -> Check:
     """State echo for the opt-in HTTP transport (:mod:`citadel.httpserve`), WARNing on the two
     configurations that would surprise their operator: a token too short for ``serve --http`` to
@@ -658,19 +768,18 @@ def version_is_newer(candidate: str, baseline: str) -> bool:
     return False
 
 
-def detect_update_command(module_file: str | None = None, prefix: str | None = None) -> str:
-    """Return the exact upgrade command for THIS install, from where the package lives on disk.
-
-    Pure and unit-testable: ``module_file`` (defaults to this module's path) and ``prefix`` (defaults
-    to ``sys.prefix``) are injectable. Detection order:
+def _install_method(module_file: str | None = None, prefix: str | None = None) -> str:
+    """Which installer owns THIS install — ``"dev"``, ``"uv tool"``, ``"pipx"``, ``"uvx"`` or
+    ``"pip"`` — from where the package lives on disk. Pure and unit-testable: ``module_file``
+    (defaults to this module's path) and ``prefix`` (defaults to ``sys.prefix``) are injectable.
+    Detection order:
 
     - **dev checkout** — the package sits next to a repo checkout (a ``pyproject.toml`` one level up
-      alongside a ``.git``/``corpora`` marker) -> ``git pull && uv sync``.
-    - **uv tool** — ``prefix`` has consecutive ``uv``/``tools`` segments -> ``uv tool upgrade``.
-    - **pipx** — a ``pipx`` segment in ``prefix`` -> ``pipx upgrade``.
-    - **uvx ephemeral** — a uv cache env (``archive-v0`` / ``environments-*`` under ``uv``) -> a note
-      that uvx always fetches the latest on the next run.
-    - **generic** — otherwise ``pip install -U``.
+      alongside a ``.git``/``corpora`` marker).
+    - **uv tool** — ``prefix`` has consecutive ``uv``/``tools`` segments.
+    - **pipx** — a ``pipx`` segment in ``prefix``.
+    - **uvx ephemeral** — a uv cache env (``archive-v0`` / ``environments-*`` under ``uv``).
+    - **generic** — otherwise pip.
     """
     if module_file is None:
         module_file = __file__
@@ -679,17 +788,34 @@ def detect_update_command(module_file: str | None = None, prefix: str | None = N
 
     repo_root = Path(module_file).resolve().parents[1]
     if (repo_root / "pyproject.toml").is_file() and ((repo_root / ".git").exists() or (repo_root / "corpora").is_dir()):
-        return "git pull && uv sync"
+        return "dev"
 
     parts = [p.lower() for p in Path(prefix).parts]
     for a, b in zip(parts, parts[1:], strict=False):
         if a == "uv" and b == "tools":
-            return "uv tool upgrade cite-citadel"
+            return "uv tool"
     if "pipx" in parts:
-        return "pipx upgrade cite-citadel"
+        return "pipx"
     if "uv" in parts and any(p == "archive-v0" or p.startswith("environments-") or "cache" in p for p in parts):
-        return "uvx cite-citadel (uvx always runs the latest on the next run)"
-    return "pip install -U cite-citadel"
+        return "uvx"
+    return "pip"
+
+
+_UPDATE_COMMANDS = {
+    "dev": "git pull && uv sync",
+    "uv tool": "uv tool upgrade cite-citadel",
+    "pipx": "pipx upgrade cite-citadel",
+    "uvx": "uvx cite-citadel (uvx always runs the latest on the next run)",
+    "pip": "pip install -U cite-citadel",
+}
+
+
+def detect_update_command(module_file: str | None = None, prefix: str | None = None) -> str:
+    """Return the exact upgrade command for THIS install (detected by :func:`_install_method`, which
+    takes the same injectable ``module_file``/``prefix``): ``git pull && uv sync`` for a dev
+    checkout, ``uv tool upgrade`` / ``pipx upgrade`` for those tools, a note that uvx always fetches
+    the latest on the next run, and ``pip install -U`` otherwise."""
+    return _UPDATE_COMMANDS[_install_method(module_file, prefix)]
 
 
 def _fetch_latest_pypi_version(timeout: float = 2.0) -> str | None:
@@ -782,31 +908,59 @@ def check_workspace_coherence() -> Check:
         return Check(WARN, "workspace coherence", f"could not check workspace coherence: {exc}")
 
 
+def _isolated(name: str, check: Callable[[], Check]) -> Check:
+    """Run one check, turning anything it raises into a FAIL line under its own ``name``.
+
+    Each check already degrades its EXPECTED problems to WARN/FAIL lines, but not every failure is
+    expected: under an mcp 2.x install ``check_http_serve``'s import of :mod:`citadel.httpserve`
+    (which imports :mod:`citadel.server`, which imports ``mcp.server.fastmcp``) raised
+    ModuleNotFoundError, and because the list was built eagerly the whole report died in a traceback
+    — on exactly the broken install doctor exists to diagnose. A FAIL (not a WARN) because a check
+    that could not run vouches for nothing."""
+    try:
+        return check()
+    except Exception as exc:
+        return Check(FAIL, name, f"could not run this check - {_one_line(exc)}")
+
+
+def _one_line(exc: BaseException, limit: int = 300) -> str:
+    """``Type: message`` on ONE line, for a detail built from an exception doctor did not foresee.
+    The report is one ``[STATUS] name: detail`` line per check (read top-down for the first non-green
+    line, and grepped), but some exceptions render over several lines (a pydantic ValidationError, a
+    YAML MarkedYAMLError): whitespace is collapsed and an overlong message clipped."""
+    text = " ".join(f"{type(exc).__name__}: {exc}".split())
+    return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
 def run() -> DoctorReport:
     """Run every check in order and return the report. Read-only; the caller maps ``ok`` to the exit
-    code (0 unless a FAIL)."""
-    return DoctorReport(
-        checks=[
-            check_workspace(),
-            check_rules(),
-            check_config(),
-            check_agent_cli(),
-            check_ingest_model(),
-            check_raw_roots(),
-            check_include_patterns(),
-            check_wiki_placement(),
-            check_child_paths(),
-            check_manifest(),
-            check_failures(),
-            check_billing_shadow(),
-            check_pdf_mode(),
-            check_pdf_text(),
-            check_audio_support(),
-            check_chunk_budget(),
-            check_resume(),
-            check_http_serve(),
-            check_wiki_git(),
-            check_update(),
-            check_workspace_coherence(),
-        ]
-    )
+    code (0 unless a FAIL).
+
+    Each check runs through :func:`_isolated`, so one that raises costs only its own line. The name
+    paired with each check is the one it reports itself (the FAIL fallback lands where its normal
+    line would), and the table is built per call so a monkeypatched ``check_*`` is honored."""
+    checks: list[tuple[str, Callable[[], Check]]] = [
+        ("workspace", check_workspace),
+        ("rules", check_rules),
+        ("config", check_config),
+        ("agent CLI", check_agent_cli),
+        ("ingest model", check_ingest_model),
+        ("raw roots", check_raw_roots),
+        ("include patterns", check_include_patterns),
+        ("wiki placement", check_wiki_placement),
+        ("child paths", check_child_paths),
+        ("manifest", check_manifest),
+        ("failures", check_failures),
+        ("billing", check_billing_shadow),
+        ("PDF mode", check_pdf_mode),
+        ("PDF text", check_pdf_text),
+        ("audio", check_audio_support),
+        ("chunk budget", check_chunk_budget),
+        ("resume", check_resume),
+        ("MCP SDK", check_mcp_sdk),
+        ("HTTP serve", check_http_serve),
+        ("wiki git", check_wiki_git),
+        ("update", check_update),
+        ("workspace coherence", check_workspace_coherence),
+    ]
+    return DoctorReport(checks=[_isolated(name, check) for name, check in checks])

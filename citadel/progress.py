@@ -31,6 +31,14 @@ agent transcript would fight the live region for the same stderr) — it degrade
 line per source followed by that source's verdict line, so you can always see WHICH file the
 session is working on right now.
 
+Off a TTY those lines are also printed in **full**. A log file or a CI transcript has no row to fit,
+yet rich still guesses a width there (the launching terminal's, ``COLUMNS``, or 80) that has
+nothing to do with the log, so the one-row clipping a terminal needs used to cut the key and the
+spend mid-figure (``$0.4869  308.6k in / 5.5...``) in exactly the record that is kept. There, every
+line carries the whole key and the whole tail on ONE line, however long — never clipped, never
+wrapped, and a multi-line error reason is folded onto its verdict's line. ``--verbose`` on a
+terminal is still a screen, so it keeps the clipping.
+
 Every source is shown by its **short** key (``citadel.config.display_key``): the long prefix before
 the ``raw/`` folder that an out-of-repo source on a mounted network drive carries is dropped, so
 ``//fileserver/.../raw/sub/notes.pdf`` prints as ``raw/sub/notes.pdf``. The full canonical key is
@@ -310,6 +318,11 @@ class ConsoleProgress:
         prefix = f"{source}: "
         if text.startswith(prefix) and len(text) > len(prefix):
             text = text[len(prefix) :]
+        if not self.tty:
+            # A CLI's stderr reason is often multi-line (a stack trace); in a log each of those
+            # rows would stand apart from the verdict, so grepping a source's line would miss WHY
+            # it failed. Folded onto the one line here — display-only, like the strip above.
+            text = " ".join(text.split())
         tail.append((text, "red"))
         line = self._verdict(index, total, "ERR", "bold red", source, seconds, tail)
         self._finish(source, line)
@@ -330,7 +343,11 @@ class ConsoleProgress:
         tail is what identifies it) down to a floor of :data:`_MIN_KEY_COLS`, and only once that
         floor is reached does the tail's right-hand end get trimmed by the printer. Rich's default
         — clip the whole line from the right — would drop the cost and the model first, which is
-        exactly backwards: the tail is what the run is judged by and it is the short part."""
+        exactly backwards: the tail is what the run is judged by and it is the short part.
+
+        Off a TTY none of that applies: there is no row to fit (rich's width there is only a guess
+        — the launching terminal's, ``COLUMNS``, or 80), so the key is kept whole and
+        :meth:`_print` writes the line uncropped."""
         head = Text()
         head.append(f"[{index}/{total}] ", style="dim")
         head.append(tag, style=style)
@@ -340,8 +357,11 @@ class ConsoleProgress:
         for text, text_style in tail:
             rest.append("  ")
             rest.append(text, style=text_style)
-        budget = max(_MIN_KEY_COLS, self._width() - head.cell_len - rest.cell_len)
-        head.append(_shorten(config.display_key(source), budget))
+        key = config.display_key(source)
+        if self.tty:
+            budget = max(_MIN_KEY_COLS, self._width() - head.cell_len - rest.cell_len)
+            key = _shorten(key, budget)
+        head.append(key)
         head.append_text(rest)
         return head
 
@@ -437,9 +457,18 @@ class ConsoleProgress:
 
         ``no_wrap``/``overflow`` hold the ONE-ROW invariant the hand-rolled writer used to enforce
         by clipping: rich would otherwise WRAP an over-wide line onto extra rows, which is how a
-        long absolute source key turns a scrolling ingest into a wall of text."""
+        long absolute source key turns a scrolling ingest into a wall of text.
+
+        Off a TTY the line is still never wrapped, but no longer cropped either (``overflow=
+        "ignore"``, ``crop=False``): a log file has no screen width, and the width rich guesses
+        there (the launching terminal's, ``COLUMNS``, or 80) would otherwise cut the very key and
+        spend the log exists to keep."""
+        if self.tty:
+            options = {"no_wrap": True, "overflow": "ellipsis", "crop": True}
+        else:
+            options = {"no_wrap": True, "overflow": "ignore", "crop": False}
         with self._lock:
-            self._guard(lambda: self.console.print(renderable, no_wrap=True, overflow="ellipsis", crop=True))
+            self._guard(lambda: self.console.print(renderable, **options))
 
     def _guard(self, fn) -> None:
         """Run a console operation, swallowing anything it raises — console output must never be
