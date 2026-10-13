@@ -1115,11 +1115,11 @@ def test_serve_with_an_mcp_sdk_lacking_fastmcp_exits_1_with_the_remedy(tmp_citad
     assert err.startswith("error: `citadel serve` cannot start - the installed MCP SDK does not import")
     assert "mcp.server.fastmcp" in err
     assert err.rstrip("\n").endswith(doctor.mcp_sdk_remedy("2.0.1"))
-    assert "citadel needs mcp<2 - run: " in err
+    assert "citadel needs mcp>=1.10,<2 - run: " in err
 
 
 def test_serve_does_not_relabel_an_unrelated_import_error(tmp_citadel, monkeypatch):
-    """Only an ImportError about the MCP SDK itself gets the mcp<2 remedy: a broken citadel module
+    """Only an ImportError about the MCP SDK itself gets the mcp>=1.10,<2 remedy: a broken citadel module
     is a real bug, and pointing its user at a reinstall of mcp would send them the wrong way."""
     monkeypatch.setitem(sys.modules, "citadel.server", None)
     monkeypatch.delattr(citadel, "server", raising=False)

@@ -8,17 +8,21 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
-- **A fresh install works again: `mcp` is capped below 2.** `pyproject.toml` declared `mcp>=1.2`
-  with no upper bound, and the SDK's 2.x line renamed FastMCP (`mcp.server.fastmcp` is gone), so a
-  fresh `uv tool install cite-citadel` resolved mcp 2.x and `citadel serve` / `citadel doctor` died
-  with `ModuleNotFoundError`. The dependency is now `mcp>=1.2,<2`; moving to the 2.x API is a
-  separate change. `citadel serve` on an environment that still holds an unusable SDK exits 1 with
-  the reinstall command instead of a traceback.
+- **A fresh install works again: `mcp` is pinned to `>=1.10,<2`.** `pyproject.toml` declared
+  `mcp>=1.2` with no upper bound, and the SDK's 2.x line renamed FastMCP (`mcp.server.fastmcp` is
+  gone), so a fresh `uv tool install cite-citadel` resolved mcp 2.x and `citadel serve` / `citadel
+  doctor` died with `ModuleNotFoundError`. The floor was wrong too: FastMCP before 1.10 rejects the
+  tool `annotations` and prompt `title` keywords the server passes (verified: 1.9.4 fails at import,
+  1.10.0 imports). Moving to the 2.x API is a separate change. `citadel serve` on an environment that
+  still holds an unusable SDK exits 1 with the reinstall command instead of a traceback, and CI's
+  wheel smoke now imports the server against the freshly resolved SDK, which is what would have
+  caught this.
 - **`citadel doctor` can no longer crash on the install it exists to diagnose.** Every check now
   runs isolated: one that raises becomes its own FAIL line (exception type and message on one line)
   and every other check still reports. A new **MCP SDK** check names the installed `mcp` version and,
-  when `mcp.server.fastmcp` does not import, the fix worded for the cause (a 2.x or missing SDK ->
-  `mcp<2`; a 1.x whose own dependencies broke -> rebuild the environment) and spelled for how
+  when it is out of range or `mcp.server.fastmcp` does not import, the fix worded for the cause (a
+  missing, 2.x or pre-1.10 SDK -> `mcp>=1.10,<2`; an in-range 1.x whose own dependencies broke ->
+  rebuild the environment) and spelled for how
   citadel was installed — never a command that would persist a pin into uv's tool receipt.
 - **The hermetic auth retry is paid once per run, not once per source.** On a machine whose CLI
   credentials live in exactly the config `--bare` skips, every session failed under the flag and was

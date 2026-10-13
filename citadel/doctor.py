@@ -48,11 +48,12 @@ One command answering "is my setup sane?" without touching a byte. Each check em
   ``CITADEL_MAX_SOURCE_CHARS`` ceiling and, when stated, the ``CITADEL_MODEL_CONTEXT_TOKENS``
   budget derived from the model's context. Shows the arithmetic, and WARNs when the stated context
   is so small that the segment floor had to engage.
-- **MCP SDK** — does the installed ``mcp`` package still provide ``mcp.server.fastmcp``, which
-  ``citadel serve`` imports? mcp 2.x renamed FastMCP, so an environment holding it cannot serve at
-  all; FAIL with the installed version and a fix worded for the cause that version points at (a 2.x
-  or missing SDK -> ``mcp<2``; a 1.x whose own imports break -> rebuild the environment), spelled for
-  the detected install method.
+- **MCP SDK** — does the installed ``mcp`` package provide ``mcp.server.fastmcp`` in a version
+  ``citadel serve`` can use (``>=1.10,<2``)? mcp 2.x renamed FastMCP and a pre-1.10 FastMCP rejects
+  the keywords citadel passes, so an environment holding either cannot serve at all; FAIL with the
+  installed version and a fix worded for the cause that version points at (out of range or missing
+  -> ``mcp>=1.10,<2``; an in-range 1.x whose own imports break -> rebuild the environment), spelled
+  for the detected install method.
 - **HTTP serve** — the opt-in Streamable HTTP transport (``citadel serve --http``): a plain "stdio
   only" note while no ``CITADEL_HTTP_TOKEN`` is set, otherwise where it would listen and whether the
   mutating tools are exposed — WARNing on a token too short for ``serve --http`` to accept (a
@@ -82,6 +83,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import re
 import shutil
 import sys
 import urllib.request
@@ -462,9 +464,9 @@ def check_pdf_text() -> Check:
 
 
 # Per install method (see :func:`_install_method`): the command that rebuilds citadel's environment
-# from its OWN requirements. This build declares `mcp<2`, so a fresh resolve brings a 1.x SDK back,
-# and a reinstall also restores a dependency deleted or broken underneath it. Deliberately nothing
-# that PERSISTS a pin: `uv tool install --with "mcp<2"` would write the cap into uv's tool receipt,
+# from its OWN requirements. This build declares `mcp>=1.10,<2`, so a fresh resolve brings a usable
+# 1.x SDK back, and a reinstall also restores a dependency deleted or broken underneath it. Deliberately
+# nothing that PERSISTS a pin: `uv tool install --with "mcp<2"` would write the cap into uv's tool receipt,
 # where it would silently hold back every `uv tool upgrade` once citadel moves to the 2.x SDK.
 _REINSTALL_COMMANDS = {
     "dev": "uv sync --reinstall",
@@ -473,6 +475,28 @@ _REINSTALL_COMMANDS = {
     "uvx": "uvx --reinstall --from cite-citadel citadel doctor",
     "pip": "pip install --force-reinstall cite-citadel",
 }
+
+
+# The `mcp` range pyproject.toml declares, and its floor as a comparable tuple. An SDK below the floor
+# imports `mcp.server.fastmcp` fine but rejects the tool `annotations` / prompt `title` keywords
+# citadel/server.py passes, so the import check alone cannot see it.
+MCP_SDK_RANGE = ">=1.10,<2"
+_MCP_SDK_FLOOR = (1, 10)
+
+
+def _mcp_sdk_in_range(version: str) -> bool:
+    """Whether ``version`` is inside :data:`MCP_SDK_RANGE`. Lenient about suffixes (``1.28.1rc1``,
+    ``2.0.0.dev3``): only the leading ``major.minor`` digits are compared; an unparsable version is
+    given the benefit of the doubt (the import check still guards it)."""
+    parts = []
+    for piece in version.split(".")[:2]:
+        digits = re.match(r"\d+", piece)
+        if digits is None:
+            return True
+        parts.append(int(digits.group()))
+    if len(parts) < 2:
+        parts.append(0)
+    return _MCP_SDK_FLOOR <= tuple(parts) < (2, 0)
 
 
 def mcp_sdk_version() -> str | None:
@@ -489,20 +513,20 @@ def mcp_sdk_remedy(version: str | None, module_file: str | None = None, prefix: 
     the installed ``version`` points at and spelled for THIS install (``module_file``/``prefix`` as in
     :func:`detect_update_command`).
 
-    Only a missing SDK or a 2.x one is the SDK's own fault: "citadel needs mcp<2". A 1.x that still
-    fails had its import chain broken UNDERNEATH it (a missing or incompatible pydantic-settings,
-    starlette, ...), where ``pip install "mcp<2"`` is already satisfied and would change nothing — so
-    that cause is named instead, with the rebuild. How mcp 2 lands next to a build that caps it: put
-    into the environment AFTER citadel was installed (a manual ``pip install -U mcp``, a shared venv).
+    Only a missing SDK or one outside :data:`MCP_SDK_RANGE` (a 2.x, or a 1.x older than the floor) is
+    the SDK's own fault: "citadel needs mcp>=1.10,<2". An in-range 1.x that still fails had its import
+    chain broken UNDERNEATH it (a missing or incompatible pydantic-settings, starlette, ...), where
+    pinning mcp is already satisfied and would change nothing — so that cause is named instead, with
+    the rebuild. How an out-of-range SDK lands next to a build that pins it: put into the environment
+    AFTER citadel was installed (a manual ``pip install -U mcp``, a shared venv).
     Public so ``citadel serve``'s own refusal can hand out the same command instead of a copy."""
-    major = version.split(".")[0] if version else ""
-    sdk_at_fault = not version or (major.isdigit() and int(major) >= 2)
+    sdk_at_fault = not version or not _mcp_sdk_in_range(version)
     method = _install_method(module_file, prefix)
     if sdk_at_fault:
-        # A plain pip venv may be shared with other tools: pin just the SDK back down rather than
-        # force-reinstalling everything (pip persists no constraint, so this blocks no later upgrade).
-        command = 'pip install "mcp<2"' if method == "pip" else _REINSTALL_COMMANDS[method]
-        return f"citadel needs mcp<2 - run: {command}"
+        # A plain pip venv may be shared with other tools: pin just the SDK back into range rather
+        # than force-reinstalling everything (pip persists no constraint, so this blocks no upgrade).
+        command = f'pip install "mcp{MCP_SDK_RANGE}"' if method == "pip" else _REINSTALL_COMMANDS[method]
+        return f"citadel needs mcp{MCP_SDK_RANGE} - run: {command}"
     return (
         f"mcp {version} itself is supported, a dependency it imports is broken - repair the environment: "
         f"{_REINSTALL_COMMANDS[method]}"
@@ -523,6 +547,15 @@ def check_mcp_sdk() -> Check:
             FAIL,
             "MCP SDK",
             f"{found}; mcp.server.fastmcp does not import ({_one_line(exc)}) - `citadel serve` cannot start; "
+            f"{mcp_sdk_remedy(version)}",
+        )
+    if version and not _mcp_sdk_in_range(version):
+        # FastMCP imports, but an SDK below the floor rejects the keywords citadel/server.py passes
+        # (a TypeError at import), so `citadel serve` would still die — name it here, not there.
+        return Check(
+            FAIL,
+            "MCP SDK",
+            f"mcp {version} is installed, outside the supported {MCP_SDK_RANGE} - `citadel serve` cannot start; "
             f"{mcp_sdk_remedy(version)}",
         )
     return Check(OK, "MCP SDK", f"mcp {version or '(version unknown)'} - FastMCP imports, `citadel serve` can start")

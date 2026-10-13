@@ -62,7 +62,7 @@ per-source state table: ingested / failed / skipped-duplicate / ignored / oversi
 (read-only setup health check — OK/WARN/FAIL lines for workspace / rules / config-parse fallbacks /
 agent CLI / the configured ingest model / raw roots / wiki placement
 (the wiki nested inside a raw root) / child paths (the UNC-vs-drive-letter cwd) /
-manifest / billing / the MCP SDK (`mcp.server.fastmcp` imports — `mcp` is capped `<2`) / the HTTP-serve posture / wiki-git state / a best-effort PyPI update check / workspace coherence; every check runs isolated, so one that raises is its own FAIL line, never a traceback; needs no workspace, exits 1 only on a FAIL),
+manifest / billing / the MCP SDK (`mcp.server.fastmcp` imports, version inside the `mcp>=1.10,<2` pin) / the HTTP-serve posture / wiki-git state / a best-effort PyPI update check / workspace coherence; every check runs isolated, so one that raises is its own FAIL line, never a traceback; needs no workspace, exits 1 only on a FAIL),
 `serve [--http [--host H] [--port P] [--path /mcp] [--read-only]]` (the MCP server — stdio by
 default; `--http` serves the SAME surface over MCP's Streamable HTTP transport for a client that is
 not on this machine, mandatory bearer token, loopback default, optional read-only), `capture <text> [--from WHO] [--topic T]` (append one attributed note from a

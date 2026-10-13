@@ -242,7 +242,8 @@ manager owns it, and a running `citadel.exe` cannot replace itself on Windows.
 
 The MCP SDK's 2.x line renamed the server class citadel builds on, and 0.7.0 did not cap the
 dependency, so a fresh install could resolve `mcp` 2.x and fail at the first import. 0.7.1 declares
-`mcp<2`, so upgrading citadel (the table above) brings a 1.x SDK back. On 0.7.0, pin it in the same
+`mcp>=1.10,<2` (1.10 is the oldest FastMCP that accepts everything citadel's server passes), so
+upgrading citadel (the table above) brings a usable 1.x SDK back. On 0.7.0, pin it in the same
 install: `uv tool install cite-citadel --with "mcp<2"` or `pip install "mcp<2"`. From 0.7.1 on,
 `citadel doctor` has an **MCP SDK** line that names the installed version and the command for your
 install method, and `citadel serve` refuses with that same command instead of a traceback.
