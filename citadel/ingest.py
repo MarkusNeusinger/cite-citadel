@@ -929,13 +929,33 @@ def ingest(
         # Same place, same reason: under the exclusive lock, leftovers on disk belong to dead runs.
         # Age-based only — a checkpoint's own guards decide whether it is USABLE (see resume.sweep).
         resume.sweep()
-        return _ingest_run(paths, progress, full_rescan=full_rescan, force=force, jobs=workers, reingest=reingest)
+        report = IngestReport([], [], [], [])
+        try:
+            return _ingest_run(
+                paths, progress, report, full_rescan=full_rescan, force=force, jobs=workers, reingest=reingest
+            )
+        except BaseException as exc:
+            # The report rides along on whatever ends the run early — above all the Ctrl+C the
+            # source loop captures and re-raises after finalizing, but equally one that lands in a
+            # source's success bookkeeping or in the final index/log/git work. The CLI prints it,
+            # so an interrupted forced run names exactly which sources finished (a date-only
+            # `citadel status` cannot tell them from the unattempted ones on the same day).
+            exc.citadel_report = report
+            raise
 
 
 def _ingest_run(
-    paths: list[str] | None, progress, *, full_rescan: bool, force: bool, jobs: int = 1, reingest: bool = False
+    paths: list[str] | None,
+    progress,
+    report: IngestReport,
+    *,
+    full_rescan: bool,
+    force: bool,
+    jobs: int = 1,
+    reingest: bool = False,
 ) -> IngestReport:
-    """The body of :func:`ingest`, running under the exclusive workspace run lock."""
+    """The body of :func:`ingest`, running under the exclusive workspace run lock. Fills in the
+    ``report`` its caller holds, so the caller still has it when the run ends in an exception."""
 
     # A reingest rides force's partitioning wholesale (sha short-circuit and dedup drop bypassed,
     # stat cache distrusted for the named paths); what it changes beyond force — the cleanup jobs
@@ -996,7 +1016,7 @@ def _ingest_run(
     # rules do not change mid-run and hashing them per source would re-read the tree needlessly).
     model = config.ingest_model_label()
     rules_ver = config.rules_version()
-    report = IngestReport([], [], [], [], model=model)
+    report.model = model
 
     # --- The workspace-identity HARD guard (key-space stability): the manifest was stamped by
     # a DIFFERENT workspace root AND most of its relative keys do not resolve here
@@ -1654,10 +1674,6 @@ def _ingest_run(
     # interrupt still aborts the run (the per-source `finally` already rolled back whichever
     # source was in flight when it landed).
     if pending_interrupt is not None:
-        # The report rides along on the exception: the CLI prints it, so an interrupted forced run
-        # names exactly which sources finished (a date-only `citadel status` cannot tell them from
-        # the unattempted ones on the same day) — the continuation list, not a guess.
-        pending_interrupt.citadel_report = report
         raise pending_interrupt
 
     return report

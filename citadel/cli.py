@@ -1139,13 +1139,18 @@ def _interrupt_message(args: argparse.Namespace, report=None) -> str:
                 "interrupted: sources listed under Processed above are re-imported; a cleanup still in "
                 "flight was rolled back."
             )
+            rest = "Re-run `citadel ingest --reingest` on the requested paths not listed under Processed."
             if not stranded:
-                return f"{state}\nRe-run `citadel ingest --reingest` on the paths not listed under Processed."
+                return f"{state}\n{rest}"
             # Stripped of its old facts with no fresh import yet: out of the wiki and untracked, so a
             # PLAIN ingest of the path imports it as new — another --reingest would only re-clean it.
+            # Every other requested path not under Processed (its cleanup never ran, or was the one in
+            # flight and rolled back) still has its old treatment and needs --reingest itself.
             return (
                 f"{state}\nThese were stripped but not yet re-imported, so they are OUT of the wiki until "
-                f"`citadel ingest <path>` imports them fresh: {', '.join(stranded)}"
+                f"`citadel ingest <path>` imports them fresh: {', '.join(stranded)}\n"
+                "Re-run `citadel ingest --reingest` on every other requested path not listed under "
+                "Processed (its old treatment is untouched)."
             )
         if args.retry:
             hint = "Re-run the same `citadel ingest --retry` command to continue with whatever is still stuck."
@@ -1154,7 +1159,7 @@ def _interrupt_message(args: argparse.Namespace, report=None) -> str:
                 "Re-run `citadel ingest --force` on the requested paths NOT listed under Processed above "
                 "(those are done; forcing them again re-pays their sessions)."
                 if report is not None and report.processed
-                else "Nothing finished; re-run the same `citadel ingest --force` command."
+                else "No source finished; re-run the same `citadel ingest --force` command."
             )
         elif args.paths or steered:
             hint = (
@@ -1265,9 +1270,13 @@ def main(argv: list[str] | None = None) -> int:
         # What finished before Ctrl+C, exactly as a completed run would report it (stdout, like the
         # normal report) — the note below points at its Processed list.
         report = getattr(exc, "citadel_report", None)
-        if report is not None:
-            print(report.render())
-        print(_interrupt_message(args, report), file=sys.stderr)
+        try:
+            if report is not None:
+                print(report.render())
+            print(_interrupt_message(args, report), file=sys.stderr)
+        except OSError:
+            pass  # a pipe closed by the same Ctrl+C (`citadel ingest | tee log`) must not re-raise
+        # past this point as the very traceback the handler exists to replace
         # `argv is None` is the PROCESS entry (the console script and `python -m citadel` both call
         # main() bare); an in-process caller passing argv gets 130 back instead of a dead process.
         if argv is None:

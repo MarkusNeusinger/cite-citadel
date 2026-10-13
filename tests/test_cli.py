@@ -856,7 +856,7 @@ def _interrupted_with(report=None):
         (
             ["ingest", "--force", "raw/a.md"],
             None,
-            "Nothing finished; re-run the same `citadel ingest --force` command.",
+            "No source finished; re-run the same `citadel ingest --force` command.",
         ),
         (
             ["ingest", "--retry"],
@@ -882,19 +882,24 @@ def test_ctrl_c_during_a_forced_ingest_points_at_the_right_way_on(tmp_citadel, m
         assert "Processed:\n  - raw/a.md" in captured.out
 
 
+_REINGEST_REST = "Re-run `citadel ingest --reingest` on the requested paths not listed under Processed."
+
+
 @pytest.mark.parametrize(
     ("report", "note_tail"),
     [
         (
+            # `--reingest a b c`: a re-imported, b stripped only, c's cleanup in flight (rolled back).
             _report(processed=["raw/a.md"], reingest_cleaned=["raw/a.md", "raw/b.md"]),
-            "These were stripped but not yet re-imported, so they are OUT of the wiki until "
-            "`citadel ingest <path>` imports them fresh: raw/b.md",
+            [
+                "These were stripped but not yet re-imported, so they are OUT of the wiki until "
+                "`citadel ingest <path>` imports them fresh: raw/b.md",
+                "Re-run `citadel ingest --reingest` on every other requested path not listed under "
+                "Processed (its old treatment is untouched).",
+            ],
         ),
-        (
-            _report(processed=["raw/a.md", "raw/b.md"], reingest_cleaned=["raw/a.md", "raw/b.md"]),
-            "Re-run `citadel ingest --reingest` on the paths not listed under Processed.",
-        ),
-        (None, "Re-run `citadel ingest --reingest` on the paths not listed under Processed."),
+        (_report(processed=["raw/a.md", "raw/b.md"], reingest_cleaned=["raw/a.md", "raw/b.md"]), [_REINGEST_REST]),
+        (None, [_REINGEST_REST]),
     ],
 )
 def test_ctrl_c_during_a_reingest_names_the_sources_left_out_of_the_wiki(
@@ -903,16 +908,32 @@ def test_ctrl_c_during_a_reingest_names_the_sources_left_out_of_the_wiki(
     """``--reingest`` is NOT rolled back as a unit: its cleanups run first and each one strips the
     source and drops its manifest key as it finishes, so a Ctrl+C during the fresh imports leaves
     those sources absent from the wiki. The note names each one and the way back — a PLAIN ingest of
-    the path (it is untracked now; another --reingest would only re-clean it)."""
+    the path (it is untracked now; another --reingest would only re-clean it) — and still sends every
+    requested path whose cleanup never finished back through --reingest."""
     monkeypatch.setattr(ingest_mod, "ingest", _interrupted_with(report))
-    assert cli.main(["ingest", "--reingest", "raw/a.md", "raw/b.md", "--quiet"]) == 130
+    assert cli.main(["ingest", "--reingest", "raw/a.md", "raw/b.md", "raw/c.md", "--quiet"]) == 130
     note = _note(capsys.readouterr().err)
     assert note == [
         "interrupted: sources listed under Processed above are re-imported; a cleanup still in flight was rolled back.",
-        note_tail,
+        *note_tail,
     ]
     assert "kept in the wiki" not in note[0]
     assert all(line.isascii() for line in note)
+
+
+def test_ctrl_c_with_closed_output_pipes_still_exits_130_without_a_traceback(tmp_citadel, monkeypatch):
+    """`citadel ingest | tee log` + Ctrl+C: the same SIGINT can take the pipe down, and the report /
+    note writes then raise BrokenPipeError — inside the very handler that exists to replace a
+    traceback. Both writes are best-effort."""
+
+    class _ClosedPipe(io.StringIO):
+        def write(self, text):
+            raise BrokenPipeError(32, "Broken pipe")
+
+    monkeypatch.setattr(ingest_mod, "ingest", _interrupted_with(_report(processed=["raw/a.md"])))
+    monkeypatch.setattr(sys, "stdout", _ClosedPipe())
+    monkeypatch.setattr(sys, "stderr", _ClosedPipe())
+    assert cli.main(["ingest", "--force", "raw/a.md", "--quiet"]) == 130
 
 
 @pytest.mark.parametrize(

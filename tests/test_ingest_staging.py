@@ -268,6 +268,29 @@ def test_completed_sources_persisted_before_interrupt(tmp_citadel, fake_agent, s
     assert (wiki / "concepts" / "from-a.md").exists()  # a's page survived b's rollback
 
 
+def test_an_interrupt_during_finalization_still_carries_the_report(tmp_citadel, fake_agent, seed_page, monkeypatch):
+    """The report must ride on ANY interrupt that ends the run, not only the one the source loop
+    captures: a Ctrl+C in the final index rebuild lands after a source was promoted and stamped, and
+    without the report the CLI would tell a forced run that nothing finished — re-paying it."""
+    (tmp_citadel.raw / "a.md").write_text("first\n", encoding="utf-8")
+
+    def fake(rel_key, kind="ingest"):
+        seed_page(
+            "concepts/from-a.md",
+            {"type": "Concept", "title": "From A", "description": "d", "tags": ["x"], "resource": "raw/a.md"},
+            "Fact A.[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - a\n",
+        )
+
+    def interrupted_rebuild(*_args, **_kwargs):
+        raise KeyboardInterrupt()
+
+    fake_agent(side_effect=fake)
+    monkeypatch.setattr(store, "rebuild_indexes", interrupted_rebuild)
+    with pytest.raises(KeyboardInterrupt) as exc:
+        ingest.ingest()
+    assert exc.value.citadel_report.processed == ["raw/a.md"]
+
+
 def test_finalization_runs_for_completed_sources_on_interrupt(tmp_citadel, fake_agent, seed_page):
     """If a Ctrl+C interrupts the run after some sources already completed, the derived files
     (indexes + log) for that completed work are still rebuilt before the interrupt propagates.
