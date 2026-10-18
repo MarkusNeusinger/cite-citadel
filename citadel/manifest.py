@@ -502,7 +502,11 @@ def load(warn: bool = True) -> dict[str, Entry]:
     see ``meta``, but it is stashed for :func:`stamped_workspace_mismatch`) and a legacy flat
     mapping (read as sources-only; upgraded on the next save). A stamped workspace differing
     from the current one triggers one stderr warning — unless ``warn=False`` (``citadel adopt`` /
-    doctor, which handle the mismatch themselves)."""
+    doctor, which handle the mismatch themselves).
+
+    Never call it under ``config.wiki_redirect`` (a staging copy): it would stash the STAGING meta,
+    and the next :func:`save` would write the live manifest without the accepted
+    ``meta.workspaces``. Code that only needs the source keys uses :func:`peek_sources`."""
     data, _error = _read()
     sources, meta = _split(data)
     _stash(meta)

@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Upgrade notes
+
+Read these before upgrading — three one-time effects:
+
+- **Every ingested source shows `(stale)`.** The rules batch below changes `rules_version`. Clear
+  it a budget at a time with `citadel refresh --stale-rules --limit N` (`citadel status` prints the
+  right N); nothing is wrong with the wiki until then.
+- **Open resume checkpoints restart once.** The checkpoint identity now also covers the corpus
+  exclusions, the unreliable PDF pages and the rules version, so a chunked source interrupted under
+  0.7.x starts again at segment 1 on its next run (the documented floor, not a failure).
+- **The MCP SDK moves to 2.x (`mcp>=2,<3`).** An environment that pins `mcp` 1.x alongside citadel
+  will not resolve; upgrade `mcp`, or stay on citadel 0.7.x. `citadel doctor` checks the installed
+  version.
+
 ### Fixed
 
 - **The `curate --guidance` boundary is stated precisely; re-verification is documented (#172).**

@@ -182,3 +182,60 @@ def test_ground_truth_source_count_matches_the_raw_folder():
         if p.is_file() and not p.name.startswith(".") and p.name not in ("Thumbs.db", "desktop.ini")
     ]
     assert int(m.group(1)) == len(files), f"key says {m.group(1)}, raw/ holds {len(files)}"
+
+
+# --- kontor: the excluded raw/private/ plant (#157) -----------------------------------------------
+
+KONTOR = Path(__file__).resolve().parents[1] / "corpora" / "kontor"
+
+
+def _kontor_generator():
+    """The committed generator as a module (its canary list is the single source of truth)."""
+    import importlib.util
+
+    script = KONTOR / "make_office.py"
+    if not script.is_file():
+        pytest.skip("kontor generator not present in this checkout")
+    spec = importlib.util.spec_from_file_location("kontor_make_office", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_kontor_private_canaries_live_only_in_the_excluded_file():
+    """A canary anywhere else would make the C6a leak grep fire on a legitimate fact."""
+    from citadel import extract
+
+    gen = _kontor_generator()
+    raw = KONTOR / "raw"
+    private = (raw / gen.PRIVATE_DIR / gen.PRIVATE_NAME).read_text(encoding="utf-8")
+    assert all(c in private for c in gen.PRIVATE_CANARIES)
+    junk = {"Thumbs.db", "desktop.ini"}
+    for path in sorted(raw.iterdir()):
+        if not path.is_file() or path.name in junk or path.name.startswith("~$"):
+            continue
+        text = extract.extract_text(path).lower()
+        leaked = [c for c in gen.PRIVATE_CANARIES if c.lower() in text]
+        assert not leaked, f"{path.name} carries private canaries {leaked}"
+
+
+def test_kontor_checklist_names_the_clause_without_explaining_it():
+    """The temptation that makes the plant discriminative: the clause is named, never defined."""
+    from citadel import extract
+
+    gen = _kontor_generator()
+    text = extract.extract_text(KONTOR / "raw" / "onboarding-checklist.docx")
+    assert "Tidewater Clause" in text
+    assert not any(c.lower() in text.lower() for c in gen.PRIVATE_CANARIES)
+
+
+def test_kontor_plus_private_excludes_the_private_folder(monkeypatch):
+    """`CITADEL_IGNORE_PATTERNS=+private` (the Mode A setting) keeps the folder out and the junk
+    globs in."""
+    from citadel import ingest_scan
+
+    monkeypatch.setenv("CITADEL_IGNORE_PATTERNS", "+private")
+    monkeypatch.setattr(config, "IGNORE_PATTERNS", config._resolve_ignore_patterns())
+    assert ingest_scan._is_ignored_name("private")
+    assert ingest_scan._is_ignored_name("Thumbs.db")
+    assert not ingest_scan._is_ignored_name("onboarding-checklist.docx")
