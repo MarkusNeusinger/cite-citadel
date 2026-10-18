@@ -5,7 +5,8 @@ sits in —
 
 - **ingested** — folded into the wiki (with the importing model + the rules-tree hash it ran
   under, a ``(stale)`` flag when that hash predates the current rulebook — the ``curate
-  --stale-rules`` signal — and the ``checked`` date a model last verified it, the ``citadel
+  --stale-rules`` plan signal, cleared only by re-verifying the source: ``citadel refresh
+  --stale-rules`` — and the ``checked`` date a model last verified it, the ``citadel
   refresh`` ordering; a ``NO PAGES`` marker calls out a source that NO wiki page cites — it was
   ingested but produced zero entries, the ``citadel ingest --retry`` signal);
 - **failed** — unreadable / errored / timed-out, with the coarse reason and, for a stuck curate-
@@ -32,7 +33,7 @@ import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from . import config, failures, ingest, llm, manifest, store
+from . import config, failures, ingest, llm, manifest, refresh, store
 
 
 # How much of a (long) content hash / rules-version / commit id to show in the table.
@@ -106,6 +107,9 @@ class StatusReport:
     not_included: list[str] = field(default_factory=list)
     pending: list[str] = field(default_factory=list)
     rules_version: str = ""
+    # refresh.stale_count(): how many (stale) sources `citadel refresh --stale-rules` would
+    # re-verify — the K of the closing hint. Render-only (status --json keeps its shape).
+    stale_refreshable: int = 0
 
     def render(self) -> str:
         """A plain-text, ASCII-only per-source table — one bucket per section, counts in the
@@ -210,6 +214,14 @@ class StatusReport:
                 bits.append(f"{uncited} NO PAGES source(s)")
             lines.append("")
             lines.append(f"Retry {' and '.join(bits)} with: citadel ingest --retry")
+        # The (stale) call to action: only the source lifecycle re-stamps a source, so name the
+        # one command whose queue is exactly the stale set (curate re-checks pages and never
+        # clears the marker).
+        if self.stale_refreshable:
+            if not (self.failed or uncited):
+                lines.append("")
+            k = self.stale_refreshable
+            lines.append(f"{k} (stale) source(s): re-verify with {refresh.stale_command(k)}")
 
         return "\n".join(lines).rstrip() + "\n"
 
@@ -370,4 +382,9 @@ def build_status() -> StatusReport:
     report.oversized = oversized
     report.not_included = not_included
     report.ignored = _ignored_names()
+    if any(s.stale_rules for s in report.ingested):
+        try:
+            report.stale_refreshable = refresh.stale_count()
+        except Exception:  # noqa: BLE001 - status is read-only and must degrade, never raise
+            report.stale_refreshable = 0
     return report

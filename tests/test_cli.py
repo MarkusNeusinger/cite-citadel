@@ -17,7 +17,7 @@ import sys
 import pytest
 
 import citadel
-from citadel import cli, config, viewer
+from citadel import cli, config, manifest, viewer
 from citadel import ingest as ingest_mod
 from citadel import lint as lint_mod
 from citadel import store as store_mod
@@ -1059,6 +1059,27 @@ def test_ctrl_c_during_a_scoped_curate_says_re_run_the_same_command(
     assert note[1].endswith(".") and "rebuilds the indexes" not in note[1]
     assert ("a page named under --guidance is planned again even if done" in note[1]) is named_again
     assert "Run `citadel curate` to continue" not in note[1]
+
+
+def test_ctrl_c_during_curate_stale_rules_points_at_refresh(tmp_citadel, monkeypatch, capsys):
+    """Curate never re-stamps a source, so re-running an interrupted --stale-rules plans the
+    applied clusters again: the note names the refresh command that clears (stale)."""
+    from citadel import curate as curate_mod
+
+    def interrupted(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(curate_mod, "curate", interrupted)
+    monkeypatch.setattr(config, "CURATE_GUIDANCE", "", raising=False)
+    src = tmp_citadel.raw / "old.md"
+    src.write_text("body\n", encoding="utf-8")
+    tracked = manifest.load()
+    tracked["raw/old.md"] = manifest.make_entry(manifest.file_sha256(src), "claude:sonnet", "0000oldrules")
+    manifest.save(tracked)
+    assert cli.main(["curate", "--stale-rules"]) == 130
+    note = _note(capsys.readouterr().err)
+    assert "`citadel refresh --stale-rules --limit 1` re-verifies the stale sources" in note[2]
+    assert all(line.isascii() for line in note)
 
 
 @pytest.mark.parametrize("argv", [["view", "--no-open"], ["curate", "--dry-run"], ["serve"]])

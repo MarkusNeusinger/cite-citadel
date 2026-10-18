@@ -6,6 +6,25 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **`curate` no longer re-pays the same rules-drift clusters on every run.** Curate re-checks
+  pages, never whole sources, so it never re-stamps a source's `rules_version` — the `(stale)`
+  marker and the drift plan outlived every curate run, and the docs named `curate --stale-rules`
+  as the fix. Rules drift is now planned **only** under `--stale-rules` (plain `citadel curate` no
+  longer carries it as a permanent paid item that also starved the lower-ranked detectors under
+  `--limit`), and whenever drift is planned the curate report says the marker stays until the
+  source is re-verified (#162, Part A).
+
+### Added
+
+- **`citadel refresh --stale-rules`** narrows the refresh queue to the `(stale)` sources
+  (oldest-checked first, composes with `--min-age-days`), so `--limit K` re-verifies exactly the
+  stale set after a rules edit and clears the marker without spending on fresh sources. `citadel
+  status`, the curate report, and an interrupted `curate --stale-rules` all name the command with
+  the same K; README, `docs/maintenance.md`, the CLI help and the `wiki_health` prompt now point
+  there instead of at curate.
+
 ## [0.7.1] - 2026-10-14
 
 ### Fixed

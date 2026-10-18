@@ -44,11 +44,12 @@ this ONE run a free-text steer ("create one machine registry from the maintenanc
 to each source-reading session's prompt — within the rules, never overriding citations; max 2000
 chars, `CITADEL_INGEST_GUIDANCE` is the env twin, the MCP `wiki_ingest` takes it as a per-call
 argument, and the steer joins the resume checkpoint identity),
-`refresh [--limit N] [--min-age-days D] [--dry-run] [--jobs N]`
+`refresh [--limit N] [--min-age-days D] [--stale-rules] [--dry-run] [--jobs N]`
 (the THIRD lifecycle: re-verify the least-recently-checked sources — ordered by the manifest's
 `ingested_at` stamp, oldest/stampless first — through forced reconcile sessions on an explicit
 per-run budget of N sources; the sustainable alternative to regenerating the wiki after a model
-upgrade), `curate [--dry-run] [--limit N] [--stale-rules]
+upgrade; `--stale-rules` narrows the queue to the `(stale)` sources — the one command that clears
+that marker after a rules edit), `curate [--dry-run] [--limit N] [--stale-rules]
 [--diff PATH] [--retry] [--guidance TEXT] [paths…]` (the SECOND lifecycle: improve EXISTING pages —
 re-sort/split/re-ground/resolve
 contradictions/fix locators — against a recomputed findings checklist; `--guidance` is the curate
@@ -374,7 +375,11 @@ claims a model that never ran.
 
 **Curate is the second wiki lifecycle** (`curate.py`, `citadel curate`). It has **no persisted
 queue — the plan is recomputed from offline detectors every run** (the wiki IS the database):
-`rules_version_drift`, `page_length_hard`, `contradiction`, `orphan`, `llm_drift`, `resort`
+`rules_version_drift` (planned ONLY under `--stale-rules`: curate re-checks pages, never whole
+sources, so it never re-stamps a manifest entry and cannot clear `(stale)` — in the default plan
+drift would be a permanent paid item that also starves the lower-ranked detectors under `--limit`;
+whenever drift is planned the report names `citadel refresh --stale-rules --limit K`, K =
+`refresh.stale_count()`), `page_length_hard`, `contradiction`, `orphan`, `llm_drift`, `resort`
 (type↔folder mismatch via `okf.folder_for_type`), `bad_source` (a `[^sN]` citation that does not
 verify, via `validate.source_issues` — e.g. the dangling citations a failed deletion cleanup
 leaves, closing ingest's failure-hint loop), and `locator` (from `lint.check_locators`);
@@ -419,7 +424,9 @@ manifest entry with an `ingested_at` last-checked time (`manifest.now_iso`; stam
 `mark_done`/the repo done-hook — moves and cache re-stamps CARRY the old stamp, so "last checked"
 never lies). `refresh.plan()` orders the manifest by that stamp (oldest first, a stampless
 pre-refresh entry counting as oldest; only model-imported, still-on-disk sources qualify;
-`--min-age-days` drops fresh ones so scheduled runs self-limit) and `refresh.refresh(limit=N)`
+`--min-age-days` drops fresh ones so scheduled runs self-limit; `stale_only`/`--stale-rules` keeps
+only the sources stamped under an older rules hash, so `--limit K` re-verifies exactly the stale
+set) and `refresh.refresh(limit=N)`
 hands the queue head to `ingest.ingest(paths, force=True)` — one `kind="reconcile"` session per
 source through the existing staging machinery, the success re-stamp rotating it to the back, so
 repeated runs walk the corpus round-robin with NO persisted queue (the manifest IS the queue).
@@ -439,7 +446,9 @@ one notice, not one per source or curate cluster.
 **Status is the read-only corpus view** (`status.py`, `citadel status`): the manifest + failures
 catalog + one stat-only walk (never re-hashes) + one wiki traversal rendered as a per-source state
 table — ingested
-(model + rules_version, `(stale)` when it predates the current rulebook, `checked YYYY-MM-DD` from
+(model + rules_version, `(stale)` when it predates the current rulebook — closed by a
+`K (stale) source(s): re-verify with citadel refresh --stale-rules --limit K` hint (the same K as
+the curate report's), `checked YYYY-MM-DD` from
 the `ingested_at` stamp, the last session's cost when recorded, with copilot's AI credits shown
 beside the dollars they converted into — with `Recorded LLM cost` / `Recorded AI credits` corpus
 totals above the table, and a `NO PAGES (nothing cites this source)` marker on every ingested

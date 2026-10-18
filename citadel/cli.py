@@ -6,7 +6,7 @@
     citadel ingest [paths ...]   # fold raw/ (or explicit paths) into the wiki
     citadel curate [--dry-run] [--limit N] [--stale-rules] [--diff PATH] [--retry]
                    [--guidance TEXT] [paths ...]   # improve existing pages
-    citadel refresh [--limit N] [--min-age-days D] [--dry-run]  # re-verify the least-recently-checked sources
+    citadel refresh [--limit N] [--min-age-days D] [--stale-rules] [--dry-run]  # re-verify the least-recently-checked sources
     citadel status               # per-source corpus state (ingested/failed/skipped/ignored/pending; mirrors wiki_status)
     citadel doctor               # read-only environment/setup health check (OK/WARN/FAIL lines)
     citadel serve [--http [--host H] [--port P] [--path /mcp] [--read-only]]  # run the MCP server (stdio, or Streamable HTTP)
@@ -181,7 +181,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_curate.add_argument(
         "--stale-rules",
         action="store_true",
-        help="Restrict the plan to pages whose source was ingested under an older rulebook.",
+        help="Plan (and restrict the run to) pages whose source was ingested under an older rulebook. "
+        "Curate re-checks pages, not sources, so it does NOT clear the (stale) marker - "
+        "`citadel refresh --stale-rules` does.",
     )
     p_curate.add_argument(
         "--diff",
@@ -231,6 +233,13 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="D",
         help="Only consider sources last checked more than D days ago (default 0: no age floor). "
         "Makes a scheduled run self-limiting: once everything is fresh it becomes a no-op.",
+    )
+    p_refresh.add_argument(
+        "--stale-rules",
+        action="store_true",
+        help="Only consider (stale) sources - those ingested under an older rulebook - oldest-checked "
+        "first, so --limit K re-verifies exactly the stale set and clears its marker. Composes with "
+        "--min-age-days.",
     )
     p_refresh.add_argument(
         "--dry-run",
@@ -670,7 +679,12 @@ def cmd_refresh(args: argparse.Namespace) -> int:
         progress = ConsoleProgress(spinner=not config.LLM_VERBOSE)
     try:
         report = refresh.refresh(
-            limit=args.limit, min_age_days=args.min_age_days, dry_run=args.dry_run, progress=progress, jobs=args.jobs
+            limit=args.limit,
+            min_age_days=args.min_age_days,
+            dry_run=args.dry_run,
+            progress=progress,
+            jobs=args.jobs,
+            stale_only=args.stale_rules,
         )
     finally:
         _stop_progress(progress)
@@ -1197,10 +1211,26 @@ def _interrupt_message(args: argparse.Namespace, report=None) -> str:
             if args.paths and config.CURATE_GUIDANCE
             else ""
         )
-        return (
+        hint = (
             f"{state}\nRe-run the same `citadel curate` command (same paths and flags) to continue - it "
             f"recomputes its plan{named_again}."
         )
+        if args.stale_rules:
+            # Curate never re-stamps a source, so --stale-rules re-plans the clusters this run
+            # already applied; only the source lifecycle clears (stale).
+            from . import refresh
+
+            try:
+                count = refresh.stale_count()
+            except Exception:  # noqa: BLE001 - the interrupt note must print, whatever the manifest holds
+                count = -1
+            if count != 0:  # 0: nothing is (stale) any more, so a re-run plans no drift
+                command_text = refresh.stale_command(count) if count > 0 else "citadel refresh --stale-rules --limit K"
+                hint += (
+                    "\n--stale-rules plans the applied clusters again too (curate does not clear (stale)); "
+                    f"`{command_text}` re-verifies the stale sources and clears it."
+                )
+        return hint
     return "interrupted"
 
 

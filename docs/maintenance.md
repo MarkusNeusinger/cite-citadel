@@ -18,8 +18,12 @@ promoted, anything else is rolled back — the live wiki is never left half-edit
 
 When to run it:
 
-- **After editing the rules** (see below): `citadel curate --stale-rules` refreshes pages whose
-  sources were ingested under an older rulebook (`citadel status` marks them `(stale)`).
+- **After editing the rules** (see below): `citadel status` marks every source ingested under the
+  older rulebook `(stale)`. `citadel refresh --stale-rules --limit K` re-verifies exactly those
+  sources and clears the marker. `citadel curate --stale-rules` re-checks their citing *pages*
+  (one session for a hub page citing many stale sources), but curate never re-stamps a source,
+  so it does not clear `(stale)` and plans the same pages again on the next run. Plain
+  `citadel curate` no longer plans rules drift at all.
 - **Periodically on a growing wiki**: after many ingest runs, `citadel lint` tends to accumulate
   advisories (contradictions, orphans, locator issues) — curate works through them.
 - **Preview first**: `citadel curate --dry-run` prints the plan and runs zero agent sessions.
@@ -30,7 +34,7 @@ Flags:
 |------|--------------|
 | `--dry-run` | Recompute and print the plan only; run zero agent sessions, leave the wiki untouched. |
 | `--limit N` | Curate at most the first N clusters of the plan (of the *scoped* plan when paths are given). |
-| `--stale-rules` | Restrict the plan to pages whose source was ingested under an older rulebook. |
+| `--stale-rules` | Plan (and restrict the run to) pages whose source was ingested under an older rulebook. Does **not** clear `(stale)` — `citadel refresh --stale-rules` does. |
 | `--diff PATH` | Write a per-page change report (unified diffs) for this run to PATH. |
 | `--retry` | Include attempt-capped clusters in this run (see below). |
 | `--guidance TEXT` | This run's structural steer (see below). |
@@ -98,7 +102,13 @@ of ever rebuilding it.
 citadel refresh --dry-run                      # show the head of the queue: who is due, and since when
 citadel refresh --limit 10                     # re-verify the 10 least-recently-checked sources
 citadel refresh --limit 20 --min-age-days 30   # monthly budget: skip anything checked in the last 30 days
+citadel refresh --stale-rules --limit 12       # after a rules edit: re-verify only the (stale) sources
 ```
+
+`--stale-rules` cuts the queue down to the sources `citadel status` marks `(stale)` (oldest-checked
+first, composes with `--min-age-days`), so `--limit K` with K = the stale count re-verifies exactly
+that set and never spends on a fresh source. `citadel status` and the curate report print the
+command with the right K.
 
 How it works: every successful agent session stamps its source's manifest entry with an
 `ingested_at` last-checked time (`citadel status` shows it as `checked YYYY-MM-DD`). Refresh
@@ -215,4 +225,6 @@ Two customization mechanisms, from lightest to heaviest:
 
 Any edit to an effective rules file changes the rules version stamped per source, so
 `citadel status` shows previously ingested sources as `(stale)` — that is expected, and
-`citadel curate --stale-rules` is the command that brings those pages up to the new rules.
+`citadel refresh --stale-rules --limit K` is the command that re-verifies those sources under the
+new rules and clears the marker (`citadel status` prints it with the right K). `citadel curate
+--stale-rules` re-checks the citing pages instead, but never clears `(stale)`.

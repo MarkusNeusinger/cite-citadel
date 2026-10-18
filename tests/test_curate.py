@@ -67,16 +67,68 @@ def _reasons_for(plan, page: str) -> set[str]:
 
 def test_detector_flags_rules_version_drift(tmp_citadel, seed_page):
     """A page whose source was ingested under an OLDER effective-rules hash than the current one
-    is flagged for a re-curate pass (the manifest stamp vs config.rules_version())."""
+    is flagged for a re-curate pass (the manifest stamp vs config.rules_version()) — but ONLY under
+    --stale-rules: curate never re-stamps a source, so in the default plan drift would be a
+    permanent paid item on every run (#162)."""
     from citadel import curate
 
     (tmp_citadel.raw / "notes.md").write_text("body\n", encoding="utf-8")
     _seed_cited(seed_page, "concepts/topic.md", "raw/notes.md")
     _track("raw/notes.md", manifest.file_sha256(tmp_citadel.raw / "notes.md"), "0000oldrules")
 
-    plan = curate.build_plan()
+    plan = curate.build_plan(stale_rules=True)
     assert "concepts/topic.md" in _plan_pages(plan)
     assert "rules_version_drift" in _reasons_for(plan, "concepts/topic.md")
+    assert "rules_version_drift" not in _reasons_for(curate.build_plan(), "concepts/topic.md")
+
+
+def test_plain_plan_with_a_stale_source_reaches_the_lower_ranked_detectors(tmp_citadel, seed_page):
+    """Drift ranks above locator; were it planned by default, `--limit 1` would pick the stale
+    page on every run and starve the locator fix. Gated behind --stale-rules, it does not."""
+    from citadel import curate
+
+    (tmp_citadel.raw / "aaa.md").write_text("body\n", encoding="utf-8")
+    _seed_cited(seed_page, "concepts/aaa.md", "raw/aaa.md", title="Aaa")
+    _track("raw/aaa.md", manifest.file_sha256(tmp_citadel.raw / "aaa.md"), "0000oldrules")
+    (tmp_citadel.raw / "notes.md").write_text("one\ntwo\n", encoding="utf-8")
+    seed_page(
+        "concepts/zzz.md",
+        {"type": "Concept", "title": "Zzz", "description": "d", "tags": ["t"], "resource": "raw/notes.md"},
+        "A fact.[^s1]\n\n## Sources\n\n[^s1]: [raw/notes.md](../../raw/notes.md), lines 30-40 - out of range\n",
+    )
+
+    plan = curate.build_plan(limit=1)
+    assert [item.page for item in plan.items] == ["concepts/zzz.md"]
+    assert curate.REASON_LOCATOR in plan.items[0].reasons
+
+
+def test_curate_report_names_refresh_stale_rules_whenever_drift_is_planned(tmp_citadel, seed_page):
+    """Curate re-checks pages, never sources: whenever the plan carries rules drift, the report
+    (dry run and real) says so and names the refresh command with K = the refresh stale queue."""
+    from citadel import curate, refresh
+
+    for name in ("a.md", "b.md"):
+        (tmp_citadel.raw / name).write_text("body\n", encoding="utf-8")
+        _track(f"raw/{name}", manifest.file_sha256(tmp_citadel.raw / name), "0000oldrules")
+    _seed_cited(seed_page, "concepts/a.md", "raw/a.md", title="A")
+
+    text = curate.curate(dry_run=True, stale_rules=True).render()
+    assert refresh.stale_count() == 2
+    assert "Curate re-checks pages, not sources: 2 source(s) stay (stale)" in text
+    assert "`citadel refresh --stale-rules --limit 2`" in text
+    assert text.isascii()
+
+    # Without --stale-rules nothing plans drift, so no hint.
+    assert "citadel refresh --stale-rules" not in curate.curate(dry_run=True).render()
+
+
+def test_curate_stale_hint_never_suggests_a_zero_refresh_budget():
+    """A drifted source refresh cannot take (gone, never model-imported) makes K 0; `--limit 0`
+    is refused by refresh, so the hint falls back to the forced ingest alone."""
+    from citadel import curate
+
+    text = curate._stale_hint(0)
+    assert "--limit" not in text and "citadel ingest --force <paths>" in text
 
 
 def test_detector_flags_overlong_page_at_hard_threshold(tmp_citadel, seed_page):

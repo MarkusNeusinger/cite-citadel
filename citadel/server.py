@@ -618,7 +618,8 @@ def wiki_health() -> str:
         "citations, broken links, locator issues).\n"
         "Summarize both briefly, then recommend the single most useful next action: wiki_ingest "
         "when sources are pending or failed-retryable, `citadel curate` for page-quality "
-        "findings, `citadel refresh` for aging ingested sources (both CLI-only lifecycles). "
+        "findings, `citadel refresh` for aging ingested sources, `citadel refresh --stale-rules` "
+        "for (stale) sources - curate does not clear that marker (both CLI-only lifecycles). "
         "Keep the whole review short and actionable."
     )
 
