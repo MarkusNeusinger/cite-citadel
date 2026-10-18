@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deterministic, stdlib-only generator for the `gazette` PDF test corpus.
 
-This script hand-writes four small, strictly-valid PDF 1.4 files into
+This script hand-writes seven small, strictly-valid PDF 1.4 files into
 ``corpora/gazette/raw/`` for use as cite-citadel ingest fixtures. It uses ONLY
 the Python standard library (``zlib`` for image compression, ``pathlib``/``sys``)
 -- no reportlab, PIL, or fpdf. Output is fully deterministic: no timestamps, no
@@ -9,7 +9,11 @@ randomness, no ``datetime.now()``. Running it again reproduces the same bytes.
 
 The files exercise different PDF-extraction behaviours:
 
-  1. feature-article.pdf  -- 2 pages, text-only (Helvetica text layer).
+  1. feature-article.pdf  -- 2 pages, text-only (Helvetica text layer), each page
+                             closed by the issuer's letterhead footer (company
+                             number, VAT ID, directors, bank and phone details)
+                             -- page furniture about the PUBLISHER, not facts
+                             about the article's subject.
   2. figure-brief.pdf     -- 1 page, text body + an embedded chart raster whose
                              numeric value ("0.42 (Nov 14)") lives ONLY in pixels.
   3. preprint.pdf         -- 2 pages, text-only, shaped like an academic preprint.
@@ -22,6 +26,20 @@ The files exercise different PDF-extraction behaviours:
                              edge visible.
   5. scanned-notice.pdf   -- 1 page that is a single full-page image, NO text
                              layer at all (text extraction yields nothing).
+  6. calibration-sheet.pdf -- 2 pages. Page 1: a full-page raster of a two-up
+                             SENSOR | OFFSET table PLUS an invisible (``3 Tr``),
+                             OCR-like text layer that serializes the table
+                             wrongly -- every label first, then a scrambled run
+                             of values with 0/O and 1/l slips -- so the layer
+                             cannot pair a value with its label and
+                             ``citadel.pdftext.unreliable_pages`` flags the page.
+                             Page 2: clean visible notes, so the source keeps
+                             its text pass (not the all-pages-garbled case).
+  7. open-night.pdf       -- 1 page, text-only: a public open-night invitation
+                             stating the LOCAL start time. Its same-basename twin
+                             ``raw/open-night.ics`` (hand-written, committed as
+                             plain text) carries the same event in UTC and is the
+                             one dedup-by-basename skips.
 
 PDF byte-plumbing notes (why the xref is byte-exact):
   * The file is assembled as a single growing ``bytearray``. Every object's
@@ -442,12 +460,27 @@ def make_notice_raster() -> tuple[int, int, bytes]:
 
 
 # ===========================================================================
-# 5. The four documents
+# 5. The documents
 # ===========================================================================
 
 
+# The issuer's letterhead footer, repeated on BOTH pages of the feature. Every detail is fictional
+# (the phone number sits in Ofcom's reserved drama range) and is about the PUBLISHER, never the
+# article's subject: it is page furniture that must not become wiki facts.
+FEATURE_FOOTER = [
+    "The Meridian Gazette Ltd  |  Registered in England, company no. 08814327  |  VAT ID GB 291 4471 06",
+    "Directors: Helena Marsh-Ostrander, Tobias Wrenfield  |  Bank: IBAN GB29 MRDN 6016 1331 9268 19",
+    "Newsroom: +44 20 7946 0318  |  Registered office: 14 Lantern Row, Meridian Quay",
+]
+
+
+def footer_block() -> str:
+    """The letterhead footer, small print at the foot of a page (drawn LAST, so it extracts last)."""
+    return text_block(MARGIN, 64, 7, 9, FEATURE_FOOTER)
+
+
 def build_feature_article() -> bytes:
-    """2 pages, text only: the tardigrade science feature."""
+    """2 pages, text only: the tardigrade science feature, with the issuer's footer on each page."""
     b1 = (
         "Tardigrades, the microscopic invertebrates commonly called water bears, "
         "endure near-total desiccation by entering a dormant state called "
@@ -480,12 +513,14 @@ def build_feature_article() -> bytes:
     p1 += text_block(MARGIN, 708, 10, 12, ["The Meridian Gazette  |  Science"])
     page1_lines = wrap(b1) + [""] + wrap(b2) + [""] + wrap(b3)
     p1 += text_block(MARGIN, 675, 11, 15, page1_lines)
+    p1 += footer_block()
 
     # --- Page 2 content ---
     p2 = ""
     page2_lines = wrap(b4) + [""] + wrap(b5)
     p2 += text_block(MARGIN, 730, 11, 15, page2_lines)
     p2 += text_block(MARGIN, 560, 11, 15, [closing])
+    p2 += footer_block()
 
     pdf = PDFBuilder()
     catalog = pdf.alloc()
@@ -616,7 +651,13 @@ _TRANSECT_PLACES = (
 
 _TRANSECT_ASPECTS = ("north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west")
 _TRANSECT_SOILS = ("shallow podzol", "blocky scree", "peaty gley", "sandy loam", "fractured schist", "clay till")
-_TRANSECT_DAMAGE = ("none recorded", "light bark-beetle scarring", "old wind snap", "browsing on leaders", "frost crack")
+_TRANSECT_DAMAGE = (
+    "none recorded",
+    "light bark-beetle scarring",
+    "old wind snap",
+    "browsing on leaders",
+    "frost crack",
+)
 
 
 def _transect_record(i: int) -> list[str]:
@@ -734,6 +775,155 @@ def build_scanned_notice() -> bytes:
     return pdf.build()
 
 
+# The calibration sheet's table: (sensor, offset) as the PAGE IMAGE pairs them. Two side-by-side
+# blocks of three rows; multi-word names, all offsets distinct positive decimals.
+CALIBRATION_LEFT = (
+    ("Dome Humidity Probe", "0.12"),
+    ("Mirror Cell Thermistor", "0.35"),
+    ("Primary Focus Encoder", "0.08"),
+)
+CALIBRATION_RIGHT = (("Seeing Monitor Camera", "0.21"), ("Wind Mast Anemometer", "0.47"), ("Sky Quality Meter", "0.16"))
+CALIBRATION_HEADER = (
+    "Cinder Peak Observatory",
+    "Instrument desk  -  Sensor Calibration Sheet",
+    "Issued 22 April 2026  -  checked by Ines Varga",
+)
+# The OCR layer's value run: scrambled against the label order (a naive in-order zip pairs EVERY
+# label with a wrong offset) with two 0/O and one 1/l slip at the ends, so the middle four lines
+# stay purely numeric -- the column-serialization signal of ``pdftext.unreliable_pages``.
+CALIBRATION_OCR_VALUES = ("O.2l", "0.12", "0.47", "0.35", "0.16", "0.O8")
+
+
+def make_calibration_raster() -> tuple[int, int, bytes]:
+    """The full-page calibration-sheet raster: header + two-up SENSOR | OFFSET table, in pixels."""
+    W, H = 600, 780
+    px = bytearray(b"\xff" * (W * H))
+
+    y = 70
+    for text, scale in ((CALIBRATION_HEADER[0], 3), (CALIBRATION_HEADER[1], 2), (CALIBRATION_HEADER[2], 2)):
+        draw_text(px, W, H, centered_x(W, text, scale), y, text, scale)
+        y += 7 * scale + 22
+
+    # Two blocks, each a 2-column ruled table: SENSOR (wide) | OFFSET (narrow).
+    top = 240
+    row_h = 34
+    blocks = ((30, CALIBRATION_LEFT), (310, CALIBRATION_RIGHT))
+    for x0, rows in blocks:
+        width = 260
+        split = x0 + 190
+        n_rows = len(rows) + 1  # + header row
+        bottom = top + n_rows * row_h
+        for r in range(n_rows + 1):
+            fill_rect(px, W, H, x0, top + r * row_h, x0 + width, top + r * row_h + 2, 0)
+        for x in (x0, split, x0 + width - 2):
+            fill_rect(px, W, H, x, top, x + 2, bottom + 2, 0)
+        draw_text(px, W, H, x0 + 8, top + 13, "SENSOR", 1)
+        draw_text(px, W, H, split + 8, top + 13, "OFFSET", 1)
+        for i, (name, offset) in enumerate(rows, 1):
+            ry = top + i * row_h + 13
+            draw_text(px, W, H, x0 + 8, ry, name, 1)
+            draw_text(px, W, H, split + 8, ry, offset, 1)
+    return W, H, bytes(px)
+
+
+CALIBRATION_NOTES = (
+    "Each offset on the previous page is subtracted from the sensor's raw reading before the value "
+    "enters the nightly log. The six sensors were checked against the instrument desk's reference "
+    "set on 21 April 2026, and the sheet replaces every earlier calibration sheet for these "
+    "sensors. The next scheduled calibration is due in October 2026, or "
+    "sooner if any sensor is moved or replaced. Questions about the sheet go to the instrument desk."
+)
+
+
+def build_calibration_sheet() -> bytes:
+    """2 pages: a scanned calibration table under a garbled OCR layer, then clean notes.
+
+    Page 1 is the calibration-sheet raster under an invisible (``3 Tr``) text layer that reads like a
+    careless OCR pass: the header is clean, but the table comes out as all six labels first (left
+    block, then right) and then a detached, scrambled value run (:data:`CALIBRATION_OCR_VALUES`).
+    Only the page image pairs a sensor with its offset. Page 2 is ordinary visible text (the notes),
+    so the source is NOT the "every text page is garbled" degenerate case: ingest keeps the text pass
+    and names page 1 alone as the one to read from its page image.
+    """
+    W, H, gray = make_calibration_raster()
+    disp_w, disp_h = 600, 780
+    tx = (PAGE_W - disp_w) // 2
+    ty = (PAGE_H - disp_h) // 2
+
+    # Raster pixel row -> PDF y (1:1 scale, origin bottom-left).
+    def pdf_y(row: int) -> int:
+        return ty + disp_h - row
+
+    ocr: list[tuple[int, int, str]] = []  # (x, y, text) in emission order
+    ocr.append((tx + 120, pdf_y(90), CALIBRATION_HEADER[0]))
+    ocr.append((tx + 80, pdf_y(135), CALIBRATION_HEADER[1]))
+    ocr.append((tx + 60, pdf_y(171), CALIBRATION_HEADER[2]))
+    labels = [name for name, _ in CALIBRATION_LEFT] + [name for name, _ in CALIBRATION_RIGHT]
+    for i, name in enumerate(labels):
+        col_x = 30 if i < len(CALIBRATION_LEFT) else 310
+        row = 240 + (i % len(CALIBRATION_LEFT) + 1) * 34 + 20
+        ocr.append((tx + col_x + 8, pdf_y(row), name))
+    for i, value in enumerate(CALIBRATION_OCR_VALUES):
+        ocr.append((tx + 520, pdf_y(420 + i * 20), value))
+
+    content = f"q {disp_w} 0 0 {disp_h} {tx} {ty} cm /Im0 Do Q\n"
+    parts = ["BT", "3 Tr", "/F1 9 Tf"]
+    for x, y, text in ocr:
+        parts.append(f"1 0 0 1 {x} {y} Tm")
+        parts.append(f"({_escape(text)}) Tj")
+    parts.append("ET")
+    content += "\n".join(parts) + "\n"
+
+    notes = ""
+    notes += text_block(MARGIN, 730, 14, 14, ["Calibration notes"])
+    notes += text_block(MARGIN, 708, 11, 15, wrap(CALIBRATION_NOTES))
+
+    pdf = PDFBuilder()
+    catalog = pdf.alloc()
+    pages = pdf.alloc()
+    font = pdf.add(font_object())
+    img = pdf.add(image_object(W, H, gray))
+    c1 = pdf.add(stream_object("", content.encode("latin-1")))
+    c2 = pdf.add(stream_object("", notes.encode("latin-1")))
+    page1 = pdf.add(page_object(pages, c1, font_ref=font, image_ref=img))
+    page2 = pdf.add(page_object(pages, c2, font_ref=font))
+    pdf.put(catalog, catalog_object(pages))
+    pdf.put(pages, pages_object([page1, page2]))
+    pdf.root = catalog
+    return pdf.build()
+
+
+def build_open_night() -> bytes:
+    """1 page, text only: the public open-night invitation (LOCAL time; its .ics twin is UTC)."""
+    body = (
+        "Cinder Peak Observatory invites the public to an open night on Saturday 13 June 2026. "
+        "Doors open at 21:30 local time (BST) on the visitor terrace, and the evening ends at "
+        "00:30. Visitors will tour the dome and look through the new 1.2-metre telescope, weather "
+        "permitting. Entry is free, but places are limited and must be booked in advance with the "
+        "observatory's outreach desk (outreach@cinderpeak.example)."
+    )
+    practical = (
+        "Bring warm clothing: the terrace is unheated and exposed. If the sky is overcast the tour of "
+        "the dome goes ahead and the telescope session is replaced by a talk in the visitor room."
+    )
+
+    content = ""
+    content += text_block(MARGIN, 730, 16, 16, ["Public Open Night at Cinder Peak"])
+    content += text_block(MARGIN, 710, 10, 12, ["Cinder Peak Observatory  |  Outreach desk"])
+    content += text_block(MARGIN, 685, 11, 15, wrap(body) + [""] + wrap(practical))
+
+    pdf = PDFBuilder()
+    catalog = pdf.alloc()
+    pages = pdf.alloc()
+    font = pdf.add(font_object())
+    c1 = pdf.add(stream_object("", content.encode("latin-1")))
+    page1 = pdf.add(page_object(pages, c1, font_ref=font))
+    pdf.put(catalog, catalog_object(pages))
+    pdf.put(pages, pages_object([page1]))
+    pdf.root = catalog
+    return pdf.build()
+
+
 # ===========================================================================
 # 6. Entry point
 # ===========================================================================
@@ -749,6 +939,8 @@ def main() -> int:
         ("preprint.pdf", build_preprint),
         ("field-survey.pdf", build_field_survey),
         ("scanned-notice.pdf", build_scanned_notice),
+        ("calibration-sheet.pdf", build_calibration_sheet),
+        ("open-night.pdf", build_open_night),
     ]
 
     for name, builder in documents:

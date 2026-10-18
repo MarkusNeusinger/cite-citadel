@@ -127,12 +127,17 @@ multi-segment chunking, relationship extraction, in-novel misinformation, narrat
 agent must treat them as content, never execute them), **clockwork** (a whole git repository folded
 in as ONE digest via `CITADEL_REPO_SUPPORT`, with a second commit driving `repo-reconcile` — its
 committed inputs are the `repo-src/` + `repo-src-wave2/` trees materialized into a checkout, since a
-git repo cannot be committed inside this repo), **flurfunk** (seven informal-genre sources — a
-chat export, a tweet thread, an interview, a job application, a forum thread, an announcement —
-grading attribution, "X said Y" ≠ "Y is true", in-thread reversal, and CV timelines), **gazette**
-(five PDF/markdown sources whose stdlib-generated PDFs grade `CITADEL_PDF_MODE` text-vs-images — a
-figure-only number and an image-only page absent in text mode, present in images mode — plus the
-academic-publications genre and references-are-not-sources), and **kontor** (binary Office documents — OOXML `.pptx`/`.docx`/`.xlsx` and legacy OLE `.doc`/`.ppt`/`.xls`, generated stdlib-only via `make_office.py` — the sole test of the Office text-extraction path (`extract.py` + `extract_ole.py`), an embedded-chart **image delta** (`CITADEL_IMAGE_SUPPORT`), **dedup-by-basename**, and **ignore-patterns**, with the same discriminative judgment traps as the hardened corpora — all fictional, Aldervik Kontor), and **werkhof** (uniform enumerable sources — a 28-machine register, a 20-code fault catalogue, a 15-customer CSV, plus a service report — grading `Registry`-page completeness (no entry compressed away), per-row citations with locators, promotion past the granularity floor, a dated status supersession, and near-miss key discipline — all fictional, Werkhof Anlagenservice Brandt). **Each corpus carries its own committed,
+git repo cannot be committed inside this repo), **flurfunk** (eleven informal-genre sources — a
+chat export, a tweet thread, an interview, a job application, a forum thread, an announcement, and a
+`retros/` folder whose README note caveats its three siblings — grading attribution, "X said Y" ≠
+"Y is true", in-thread reversal, CV timelines, partial lists as a union, a source's own to-do kept
+out, and folder-note caveats), **gazette**
+(nine PDF/markdown/`.ics` sources whose stdlib-generated PDFs grade `CITADEL_PDF_MODE` text-vs-images —
+a figure-only number and an image-only page absent in text mode, present in images mode — plus the
+academic-publications genre, references-are-not-sources, a garbled OCR layer read from the page image
+(`pdftext.unreliable_pages`), a letterhead footer kept out of the facts, and an `.ics` deduped behind
+its PDF twin), and **kontor** (binary Office documents — OOXML `.pptx`/`.docx`/`.xlsx` and legacy OLE `.doc`/`.ppt`/`.xls`, generated stdlib-only via `make_office.py` — the sole test of the Office text-extraction path (`extract.py` + `extract_ole.py`), an embedded-chart **image delta** (`CITADEL_IMAGE_SUPPORT`), **dedup-by-basename**, **ignore-patterns**, and **source-exclusion enforcement** (an excluded
+`raw/private/` file under `CITADEL_IGNORE_PATTERNS=+private`, with canaries), with the same discriminative judgment traps as the hardened corpora — all fictional, Aldervik Kontor), and **werkhof** (uniform enumerable sources — a 28-machine register, a 20-code fault catalogue, a 15-customer CSV, plus a service report — grading `Registry`-page completeness (no entry compressed away), per-row citations with locators, promotion past the granularity floor, a dated status supersession, and near-miss key discipline — all fictional, Werkhof Anlagenservice Brandt). **Each corpus carries its own committed,
 graded showcase wiki** at `corpora/<name>/wiki/` (its own nested `citadel.toml` marker,
 `meta.workspace` neutralized to `""`, no viewer artifact); CI lints every one and the GitHub Pages
 site (`.github/workflows/pages.yml`) builds a **gallery** with one offline viewer per corpus. Each
