@@ -494,3 +494,117 @@ def test_pdf_kind_prompt_names_the_pdf_brief_and_window(tmp_citadel):
 
     reconcile = llm._build_instruction("raw/report.pdf", kind="pdf-reconcile", read_path="prep.md")
     assert "formats/pdf.md" in reconcile and "tasks/reconcile.md" in reconcile
+
+
+# --- #165: per-page text-layer reliability ------------------------------------------------------
+
+_PROSE = (
+    "The observatory opened its new dome in the spring and the first nights were spent calibrating "
+    "the mirror against known stars while the weather held clear over the ridge"
+)
+_PROSE_DE = (
+    "Die Sternwarte eröffnete im Frühjahr ihre neue Kuppel und die ersten Nächte dienten der "
+    "Kalibrierung des Spiegels an bekannten Sternen während das Wetter über dem Grat klar blieb"
+)
+_COLUMN_TABLE = "\n".join(
+    ["Primary mirror sensor", "Dome humidity probe", "Focus motor encoder", "Shutter limit switch",
+     "Guide camera offset", "Filter wheel index", "0.12", "0.35", "0.08", "0.21", "0.44", "0.17"]
+)  # fmt: skip
+
+
+def _extraction(*pages: str) -> str:
+    return "\n\n".join(f"[p. {n}]\n{body}" for n, body in enumerate(pages, 1)) + "\n"
+
+
+def test_a_column_serialized_page_is_flagged():
+    assert pdftext.unreliable_pages(_extraction(_PROSE, _COLUMN_TABLE)) == (2,)
+
+
+def test_an_ocr_noise_page_is_flagged():
+    noise = " ".join(["t h e", "c0de", "|", "o b s", "~", "1l1", "e r v", "a t o r y"] * 3)
+    assert pdftext.unreliable_pages(_extraction(noise)) == (1,)
+
+
+def test_clean_prose_and_small_or_non_latin_pages_are_never_flagged():
+    cyrillic = " ".join(["обсерватория"] * 25)
+    text = _extraction(_PROSE, _PROSE_DE, "0.12\n0.35\n0.08\n0.21", "", cyrillic)
+    assert pdftext.unreliable_pages(text) == ()
+
+
+def test_format_pages_collapses_ranges():
+    assert pdftext.format_pages([7, 2, 5, 6]) == "p. 2, pp. 5-7"
+
+
+def test_a_pdf_with_one_garbled_page_names_it_to_the_session(tmp_citadel, fake_agent, cite_page, monkeypatch):
+    (tmp_citadel.raw / "sheet.pdf").write_bytes(b"%PDF-1.4\nfixture\n")
+    monkeypatch.setattr(pdftext, "text_for", lambda src, sha=None: _extraction(_PROSE, _COLUMN_TABLE))
+    seen: dict = {}
+
+    def fake(rel_key, kind="ingest", read_path=None, segment=None, line_range=None, visual_pages=None):
+        seen.update(kind=kind, visual_pages=visual_pages)
+        cite_page("misc/sheet.md", rel_key, "A sheet fact.")
+
+    fake_agent(side_effect=fake)
+    report = ingest.ingest()
+    assert seen == {"kind": "pdf", "visual_pages": (2,)}
+    assert "PDF pages read visually (unreliable text layer):" in report.render()
+    assert "raw/sheet.pdf (p. 2)" in report.render()
+    report.render().encode("ascii")
+
+
+def test_a_clean_pdf_session_carries_no_visual_pages(tmp_citadel, fake_agent, cite_page, monkeypatch):
+    (tmp_citadel.raw / "clean.pdf").write_bytes(b"%PDF-1.4\nfixture\n")
+    monkeypatch.setattr(pdftext, "text_for", lambda src, sha=None: _extraction(_PROSE))
+    kwargs_seen: list = []
+
+    def fake(rel_key, **kwargs):
+        kwargs_seen.append(kwargs)
+        cite_page("misc/clean.md", rel_key, "A fact.")
+
+    fake_agent(side_effect=fake)
+    ingest.ingest()
+    assert "visual_pages" not in kwargs_seen[0]
+
+
+def test_every_page_garbled_reads_without_the_text_layer(tmp_citadel, fake_agent, cite_page, monkeypatch):
+    (tmp_citadel.raw / "noise.pdf").write_bytes(b"%PDF-1.4\nfixture\n")
+    monkeypatch.setattr(pdftext, "text_for", lambda src, sha=None: _extraction(_COLUMN_TABLE))
+    seen: dict = {}
+
+    def fake(rel_key, kind="ingest", read_path=None, **kw):
+        seen.update(kind=kind, read_path=read_path)
+        cite_page("misc/noise.md", rel_key, "A fact.")
+
+    fake_agent(side_effect=fake)
+    report = ingest.ingest()
+    assert seen == {"kind": "ingest", "read_path": None}
+    assert "every text page unreliable" in report.render()
+
+
+def test_chunked_passes_only_get_the_pages_that_begin_in_their_window():
+    passes = [(None, (1, 2), (1, 10)), (None, (2, 2), (11, 20))]
+    text = "\n".join(["[p. 1]"] + ["x"] * 9 + ["[p. 2]"] + ["y"] * 9)
+    assert ingest._visual_pages_per_pass(passes, text, (2,)) == [(), (2,)]
+
+
+def test_plan_shape_hashes_named_pages_only_when_present(tmp_citadel):
+    from citadel import ingest_sessions
+
+    passes = [(None, (1, 2), (1, 10)), (None, (2, 2), (11, 20))]
+    base = ingest_sessions._plan_shape(passes)
+    assert ingest_sessions._plan_shape(passes, [(), ()]) == base
+    assert ingest_sessions._plan_shape(passes, [(), (2,)]) != base
+
+
+def test_visual_bullet_only_for_pdf_kinds_ascii_and_capped(tmp_citadel):
+    from citadel import llm
+
+    prompt = llm._build_instruction("raw/x.pdf", "pdf", "/tmp/x.md", None, None, (2, 5, 6, 7))
+    lines = prompt.splitlines()
+    i = next(k for k, line in enumerate(lines) if line.startswith("- PDF mode:"))
+    assert lines[i + 1].startswith("- Unreliable text layer") and lines[i + 1].endswith("p. 2, pp. 5-7")
+    assert lines[i + 1].isascii()
+    assert "Unreliable text layer" not in llm._build_instruction("raw/x.pdf", "ingest", None, None, None, (2,))
+    many = tuple(range(1, 63, 2))  # 31 single-page ranges
+    capped = llm._build_instruction("raw/x.pdf", "pdf", "/tmp/x.md", None, None, many)
+    assert "(+1 more pages" in capped and len(capped) < 8000

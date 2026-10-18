@@ -554,7 +554,13 @@ when pypdf imports, which it always does unless deliberately uninstalled) a
 genuine PDF's (`%PDF-` magic) text layer is extracted once per content into a `[p. N]`-page-marked
 line-stable text, cached content-addressed in `.citadel_pdftext/` beside the wiki — the agent
 reads it under the `pdf`/`pdf-reconcile` kinds while citing the original `.pdf` with `lines A-B`
-locators the same cache lets `lint`/`wiki_raw`/the viewer verify offline; `text_for` is the ingest
+locators the same cache lets `lint`/`wiki_raw`/the viewer verify offline; A page whose extracted layer is garbled (`pdftext.unreliable_pages`: a column-serialized
+table — a run of ≥4 number-only lines — or OCR noise, judged per `[p. N]` page, pure and
+deterministic over the cached text, the extraction itself never changed) is named to the session
+in a `- Unreliable text layer` bullet (per pass, by the window its marker line begins in; hashed
+into the resume plan shape) so the agent reads THAT page from the page image (`p. N`); when every
+text-bearing page is garbled the source is read as if it had no text layer; both land on the run
+report's `PDF pages read visually` list. `text_for` is the ingest
 seam, strictly best-effort (scanned / encrypted / corrupt / pypdf force-removed → None → the
 agent-native read with agent-verified `p. N` locators — never a failed source).
 `resume.py` is the chunked-source resume-checkpoint store (`CITADEL_RESUME`): after each completed segment ingest banks the promote-shaped delta in `.citadel_resume/` beside the wiki, guarded by identity (source sha, model, rules version, segment content, prompt knobs), blob integrity, per-page live base state, re-validation of the replay and an attempt cap — so an interrupted large source continues at its failed segment instead of re-buying the earlier ones, and every guard failure degrades to a full restart. `curate.py` is the second lifecycle (offline detectors + staged cluster sessions; see above).

@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import unicodedata
 from pathlib import Path
 
 from . import config, manifest
@@ -236,3 +237,96 @@ def text_for(src: Path, sha: str | None = None) -> str | None:
         except OSError:
             pass  # best-effort cache (see docstring); the session still gets the text in hand
     return text if text.strip() else None
+
+
+# --- per-page text-layer reliability (pure, stdlib, deterministic over the canonical extraction) --
+
+# A page is judged only when it has at least this many tokens and its letters are predominantly
+# Latin script; any other page is never flagged (too little evidence, or a script these signals
+# were not built for).
+MIN_TOKENS = 20
+# Signal 1 — column serialization: this many consecutive non-empty lines made only of number-like
+# tokens. It is what pypdf emits for a table whose columns were drawn (or OCR'd) separately: the
+# labels first, then a detached run of values, the label/value pairing lost.
+NUMERIC_RUN = 4
+# Signal 2 — OCR noise: more than this share of the page's tokens are lone letters, lone symbols,
+# or letter/digit interleavings inside a word (c0de, 1l1).
+NOISE_SHARE = 0.20
+_MARKER_LINE_RE = re.compile(r"^\[p\. (\d+)\]$")
+_NUMBERISH_RE = re.compile(r"^\d[\d.,/%:-]*$")
+_INTERLEAVED_RE = re.compile(r"[^\W\d_]+\d+[^\W\d_]+|\d+[^\W\d_]+\d+")
+_LONE_SYMBOLS = frozenset("|~^_")
+
+
+def _pages(text: str) -> list[tuple[int, int, list[str]]]:
+    """``(page, marker_line_number, body_lines)`` per ``[p. N]`` page of a canonical extraction
+    (1-based line numbers)."""
+    out: list[tuple[int, int, list[str]]] = []
+    for lineno, line in enumerate(text.split("\n"), 1):
+        m = _MARKER_LINE_RE.match(line.strip())
+        if m:
+            out.append((int(m.group(1)), lineno, []))
+        elif out:
+            out[-1][2].append(line)
+    return out
+
+
+def page_marker_lines(text: str) -> dict[int, int]:
+    """``{page: line number of its [p. N] marker}`` — which line window a page begins in."""
+    return {page: lineno for page, lineno, _lines in _pages(text)}
+
+
+def text_pages(text: str) -> tuple[int, ...]:
+    """The pages that carry any non-empty line."""
+    return tuple(page for page, _ln, lines in _pages(text) if any(line.strip() for line in lines))
+
+
+def _mostly_latin(tokens: list[str]) -> bool:
+    letters = [c for t in tokens for c in t if c.isalpha()]
+    if not letters:
+        return True  # numbers only: the column signal still applies
+    latin = sum(1 for c in letters if unicodedata.name(c, "").startswith("LATIN"))
+    return latin * 2 > len(letters)
+
+
+def _page_unreliable(lines: list[str]) -> bool:
+    tokens = [t for line in lines for t in line.split()]
+    if len(tokens) < MIN_TOKENS or not _mostly_latin(tokens):
+        return False
+    run = 0
+    for line in lines:
+        words = line.split()
+        if words and all(_NUMBERISH_RE.match(w) for w in words):
+            run += 1
+            if run >= NUMERIC_RUN:
+                return True
+        elif words:
+            run = 0
+    noisy = 0
+    for t in tokens:
+        if len(t) == 1 and (t.isalpha() or t in _LONE_SYMBOLS):
+            noisy += 1
+        elif _INTERLEAVED_RE.search(t):
+            noisy += 1
+    return noisy > NOISE_SHARE * len(tokens)
+
+
+def unreliable_pages(text: str) -> tuple[int, ...]:
+    """The pages of a canonical extraction whose text layer cannot be trusted for content — a
+    column-serialized table (:data:`NUMERIC_RUN`) or OCR noise (:data:`NOISE_SHARE`). Pure and
+    deterministic in the cached text (so in the source sha); the extraction itself is never changed
+    (re-extracting in another mode would shift every existing ``lines A-B`` locator). Ingest names
+    these pages so the agent reads them from the page images instead."""
+    return tuple(page for page, _ln, lines in _pages(text) if _page_unreliable(lines))
+
+
+def format_pages(pages) -> str:
+    """``p. 2, pp. 5-7`` — contiguous pages collapsed into ranges (ASCII)."""
+    ordered = sorted(set(pages))
+    ranges: list[tuple[int, int]] = []
+    for page in ordered:
+        if ranges and page == ranges[-1][1] + 1:
+            ranges[-1] = (ranges[-1][0], page)
+        else:
+            ranges.append((page, page))
+    return ", ".join(f"p. {a}" if a == b else f"pp. {a}-{b}" for a, b in ranges)

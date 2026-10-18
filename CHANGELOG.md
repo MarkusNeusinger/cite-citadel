@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A PDF page with a garbled text layer is read from its page image (#165).** A scanned PDF whose
+  OCR layer serialized a label/value table out of order (labels first, then a detached run of
+  numbers) was routed to the text path and its main content silently left out. Each page of the
+  pypdf extraction is now checked (a column-serialized table or OCR noise); flagged pages are named
+  to the session, which reads them visually in either `CITADEL_PDF_MODE` and cites them `p. N`,
+  while the rest keep their verifiable `lines A-B` locators. A PDF whose every text page is garbled
+  is read as if it had no text layer. The run report lists both cases.
+
 - **Lint noise cut; `[^llmN]` notes are now validated (#166).** The undefined-abbreviation nudge no
   longer reads link targets, skips email-subject prefixes (`AW:`, `WG:`), legal forms after a name
   (`Muster AG`) and units/currencies beside a number by context, and drops a short built-in list of

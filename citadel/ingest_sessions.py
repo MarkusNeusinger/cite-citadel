@@ -97,7 +97,7 @@ class _Resume:
     checkpoint: resume.Checkpoint | None = None
 
 
-def _plan_shape(passes) -> str:
+def _plan_shape(passes, visual: list[tuple[int, ...]] | None = None) -> str:
     """Fingerprint a chunked source's pass plan by CONTENT — the chunking threshold, each pass's
     segment/line-window position, and the sha256 of the prepared text it hands the agent.
 
@@ -111,8 +111,13 @@ def _plan_shape(passes) -> str:
     ``CITADEL_MAX_SOURCE_CHARS``: a stated model context tightens the threshold, so hashing the raw
     value would let a checkpoint planned under one segment shape be replayed under another."""
     digest = hashlib.sha256(f"{config.source_chunk_chars()}".encode())
-    for read_key, segment, window in passes:
+    for i, (read_key, segment, window) in enumerate(passes):
         digest.update(f"\x1e{segment}|{window}|".encode())
+        # The pages a pass is told to read visually are part of what it does; a pass with none
+        # hashes exactly as before.
+        named = visual[i] if visual and i < len(visual) else ()
+        if named:
+            digest.update(f"v{','.join(map(str, named))}|".encode())
         if read_key:
             try:
                 # A read_key is workspace-RELATIVE when the temp landed inside the workspace and
@@ -124,7 +129,9 @@ def _plan_shape(passes) -> str:
     return digest.hexdigest()
 
 
-def _resume_context(rel_key: str, kind: str, sha: str | None, passes, model: str, rules_ver: str) -> _Resume | None:
+def _resume_context(
+    rel_key: str, kind: str, sha: str | None, passes, model: str, rules_ver: str, visual=None
+) -> _Resume | None:
     """The :class:`_Resume` context for one pending source, or None when resume does not apply.
 
     It applies to CHUNKED sources only (a single-pass source has no earlier segment to save) and
@@ -145,7 +152,7 @@ def _resume_context(rel_key: str, kind: str, sha: str | None, passes, model: str
     part of the identity."""
     if not resume.enabled() or len(passes) < 2 or not sha:
         return None
-    shape = _plan_shape(passes)
+    shape = _plan_shape(passes, visual)
     if not shape:
         return None
     plan = resume.Plan(
@@ -820,6 +827,7 @@ def _pending_session(
     read_key: str | None,
     segment: tuple[int, int] | None = None,
     line_range: tuple[int, int] | None = None,
+    visual_pages: tuple[int, ...] | None = None,
 ) -> llm.SessionUsage | None:
     """Drive ONE ingest/reconcile agent session, passing through the backend's usage report
     (:class:`llm.SessionUsage` or None) for the outcome's accounting. When ``read_key`` is set
@@ -829,7 +837,12 @@ def _pending_session(
     ``(part, total)`` for a chunked source, ``line_range`` the line window of a chunked pass (the
     lines of the one full text — source file or prepared extraction — this pass processes); each
     is passed to the backend ONLY when set, so every pre-existing call shape stays byte-for-byte
-    unchanged."""
+    unchanged. ``visual_pages`` (a PDF's unreliable text-layer pages in this pass) likewise rides
+    only when non-empty."""
+    if visual_pages:
+        return llm.run_ingest_session(
+            rel_key, kind=kind, read_path=read_key, segment=segment, line_range=line_range, visual_pages=visual_pages
+        )
     if line_range is not None:
         return llm.run_ingest_session(rel_key, kind=kind, read_path=read_key, segment=segment, line_range=line_range)
     if read_key and segment is not None:

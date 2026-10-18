@@ -371,12 +371,37 @@ def _exclusion_bullet() -> str | None:
     )
 
 
+# How many page ranges the unreliable-text-layer bullet names before eliding the rest.
+_VISUAL_RANGES_SHOWN = 30
+
+
+def _visual_pages_bullet(pages) -> str:
+    """``- Unreliable text layer - ...: p. 2, pp. 5-7`` (ASCII), capped at
+    :data:`_VISUAL_RANGES_SHOWN` ranges."""
+    from . import pdftext
+
+    ranges = pdftext.format_pages(pages).split(", ")
+    shown = ", ".join(ranges[:_VISUAL_RANGES_SHOWN])
+    if len(ranges) > _VISUAL_RANGES_SHOWN:
+        hidden = sum(
+            (int(b) - int(a) + 1) if "-" in r else 1
+            for r in ranges[_VISUAL_RANGES_SHOWN:]
+            for a, _, b in [r.replace("pp. ", "").replace("p. ", "").partition("-")]
+        )
+        shown += f" (+{hidden} more pages: apply the same rule to any page whose extracted lines are scrambled)"
+    return (
+        "- Unreliable text layer - read these pages from the original PDF's page images (open only "
+        f"these pages if your reader takes a page range), in either PDF mode: {shown}"
+    )
+
+
 def _build_instruction(
     rel_key: str,
     kind: str = "ingest",
     read_path: str | None = None,
     segment: tuple[int, int] | None = None,
     line_range: tuple[int, int] | None = None,
+    visual_pages: tuple[int, ...] | None = None,
 ) -> str:
     """The short, paths-only agent prompt: ONLY the code-invariant frame. Everything the agent
     must KNOW lives in the rules tree (``citadel/rules/``, see its README) and is referenced BY
@@ -501,6 +526,10 @@ def _build_instruction(
     lines.append(f"- Wiki language: {config.WIKI_LANG}")
     if fmt == "formats/pdf.md":
         lines.append(f"- PDF mode: {'images' if config.PDF_MODE == 'images' else 'text'}")
+    # The pages whose extracted text layer is garbled (pdftext.unreliable_pages) — read from the
+    # original PDF's page images in EITHER mode (formats/pdf.md § A). pdf kinds only.
+    if visual_pages and kind in ("pdf", "pdf-reconcile"):
+        lines.append(_visual_pages_bullet(visual_pages))
     if config.STYLE_PROFILES:
         lines.append("- Style profiling: ON")
     # Related-source budget (CITADEL_RELATED_SOURCES): how many OTHER raw files this session may
@@ -1291,6 +1320,7 @@ def run_ingest_session(
     read_path: str | None = None,
     segment: tuple[int, int] | None = None,
     line_range: tuple[int, int] | None = None,
+    visual_pages: tuple[int, ...] | None = None,
 ) -> SessionUsage | None:
     """Run the configured agentic CLI once to propagate the raw source ``rel_key`` into the wiki.
 
@@ -1319,7 +1349,11 @@ def run_ingest_session(
     by ingest) on a missing/failed CLI or a timeout."""
     cli = resolve_cli_name(config.LLM_CLI)
     cli_path = _resolve_cli(cli)
-    prompt = _build_instruction(rel_key, kind, read_path, segment, line_range)
+    prompt = (
+        _build_instruction(rel_key, kind, read_path, segment, line_range, visual_pages)
+        if visual_pages
+        else _build_instruction(rel_key, kind, read_path, segment, line_range)
+    )
     # claude only: this session's per-path Read denies for the run's excluded files (readdeny),
     # as a temp --settings file — a path, never inline JSON, so argv stays small. Removed in the
     # finally below; the flag lives in argv, so the hermetic auth retry keeps it.

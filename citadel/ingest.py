@@ -198,6 +198,10 @@ class IngestReport:
     # Read-deny entries the per-session cap (readdeny.DENY_CAP) left unenforced — partial
     # enforcement is stated, never silent. 0 when everything was enforced (or nothing was due).
     deny_unenforced: int = 0
+    # PDFs whose text layer is garbled on some pages (pdftext.unreliable_pages): those pages were
+    # handed to the agent to read visually — or, when every text page was garbled, the whole PDF
+    # was read without its text layer. One ASCII line per source.
+    visual_pdf_pages: list[str] = field(default_factory=list)
     # How many source attempts actually ran an agent session (a deletion nothing cites runs none) —
     # the run ledger's skip rule: a run that paid for nothing writes no line.
     sessions_attempted: int = 0
@@ -309,6 +313,9 @@ class IngestReport:
                 "  These did not fail the sources that found them. Run `citadel lint` for the full "
                 "picture, and `citadel curate` to have them repaired."
             )
+        if self.visual_pdf_pages:
+            lines.append("PDF pages read visually (unreliable text layer):")
+            lines.extend(f"  - {n}" for n in self.visual_pdf_pages)
         if self.denials:
             lines.append("WARNING — the agent tried tool calls its permissions denied (excluded files stay unread):")
             lines.extend(f"  - {d}" for d in self.denials)
@@ -399,6 +406,9 @@ class _SourceJob:
     # notes of a file group run as a FIRST phase, so every sibling session clones a wiki that already
     # holds what the note says about the files beside it.
     folder_note: bool = False
+    # Report lines build_sessions leaves behind (a PDF's pages read visually), booked on the MAIN
+    # thread by _record_source_run — never written into the report from a worker.
+    notes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -581,6 +591,23 @@ def _record_spend(outcome: _SourceOutcome, report: IngestReport, key: str = "") 
         report.resumed.append(outcome.resumed_note)
 
 
+def _visual_pages_per_pass(passes, text: str, flagged: tuple[int, ...]) -> list[tuple[int, ...]]:
+    """Each pass's share of the flagged pages: a page belongs to the pass whose line window holds
+    its ``[p. N]`` marker line (formats/pdf.md: a unit belongs to the window it begins in); a
+    single-pass source gets them all."""
+    if len(passes) <= 1:
+        return [tuple(flagged)]
+    markers = pdftext.page_marker_lines(text)
+    out: list[tuple[int, ...]] = []
+    for _read_key, _segment, window in passes:
+        if window is None:
+            out.append(tuple(flagged))
+            continue
+        lo, hi = window
+        out.append(tuple(p for p in flagged if lo <= markers.get(p, 0) <= hi))
+    return out
+
+
 def _write_run_ledger(report: IngestReport, lifecycle: str, started: str, flags: dict, interrupted: bool) -> None:
     """Append this run's ledger line once (skipped when no agent session ran) — counts are the
     report's own list lengths, never a key or path. A failed write is a report note."""
@@ -630,6 +657,9 @@ def _record_source_run(run: _JobRun, emit, report: IngestReport, failures_dict, 
     outcome = run.outcome
     if outcome is None:  # an interrupted attempt: the caller re-raises, nothing to book
         return
+    for note in job.notes:
+        if note not in report.visual_pdf_pages:
+            report.visual_pdf_pages.append(note)
     _record_spend(outcome, report, job.key)  # cost + any restored checkpoint, before the ok/failed branch
     if not outcome.ok:
         # Nothing was promoted (the live wiki is untouched) and the source is NOT marked
@@ -1470,6 +1500,8 @@ def _ingest_run(
             kind = "reconcile" if rel_key in changed_keys else "ingest"
         office = scan.office_text.get(src)
 
+        notes: list[str] = []  # the visual-page note build() leaves for the report (main thread)
+
         def build() -> tuple[list, list[str], "_Resume | None"]:
             # A reingest source may only run its fresh session on a wiki its cleanup actually
             # cleaned: the cleanup job (group 1) pops the manifest key on success, so a key still
@@ -1493,6 +1525,9 @@ def _ingest_run(
             prepared = office
             run_kind = kind
             is_pdf = False
+            visual_text: str | None = None
+            flagged = ()
+            notes.clear()
             if is_audio:
                 prepared = transcribe.transcript_for(src, sha=sha_stat[0])
                 # A transcription can take minutes: refresh the run lock afterwards so the
@@ -1500,18 +1535,35 @@ def _ingest_run(
                 runlock.heartbeat()
             elif prepared is None and pdftext.is_pdf_text_source(src):
                 prepared = pdftext.text_for(src, sha=sha_stat[0])
+                flagged: tuple[int, ...] = ()
+                if prepared is not None:
+                    flagged = pdftext.unreliable_pages(prepared)
+                    bearing = pdftext.text_pages(prepared)
+                    if bearing and set(bearing) <= set(flagged):
+                        # EVERY text-bearing page is garbled: the extraction is worthless — read the
+                        # PDF as if it had no usable text layer (formats/pdf.md § B).
+                        prepared, flagged = None, ()
+                        notes.append(f"{rel_key} (every text page unreliable - read without its text layer)")
                 if prepared is not None:
                     # Only a source that ACTUALLY got an extraction takes the pdf propagation —
                     # the kind selects formats/pdf.md's prepared-extract rules (lines locators
                     # into the cached text); the fallback stays plain ingest/reconcile.
                     is_pdf = True
                     run_kind = "pdf-reconcile" if rel_key in changed_keys else "pdf"
+                    if flagged:
+                        notes.append(f"{rel_key} ({pdftext.format_pages(flagged)})")
+                        visual_text = prepared
             passes, tmpdirs = _prepare_passes(src, prepared, is_image, is_audio=is_audio, is_pdf=is_pdf)
+            visual = _visual_pages_per_pass(passes, visual_text, flagged) if visual_text else None
             sessions = [
-                (lambda rp=read_key, sg=segment, lw=window, k=run_kind: _pending_session(rel_key, k, rp, sg, lw))
-                for read_key, segment, window in passes
+                (
+                    lambda rp=read_key, sg=segment, lw=window, k=run_kind, vp=(visual[i] if visual else ()): (
+                        _pending_session(rel_key, k, rp, sg, lw, vp) if vp else _pending_session(rel_key, k, rp, sg, lw)
+                    )
+                )
+                for i, (read_key, segment, window) in enumerate(passes)
             ]
-            return sessions, tmpdirs, _resume_context(rel_key, run_kind, sha_stat[0], passes, model, rules_ver)
+            return sessions, tmpdirs, _resume_context(rel_key, run_kind, sha_stat[0], passes, model, rules_ver, visual)
 
         def done(usage: llm.SessionUsage | None, seconds: float | None = None) -> None:
             # mark_done records exactly what discovery hashed (sha_stat above). On a forced
@@ -1566,6 +1618,7 @@ def _ingest_run(
             warn_no_pages=rel_key not in changed_keys,
             expects_changes=rel_key not in changed_keys,
             folder_note=_is_folder_note(src.name),
+            notes=notes,
             failure_hint=(
                 f"Folder note {rel_key} failed, so files beside it may have been folded in without what it "
                 "says. Once it ingests, re-read them with `citadel ingest --reingest <paths>`."
