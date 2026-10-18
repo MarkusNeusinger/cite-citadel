@@ -13,7 +13,9 @@ folder, splits pages that grew too long (over 800 body lines **or** 64,000 body 
 `citadel lint` already warns above 400 lines or 32,000 characters), re-grounds facts against their cited sources, resolves
 contradictions, connects orphans, and fixes citation locators. There is no persisted queue — the
 plan is recomputed from offline detectors on every run (the wiki *is* the database), so running it
-is always safe and idempotent. Each planned page (plus its cited raw files and link neighbors)
+is always safe and idempotent — but not free: a plain run on an ingested wiki plans up to three
+paid re-verification sessions even when nothing else is flagged (see
+[Re-verification](#re-verification-the-quality-pass)). Each planned page (plus its cited raw files and link neighbors)
 gets one agent session against a staging copy of the wiki, exactly like ingest: a clean result is
 promoted, anything else is rolled back — the live wiki is never left half-edited.
 
@@ -64,11 +66,16 @@ The steer is written into every cluster's findings checklist, which is what the 
 through — so it lands as a listed finding, not as a second instruction competing with curate's
 improve-or-NOOP rule. Two boundaries make it safe to use freely:
 
-- **Structure only.** It directs naming, titles, `type`/folder routing, splits, merges, section
-  order, and cross-links. It can never change what the wiki *says*: no fact is added, dropped,
-  reworded away from what its source states, or re-attributed, and every fact carries its `[^sN]`
-  marker and its `## Sources` definition through whatever the steer moves. The cluster's cited raw
-  sources are re-read first — a retitle follows the spelling the *sources* use.
+- **Structure, plus grounding — never a cited fact.** A steer directs structure: names, titles,
+  `type`/folder routing, splits, merges, section order, cross-links. It may also **ground an
+  uncited sentence**: a sentence with no citation marker may gain a `[^sN]` to a raw file that
+  states it (one the cluster cites, or one the steer names by path, e.g. *"ground the uncited
+  intro sentences against raw/handbook.pdf"*), with a locator that verifies, reworded only *toward*
+  what that file says. A sentence no source states is left as it is. A steer **never changes a
+  cited fact**: it never rewords one beyond its source, moves its marker to a different source,
+  drops it, or changes who a statement is attributed to. Sentences carrying a `[^llmN]` marker are
+  not the steer's to touch (re-grounding model notes is the separate `llm_drift` finding). The
+  cluster's cited raw sources are re-read first — a retitle follows the spelling the *sources* use.
 - **Named paths are the ask.** With paths, each named page gets a session even if every detector
   considers it clean (reason code `operator_guidance`). Without paths, the steer only rides along
   on the pages the detectors already planned — fanning one out over a whole clean wiki would be one
@@ -94,8 +101,34 @@ permanent house rules belong in `rules/local.md`, which every session already re
 A cluster that fails is recorded with an `attempts` counter and retried on the next run — but only
 up to **2 attempts**; after that it is skipped ("attempt-capped") so one stubborn page can't burn
 agent sessions forever. `--retry` is the explicit override that puts capped clusters back into the
-plan. Curate sessions use `CITADEL_CURATE_MODEL` when set (a cheaper/faster model is often fine
-here), falling back to the ingest model — see [configuration.md](configuration.md).
+plan. Curate sessions use `CITADEL_CURATE_MODEL` when set, falling back to the ingest model — see
+[configuration.md](configuration.md). A cheaper model is fine for re-sorts and renames;
+re-verification and grounding are judgment work, so keep a strong model for those runs.
+
+### Re-verification: the quality pass
+
+Besides the structural detectors, every curate run plans a small **re-verification sample**
+(reason code `reverify`): up to **3** pages (`REVERIFY_SAMPLE_K`) citing sources that have *not*
+changed since they were ingested (a changed source is reconcile's job, a vanished one delete's).
+The session re-reads the page's cited raw files and checks every cited fact against them —
+overstatements are pulled back to what the source says, wrong locators fixed, unsupported claims
+removed. On a real-world corpus one hub-page cluster re-checked about 150 citations and took back
+about a dozen overstatements.
+
+- **Which pages:** ranked by page `timestamp` age × (number of pages linking to it + 1), so the
+  stalest, most-linked pages come first. A page that re-verification leaves unchanged keeps its
+  `timestamp` and is therefore **sampled again on the next run**; the sample only moves on as
+  clusters apply edits or ingest rewrites the sampled pages.
+- **What it costs:** every curate cluster — not just `reverify` — re-reads its cited raw sources
+  (the anchor page's and its link neighbours'), so cost scales with them. Observed on an
+  Opus-class model: about USD 4-5 for a hub cluster citing 20+ sources, about USD 0.80 for a small
+  or NOOP cluster.
+- **What you see:** the report's `LLM usage:` line is the run total, NOOP and failed clusters
+  included; the `NOOP spend` line below it shows what the sessions that changed nothing cost.
+  `citadel status`' "Spend to date" keeps the lifetime total.
+- **Keeping it in budget:** `citadel curate --dry-run` first (per-cluster sizes and a cost
+  reference), then `--limit N`, and scope with paths (`citadel curate concepts/`) when you only
+  want one area re-checked.
 
 ## Refresh
 
@@ -143,7 +176,7 @@ re-read the corpus by accident.
 
 Refresh vs. its neighbors: `ingest` handles **new/changed** sources (refresh never touches those —
 a changed source is picked up by the next ingest anyway), `curate` improves **pages** against
-offline findings without necessarily re-reading sources, `ingest --force <paths>` is the
+offline findings, re-reading each cluster's cited sources, `ingest --force <paths>` is the
 manual, targeted form of the same forced re-read when you already know *which* source to re-check,
 and `ingest --reingest <paths>` (below) is the step past all of them — a fresh import, not a
 re-verification.
@@ -212,7 +245,7 @@ A `README`, `ABOUT`, `INDEX`, `_index` or `00-…` file in a raw folder is treat
 note**: it is ingested before the files beside it (under `--jobs N` too — notes run as a first
 phase), and every later session is told to look for the folder's note in the wiki and apply its
 caveats ("these are unconfirmed reconstructions"). A note you add or correct LATER reconciles only
-its own page — its siblings are unchanged and never re-read automatically. To re-attribute them,
+its own page — its siblings are unchanged and never re-read automatically. To apply the note to them,
 re-import the folder: `citadel ingest --reingest raw/<folder>/`.
 ## Rules
 

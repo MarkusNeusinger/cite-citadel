@@ -1081,8 +1081,9 @@ INGEST_GUIDANCE: str = " ".join(os.environ.get("CITADEL_INGEST_GUIDANCE", "").sp
 # steer as a listed finding instead of a second, competing instruction. Deliberately SEPARATE from
 # INGEST_GUIDANCE: one steers how new sources are folded in, the other how existing pages are
 # reorganized, and inheriting either into the other lifecycle would apply a stale steer.
-# Structure only — a steer can never change, add, or re-attribute a fact (curate.md § Operator
-# guidance says so), and naming pages with it plans them even when no detector flagged them.
+# A steer directs structure and may ground an uncited sentence, but never changes a cited fact
+# (tasks/curate.md § Operator guidance), and naming pages with it plans them even when no detector
+# flagged them.
 CURATE_GUIDANCE: str = " ".join(os.environ.get("CITADEL_CURATE_GUIDANCE", "").split())
 
 # The --guidance length cap (characters), shared by both steers. The prompt must stay tiny (it

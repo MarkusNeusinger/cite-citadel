@@ -56,7 +56,8 @@ that marker after a rules edit), `curate [--dry-run] [--limit N] [--stale-rules]
 [--diff PATH] [--retry] [--guidance TEXT] [paths…]` (the SECOND lifecycle: improve EXISTING pages —
 re-sort/split/re-ground/resolve
 contradictions/fix locators — against a recomputed findings checklist; `--guidance` is the curate
-twin of ingest's steer — STRUCTURAL only, carried in the cluster's findings file, and the paths it
+twin of ingest's steer — it directs structure and may ground an uncited sentence but never changes
+a cited fact, carried in the cluster's findings file, and the paths it
 names (a page, a folder, a glob) are curated even when no detector flagged them), `status` (read-only
 per-source state table: ingested / failed / skipped-duplicate / ignored / oversized / pending; MCP twin
 `wiki_status`), `doctor`
@@ -421,7 +422,10 @@ whenever drift is planned the report names `citadel refresh --stale-rules --limi
 `refresh.stale_count()`), `page_length_hard`, `contradiction`, `orphan`, `llm_drift`, `resort`
 (type↔folder mismatch via `okf.folder_for_type`), `bad_source` (a `[^sN]` citation that does not
 verify, via `validate.source_issues` — e.g. the dangling citations a failed deletion cleanup
-leaves, closing ingest's failure-hint loop), and `locator` (from `lint.check_locators`);
+leaves, closing ingest's failure-hint loop), `locator` (from `lint.check_locators`), and
+`reverify` (up to `REVERIFY_SAMPLE_K` = 3 citing pages of sha-unchanged sources per run, ranked
+page-`timestamp` age × (in-degree + 1) — so every plain curate run on an ingested wiki plans up to 3
+paid sessions, and a NOOP page is sampled again since it keeps its timestamp);
 fact re-verification is pre-filtered offline through manifest shas (`reverify_candidates` — changed
 = reconcile's job, gone = delete's job). Each planned page CLUSTER (page + cited raw files + link
 neighbors) runs ONE staged `kind="curate"` session over ingest's existing staging machinery, its
@@ -730,7 +734,8 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   (target language of all wiki prose, default `en`; verbatim quotes stay original; it also picks the offline viewer's UI-chrome language, en fallback),
   `CITADEL_INGEST_GUIDANCE` (free-text steer appended to each source-reading session's prompt —
   usually passed per run as `ingest --guidance` instead; permanent house rules belong in
-  `rules/local.md`), `CITADEL_CURATE_GUIDANCE` (its curate twin — STRUCTURAL only, carried in the
+  `rules/local.md`), `CITADEL_CURATE_GUIDANCE` (its curate twin — directs structure, may ground an uncited sentence,
+  never changes a cited fact; carried in the
   cluster findings file, usually passed as `curate --guidance "…" <paths>`),
   `CITADEL_RELATED_SOURCES` (how many OTHER raw sources one source-reading session may consult to
   resolve a term/code/reference its own source never explains — found through the wiki, cited to

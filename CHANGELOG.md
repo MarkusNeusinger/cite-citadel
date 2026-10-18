@@ -8,6 +8,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **The `curate --guidance` boundary is stated precisely; re-verification is documented (#172).**
+  A steer directs structure and may now explicitly **ground an uncited sentence** (give it a
+  `[^sN]` to a raw file that states it — one the cluster cites or one the steer names by path —
+  with a verifying locator), and it **never changes a cited fact** (no rewording beyond the source,
+  no moved or dropped marker, no change of speaker; `[^llmN]` sentences are left alone). The same
+  wording now runs through the curate frames, `tasks/curate.md`, the CLI help and the docs.
+  `docs/maintenance.md` gains a "Re-verification: the quality pass" section: the 3-page `reverify`
+  sample every curate run plans, how it is ranked, that an unchanged page is sampled again, and
+  what a cluster costs.
+
 - **Curate keeps verifiable PDF locators (#161).** A curate session never saw the pypdf text layer
   ingest had read, so it could only re-cite a PDF by page (`p. N`) — an offline-verifiable
   `lines A-B` locator became unverifiable. Each cluster's findings file now names the PDF mode and

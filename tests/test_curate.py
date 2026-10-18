@@ -491,7 +491,8 @@ def test_guidance_reaches_the_cluster_findings_file(tmp_citadel, seed_page, fake
     assert "Operator guidance for THIS run" in findings
     assert "move the machine pages into registries/" in findings
     assert "raw/notes.md" in findings  # the cluster's cited sources, to be re-read
-    assert "re-attributed" in findings  # the frame: a steer can never change what the wiki SAYS
+    assert "ground an uncited sentence" in findings  # the frame: the one fact-level edit a steer may make
+    assert "never changes a cited fact" in findings
     assert curate.REASON_OPERATOR in findings
 
 
@@ -1355,3 +1356,14 @@ def test_cost_reference_uses_the_median_and_is_labelled(tmp_citadel, seed_page):
     assert "Rough cost reference: 1 session(s) x $0.85 (median of 3 recorded ingest sessions)" in text
     assert "Not a quote" in text
     text.encode("ascii")
+
+
+def test_guidance_boundary_anchors_in_the_curate_frames():
+    """#172: the steer boundary is stated with the same two anchor phrases in both agent-facing
+    curate texts (the packaged ``tasks/curate.md`` is pinned with the rules batch)."""
+    from citadel import curate
+
+    for text in (curate._OPERATOR_GUIDANCE_FRAME, curate._REASON_GUIDANCE[curate.REASON_OPERATOR]):
+        assert "ground an uncited sentence" in text
+        assert "never changes a cited fact" in text
+        assert "[^llmN]" in text

@@ -108,6 +108,11 @@ This renders on GitHub, is trivially greppable, and needs zero custom tooling. A
 cited is dropped, never invented; conflicting sources produce a `> [!CONTRADICTION]` callout. The
 `wiki/` folder also opens **as-is** as an [Obsidian](https://obsidian.md) vault.
 
+`citadel curate` is also the wiki's **quality pass**: besides re-sorting, splitting and repairing
+pages, every run re-checks the cited facts of a small sample of pages against their unchanged
+sources and takes back what the source does not say — see
+[re-verification](https://github.com/MarkusNeusinger/cite-citadel/blob/main/docs/maintenance.md#re-verification-the-quality-pass).
+
 Every page's frontmatter records **when it last changed and which cite-citadel release wrote it**
 (`timestamp` + `citadel_version`, both stamped automatically). After a rules edit `citadel status`
 marks every older source `(stale)`, and `citadel refresh --stale-rules --limit K` re-verifies

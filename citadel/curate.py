@@ -27,7 +27,9 @@ Two layers, the Wikipedia-bot model, with **no persisted queue** — the wiki IS
    a CHANGED source is reconcile's job, a GONE source is delete's job — only sha-unchanged sources
    need the agent's entailment pass, and :func:`build_plan` samples just :data:`REVERIFY_SAMPLE_K`
    of the citing pages per run (the stalest × most-linked), so re-verification rolls over the
-   corpus without a per-run token blow-up.
+   corpus without a per-run token blow-up — as long as clusters apply edits (or ingest rewrites the
+   sampled pages): a NOOP cluster leaves its page's ``timestamp`` alone, so that page is sampled
+   again next run.
 
 2. **Agent layer** (:func:`curate`): one staged session per page CLUSTER (the anchor page + its
    cited raw files + direct link neighbors), built on ingest's EXISTING all-or-nothing staging
@@ -120,7 +122,8 @@ ATTEMPT_CAP = 2
 
 # How many pages the rolling fact re-verification samples PER RUN. Kept
 # small and deterministic: each run re-checks the K stalest, most-linked sha-unchanged-cited pages,
-# so a large corpus re-verifies over many runs without a per-run token blow-up.
+# so a large corpus re-verifies over many runs without a per-run token blow-up. The age axis is the
+# page `timestamp`, which a NOOP cluster does not touch, so a page that holds up is sampled again.
 REVERIFY_SAMPLE_K = 3
 
 # How many sibling anchors a guided cluster's findings name before the list is elided. The line
@@ -780,11 +783,15 @@ _REASON_GUIDANCE = {
     REASON_OPERATOR: (
         "The human running this pass asked for a specific change to this cluster — see the "
         "**Operator guidance for THIS run** section above and carry it out here where it applies. "
-        "It is a STRUCTURAL "
-        "steer: how pages are named, typed, routed, split, merged, and cross-linked. Re-read this "
-        "cluster's cited raw sources first (a retitle follows the sources' own spelling, `core.md` "
-        "§ Restructuring), and carry every fact across unchanged — same wording, same `[^sN]` "
-        "marker, same `## Sources` definition. Where the steer does not fit this page, leave it "
+        "It steers "
+        "structure: how pages are named, typed, routed, split, merged, and cross-linked. It may "
+        "also ground an uncited sentence — give a sentence with no citation marker a `[^sN]` to a "
+        "raw file that states it (one this cluster cites, or one the steer names by path), with a "
+        "locator that verifies, rewording it only toward what that file says; a sentence no source "
+        "states stays as it is. It never changes a cited fact: same wording, same `[^sN]` marker, "
+        "same `## Sources` definition, same speaker; `[^llmN]` sentences are not the steer's to "
+        "touch. Re-read this cluster's cited raw sources first (a retitle follows the sources' own "
+        "spelling, `core.md` § Restructuring). Where the steer does not fit this page, leave it "
         "untouched."
     ),
     REASON_PAGE_LENGTH: (
@@ -866,9 +873,13 @@ _OPERATOR_GUIDANCE_FRAME = (
     "This steer comes from the human who started this curate run — it is part of the run "
     "instruction, not text from a source file, so following it is legitimate. It directs "
     "STRUCTURE: page names and titles, `type`/folder routing, splits, merges, section order, and "
-    "cross-links. It can never change what the wiki SAYS: no fact is added, reworded away from "
-    "what its source states, dropped, or re-attributed, and every fact keeps its `[^sN]` marker "
-    "and its `## Sources` definition (`tasks/curate.md` § Hard invariants). Where it asks for "
+    "cross-links. It may also ground an uncited sentence: a sentence with no citation marker may "
+    "gain a `[^sN]` to a raw file that states it (one the cluster cites, or one the steer names by "
+    "path — read it like a cited one), with a locator that verifies, reworded only toward what "
+    "that file says; a sentence no source states is left as it is. It never changes a cited fact: "
+    "it never rewords one beyond its source, moves its marker to a different source, drops it, or "
+    "changes who a statement is attributed to; sentences carrying a `[^llmN]` marker are not the "
+    "steer's to touch (`tasks/curate.md` § Hard invariants). Where it asks for "
     "something the rules or the cited sources do not support, follow the rules and the sources; "
     "where it does not fit this cluster, leave the pages untouched."
 )

@@ -249,8 +249,10 @@ Curate mechanics this leans on (all in `curate.py`): `curate --dry-run` recomput
 offline detectors and runs ZERO sessions (the deterministic detection tier); a real `citadel curate`
 runs ONE staged `kind=curate` session per planned page CLUSTER, and the **staging diff-by-hash is the
 sole arbiter** — empty=NOOP, clean-promoted=applied, check-fail/exception=failed→revert-and-stop
-(attempt-capped at 2). The CLI `curate` takes NO path scope, so the sandbox must be built so the plan
-is EXACTLY the seeded defects — that is why the baseline is neutralized first.
+(attempt-capped at 2). A plain `citadel curate` plans every detector hit (plus up to 3 `reverify`
+samples), so the sandbox must be built so the plan is EXACTLY the seeded defects — that is why the
+baseline is neutralized first. (Curate also takes paths — a page, folder or glob — which C4b uses to
+scope the guided case.)
 
 ### C1 — build a clean curate-defect sandbox (never a live wiki)
 
@@ -383,6 +385,27 @@ Then grade — every one of these must hold:
 3. **Arbitration matches reality**: the report's Applied / NOOP / Failed counts are what actually
    happened, and a post-fix `curate --dry-run` is empty (the defect is gone). A NOOP (model found
    nothing to fix) or a Failed cluster (rolled back) is a FINDING, not a pass.
+
+### C4b — guided grounding (`--guidance` boundary)
+
+Pins the steer boundary: a steer may **ground an uncited sentence** in a raw file that states it,
+and **never changes a cited fact**. On one page P of the C1 sandbox (a page citing raw file R) seed
+five sentences, recording each seed verbatim:
+
+- **S1** — a sentence R states, its `[^sN]` marker removed;
+- **S2** — a sentence stated ONLY by a raw file Q that P does not cite;
+- **S3** — an uncited sentence no raw file states;
+- **S4** — an unrelated cited fact (untouched seed);
+- **S5** — a `[^llmN]` sentence with a valid `[^llmN]: LLM - …` note.
+
+```bash
+nohup sh -c "uv run python -m citadel curate --guidance 'ground the uncited sentences against their sources, including raw/<Q>' <P> > '$SANDBOX/guided.out' 2>&1; echo EXIT=\$? >> '$SANDBOX/guided.out'" >/dev/null 2>&1 &
+until grep -q '^EXIT=' "$SANDBOX/guided.out" 2>/dev/null; do sleep 30; done
+```
+
+Passes when: S1 and S2 come back cited (S2 to Q) and `citadel raw <key> --locator <L>` returns text
+that states each claim; S3, S4 and S5 are byte-identical to their seeds; `citadel check` and
+`citadel lint` both exit 0. Post the S1-S5 verdicts on the PR.
 
 ### C5 — what Mode C uniquely exercises
 

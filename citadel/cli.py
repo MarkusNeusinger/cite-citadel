@@ -199,8 +199,9 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="TEXT",
         help="Free-text steer for this run's curate sessions (e.g. \"retitle the machine pages to "
         "'<machine no> <model>' and move them into registries/\"), written into every cluster's "
-        "findings checklist. A STRUCTURAL steer only — naming, typing, routing, splitting, "
-        "merging, cross-linking; it can never change, add, or re-attribute a fact. Naming PATHS "
+        "findings checklist. It steers structure — naming, typing, routing, splitting, merging, "
+        "cross-linking — and may ground an uncited sentence in a raw file that states it; it never "
+        "changes a cited fact. Naming PATHS "
         "alongside it curates exactly those pages, even ones no detector flagged. Overrides "
         "CITADEL_CURATE_GUIDANCE; max 2000 chars.",
     )
