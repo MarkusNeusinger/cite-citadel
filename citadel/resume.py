@@ -437,7 +437,7 @@ def sweep(max_age_days: int = MAX_AGE_DAYS) -> None:
             continue
         saved_at = record.get("saved_at")
         stamped = str(record.get("workspace") or "")
-        if not isinstance(saved_at, (int, float)) or saved_at < cutoff or (stamped and stamped != stamp):
+        if not isinstance(saved_at, (int, float)) or saved_at <= cutoff or (stamped and stamped != stamp):
             _drop(slot)
 
 
