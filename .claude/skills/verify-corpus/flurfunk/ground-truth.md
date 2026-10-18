@@ -4,30 +4,38 @@ This is the **answer key** for the `flurfunk` corpus (`corpora/flurfunk/`). It l
 `.claude/` (outside the corpus, outside `raw/`/`wiki/`/`docs/`), so the ingest pipeline can never
 see it. The verify-corpus skill reads it to grade the wiki the pipeline produced.
 
-`flurfunk` is seven sources in the **informal registers** no other corpus covers — a Slack export, an
+`flurfunk` is eleven sources in the **informal registers** no other corpus covers — a Slack export, an
 X/Twitter thread, a podcast interview transcript, a job application (cover letter + CV), a
-community-forum support thread, and a product announcement — set in one consistent world
+community-forum support thread, a product announcement, and a `retros/` folder of three
+reconstructed team retros led by a README folder note — set in one consistent world
 (**Larkspur** makes **Skylight**). Its corpus-wide guarantee is **attribution at scale**: "X said Y"
 must never become "Y is true." It also grades in-thread reversal supersession, a quote-tweet negative
-row, CV timeline completeness, and that chat noise never leaks into wiki prose.
+row, CV timeline completeness, that chat noise never leaks into wiki prose, that a partial list
+split across sources is merged rather than flagged, that a source's editorial to-do never becomes
+content, and that a folder note's caveat reaches the files beside it.
 
 > Everything is **fictional by design** (Larkspur, Skylight, Priya Nadkarni, Marcus Feld,
 > Tom Alvarez, Wei Chen, Sofia Ruiz, Dana Kessler, and every handle). The wiki must record it
 > faithfully as the sources state it — including the claims it must NOT adopt as fact.
 
-## The 7 source files
+## The 11 source files
 
 | file | genre | gist |
 | ---- | ----- | ---- |
-| `slack-export-platform-team.txt` | team chat, Mon–Wed | default event-retention set to **7 days** (Mon), **reversed to 30 days** (Wed) after customer **Northwind** loses audit history; a **second, same-day reversal** (Tue): default dashboard time range proposed **7 days** then reverted back to **24 hours** — current value is the ORIGINAL 24h, not the last-mentioned 7; buried side-decision: rename `retention-svc` → `janitor`; heavy banter/emoji/GIF/lunch/shanty noise |
+| `slack-export-platform-team.txt` | team chat, Mon–Wed | default event-retention set to **7 days** (Mon), **reversed to 30 days** (Wed) after customer **Northwind** loses audit history; a **second, same-day reversal** (Tue): default dashboard time range proposed **7 days** then reverted back to **24 hours** — current value is the ORIGINAL 24h, not the last-mentioned 7; buried side-decision: rename `retention-svc` → `janitor`; Sofia works from "**Larkspur's Berlin office**" (Tue 16:41 — a third site, §D3); heavy banter/emoji/GIF/lunch/shanty noise |
 | `tweet-thread.md` | 8-tweet launch thread, **@marcusfeld** | Skylight **sub-second (<1s) refresh**, was ~5s; a **quote-tweet by @dataskeptic** falsely claims "silently drops events >1MB"; Marcus **debunks** it in 6/ (queued, not dropped) |
-| `interview-transcript-founder.md` | Q/A podcast, **Priya Nadkarni** | self-serving claims: "**only** platform with true sub-second refresh", "**profitable since month one**"; plain facts: founded **2021 in Lisbon**, **28 employees** (the announcement rounds this to "around 30" — an approximation, NOT a contradiction) |
+| `interview-transcript-founder.md` | Q/A podcast, **Priya Nadkarni** | self-serving claims: "**only** platform with true sub-second refresh", "**profitable since month one**"; plain facts: founded **2021 in Lisbon**, **28 employees** (the announcement rounds this to "around 30" — an approximation, NOT a contradiction); "Engineering sits in **Lisbon and Porto**" (a partial site list — §D3) |
 | `application-cover-letter.md` | cover letter, Mar 2026 | Dana Kessler applies for **Senior Platform Engineer** at Larkspur |
 | `cv.md` | CV | Dana Kessler timeline (three roles 2015→2026 + TU Delft 2015) |
 | `forum-support-thread.md` | support thread #1–#8 | stale-dashboard-after-timezone-change; fix at **#7** (Sofia Ruiz): set **`SKYLIGHT_TZ`** + restart **`janitor`** |
-| `announcement.md` | announcement (control) | **Skylight 2.0 GA 1 April 2026**; regions **EU Frankfurt / US Virginia / APAC Singapore** |
+| `announcement.md` | announcement (control) | **Skylight 2.0 GA 1 April 2026**; regions **EU Frankfurt / US Virginia / APAC Singapore**; one editor's housekeeping line "[Editor: pricing table to follow before publishing.]" (§D4 — must not reach the wiki) |
+| `retros/README.md` | folder note | "these quarterly retro summaries were **reconstructed afterwards by a contractor** from the chat history; the platform team **has not confirmed** them" — the caveat for the three files beside it (§I) |
+| `retros/2025-q3.md` | team retro, first person plural | on-call rotation moved from fortnightly to **weekly**, handoff **Mondays 10:00**; **14** flaky integration tests quarantined in August |
+| `retros/2025-q4.md` | team retro, first person plural | flaky tests down to **3**; ingestion outage **14 November** (~40 min) → **written postmortem template** adopted; staging out of disk twice in December |
+| `retros/2026-q1.md` | team retro, first person plural | main CI pipeline cut from **22 to 9 minutes** (four parallel shards); fortnightly **Friday demo slot**; coverage reporting broken for three weeks |
 
-Sandbox: one ingest pass, one agentic session per file. Pair with `CITADEL_STYLE_PROFILES=1` (the CV
+Sandbox: one ingest pass, one agentic session per file (11 sessions; `retros/README.md` is a folder
+note, so it is ingested before its three siblings). Pair with `CITADEL_STYLE_PROFILES=1` (the CV
 + interview give voices to profile).
 
 ## A · Load-bearing facts that MUST appear in the final wiki (cited to the right source)
@@ -93,6 +101,29 @@ The interview states **28 employees** (precise); the announcement says a team of
 the announcement's "around 30" as a rounded restatement. Flagging 28-vs-30 as a contradiction, or
 asserting two different headcounts as both current-and-conflicting, is a creation defect.
 
+## D3 · Partial lists are NOT a contradiction — Larkspur's sites (interview vs slack)
+
+The interview has Priya say "Engineering sits in **Lisbon and Porto**"; the Slack export has Sofia
+working from "**Larkspur's Berlin office**". Neither source calls its list complete (no "only",
+"all", or stated count), so these are two partial views of one open-ended set — not a conflict.
+
+**Pass:** the page that holds Larkspur's sites/offices (normally `organizations/larkspur.md`) names
+**all three — Lisbon, Porto, Berlin** — each behind its own source's marker (Lisbon/Porto → the
+interview, Berlin → the Slack export), and **no** `> [!CONTRADICTION]` callout anywhere in the wiki
+mentions Larkspur's sites (`grep -rn -A6 '\[!CONTRADICTION\]' wiki/ | grep -iE
+'lisbon|porto|berlin' | grep -v 'Europe/Berlin'` → nothing; a hit on Dana's "Cobalt Systems,
+Berlin" CV line is not about the sites — read it before failing). **FAIL:** a contradiction callout over the sites, a site dropped
+from the union, or Berlin cited to the interview / Porto to the Slack export (a wrong marker). The
+founding city (Lisbon, 2021 — §A·F2) is a separate fact and may stand beside the site list.
+
+## D4 · A source's housekeeping is NOT content — the editor's line (announcement)
+
+`announcement.md` carries "[Editor: pricing table to follow before publishing.]" — a note about the
+DOCUMENT's own completeness, not a fact about Skylight. **Pass:** `grep -rni 'pricing table' wiki/`
+finds nothing — not as a fact, not as an `## Open Points` entry, not as a quote. **FAIL:** any hit
+(e.g. "a pricing table is to follow", or an open point "pricing table pending"). Skylight pricing
+must not be invented either (the source gives none).
+
 ## E · Chat noise must NOT leak into wiki FACTUAL prose
 
 The wiki's **factual** prose must not carry the Slack/forum noise as content: the GIF link
@@ -143,12 +174,35 @@ part of **eleven years**" total — while the CV gives the absolute ranges (Halc
 strong wiki reconciles them without inventing a conflict. Treating the relative and absolute forms as
 contradictory, or double-counting them into a wrong total, is a creation defect.
 
+## I · Folder note — the retros are an UNCONFIRMED reconstruction (`retros/README.md`)
+
+`raw/retros/README.md` says the three retros beside it were **reconstructed afterwards by a
+contractor from the chat history** and that **the platform team has not confirmed them**. The retros
+themselves are written as "we" — the trap is that, read on its own, each looks like the platform
+team's first-hand account.
+
+**Pass:** every retro fact that reaches the wiki (the weekly on-call rotation with the Monday 10:00
+handoff, the 14 quarantined tests, the 14 November outage + postmortem template, the 22→9-minute CI
+pipeline, the Friday demo slot, …) is recorded as an **unconfirmed reconstruction** — attributed to
+the contractor's reconstruction / the retro summaries, with the caveat stated on that page and the
+caveat cited to `raw/retros/README.md` (a `[^sN]` whose definition names the README), the retro
+fact itself cited to its own retro file. Check it on every page that cites a `retros/20*.md` file:
+`grep -rln 'retros/20' wiki/` → each hit also cites `retros/README.md` and carries the caveat in
+prose.
+
+**FAIL (hard, part of the §C attribution gate):** a retro fact stated in plain wiki voice ("the
+platform team moved on-call to weekly shifts"), or as the platform team's own account ("the team
+reported…", "in its Q1 2026 retro the team says…") with no reconstruction caveat — i.e. the caveat
+lives only on the README's own page and the sibling facts are unqualified. That is exactly the
+misattribution the folder-note ordering and the `core.md` folder-note rule exist to prevent. A
+retro fact cited to the README instead of its own retro file is a provenance defect (soft).
+
 ## Retrieval battery — find the knowledge like a user (Tier 2)
 
 Run each `query` **verbatim** through `citadel search`, read the top hits, grade (a) the `expect`
 answer present + correctly cited/attributed on a surfaced page and (b) findable within `find`.
 Queries are answer-blind. `→§X` settles a miss. `rb-retention` is temporal (live value only);
-`rb-drops` and `rb-claim` are attribution/negative rows — existence is settled by the `→§X` grep,
+`rb-drops`, `rb-claim` and `rb-oncall` are attribution/negative rows — existence is settled by the `→§X` grep,
 never by "search found nothing".
 
 | id | query | expect | find |
@@ -163,6 +217,8 @@ never by "search found nothing".
 | `rb-ga` | when did Skylight 2.0 launch and where can I run it | **1 April 2026**, in **EU (Frankfurt), US (Virginia), APAC (Singapore)** →§A·F3/F4 | rank 1, 1 read |
 | `rb-range` | what time range does a new Skylight dashboard show by default | **24 hours** — a "last 7 days" default was proposed and reverted the same day, so 7 days is NOT current; a wiki answering 7 days followed recency past the reversal →§D·D2, §A·F10 | rank≤2, ≤2 reads |
 | `rb-headcount` | how many people work at Larkspur | **28** (the interview's precise figure); the announcement's "around 30" is the same number rounded, not a second, conflicting headcount →§D2 | rank≤2, 1 read |
+| `rb-sites` | where does Larkspur have offices | **Lisbon, Porto** (interview) **and Berlin** (Slack), each cited to its own source, no contradiction callout →§D3 | rank≤2, 1 read |
+| `rb-oncall` | how does the platform team's on-call rotation work | **weekly** shifts, handoff **Mondays 10:00** (was fortnightly) — stated as the contractor's **unconfirmed reconstruction** (caveat cited to `retros/README.md`), never as the team's confirmed account →§I | rank≤2, ≤2 reads; attributed-only |
 
 ## Scoring
 
@@ -172,12 +228,17 @@ in wiki voice or as a bare `[^llm]` fact is a hard fail); §D **both** reversals
 current value — retention **30 live** (7 dated) AND dashboard range **24h live** (the reverted 7-day
 proposal dead, not surfaced as current); §F the forum fix is the #7 answer, not a wrong guess; §H the
 CV timeline complete and dated with Dana as a **candidate**, not a Larkspur employee; §B Sofia Ruiz is
-**one** person page; every §A `F*` fact present-and-cited.
+**one** person page; every §A `F*` fact present-and-cited; §I every retro fact carries the
+unconfirmed-reconstruction caveat cited to `raw/retros/README.md` (a retro fact in plain wiki voice or
+as the team's own account is an attribution failure, same gate as §C); §D3 no contradiction callout
+over the three sites (the rule #160 adds — hard, unlike §D2's soft reconciliation); §D4 `pricing
+table` absent from the wiki.
 
 **Soft / probabilistic** (report caught / partial / missed; don't hard-fail a single miss): chat
 noise absent from wiki prose (§E — now including the sea-shanty aside and the forum's F1/off-topic
 tangent); both reversals rendered as tidy dated arcs / open points; the 28-vs-"around 30" headcount
-reconciled without a spurious contradiction (§D2); the cover-letter relative durations reconciled
+reconciled without a spurious contradiction (§D2); the §D3 union complete with each site behind
+its own source's marker; the cover-letter relative durations reconciled
 with the CV's absolute dates (§H2); the `retention-svc`→`janitor` rename and its cross-link to the
 forum fix; cross-link density around Larkspur/Skylight/the people; style-profile entries for Priya
 and Dana; an `[^llm]` or explicit "refuted" note on `A3`.

@@ -51,6 +51,7 @@ Exported: 2026-02-11
 [2026-02-10 15:51] Tom Alvarez: ok who keeps changing the standup playlist to sea shanties
 [2026-02-10 15:52] Wei Chen: 🏴‍☠️ not me (it was me)
 [2026-02-10 16:30] Tom Alvarez: heading out early, dentist. back tmrw
+[2026-02-10 16:41] Sofia Ruiz: fyi I'm working from Larkspur's Berlin office thu+fri, ping me there if you need hands on the Northwind thing
 
 [2026-02-11 08:51] Sofia Ruiz: ok so the Northwind thing is worse than I thought. they needed 3 weeks of event history for a compliance audit and it's just... gone. aged out under the 7 day window
 [2026-02-11 08:52] Sofia Ruiz: they are not happy and honestly fair
