@@ -63,7 +63,12 @@ per-source state table: ingested / failed / skipped-duplicate / ignored / oversi
 (read-only setup health check — OK/WARN/FAIL lines for workspace / rules / config-parse fallbacks /
 agent CLI / the configured ingest model / raw roots / wiki placement
 (the wiki nested inside a raw root) / child paths (the UNC-vs-drive-letter cwd) /
-manifest / billing / the MCP SDK (`mcp.server.fastmcp` imports, version inside the `mcp>=1.10,<2` pin) / the HTTP-serve posture / wiki-git state / a best-effort PyPI update check / workspace coherence; every check runs isolated, so one that raises is its own FAIL line, never a traceback; needs no workspace, exits 1 only on a FAIL),
+manifest / billing / `agent instructions` (instruction files in/above the workspace a NON-isolated
+session would load, per backend — `llm._INSTRUCTION_FILES`) / the MCP SDK (`mcp.server.fastmcp` imports, version inside the `mcp>=1.10,<2` pin) / the HTTP-serve posture / wiki-git state / a best-effort PyPI update check / workspace coherence; every check runs isolated, so one that raises is its own FAIL line, never a traceback; needs no workspace, exits 1 only on a FAIL; `--probe` ADDS one tiny paid
+session per configured model — `llm.probe_session`, production argv + hermetic flags, claude also
+`--tools ""`/`--max-budget-usd`/`--no-session-persistence` when advertised, in a throwaway temp dir
+with a ≤120 s timeout, following ingest's `--bare` retry rule — so a credential-stripping `--bare`, a
+CLI not logged in for `-p`, or a rejected model id shows before the first source pays),
 `adopt` (record THIS workspace root in the manifest's `meta.workspaces` after a move or a
 writer-machine switch — no agent session, under the run lock, refuses a re-keyed key space
 (`manifest.workspace_rekeyed`) and never rewrites a corrupt manifest; the free fix for the
@@ -671,9 +676,10 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   `CITADEL_INGEST_MODEL` (passed as `--model` to EVERY backend - claude, copilot and agy all
   honor it; unset (the default) means "run the CLI's own default model"),
   `CITADEL_CURATE_MODEL` (model for `citadel curate` sessions; falls back to
-  `CITADEL_INGEST_MODEL`), `CITADEL_LLM_TIMEOUT`, `CITADEL_HERMETIC` (session isolation — append claude's `--bare` when the
-  installed binary advertises it, so personal `~/.claude` config never leaks into ingest; default
-  on, probe-gated), `CITADEL_PAGE_CACHE` (the serve-side page snapshot cache: `auto` = on in
+  `CITADEL_INGEST_MODEL`), `CITADEL_LLM_TIMEOUT`, `CITADEL_HERMETIC` (session isolation — append claude's `--bare` / copilot's
+  `--no-custom-instructions` when the installed binary advertises it, so personal config and project
+  instruction files never leak into ingest; default on, probe-gated; only the credential-stripping
+  `--bare` (`llm._CREDENTIAL_STRIPPING_FLAGS`) can trigger the auth retry), `CITADEL_PAGE_CACHE` (the serve-side page snapshot cache: `auto` = on in
   `citadel serve` only, `1` = everywhere, `0` = never), the `CITADEL_HTTP_*` serving knobs
   (`TOKEN` — mandatory for `serve --http`, no default; `HOST`/`PORT`/`PATH` — loopback:8765/mcp;
   `READ_ONLY`), `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,

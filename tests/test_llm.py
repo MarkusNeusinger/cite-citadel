@@ -856,8 +856,9 @@ def test_hermetic_flags_empty_when_not_advertised(monkeypatch):
 
 
 def test_hermetic_flags_off_by_knob_and_absent_for_other_clis(monkeypatch):
-    """CITADEL_HERMETIC=0 disables the flag even when advertised; copilot/agy have no isolation
-    flag registered — nothing is probed (the help cache stays untouched) and nothing is passed."""
+    """CITADEL_HERMETIC=0 disables the flag even when advertised; agy has no isolation flag
+    registered — nothing is probed for it and nothing is passed; copilot's flag is probe-gated like
+    claude's, so a help text without it passes nothing."""
     _seed_help(monkeypatch, "/bin/claude", "--bare\n")
     monkeypatch.setattr(config, "HERMETIC", False, raising=False)
     assert llm._hermetic_flags("claude", "/bin/claude") == []
@@ -865,7 +866,7 @@ def test_hermetic_flags_off_by_knob_and_absent_for_other_clis(monkeypatch):
     cache = _seed_help(monkeypatch, "/bin/claude", "--bare\n")
     assert llm._hermetic_flags("copilot", "/bin/copilot") == []
     assert llm._hermetic_flags("agy", "/bin/agy") == []
-    assert set(cache) == {"/bin/claude"}  # no probe was attempted for copilot/agy
+    assert "/bin/agy" not in cache  # no probe was attempted for agy
 
 
 def test_run_ingest_session_appends_hermetic_flag_probe_gated(monkeypatch):
@@ -1501,7 +1502,7 @@ def test_run_session_verbose_uses_streaming_not_capture(monkeypatch):
 
     used = {"stream": 0, "run": 0}
 
-    def fake_stream(cli, argv, stdin_text):
+    def fake_stream(cli, argv, stdin_text, **_kw):
         used["stream"] += 1
         return 0, "streamed transcript", ""
 

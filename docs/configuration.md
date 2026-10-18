@@ -127,6 +127,24 @@ prerequisite. **Set it to `0` if every session fails on authentication while the
 | `CITADEL_LLM_LOG_DIR` | (off) | Write one transcript per agent session (prompt + full CLI stdout/stderr + exit code + duration) — a chunked source writes one per pass. Relative paths resolve under the workspace root. **Local-only — keep out of VCS** (transcripts can contain source content). CLI flag: `--log-dir`. File names: see [transcript names](#transcript-names). |
 | `CITADEL_LLM_VERBOSE` | `0` | `1`/`true` streams each session's output live. CLI flag: `-v`. |
 
+### Hermetic sessions
+
+With `CITADEL_HERMETIC=1` (the default) each session gets its backend's isolation flag, when the
+installed binary advertises it: claude `--bare` (skips hooks, `CLAUDE.md` auto-discovery and MCP
+servers — and on some machines the credentials, see [troubleshooting](troubleshooting.md#every-session-fails-with-an-authentication-error-but-the-cli-works-when-i-run-it-myself);
+an auth refusal is retried once without it and remembered for the run) and copilot
+`--no-custom-instructions` (skips instruction files only; it never triggers that retry). agy
+documents no such flag, so its sessions are never isolated.
+
+A session that is NOT isolated loads instruction files from the workspace root and every directory
+above it — claude: `CLAUDE.md`, `CLAUDE.local.md`, `.claude/CLAUDE.md`, `.claude/rules/`, `AGENTS.md`;
+copilot: `.github/copilot-instructions.md`, `.github/instructions/`, `AGENTS.md`, `CLAUDE.md`,
+`GEMINI.md`; agy: `AGENTS.md`, `GEMINI.md` — next to citadel's rules tree (house rules belong in
+`rules/local.md`). `citadel doctor`'s **agent instructions** line lists what it finds and whether
+isolation is in effect; files inside sub-folders that load on demand (a `CLAUDE.md` in a repo dropped
+into `raw/`) cannot be predicted offline and are not checked. `citadel doctor --probe` runs one tiny
+paid session to show what actually happens.
+
 ### Excluded files and what enforces them
 
 Files kept out by your own `CITADEL_IGNORE_PATTERNS` entries, by `CITADEL_INCLUDE_PATTERNS` or by

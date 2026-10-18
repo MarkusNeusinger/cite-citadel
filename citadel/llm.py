@@ -51,6 +51,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
@@ -735,9 +736,33 @@ def _cli_help_text(cli_path: str) -> str:
 
 # Per-CLI session-isolation flags: what to pass so the user's PERSONAL agent configuration
 # (~/.claude hooks, CLAUDE.md context, MCP-server discovery) does not leak into citadel's agent
-# sessions — the session then runs on the rules tree alone, reproducibly. Only claude documents
-# such a switch today; copilot/agy have no equivalent (no entry, so nothing is probed or passed).
-_HERMETIC_FLAGS: dict[str, tuple[str, ...]] = {"claude": ("--bare",)}
+# sessions — the session then runs on the rules tree alone, reproducibly. claude's --bare skips hooks,
+# CLAUDE.md discovery and MCP servers (and, on some machines, the credentials too); copilot's
+# --no-custom-instructions skips its instruction files (AGENTS.md, CLAUDE.md, .github/...); agy
+# documents no such switch (no entry, so nothing is probed or passed).
+_HERMETIC_FLAGS: dict[str, tuple[str, ...]] = {"claude": ("--bare",), "copilot": ("--no-custom-instructions",)}
+
+# What each backend loads as INSTRUCTIONS from the session cwd and every directory above it when it
+# is NOT isolated (vendor docs; agy per the Antigravity CLI docs, unverified against a binary) —
+# kept beside the flags that suppress them. `citadel doctor`'s "agent instructions" line scans for
+# these; subdirectory files that load on demand cannot be predicted offline and are not scanned.
+_INSTRUCTION_FILES: dict[str, tuple[str, ...]] = {
+    "claude": ("CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md", ".claude/rules", "AGENTS.md", ".claude/AGENTS.md"),
+    "copilot": (
+        ".github/copilot-instructions.md",
+        ".github/instructions",
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".claude/CLAUDE.md",
+        "GEMINI.md",
+    ),
+    "agy": ("AGENTS.md", "GEMINI.md"),
+}
+
+# The isolation flags that ALSO skip where a CLI may keep its credentials — the only ones an
+# auth-shaped failure can be blamed on, so the only ones that trigger the auth hint and the
+# one-shot retry without isolation. copilot's --no-custom-instructions skips instruction files only.
+_CREDENTIAL_STRIPPING_FLAGS = frozenset({"--bare"})
 
 # Binaries whose isolation flag is PROVEN to strip their credentials on this machine: a session
 # under the flag failed auth-shaped AND its retry without the flag succeeded (see
@@ -805,7 +830,7 @@ def _hermetic_auth_hint(cli: str, argv: list[str], message: str) -> str:
     again"*), which sends you looking in the wrong place, so name the knob that actually explains
     it. Derived from ``argv`` rather than the config, so the hint appears only when a flag really
     was passed (hermetic mode is probe-gated: an older binary is handed nothing)."""
-    flags = [flag for flag in _HERMETIC_FLAGS.get(cli, ()) if flag in argv]
+    flags = [flag for flag in _HERMETIC_FLAGS.get(cli, ()) if flag in argv and flag in _CREDENTIAL_STRIPPING_FLAGS]
     if not flags or not _AUTH_ERROR_RE.search(message):
         return ""
     return (
@@ -845,7 +870,9 @@ def _echo_stderr(text: str) -> None:
         sys.stderr.flush()
 
 
-def _stream_subprocess(cli: str, argv: list[str], stdin_text: str | None) -> tuple[int, str, str]:
+def _stream_subprocess(
+    cli: str, argv: list[str], stdin_text: str | None, *, cwd: str | None = None, timeout: int | None = None
+) -> tuple[int, str, str]:
     """Run the CLI while TEEING its output to the terminal live (verbose mode), returning
     ``(returncode, stdout, stderr)`` exactly like the captured path so the shared error-detection
     and transcript-logging below are unchanged.
@@ -865,7 +892,7 @@ def _stream_subprocess(cli: str, argv: list[str], stdin_text: str | None) -> tup
         encoding="utf-8",
         errors="replace",
         bufsize=1,
-        cwd=config.child_cwd(),
+        cwd=cwd or config.child_cwd(),
         env=config.child_env(),
     )
     if stdin_text is not None and proc.stdin is not None:
@@ -881,7 +908,8 @@ def _stream_subprocess(cli: str, argv: list[str], stdin_text: str | None) -> tup
         with contextlib.suppress(OSError):
             proc.kill()
 
-    timer = threading.Timer(config.LLM_TIMEOUT, _kill)
+    limit = timeout or config.LLM_TIMEOUT
+    timer = threading.Timer(limit, _kill)
     timer.start()
     chunks: list[str] = []
     # All terminal echo is diagnostic — a closed/broken stderr (e.g. `2>|`, or a downstream pipe
@@ -901,7 +929,7 @@ def _stream_subprocess(cli: str, argv: list[str], stdin_text: str | None) -> tup
     if timed_out["v"]:
         # Carry whatever was streamed before the kill so _run_session can log a useful PARTIAL
         # transcript for the timed-out session instead of an empty one.
-        raise subprocess.TimeoutExpired(argv, config.LLM_TIMEOUT, output="".join(chunks))
+        raise subprocess.TimeoutExpired(argv, limit, output="".join(chunks))
     return proc.returncode, "".join(chunks), ""
 
 
@@ -1028,7 +1056,13 @@ def _write_transcript(
 
 
 def _run_session(
-    cli: str, argv: list[str], stdin_text: str | None, *, log_label: str | None = None
+    cli: str,
+    argv: list[str],
+    stdin_text: str | None,
+    *,
+    log_label: str | None = None,
+    cwd: str | None = None,
+    timeout: int | None = None,
 ) -> SessionUsage | None:
     """Run the agentic CLI once in the workspace root (``config.child_cwd()`` — the root in the
     spelling a child process can use; see ``config.NATIVE_FORMS``). Success = the session completed
@@ -1046,11 +1080,15 @@ def _run_session(
     test that monkeypatches ``subprocess.run`` — is byte-for-byte the original behavior.
 
     Note: empty stdout is NOT a failure — an agent that legitimately changed nothing prints
-    nothing and exits 0 (ingest's snapshot diff then simply shows no changes)."""
+    nothing and exits 0 (ingest's snapshot diff then simply shows no changes).
+
+    ``cwd``/``timeout`` (keyword-only, default ``config.child_cwd()`` / ``config.LLM_TIMEOUT``) exist
+    for ``citadel doctor --probe``, which runs in a throwaway temp dir with a short limit."""
     started = time.monotonic()
+    limit = timeout or config.LLM_TIMEOUT
     try:
         if config.LLM_VERBOSE:
-            returncode, out_raw, err_raw = _stream_subprocess(cli, argv, stdin_text)
+            returncode, out_raw, err_raw = _stream_subprocess(cli, argv, stdin_text, cwd=cwd, timeout=timeout)
         else:
             proc = subprocess.run(
                 argv,
@@ -1062,8 +1100,8 @@ def _run_session(
                 # undecodable byte from killing the run.
                 encoding="utf-8",
                 errors="replace",
-                timeout=config.LLM_TIMEOUT,
-                cwd=config.child_cwd(),
+                timeout=limit,
+                cwd=cwd or config.child_cwd(),
                 # The wiki this session must edit is passed EXPLICITLY (ingest's per-source staging
                 # copy, via config.wiki_redirect) rather than through a process-global
                 # os.environ assignment — two concurrent sessions each get their own.
@@ -1085,9 +1123,9 @@ def _run_session(
             partial_err,
             log_label,
             time.monotonic() - started,
-            note=f"timed out after {config.LLM_TIMEOUT}s",
+            note=f"timed out after {limit}s",
         )
-        raise RuntimeError(f"the {cli!r} CLI timed out after {config.LLM_TIMEOUT}s") from exc
+        raise RuntimeError(f"the {cli!r} CLI timed out after {limit}s") from exc
     except OSError as exc:
         raise RuntimeError(f"failed to run the {cli!r} CLI: {exc}") from exc
 
@@ -1148,6 +1186,103 @@ def _run_session(
         error.session_usage = usage
         raise error
     return usage
+
+
+# `citadel doctor --probe`: one tiny paid session that proves the backend actually authenticates
+# and accepts the configured model BEFORE the first source pays for finding out.
+PROBE_PROMPT = "Reply with exactly: OK"
+_PROBE_TIMEOUT = 120
+_PROBE_BUDGET_USD = "0.25"
+
+
+@dataclass
+class ProbeResult:
+    """One probe outcome: ``status`` is ``ok`` / ``warn`` / ``fail``; ``detail`` a single ASCII line;
+    ``usage`` what every leg spent (a failed leg included); ``sessions`` how many legs ran."""
+
+    status: str
+    detail: str
+    usage: SessionUsage | None = None
+    sessions: int = 0
+
+
+def _probe_text(message: str, limit: int = 300) -> str:
+    """Backend text folded to ONE ASCII line (doctor renders a plain ASCII block)."""
+    flat = " ".join(str(message).split()).encode("ascii", "replace").decode("ascii")
+    return flat if len(flat) <= limit else flat[: limit - 3] + "..."
+
+
+def probe_session() -> ProbeResult:
+    """Run the configured backend ONCE on :data:`PROBE_PROMPT`, the way ingest would (production
+    argv + the hermetic flags; for claude also ``--tools ""``, a ``--max-budget-usd`` cap and
+    ``--no-session-persistence`` when advertised), in a fresh empty temp dir that is removed
+    afterwards, with a short timeout. Follows ingest's retry rule: when the credential-stripping
+    flag is refused at auth, a second leg runs without it. Writes no workspace state."""
+    try:
+        cli = resolve_cli_name(config.LLM_CLI)
+        cli_path = _resolve_cli(cli)
+    except RuntimeError as exc:
+        return ProbeResult("fail", _probe_text(f"cannot launch the agent CLI: {exc}"))
+    argv, stdin_text = _build_invocation(cli, cli_path, PROBE_PROMPT, [])
+    if cli == "claude":
+        for flag, values in (
+            ("--tools", [""]),
+            ("--max-budget-usd", [_PROBE_BUDGET_USD]),
+            ("--no-session-persistence", []),
+        ):
+            if _advertises(cli_path, flag):
+                argv += [flag, *values]
+    hermetic = _hermetic_flags(cli, cli_path)
+    timeout = min(config.LLM_TIMEOUT, _PROBE_TIMEOUT)
+    spent: list[SessionUsage | None] = []
+    model = config.INGEST_MODEL
+
+    def served(usage: SessionUsage | None) -> str:
+        bits = []
+        if usage is not None and usage.model:
+            bits.append(f"served {config.model_label_for(usage.model)}")
+        requested = f"requested {model!r}" if model else "the CLI's default model"
+        bits.append(requested)
+        described = combine_usage(spent)
+        if described is not None and described.describe():
+            bits.append(described.describe())
+        return ", ".join(bits)
+
+    def failure(exc: RuntimeError, legs: int) -> ProbeResult:
+        message = str(exc)
+        if model and model.lower() in message.lower():
+            text = f"CITADEL_INGEST_MODEL={model} was rejected: {message}"
+        elif _AUTH_ERROR_RE.search(message):
+            text = f"not logged in for non-interactive use (the probe ran outside the workspace): {message}"
+        else:
+            text = message
+        return ProbeResult("fail", _probe_text(text), combine_usage(spent), legs)
+
+    with tempfile.TemporaryDirectory(prefix="citadel_probe_") as tmp:
+        try:
+            usage = _run_session(cli, argv + hermetic, stdin_text, log_label="probe", cwd=tmp, timeout=timeout)
+            spent.append(usage)
+            mode = f"hermetic ({' '.join(hermetic)})" if hermetic else "non-hermetic"
+            return ProbeResult("ok", _probe_text(f"session ran {mode}, {served(usage)}"), combine_usage(spent), 1)
+        except RuntimeError as exc:
+            spent.append(getattr(exc, "session_usage", None))
+            if not (hermetic and getattr(exc, "hermetic_auth_failure", False)):
+                return failure(exc, 1)
+        try:
+            usage = _run_session(cli, argv, stdin_text, log_label="probe", cwd=tmp, timeout=timeout)
+        except RuntimeError as exc:
+            spent.append(getattr(exc, "session_usage", None))
+            return failure(exc, 2)
+        spent.append(usage)
+        return ProbeResult(
+            "warn",
+            _probe_text(
+                f"{' '.join(hermetic)} strips this CLI's credentials here: every run pays one failed launch, then "
+                f"runs non-hermetic (CITADEL_HERMETIC=0 skips the failed launch); {served(usage)}"
+            ),
+            combine_usage(spent),
+            2,
+        )
 
 
 def run_ingest_session(

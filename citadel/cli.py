@@ -299,6 +299,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Diagnose the setup (workspace / rules / agent CLI / raw roots / manifest / billing) "
         "with OK/WARN/FAIL lines; read-only, exits 1 only on a FAIL. Runs without a workspace.",
     )
+    p_doctor.add_argument(
+        "--probe",
+        action="store_true",
+        help="ALSO run one tiny PAID agent session per configured model (in a throwaway temp dir) to prove "
+        "the backend authenticates non-interactively and accepts the model - before a real ingest pays to "
+        "find out. Plain `citadel doctor` never starts a session.",
+    )
     p_doctor.set_defaults(func=cmd_doctor, needs_workspace=False)
 
     p_adopt = sub.add_parser(
@@ -780,7 +787,13 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     MISSING workspace; returns 1 only when some check FAILs, else 0."""
     from . import doctor
 
-    report = doctor.run()
+    if args.probe:
+        print(
+            "doctor --probe: starting ONE short paid agent session per configured model "
+            '("Reply with exactly: OK") to prove the backend authenticates and accepts the model.',
+            file=sys.stderr,
+        )
+    report = doctor.run(probe=args.probe)
     print(report.render(), end="")
     return 0 if report.ok else 1
 

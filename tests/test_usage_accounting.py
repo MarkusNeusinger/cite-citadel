@@ -756,7 +756,7 @@ def test_run_session_verbose_claude_still_returns_usage(monkeypatch):
     monkeypatch.setattr(config, "LLM_VERBOSE", True, raising=False)
     monkeypatch.setattr(config, "LLM_LOG_DIR", "", raising=False)
     envelope = '{"type":"result","is_error":false,"total_cost_usd":0.07,"usage":{"output_tokens":3}}'
-    monkeypatch.setattr(llm, "_stream_subprocess", lambda cli, argv, stdin_text: (0, envelope, ""))
+    monkeypatch.setattr(llm, "_stream_subprocess", lambda cli, argv, stdin_text, **_kw: (0, envelope, ""))
     usage = llm._run_session("claude", ["claude", "-p"], "PROMPT")
     assert usage.cost_usd == pytest.approx(0.07) and usage.output_tokens == 3
 

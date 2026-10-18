@@ -65,6 +65,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`citadel doctor --probe` and an `agent instructions` line (#158).** Plain `citadel doctor` now
+  lists the `CLAUDE.md` / `AGENTS.md` / `.github/copilot-instructions.md` files in or above the
+  workspace that a NON-isolated session would load next to citadel's rules, and says whether
+  isolation is in effect. The opt-in `--probe` runs one tiny paid session per configured model (in a
+  throwaway temp dir, short timeout, claude capped with `--max-budget-usd`) and reports the model
+  that actually served it, its cost, whether `--bare` strips this machine's credentials, a CLI not
+  logged in for non-interactive use, or a rejected `CITADEL_INGEST_MODEL` — before a real ingest
+  pays to find out. copilot sessions now get `--no-custom-instructions` under `CITADEL_HERMETIC`
+  (when advertised); it never triggers the credential retry.
+
 - **`citadel adopt` records a moved workspace root without an ingest run (#168).** A workspace in a
   sync folder or moved to a new path warned "written by a workspace rooted at ..." on every command
   until a path-less ingest happened to run with nothing pending. `citadel adopt` records the current

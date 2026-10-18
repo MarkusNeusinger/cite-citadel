@@ -13,6 +13,11 @@ One command answering "is my setup sane?" without touching a byte. Each check em
   line is where that fallback becomes visible.
 - **agent CLI** — is the ``CITADEL_LLM_CLI`` binary on PATH (which path does it resolve to)? WARN,
   not FAIL — the CLI is only needed to *ingest*, and doctor must stay useful before it is installed.
+- **agent instructions** — instruction files (``CLAUDE.md``, ``AGENTS.md``, ...) in or above the
+  workspace that a NON-isolated session would load next to the rules tree; WARN when isolation is
+  not in effect for the configured backend.
+- **probe** (``--probe`` only, the one PAID line) — one tiny session per configured model in a temp
+  dir: does the backend authenticate non-interactively, accept the model, and stay hermetic?
 - **ingest model** — which model ingest will ASK for. Every backend (claude/copilot/agy) is passed
   ``--model``, so an unset ``CITADEL_INGEST_MODEL`` simply means "the CLI's own default"; a
   RETIRED backend name (``gemini``, now Antigravity's ``agy``) FAILs here with its migration hint.
@@ -195,6 +200,93 @@ def check_agent_cli() -> Check:
         # debugging the wrong thing.
         return Check(WARN, "agent CLI", f"{cli!r} cannot be launched - ingest will fail until this is fixed: {exc}")
     return Check(OK, "agent CLI", f"{cli!r} -> {path}")
+
+
+_INSTRUCTIONS_SHOWN = 3
+
+
+def _found_instruction_files(cli: str) -> list[Path]:
+    """The per-backend instruction files (``llm._INSTRUCTION_FILES``) present in the workspace root
+    and every directory above it — stat only, any ``OSError`` counts as absent. The user-scope config
+    dirs (``~/.claude``, ``~/.copilot``) are personal config on every machine and never reported."""
+    from . import llm
+
+    names = llm._INSTRUCTION_FILES.get(cli, ())
+    home = Path.home()
+    skip = {home / ".claude", home / ".copilot"}
+    found: list[Path] = []
+    for directory in [config.WORKSPACE_ROOT, *config.WORKSPACE_ROOT.parents]:
+        for name in names:
+            candidate = directory / name
+            if any(candidate == s or s in candidate.parents for s in skip):
+                continue
+            try:
+                if candidate.exists():
+                    found.append(candidate)
+            except OSError:
+                continue
+    return found
+
+
+def check_agent_instructions() -> Check:
+    """WARN (never FAIL) when instruction files the backend loads from the session cwd and its parents
+    (a ``CLAUDE.md`` / ``AGENTS.md`` / ``.github/copilot-instructions.md`` — a workspace that is also a
+    Claude Code project) will be injected next to citadel's rules tree because the session is NOT
+    isolated: ``CITADEL_HERMETIC=0``, a backend with no isolation flag (agy), or a binary that does not
+    advertise it. OK when nothing is found, or when isolation is in effect (claude ``--bare`` with the
+    caveat that an auth refusal falls back to non-hermetic — ``doctor --probe`` tests that). Free: the
+    only spawn is the cached ``--help`` probe, and only when something was found."""
+    from . import llm
+
+    if not config.WORKSPACE_FOUND:
+        return Check(OK, "agent instructions", "skipped - no workspace")
+    try:
+        cli = llm.resolve_cli_name(config.LLM_CLI)
+    except RuntimeError as exc:
+        return Check(WARN, "agent instructions", f"cannot tell: {exc}")
+    found = _found_instruction_files(cli)
+    if not found:
+        return Check(OK, "agent instructions", "no instruction files in the workspace or its parents")
+    shown = ", ".join(str(p) for p in found[:_INSTRUCTIONS_SHOWN])
+    if len(found) > _INSTRUCTIONS_SHOWN:
+        shown += f" +{len(found) - _INSTRUCTIONS_SHOWN} more"
+    try:
+        flags = llm._hermetic_flags(cli, llm._resolve_cli(cli))
+    except RuntimeError:
+        flags = []
+    if flags:
+        caveat = (
+            "; if --bare is refused at auth, sessions fall back to non-hermetic and load them - "
+            "`citadel doctor --probe` tests this"
+            if set(flags) & llm._CREDENTIAL_STRIPPING_FLAGS
+            else ""
+        )
+        return Check(OK, "agent instructions", f"isolated by {' '.join(flags)} from {shown}{caveat}")
+    return Check(
+        WARN,
+        "agent instructions",
+        f"{cli} sessions are NOT isolated and will load {shown} as instructions next to citadel's rules "
+        "(house rules belong in rules/local.md) - turn CITADEL_HERMETIC on, move the workspace out of "
+        "that project tree, or accept the trade-off",
+    )
+
+
+def _probe_checks() -> list[Check]:
+    """``citadel doctor --probe``: one paid session per distinct model (ingest, and the curate model
+    when it differs) — rendered by doctor, run by :func:`llm.probe_session`. Writes no state."""
+    from . import curate, llm
+
+    def render(name: str, result) -> Check:
+        status = {"ok": OK, "warn": WARN}.get(result.status, FAIL)
+        prefix = "" if config.WORKSPACE_FOUND else "(no workspace: probing the CLI defaults) "
+        return Check(status, name, prefix + result.detail)
+
+    out = [render("probe", llm.probe_session())]
+    curate_model = (config.CURATE_MODEL or "").strip()
+    if curate_model and curate_model != (config.INGEST_MODEL or "").strip():
+        with curate._curate_model_active():
+            out.append(render("probe (curate model)", llm.probe_session()))
+    return out
 
 
 def check_exclusion_enforcement() -> Check:
@@ -978,7 +1070,7 @@ def _one_line(exc: BaseException, limit: int = 300) -> str:
     return text if len(text) <= limit else text[: limit - 3] + "..."
 
 
-def run() -> DoctorReport:
+def run(probe: bool = False) -> DoctorReport:
     """Run every check in order and return the report. Read-only; the caller maps ``ok`` to the exit
     code (0 unless a FAIL).
 
@@ -990,6 +1082,7 @@ def run() -> DoctorReport:
         ("rules", check_rules),
         ("config", check_config),
         ("agent CLI", check_agent_cli),
+        ("agent instructions", check_agent_instructions),
         ("exclusions", check_exclusion_enforcement),
         ("ingest model", check_ingest_model),
         ("raw roots", check_raw_roots),
@@ -1010,4 +1103,10 @@ def run() -> DoctorReport:
         ("update", check_update),
         ("workspace coherence", check_workspace_coherence),
     ]
-    return DoctorReport(checks=[_isolated(name, check) for name, check in checks])
+    report = DoctorReport(checks=[_isolated(name, check) for name, check in checks])
+    if probe:
+        try:
+            report.checks.extend(_probe_checks())
+        except Exception as exc:  # noqa: BLE001 - the probe is one more isolated line, never a traceback
+            report.checks.append(Check(FAIL, "probe", f"could not run the probe - {_one_line(exc)}"))
+    return report

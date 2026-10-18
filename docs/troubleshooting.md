@@ -4,7 +4,11 @@
 lines over workspace resolution, the rules tree, env-setting parse fallbacks (a numeric knob whose
 value didn't parse silently falls back to its default — doctor is where that becomes visible), the
 agent CLI on PATH, raw-root reachability, the manifest, and the API-key/PDF advisories — it needs
-no workspace and exits non-zero only on a FAIL. Most problems below show up there first.
+no workspace and exits non-zero only on a FAIL. Most problems below show up there first. Its
+`agent instructions` line also tells you when a `CLAUDE.md`/`AGENTS.md` in or above the workspace
+will be loaded into non-isolated sessions. Then, once, run **`citadel doctor --probe`**: it spends one
+tiny agent session (in a throwaway temp dir) to prove the backend authenticates non-interactively and
+accepts your `CITADEL_INGEST_MODEL` (and `CITADEL_CURATE_MODEL`), before a real ingest pays to find out.
 
 ### "another citadel run is already running on this workspace"
 
@@ -23,6 +27,10 @@ the binary isn't on `PATH`, point at it with `CLAUDE_CODE_PATH` / `COPILOT_CLI_P
 `AGY_CLI_PATH`.
 
 ### Every session fails with an authentication error, but the CLI works when I run it myself
+
+`citadel doctor --probe` diagnoses this in one short session: it WARNs when `--bare` strips the CLI's
+credentials on this machine (and names `CITADEL_HERMETIC=0`), and FAILs when the CLI is not logged
+in for non-interactive use at all.
 
 Hermetic sessions (`CITADEL_HERMETIC=1`, the default) append the backend's session-isolation flag —
 claude's `--bare` — so your personal agent configuration never leaks into ingest. On some machines

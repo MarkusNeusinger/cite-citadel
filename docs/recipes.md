@@ -217,9 +217,12 @@ runs the same two commands, then *reads the outcome* and acts on it. A prompt th
 > status) and summarize what's wrong; otherwise summarize in two sentences what the wiki learned
 > tonight (the run report names created/updated pages).
 
-This is the autonomous nightly fold-in as a recipe. The nesting is clean by design: ingest's own
-sub-sessions run hermetically (`CITADEL_HERMETIC`, claude's `--bare`), so the outer agent's
-configuration never leaks into the wiki-building sessions.
+This is the autonomous nightly fold-in as a recipe. The nesting is clean when ingest's own
+sub-sessions run hermetically (`CITADEL_HERMETIC`, claude's `--bare`, copilot's
+`--no-custom-instructions`), so the outer agent's configuration never leaks into the wiki-building
+sessions — confirm it once with `citadel doctor --probe` (it reports "session ran hermetic"). In a
+managed container where `--bare` strips the credentials, sessions fall back to non-hermetic and
+load the instruction files `citadel doctor` lists.
 
 ### No watch mode, on purpose
 
