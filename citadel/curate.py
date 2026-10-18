@@ -8,7 +8,9 @@ Two layers, the Wikipedia-bot model, with **no persisted queue** — the wiki IS
    list from the loaded wiki + the manifest at the START of every run (a persisted queue would be a
    second source of truth with staleness bugs). Each detector reuses :mod:`citadel.grammar` /
    :mod:`citadel.store` / :mod:`citadel.okf` — no new citation/link regexes. The reason codes:
-   ``rules_version_drift`` (a page whose source was ingested under an older effective-rules hash),
+   ``rules_version_drift`` (a page whose source was ingested under an older effective-rules hash;
+   planned only under ``--stale-rules``, and never cleared by curate — ``citadel refresh
+   --stale-rules`` re-stamps the source),
    ``page_length_hard`` (over :data:`config.CURATE_PAGE_HARD_LINES` — lint only warns at the soft
    one), ``contradiction`` (an unresolved ``> [!CONTRADICTION]`` callout), ``orphan`` (an island),
    ``llm_drift`` (a page dominated by ``[^llm]`` facts with little ``[^sN]`` grounding),
@@ -54,7 +56,22 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import config, failures, grammar, ingest, lint, llm, manifest, okf, pagecache, runlock, store, validate, wikigit
+from . import (
+    config,
+    failures,
+    grammar,
+    ingest,
+    lint,
+    llm,
+    manifest,
+    okf,
+    pagecache,
+    refresh,
+    runlock,
+    store,
+    validate,
+    wikigit,
+)
 from .okf import Page
 
 
@@ -176,6 +193,11 @@ class CurateReport:
     unmatched: list[str] = field(default_factory=list)
     # The wiki-history note from wikigit.autocommit — empty when the history layer had nothing to say.
     wiki_git: str = ""
+    # How many sources stay (stale) — refresh.stale_count(), the K of the `refresh --stale-rules
+    # --limit K` hint render() prints whenever the plan carries rules_version_drift (-1: the count
+    # failed, the hint keeps a placeholder K). Curate re-checks pages, never whole sources, so it
+    # cannot clear the marker itself.
+    stale_sources: int = 0
     # What this run's cluster sessions cost, summed over every session that reported usage —
     # NOOP and failed clusters included (their sessions were paid for too). None when no
     # backend reported anything.
@@ -207,6 +229,9 @@ class CurateReport:
                 "a cluster that keeps failing is skipped after "
                 f"{ATTEMPT_CAP} attempts until `citadel curate --retry`."
             )
+        if any(REASON_RULES_DRIFT in item.reasons for item in self.plan.items):
+            lines.append("")
+            lines.append(_stale_hint(self.stale_sources))
         described = self.usage.describe() if self.usage is not None else ""
         if described:
             lines.append("")
@@ -215,6 +240,30 @@ class CurateReport:
             lines.append("")
             lines.append(self.wiki_git)
         return "\n".join(lines)
+
+
+def _stale_hint(count: int) -> str:
+    """The note a ``rules_version_drift`` plan carries: curate re-checks PAGES, so it never
+    re-stamps a source and the ``(stale)`` marker (and the --stale-rules plan) outlives every
+    curate run until the source lifecycle re-verifies the source. ``count`` 0 (a drifted source
+    refresh cannot take: gone from disk, or never model-imported) leaves only the forced ingest;
+    a negative ``count`` (the count itself failed) keeps the refresh command with a placeholder K."""
+    if count < 0:
+        return (
+            "Curate re-checks pages, not sources: the drifted sources stay (stale) - and their pages\n"
+            "stay in the --stale-rules plan - until `citadel refresh --stale-rules --limit K`\n"
+            "(K = the (stale) count `citadel status` shows) or `citadel ingest --force <paths>` re-verifies them."
+        )
+    if count == 0:
+        return (
+            "Curate re-checks pages, not sources: the drifted sources stay (stale) - and their pages\n"
+            "stay in the --stale-rules plan - until `citadel ingest --force <paths>` re-verifies them."
+        )
+    return (
+        f"Curate re-checks pages, not sources: {count} source(s) stay (stale) - and their pages stay in\n"
+        f"the --stale-rules plan - until `{refresh.stale_command(count)}`\n"
+        "(or `citadel ingest --force <paths>`) re-verifies them."
+    )
 
 
 # --- offline detectors ----------------------------------------------------------------------
@@ -390,8 +439,9 @@ def build_plan(
     ``scope``: a steer with no paths merely rides along on the detector plan (every findings file
     carries it), because fanning one out over a whole clean wiki would be one paid session per page.
 
-    ``stale_rules`` narrows the plan to pages whose source was ingested under an OLDER effective-rules
-    hash (the ``--stale-rules`` selector) — a page carrying only other reasons is dropped, except an
+    ``stale_rules`` is the ONLY way :data:`REASON_RULES_DRIFT` is planned, and it narrows the plan
+    to pages whose source was ingested under an OLDER effective-rules hash (the ``--stale-rules``
+    selector) — a page carrying only other reasons is dropped, except an
     explicitly guided one (a named page is an instruction, not a detection). ``limit``
     keeps the first N clusters of that ordered plan (``--limit``).
 
@@ -415,7 +465,10 @@ def build_plan(
     # set of source keys — resolved in ONE fence-aware wiki traversal via the batch
     # store.citing_pages_map (the O(sources × pages) per-key find_raw_references loop this
     # replaces dominated build_plan on a large wiki, --dry-run included).
-    stale_keys = _stale_source_keys(manifest_dict, current_rules_version)
+    # Drift is opt-in (--stale-rules): curate never re-stamps a source, so in the default plan
+    # it would be a permanent paid item on every run — and, ranked above the advisory detectors,
+    # would starve them under --limit. `citadel refresh --stale-rules` is what clears it.
+    stale_keys = _stale_source_keys(manifest_dict, current_rules_version) if stale_rules else set()
     reverify_keys = reverify_candidates()
     citing = store.citing_pages_map(set(stale_keys) | reverify_keys, pages)
     for key in stale_keys:
@@ -877,8 +930,9 @@ def curate(
 
     - ``dry_run``: print/return the recomputed plan and run ZERO agent sessions, leaving the wiki
       byte-for-byte untouched (the wiki IS the database — nothing to persist).
-    - ``limit`` / ``stale_rules``: passed to :func:`build_plan` (cap the plan / narrow it to
-      stale-rules pages).
+    - ``limit`` / ``stale_rules``: passed to :func:`build_plan` (cap the plan / opt in to the
+      rules-drift detector and narrow the plan to stale-rules pages). Curate never re-stamps a
+      source, so the report names ``citadel refresh --stale-rules`` as what clears ``(stale)``.
     - ``paths``: restrict the plan to the pages they name — a rel_path, a wiki-relative file path,
       a FOLDER, or a glob (:func:`_select_pages`); applied before ``limit``. Under a
       ``config.CURATE_GUIDANCE`` steer they are also the operator ask itself: each named page is
@@ -918,6 +972,13 @@ def curate(
     )
 
     report = CurateReport(plan=plan)
+    if any(REASON_RULES_DRIFT in item.reasons for item in plan.items):
+        # Advisory only: one unreachable source (a dead share — Path.exists can raise) must never
+        # abort a curate run over a hint; -1 keeps the hint with a placeholder K.
+        try:
+            report.stale_sources = refresh.stale_count()
+        except OSError:
+            report.stale_sources = -1
     report.skipped = list(plan.skipped)
     report.unmatched = unmatched
     if dry_run:

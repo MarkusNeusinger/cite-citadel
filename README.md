@@ -109,8 +109,10 @@ cited is dropped, never invented; conflicting sources produce a `> [!CONTRADICTI
 `wiki/` folder also opens **as-is** as an [Obsidian](https://obsidian.md) vault.
 
 Every page's frontmatter records **when it last changed and which cite-citadel release wrote it**
-(`timestamp` + `citadel_version`, both stamped automatically), and `citadel curate --stale-rules`
-refreshes pages whose sources were ingested under an older rulebook. A wiki also outlives its
+(`timestamp` + `citadel_version`, both stamped automatically). After a rules edit `citadel status`
+marks every older source `(stale)`, and `citadel refresh --stale-rules --limit K` re-verifies
+exactly those sources and clears the marker (`citadel curate --stale-rules` re-checks their pages
+but never clears it). A wiki also outlives its
 models: rather than ever regenerating it after a model upgrade, `citadel refresh --limit N` re-verifies
 the N sources that have gone **longest unchecked** under the current model + rules — a budget you
 choose per run (e.g. part of a monthly token allowance), walking the corpus round-robin — and the

@@ -17,8 +17,9 @@ posix key to how it was last ingested: ``sha256`` is the hash of the source's co
 (what the backend REPORTED serving, via ``config.model_label_for``), so you can see WHICH raw
 file was imported by WHICH model;
 ``rules_version`` is the content hash of the effective rules tree the importing session ran under
-(``config.rules_version``) — what a later ``curate --stale-rules`` compares to find sources
-ingested under older rules; ``ingested_at`` is the UTC wall-clock time the importing/reconciling
+(``config.rules_version``) — what ``citadel status`` / ``refresh --stale-rules`` / ``curate
+--stale-rules`` compare to find sources ingested under older rules (re-stamped only by a source
+session, never by curate); ``ingested_at`` is the UTC wall-clock time the importing/reconciling
 session finished — what ``citadel refresh`` orders by to find the LEAST-recently-checked sources
 (carried unchanged across moves and cache re-stamps: it means "a model last verified this source
 then", never "the file was last stat'ed then"). ``cost_usd``/``tokens_in``/``tokens_out`` record

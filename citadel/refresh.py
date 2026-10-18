@@ -25,7 +25,9 @@ uses. What each session actually cost is no longer invisible: the backend's own 
 report is stamped into the source's manifest entry and totaled on the delegated ingest report. ``--min-age-days``
 makes a scheduled run self-limiting: sources checked more recently than that are not candidates
 at all, so a cron'd ``citadel refresh --limit 20 --min-age-days 30`` becomes a cheap no-op once
-the corpus is fresh instead of pointlessly re-burning budget on it.
+the corpus is fresh instead of pointlessly re-burning budget on it. ``--stale-rules`` narrows the
+queue to the sources stamped under an older rulebook — the way to clear the ``(stale)`` marker a
+rules edit puts on every source (curate re-checks pages, not sources, so it never clears it).
 
 Only sources a model actually imported are candidates (an unreadable binary that was merely seen
 has nothing to re-verify — retrying those is ``ingest --force``'s job), and a source missing from
@@ -66,22 +68,27 @@ class RefreshReport:
     eligible: int = 0
     min_age_days: int = 0
     dry_run: bool = False
+    stale_only: bool = False
     ingest_report: ingest.IngestReport | None = None
 
     def render(self) -> str:
         """The refresh plan (and, after a real run, the delegated ingest report below it)."""
         lines = ["Refresh report", "==============", ""]
         if not self.selected:
-            if self.eligible == 0:
+            if self.eligible == 0 and self.stale_only:
+                lines.append("Nothing to refresh: no source is (stale).")
+            elif self.eligible == 0:
                 lines.append("Nothing to refresh: no re-verifiable sources in the manifest.")
             else:
+                what = "(stale)" if self.stale_only else "re-verifiable"
                 lines.append(
-                    f"Nothing to refresh: all {self.eligible} re-verifiable source(s) were "
+                    f"Nothing to refresh: all {self.eligible} {what} source(s) were "
                     f"checked within the last {self.min_age_days} days."
                 )
             return "\n".join(lines) + "\n"
         verb = "Would refresh" if self.dry_run else "Refreshing"
-        lines.append(f"{verb} {len(self.selected)} of {self.candidates} candidate source(s), oldest-checked first:")
+        kind = "stale-rules candidate" if self.stale_only else "candidate"
+        lines.append(f"{verb} {len(self.selected)} of {self.candidates} {kind} source(s), oldest-checked first:")
         for c in self.selected:
             parts = [c.key, f"last checked {c.ingested_at or 'unknown (never re-stamped)'}"]
             if c.model:
@@ -108,37 +115,58 @@ def _age_floor(queue: list[RefreshCandidate], min_age_days: int) -> list[Refresh
     return [c for c in queue if c.ingested_at is None or c.ingested_at < cutoff]
 
 
-def plan(min_age_days: int = 0) -> list[RefreshCandidate]:
+def plan(min_age_days: int = 0, stale_only: bool = False) -> list[RefreshCandidate]:
     """The full refresh queue: every re-verifiable source, ordered least-recently-checked first.
 
     A source qualifies when a model actually imported it (``entry_model`` set — an unreadable
     binary that was only sniffed has nothing to re-verify) and it still exists on disk (a gone
     source is the deletion sweep's job). ``min_age_days > 0`` additionally applies
-    :func:`_age_floor`. Ordering is the stamp as a plain string (fixed-width ISO UTC sorts
-    chronologically), missing stamps first, key as the deterministic tie-break."""
+    :func:`_age_floor`. ``stale_only`` keeps only the candidates stamped under an OLDER rules
+    hash (``--stale-rules``) — the one queue that clears the ``(stale)`` marker, since curate
+    re-checks pages, never whole sources, and so never re-stamps one. Ordering is the stamp as a
+    plain string (fixed-width ISO UTC sorts chronologically), missing stamps first, key as the
+    deterministic tie-break."""
     out: list[RefreshCandidate] = []
     current_rules = config.rules_version()
     for key, entry in manifest.load().items():
         model = manifest.entry_model(entry)
         if not model:
             continue
+        recorded_rules = manifest.entry_rules_version(entry)
+        stale = recorded_rules is not None and recorded_rules != current_rules
+        # Filter BEFORE touching the disk: a source outside the stale queue must never be able to
+        # block it (Path.exists raises on an unreachable share instead of returning False).
+        if stale_only and not stale:
+            continue
         if not config.source_path_for_key(key).exists():
             continue
-        recorded_rules = manifest.entry_rules_version(entry)
         out.append(
-            RefreshCandidate(
-                key=key,
-                ingested_at=manifest.entry_ingested_at(entry),
-                model=model,
-                stale_rules=recorded_rules is not None and recorded_rules != current_rules,
-            )
+            RefreshCandidate(key=key, ingested_at=manifest.entry_ingested_at(entry), model=model, stale_rules=stale)
         )
     out.sort(key=lambda c: (c.ingested_at or "", c.key))
     return _age_floor(out, min_age_days)
 
 
+def stale_count() -> int:
+    """How many sources ``citadel refresh --stale-rules`` would work through — exactly
+    ``len(plan(stale_only=True))``, so every hint that names the command (curate report, status,
+    the curate interrupt note) quotes the same K as the ``--limit K`` that clears the set."""
+    return len(plan(stale_only=True))
+
+
+def stale_command(count: int) -> str:
+    """The one refresh command that re-verifies every ``(stale)`` source, worded once for every
+    hint that suggests it (ASCII only — a cp1252 console prints it)."""
+    return f"citadel refresh --stale-rules --limit {count}"
+
+
 def refresh(
-    limit: int = 1, min_age_days: int = 0, dry_run: bool = False, progress=None, jobs: int | None = None
+    limit: int = 1,
+    min_age_days: int = 0,
+    dry_run: bool = False,
+    progress=None,
+    jobs: int | None = None,
+    stale_only: bool = False,
 ) -> RefreshReport:
     """Run one refresh: take the ``limit`` least-recently-checked sources off the queue and
     re-verify each through a forced ingest run (``kind="reconcile"`` per source, all-or-nothing
@@ -146,6 +174,8 @@ def refresh(
     explicit, an unbounded refresh (one agent session per source, corpus-wide) can never happen
     by accident, mirroring ``--force``'s refusal without paths. ``dry_run`` computes and returns
     the plan with zero sessions. ``progress`` is threaded through to ingest untouched.
+    ``stale_only`` restricts the queue to ``(stale)`` sources (:func:`plan`), so ``--limit K``
+    re-verifies exactly the stale set and never spends on a fresh source.
 
     ``jobs`` (None = :data:`config.JOBS`, default 1 = serial) is handed to ingest as-is: a refresh
     slice is ordered by LAST-CHECKED time, not by topic, so its sources are typically unrelated —
@@ -153,11 +183,16 @@ def refresh(
     (:func:`citadel.ingest.ingest`); refresh only chooses which sources to hand it."""
     if limit < 1:
         raise ValueError("refresh limit must be >= 1 (each refreshed source runs one agent session).")
-    eligible = plan()
+    eligible = plan(stale_only=stale_only)
     queue = _age_floor(eligible, min_age_days)
     selected = queue[:limit]
     report = RefreshReport(
-        selected=selected, candidates=len(queue), eligible=len(eligible), min_age_days=min_age_days, dry_run=dry_run
+        selected=selected,
+        candidates=len(queue),
+        eligible=len(eligible),
+        min_age_days=min_age_days,
+        dry_run=dry_run,
+        stale_only=stale_only,
     )
     if dry_run or not selected:
         return report

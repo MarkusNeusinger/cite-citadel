@@ -801,11 +801,12 @@ def rules_relnames() -> list[str]:
 def rules_version() -> str:
     """A short content hash of the effective rules tree: sha256 over the sorted
     (tree-relative name, bytes) of every effective rules file, truncated to 12 hex chars.
-    Stamped per source into the ingest manifest (``rules_version``) so a later
-    ``curate --stale-rules`` can find sources ingested under older rules. Zero manual
-    maintenance — editing ANY effective file (packaged, workspace override, an added genre,
-    ``rules/local.md``) changes it. Cheap (the tree is a few KB): compute once per ingest run,
-    not per source."""
+    Stamped per source into the ingest manifest (``rules_version``) so ``citadel status`` /
+    ``refresh --stale-rules`` / ``curate --stale-rules`` can find sources ingested under older
+    rules (only a re-verifying source session — refresh, a forced ingest — re-stamps one). Zero
+    manual maintenance — editing ANY effective file (packaged, workspace override, an added
+    genre, ``rules/local.md``) changes it. Cheap (the tree is ~100 KB): compute once per ingest
+    run, not per source."""
     h = hashlib.sha256()
     for rel in rules_relnames():
         try:

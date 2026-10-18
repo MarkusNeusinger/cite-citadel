@@ -230,3 +230,83 @@ def test_refresh_hands_jobs_through_to_ingest(tmp_citadel, monkeypatch):
 def test_refresh_cli_rejects_a_zero_job_count(tmp_citadel, capsys):
     assert cli.main(["refresh", "--jobs", "0"]) == 2
     assert "at least 1" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------------------------
+# --stale-rules: the queue that clears the (stale) marker
+# --------------------------------------------------------------------------------------------
+
+
+def _stamp_current_rules(key: str) -> None:
+    m = manifest.load()
+    m[key]["rules_version"] = config.rules_version()
+    manifest.save(m)
+
+
+def test_plan_stale_only_keeps_only_stale_sources_oldest_first(tmp_citadel):
+    _track(tmp_citadel, "new-stale.md", "n\n", ingested_at="2026-05-01T00:00:00Z")
+    _track(tmp_citadel, "old-stale.md", "o\n", ingested_at=OLD)
+    current = _track(tmp_citadel, "current.md", "c\n", ingested_at=OLD)
+    _stamp_current_rules(current)
+
+    assert [c.key for c in refresh.plan(stale_only=True)] == ["raw/old-stale.md", "raw/new-stale.md"]
+    assert current in [c.key for c in refresh.plan()]  # the default queue is unchanged
+    assert refresh.stale_count() == 2
+    # Composes with the age floor.
+    _track(tmp_citadel, "fresh-stale.md", "f\n", ingested_at=manifest.now_iso())
+    assert "raw/fresh-stale.md" not in [c.key for c in refresh.plan(min_age_days=30, stale_only=True)]
+
+
+def test_refresh_stale_rules_dry_run_and_empty_message(tmp_citadel, fake_agent):
+    agent = fake_agent()
+    current = _track(tmp_citadel, "current.md", "c\n", ingested_at=OLD)
+    _stamp_current_rules(current)
+    report = refresh.refresh(limit=5, stale_only=True)
+    assert agent.count == 0 and report.ingest_report is None
+    assert "Nothing to refresh: no source is (stale)." in report.render()
+
+    stale = _track(tmp_citadel, "stale.md", "s\n", ingested_at="2026-05-01T00:00:00Z")
+    text = refresh.refresh(limit=5, dry_run=True, stale_only=True).render()
+    assert "Would refresh 1 of 1 stale-rules candidate source(s)" in text
+    assert stale in text and current not in text
+
+
+def test_refresh_stale_rules_restamps_and_curate_stops_planning_its_pages(tmp_citadel, fake_agent, cite_page):
+    """The acceptance loop of #162: refresh --stale-rules re-stamps the source to the current rules
+    hash, so the next curate --stale-rules no longer plans its citing page."""
+    from citadel import curate
+
+    key = _track(tmp_citadel, "a.md", "a\n", ingested_at=OLD)
+    cite_page("misc/a.md", key, "A fact.")
+    assert "misc/a.md" in {i.page for i in curate.build_plan(stale_rules=True).items}
+
+    agent = fake_agent(side_effect=_pager(cite_page))
+    report = refresh.refresh(limit=1, stale_only=True)
+    assert agent.calls == [(key, "reconcile")] and not report.ingest_report.errors
+    assert manifest.entry_rules_version(manifest.load()[key]) == config.rules_version()
+    assert refresh.stale_count() == 0
+    assert "misc/a.md" not in {i.page for i in curate.build_plan(stale_rules=True).items}
+
+
+def test_cli_refresh_stale_rules_flag_reaches_refresh(tmp_citadel, fake_agent, capsys):
+    fake_agent()
+    _track(tmp_citadel, "stale.md", "s\n", ingested_at=OLD)
+    assert cli.main(["refresh", "--stale-rules", "--dry-run"]) == 0
+    assert "stale-rules candidate" in capsys.readouterr().out
+
+
+def test_plan_stale_only_never_stats_a_fresh_source(tmp_citadel, monkeypatch):
+    """An unreachable FRESH source (Path.exists raising on a dead share) must not block the stale
+    queue: the rules filter runs before any disk access."""
+    stale = _track(tmp_citadel, "stale.md", "s\n", ingested_at=OLD)
+    current = _track(tmp_citadel, "current.md", "c\n", ingested_at=OLD)
+    _stamp_current_rules(current)
+    real = config.source_path_for_key
+
+    def guarded(key):
+        if key == current:
+            raise PermissionError("share unreachable")
+        return real(key)
+
+    monkeypatch.setattr(config, "source_path_for_key", guarded)
+    assert [c.key for c in refresh.plan(stale_only=True)] == [stale]

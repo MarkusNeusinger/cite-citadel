@@ -50,6 +50,27 @@ def test_ingested_stale_rules_entry_renders_stale(tmp_citadel):
     assert "(stale)" not in fresh_line
 
 
+def test_stale_sources_close_with_the_refresh_hint_and_json_is_unchanged(tmp_citadel):
+    """K (stale) sources close the table with the one command whose queue is exactly that set —
+    the same K as ``refresh.stale_count()`` — while ``status --json`` keeps its shape."""
+    from citadel import refresh
+
+    (tmp_citadel.raw / "old.md").write_text("body\n", encoding="utf-8")
+    (tmp_citadel.raw / "fresh.md").write_text("body\n", encoding="utf-8")
+    _track("raw/fresh.md", manifest.file_sha256(tmp_citadel.raw / "fresh.md"), config.rules_version())
+    fresh_only = status.build_status()
+    assert "citadel refresh --stale-rules" not in fresh_only.render()
+    keys_before = set(fresh_only.as_dict())
+
+    _track("raw/old.md", manifest.file_sha256(tmp_citadel.raw / "old.md"), "0000oldrules")
+    report = status.build_status()
+    text = report.render()
+    assert refresh.stale_count() == 1
+    assert "1 (stale) source(s): re-verify with citadel refresh --stale-rules --limit 1" in text
+    assert text.isascii()
+    assert set(report.as_dict()) == keys_before
+
+
 # --- failed vs skipped-duplicate: the bucket a row lands in IS its state --------------------
 
 
