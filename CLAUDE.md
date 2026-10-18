@@ -61,7 +61,11 @@ per-source state table: ingested / failed / skipped-duplicate / ignored / oversi
 agent CLI / the configured ingest model / raw roots / wiki placement
 (the wiki nested inside a raw root) / child paths (the UNC-vs-drive-letter cwd) /
 manifest / billing / the MCP SDK (`mcp.server.fastmcp` imports, version inside the `mcp>=1.10,<2` pin) / the HTTP-serve posture / wiki-git state / a best-effort PyPI update check / workspace coherence; every check runs isolated, so one that raises is its own FAIL line, never a traceback; needs no workspace, exits 1 only on a FAIL),
-`serve [--http [--host H] [--port P] [--path /mcp] [--read-only]]` (the MCP server — stdio by
+`adopt` (record THIS workspace root in the manifest's `meta.workspaces` after a move or a
+writer-machine switch — no agent session, under the run lock, refuses a re-keyed key space
+(`manifest.workspace_rekeyed`) and never rewrites a corrupt manifest; the free fix for the
+"written by a workspace rooted at" warning, which names it, as does doctor's manifest line; CLI-only,
+never on a read-only mirror), `serve [--http [--host H] [--port P] [--path /mcp] [--read-only]]` (the MCP server — stdio by
 default; `--http` serves the SAME surface over MCP's Streamable HTTP transport for a client that is
 not on this machine, mandatory bearer token, loopback default, optional read-only), `capture <text> [--from WHO] [--topic T]` (append one attributed note from a
 conversation to the raw/ capture log `raw/captures/YYYY-MM.md`; `-` reads stdin; the next ingest

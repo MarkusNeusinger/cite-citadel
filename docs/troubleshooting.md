@@ -126,6 +126,20 @@ CLI (see [configuration — Audio/video sources](configuration.md#audiovideo-sou
   `CITADEL_WHISPER_MODEL`. To re-transcribe with a better model, delete the file's cache entry
   (or the whole cache dir) and run `citadel ingest --force <path>`.
 
+### "the ingest manifest ... was written by a workspace rooted at ..."
+
+The manifest records which workspace root wrote it. A workspace kept in a sync folder, used from a
+second machine, or moved to a new path sits at a different absolute path, so every command that
+reads the manifest warns. `citadel doctor`'s manifest line says which case you are in:
+
+- **The source keys still resolve here** (same workspace, new path): run `citadel adopt` once — it
+  records this root, needs no agent session, and the warning stops. (A path-less `citadel ingest`
+  with nothing pending does the same.) Do this only on the machine that runs `ingest`/`curate`/
+  `refresh` — never on a read-only mirror.
+- **Most keys do not resolve here** (a re-keyed or moved checkout): `citadel adopt` refuses, because
+  the next run's deletion sweep would read the whole old key space as deleted. Fix the mount or the
+  `CITADEL_*_DIR` settings; if the move is intentional, run `citadel ingest --full-rescan` once.
+
 ### "Nothing got ingested"
 
 - Run `citadel status` — the read-only per-source state table shows exactly what happened to each

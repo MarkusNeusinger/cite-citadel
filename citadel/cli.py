@@ -9,6 +9,7 @@
     citadel refresh [--limit N] [--min-age-days D] [--stale-rules] [--dry-run]  # re-verify the least-recently-checked sources
     citadel status               # per-source corpus state (ingested/failed/skipped/ignored/pending; mirrors wiki_status)
     citadel doctor               # read-only environment/setup health check (OK/WARN/FAIL lines)
+    citadel adopt                # record this workspace root after a move / writer switch (no session)
     citadel serve [--http [--host H] [--port P] [--path /mcp] [--read-only]]  # run the MCP server (stdio, or Streamable HTTP)
     citadel capture <text> [--from WHO] [--topic T]  # append a note to the raw/ capture log (mirrors wiki_capture)
     citadel search <query> [--limit N] [--tag T]
@@ -300,6 +301,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_doctor.set_defaults(func=cmd_doctor, needs_workspace=False)
 
+    p_adopt = sub.add_parser(
+        "adopt",
+        help="Record THIS workspace root in the manifest after a move or a writer switch (no agent "
+        "session) — stops the 'written by a workspace rooted at ...' warning. Run it on the writer "
+        "machine only, never on a read-only mirror.",
+    )
+    p_adopt.set_defaults(func=cmd_adopt)
+
     p_serve = sub.add_parser(
         "serve", help="Run the MCP server (13 tools: 11 read-only + the mutating wiki_capture/wiki_ingest)."
     )
@@ -444,6 +453,55 @@ def build_parser() -> argparse.ArgumentParser:
     p_rules_eject.set_defaults(func=cmd_rules_eject, needs_workspace=False)
 
     return parser
+
+
+_ADOPT_MISSING_SHOWN = 10
+
+
+def cmd_adopt(args: argparse.Namespace) -> int:
+    """Record the current workspace root in ``meta.workspaces`` (``manifest.adopt``), under the run
+    lock, then commit the wiki when it is a history repo. 0 = adopted or nothing to do; 1 = a
+    corrupt manifest or a re-keyed key space (nothing written)."""
+    from . import config, manifest, runlock, wikigit
+
+    with runlock.hold("adopt"):
+        result = manifest.adopt()
+        if result.status == "corrupt":
+            print(
+                f"error: the manifest {config.manifest_path()} is not valid JSON; refusing to rewrite it.",
+                file=sys.stderr,
+            )
+            return 1
+        if result.status == "nothing":
+            print("citadel adopt: nothing to do (no manifest yet, or this workspace root is already recorded).")
+            return 0
+        if result.status == "rekeyed":
+            print(
+                f"error: the manifest was written by a workspace rooted at {result.previous}, and most of its\n"
+                "source keys do not resolve here - this is a re-keyed or moved checkout, not a second path to\n"
+                "the same workspace. Nothing was written. Fix the mount / CITADEL_*_DIR settings, or, if the\n"
+                "move is intentional, run `citadel ingest --full-rescan` once.",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"citadel adopt: recorded workspace root {config.WORKSPACE_ROOT} (was {result.previous}).")
+        print(f"  {result.resolved} relative source key(s) resolve here.")
+        if result.missing:
+            print(
+                f"  {len(result.missing)} do NOT resolve - the next path-less `citadel ingest` will treat these as deleted:"
+            )
+            for key in result.missing[:_ADOPT_MISSING_SHOWN]:
+                print(f"    {key}")
+            if len(result.missing) > _ADOPT_MISSING_SHOWN:
+                print(f"    +{len(result.missing) - _ADOPT_MISSING_SHOWN} more")
+        note = ""
+        try:
+            note = wikigit.autocommit("citadel adopt: record workspace root") or ""
+        except Exception as exc:  # noqa: BLE001 - best-effort: git never changes the exit code
+            note = f"wiki git: skipped ({exc})"
+        if note:
+            print(note)
+    return 0
 
 
 def cmd_init(args: argparse.Namespace) -> int:

@@ -65,6 +65,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`citadel adopt` records a moved workspace root without an ingest run (#168).** A workspace in a
+  sync folder or moved to a new path warned "written by a workspace rooted at ..." on every command
+  until a path-less ingest happened to run with nothing pending. `citadel adopt` records the current
+  root in the manifest (no agent session, under the run lock, with a wiki-history commit), lists any
+  relative keys that do not resolve here, refuses a re-keyed key space (fix the mount or run
+  `ingest --full-rescan`), and never rewrites a corrupt manifest. The warning and `citadel doctor`
+  name the matching remedy. Run it on the writer only, never on a read-only mirror.
+
 - **An append-only run ledger makes lifetime spend visible (#163).** `citadel status`' cost total
   was a snapshot of each source's LAST session, so curate clusters, forced reconciles/refreshes,
   failed sources and delete cleanups were paid for and then invisible (a real run showed $69 of $89).

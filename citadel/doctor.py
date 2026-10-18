@@ -411,10 +411,16 @@ def check_manifest() -> Check:
     base = f"{count} source(s), format {fmt if fmt is not None else 'legacy/none'}"
     mismatch = manifest.stamped_workspace_mismatch()
     if mismatch:
+        # A second parse, on this rare path only: do the keys still resolve here (a moved workspace
+        # / second writer machine -> adopt) or not (a re-keyed checkout -> fix the mount)?
+        rekeyed = manifest.workspace_rekeyed(manifest.load(warn=False))
+        remedy = (
+            "keys do not resolve here - fix the mount / CITADEL_*_DIR, or run `citadel ingest --full-rescan` once"
+            if rekeyed
+            else "keys resolve here - run `citadel adopt` once to record this root"
+        )
         return Check(
-            WARN,
-            "manifest",
-            f"{base}; stamped workspace {mismatch} != current {config.WORKSPACE_ROOT} (keys may not line up)",
+            WARN, "manifest", f"{base}; stamped workspace {mismatch} != current {config.WORKSPACE_ROOT} ({remedy})"
         )
     return Check(OK, "manifest", f"{base}; workspace stamp matches")
 

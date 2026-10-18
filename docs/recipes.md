@@ -16,6 +16,12 @@ cannot protect across a sync service: propagation delay means two machines can e
 lock locally, and the manifest is last-write-wins — the loser's work gets silently re-ingested or
 pruned. Reading a synced copy anywhere is always safe; writing from two places is never worth it.
 
+After you **move** the workspace or **switch which machine is the writer**, run `citadel adopt` once
+on the (new) writer: it records that machine's workspace root in the manifest without any agent
+session, so the "written by a workspace rooted at ..." warning stops. Never run it on a read-only
+mirror — it writes the manifest, which makes the mirror a second writer (and dirties a git-pulled
+copy so the next pull refuses to merge).
+
 ### Recipe: wiki-history git + a private remote (recommended)
 
 The [wiki-history layer](configuration.md#wiki-history-git) already commits the whole wiki after

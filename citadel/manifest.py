@@ -63,6 +63,7 @@ import json
 import math
 import os
 import sys
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -457,9 +458,9 @@ def _check_workspace(meta: dict) -> None:
         f"    {current}\n"
         "Source keys may not line up (same share mounted at a different path?). Proceeding anyway;\n"
         "if this IS the same shared workspace reached through another mount, everything keeps\n"
-        "working (source keys are workspace-relative) and the next completed `citadel ingest`\n"
-        "run records this root so the warning stops. If you did NOT expect this, verify the\n"
-        "workspace before trusting change/deletion detection.",
+        "working (source keys are workspace-relative): run `citadel adopt` once (free, no agent\n"
+        "session) to record this root, or the next completed `citadel ingest` run records it.\n"
+        "If you did NOT expect this, verify the workspace before trusting change/deletion detection.",
         file=sys.stderr,
     )
 
@@ -484,13 +485,14 @@ def _read() -> tuple[object, str | None]:
         return None, "corrupt"
 
 
-def load() -> dict[str, Entry]:
+def load(warn: bool = True) -> dict[str, Entry]:
     """The flat ``{source key: entry}`` dict from MANIFEST_PATH, or {} if missing/empty/corrupt.
 
     Accepts both the stamped format-2 file (``{"meta": ..., "sources": {...}}`` — callers never
     see ``meta``, but it is stashed for :func:`stamped_workspace_mismatch`) and a legacy flat
     mapping (read as sources-only; upgraded on the next save). A stamped workspace differing
-    from the current one triggers one stderr warning."""
+    from the current one triggers one stderr warning — unless ``warn=False`` (``citadel adopt`` /
+    doctor, which handle the mismatch themselves)."""
     global _last_meta, _last_meta_path
     _last_meta, _last_meta_path = {}, str(config.manifest_path())
     data, _error = _read()
@@ -500,7 +502,8 @@ def load() -> dict[str, Entry]:
         meta = data.get("meta")
         if isinstance(meta, dict):
             _last_meta = meta
-            _check_workspace(meta)
+            if warn:
+                _check_workspace(meta)
         return data["sources"]
     return data  # legacy flat manifest: the whole mapping IS the sources dict
 
@@ -569,6 +572,50 @@ def workspace_rekeyed(manifest: dict[str, Entry]) -> bool:
     rel_keys = [k for k in manifest if not Path(k).is_absolute()]
     resolving = sum(1 for k in rel_keys if config.source_path_for_key(k).exists())
     return bool(rel_keys) and resolving * 2 < len(rel_keys)
+
+
+@dataclass
+class AdoptResult:
+    """What :func:`adopt` did: ``status`` is ``adopted`` / ``nothing`` / ``rekeyed`` / ``corrupt``;
+    ``previous`` the stamp that was replaced, ``resolved``/``missing`` the relative keys that do /
+    do not resolve under the current root."""
+
+    status: str
+    previous: str | None = None
+    resolved: int = 0
+    missing: list[str] = field(default_factory=list)
+
+
+def unresolved_relative_keys(manifest: dict[str, Entry]) -> list[str]:
+    """The workspace-relative keys that do not resolve on disk under the current root (sorted)."""
+    return sorted(k for k in manifest if not Path(k).is_absolute() and not config.source_path_for_key(k).exists())
+
+
+def adopt() -> AdoptResult:
+    """Record the CURRENT workspace root in ``meta.workspaces`` without any agent session — the free
+    remedy for the "written by a workspace rooted at ..." warning after a move or a writer switch.
+
+    Nothing to do (no/empty/legacy manifest, a matching stamp, an already-known root) writes
+    nothing; a corrupt manifest is never rewritten; and when the relative key space does NOT
+    resolve here (:func:`workspace_rekeyed` — a re-keyed or moved checkout, not a second path to
+    the same workspace) it refuses, because adopting would re-arm the next run's deletion sweep
+    against a key space that is not here. Otherwise ``sources`` is written back unchanged and only
+    ``meta`` is re-stamped. The caller holds the run lock."""
+    _fmt, _count, error = inspect()
+    if error == "corrupt":
+        return AdoptResult("corrupt")
+    if error is not None:
+        return AdoptResult("nothing")
+    stamped = stamped_workspace_mismatch()
+    if stamped is None:
+        return AdoptResult("nothing")
+    sources = load(warn=False)
+    if workspace_rekeyed(sources):
+        return AdoptResult("rekeyed", previous=stamped)
+    missing = unresolved_relative_keys(sources)
+    resolved = sum(1 for k in sources if not Path(k).is_absolute()) - len(missing)
+    save(sources)
+    return AdoptResult("adopted", previous=stamped, resolved=resolved, missing=missing)
 
 
 def save(manifest: dict[str, Entry]) -> None:
