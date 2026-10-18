@@ -192,6 +192,10 @@ class _Walk:
     # Directories skipped because they ARE (or are inside) the wiki — a raw root that sits above
     # the wiki dir. Reported once per run so the exclusion is visible, never inferred as absence.
     excluded_wiki: list[Path] = field(default_factory=list)
+    # (path, is_dir) for entries a CITADEL_IGNORE_PATTERNS glob skipped, spelled as walked. An
+    # ignored directory is one entry (never descended into); hidden names are never recorded.
+    # Read by `citadel status` (per-name counts) — the walk itself still only skips them.
+    ignored: list[tuple[Path, bool]] = field(default_factory=list)
 
 
 def _scan_tree(root: Path, walk: _Walk) -> None:
@@ -234,9 +238,16 @@ def _scan_tree(root: Path, walk: _Walk) -> None:
         subdirs: list[Path] = []
         for entry in entries:
             name = entry.name
-            if name.startswith(".") or _is_ignored_name(name):
+            if name.startswith("."):
                 continue
             path = Path(d) / name
+            if _is_ignored_name(name):
+                try:
+                    is_dir = entry.is_dir(follow_symlinks=False)
+                except OSError:
+                    is_dir = False
+                walk.ignored.append((path, is_dir))
+                continue
             try:
                 if entry.is_dir(follow_symlinks=False):
                     if _is_wiki_internal(path):

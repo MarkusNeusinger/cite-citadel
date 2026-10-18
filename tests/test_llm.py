@@ -1313,7 +1313,8 @@ def test_run_session_writes_transcript_when_log_dir_set(tmp_path, monkeypatch):
     text = logs[0].read_text(encoding="utf-8")
     assert "the model said hello" in text  # stdout captured
     assert "a warning" in text  # stderr captured
-    assert "ingest.raw_notes.md" in logs[0].name  # label sanitized into the filename
+    assert logs[0].name.endswith(".ingest.raw+notes.md.log")  # `/` spelled `+` in the filename
+    assert "label:       ingest.raw/notes.md" in text  # the full label stays inside
 
 
 def test_transcript_filename_keeps_the_source_filename_tail_of_a_long_label(tmp_path, monkeypatch):
@@ -1378,9 +1379,83 @@ def test_transcript_label_names_the_pass_of_a_chunked_source(monkeypatch):
 
     monkeypatch.setattr(llm, "_run_session", fake_session)
     llm.run_ingest_session("raw/big.pdf", kind="pdf", read_path="/tmp/seg.md", segment=(3, 8))
-    assert seen["label"] == "pdf.p3of8.raw/big.pdf"
+    assert seen["label"] == "pdf-text.p3of8.raw/big.pdf"
     llm.run_ingest_session("raw/notes.md", kind="ingest")
     assert seen["label"] == "ingest.raw/notes.md"  # unchanged for a single-pass source
+
+
+def test_transcript_label_names_how_the_source_was_read(monkeypatch):
+    """F09: the label carries the DISPLAY kind (pdf-text / pdf-native / office-text), while the
+    prompt is still built from the internal kind."""
+    monkeypatch.setattr(llm, "_resolve_cli", lambda cli: cli)
+    monkeypatch.setattr(llm, "_hermetic_flags", lambda *a, **k: [])
+    kinds: list = []
+    monkeypatch.setattr(llm, "_build_instruction", lambda rel_key, kind, *a, **k: kinds.append(kind) or "p")
+    monkeypatch.setattr(llm, "_build_invocation", lambda *a, **k: (["copilot"], None))
+    seen: list = []
+    monkeypatch.setattr(llm, "_run_session", lambda cli, argv, stdin, *, log_label=None: seen.append(log_label))
+
+    llm.run_ingest_session("raw/scan.pdf")
+    llm.run_ingest_session("raw/big.pdf", kind="pdf", read_path="/tmp/x.md", segment=(3, 8))
+    llm.run_ingest_session("raw/deck.pptx", kind="reconcile", read_path="/tmp/deck.md")
+    llm.run_ingest_session("raw/notes.md")
+    assert seen == [
+        "pdf-native.raw/scan.pdf",
+        "pdf-text.p3of8.raw/big.pdf",
+        "office-text-reconcile.raw/deck.pptx",
+        "ingest.raw/notes.md",
+    ]
+    assert kinds == ["ingest", "pdf", "reconcile", "ingest"]
+
+
+@pytest.mark.parametrize(
+    ("kind", "key", "read_path", "expected"),
+    [
+        ("pdf", "raw/a.pdf", "/t", "pdf-text"),
+        ("pdf-reconcile", "raw/a.pdf", "/t", "pdf-text-reconcile"),
+        ("ingest", "raw/A.PDF", None, "pdf-native"),
+        ("reconcile", "raw/a.pdf", None, "pdf-native-reconcile"),
+        ("ingest", "raw/d.docx", "/t", "office-text"),
+        ("reconcile", "raw/d.docx", "/t", "office-text-reconcile"),
+        ("ingest", "raw/n.md", None, "ingest"),
+        ("delete", "raw/a.pdf", None, "delete"),
+        ("repo", "raw/proj", None, "repo"),
+        ("image", "raw/p.png", None, "image"),
+        ("audio", "raw/a.mp3", "/t", "audio"),
+        ("curate", "concepts/x.md", "/t", "curate"),
+    ],
+)
+def test_log_kind_table(kind, key, read_path, expected):
+    assert llm._log_kind(kind, key, read_path) == expected
+
+
+@pytest.mark.parametrize(
+    ("label", "expect_in"),
+    [
+        ("ingest.raw/notes.md", "ingest.raw+notes.md"),
+        ("ingest.raw/a+b/c.md", "raw+a_b+c.md"),
+        (
+            "pdf-native.raw/archive/2019/board/some long folder name/2019-annual-summary-of-operations.pdf",
+            "pdf-native...board+some_long_folder_name+2019-annual-summary-of-operations.pdf",
+        ),
+    ],
+)
+def test_transcript_label_is_cut_by_path_segment(label, expect_in):
+    name = llm._transcript_label(label)
+    assert expect_in in name
+    assert len(name) <= llm._TRANSCRIPT_LABEL_MAX
+    assert name.count("...") <= 1
+
+
+def test_transcript_label_shortens_an_overlong_filename_stem_keeping_its_extension():
+    name = llm._transcript_label("pdf-native.raw/" + "x" * 150 + ".pdf")
+    assert name.endswith(".pdf") and len(name) <= llm._TRANSCRIPT_LABEL_MAX
+    assert name.startswith("pdf-native...") and name[len("pdf-native...") :].count("...") == 1
+
+
+def test_transcript_label_drops_the_host_of_an_absolute_key():
+    name = llm._transcript_label("ingest.//fileserver.corp.example/share/a/b/c/d/e/f/notes.md")
+    assert "fileserver" not in name and name.endswith("notes.md")
 
 
 def test_run_session_no_transcript_when_log_dir_unset(tmp_path, monkeypatch):

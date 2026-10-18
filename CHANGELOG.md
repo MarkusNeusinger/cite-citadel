@@ -8,6 +8,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **`citadel status` counts what the ignore globs keep out, not distinct names.** `Ignored (N)` was
+  the number of distinct matched basenames from a second `os.walk` that disagreed with discovery
+  (other roots, descended into repo sources). It now reads discovery's own walk (`_Walk.ignored`)
+  and renders one row per distinct name with the files behind it — `Ignored (7 files, 2 names)`,
+  `INDEX.md  (3 files)`, `private/  (1 folder, 4 files)` — with a skipped folder's files counted
+  bounded (`1000+` when capped). `status --json` keeps `ignored` and adds `ignored_detail` (#170).
+- **Transcript names say how the source was read and are never cut mid-folder.** A scanned PDF read
+  natively was named `ingest.` like a markdown file; transcripts now use a display kind
+  (`pdf-text`, `pdf-native`, `office-text`, else the session kind), spell `/` as `+`, and shorten a
+  long key by whole path segments (`pdf-native...board-meetings+2019-annual-summary.pdf`). The docs
+  now say "one transcript per agent session" — a chunked source writes one per pass (#170).
+
 - **`curate` no longer re-pays the same rules-drift clusters on every run.** Curate re-checks
   pages, never whole sources, so it never re-stamps a source's `rules_version` — the `(stale)`
   marker and the drift plan outlived every curate run, and the docs named `curate --stale-rules`

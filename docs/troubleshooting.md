@@ -140,7 +140,7 @@ CLI (see [configuration — Audio/video sources](configuration.md#audiovideo-sou
   plus every `NO PAGES` source (as a forced reconcile). No paths needed — it prints the set first.
 - Already-ingested sources are skipped by sha match — that's not a bug. To deliberately re-read one,
   use `citadel ingest --force <paths>`.
-- Watch a run live with `citadel ingest --verbose` (`-v`), or capture a full transcript per source
+- Watch a run live with `citadel ingest --verbose` (`-v`), or capture a full transcript per agent session
   with `citadel ingest --log-dir DIR`.
 - If discovery seems to miss files, confirm they're under a walked raw root (`CITADEL_RAW_DIR`, or
   every root in `CITADEL_RAW_DIRS` when set) and aren't matching an ignore glob.

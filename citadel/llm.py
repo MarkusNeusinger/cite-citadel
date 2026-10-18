@@ -796,6 +796,72 @@ def _stream_subprocess(cli: str, argv: list[str], stdin_text: str | None) -> tup
     return proc.returncode, "".join(chunks), ""
 
 
+def _log_kind(kind: str, rel_key: str, read_path: str | None) -> str:
+    """The DISPLAY kind a transcript is named after — how the session actually read its source,
+    which the internal ``kind`` hides: a PDF read through its pypdf text layer (``pdf-text``), a PDF
+    with no text layer the agent reads natively (``pdf-native`` — otherwise indistinguishable from a
+    markdown ingest), an Office file read through its extraction (``office-text``). Display-only:
+    the internal kind still selects the ``_KIND_SPECS`` row, the task brief and the resume identity.
+    Every log kind maps back to exactly one internal kind; log kinds contain no ``.``."""
+    if kind in ("pdf", "pdf-reconcile"):
+        return "pdf-text" + kind[len("pdf") :]
+    if kind in ("ingest", "reconcile"):
+        suffix = "" if kind == "ingest" else "-reconcile"
+        if read_path:
+            return "office-text" + suffix
+        if str(rel_key).lower().endswith(".pdf"):
+            return "pdf-native" + suffix
+    return kind
+
+
+# The transcript label budget (characters): keeps the whole `<stamp>.<pid>.<seq>.<label>.log` name
+# under 120 characters, MAX_PATH headroom for a long log dir.
+_TRANSCRIPT_LABEL_MAX = 80
+_TRANSCRIPT_HEAD_RE = re.compile(r"^([a-z][a-z-]*)((?:\.p\d+of\d+)?)\.(.+)$")
+
+
+def _transcript_safe(text: str) -> str:
+    return "".join(c if (c.isalnum() or c in "-._") else "_" for c in text)
+
+
+def _transcript_label(label: str | None) -> str:
+    """The filename part for one transcript label ``<logkind>[.pNofM].<source key>``, shortened by
+    PATH SEGMENT, never mid-name: the key is collapsed by :func:`config.display_key`, each segment
+    sanitized and joined with ``+`` (a literal ``+`` in a name becomes ``_``, so ``+`` only ever
+    means ``/``). Over :data:`_TRANSCRIPT_LABEL_MAX` it keeps the filename plus as many nearest
+    parent folders as fit, marking dropped leading folders by ``...`` after the head; only a
+    filename that alone does not fit has the middle of its stem cut (extension kept)."""
+    text = label or "session"
+    m = _TRANSCRIPT_HEAD_RE.match(text)
+    head, key = (m.group(1) + m.group(2), m.group(3)) if m else ("", text)
+    shown = config.display_key(key)
+    dropped = shown.startswith(".../")
+    if dropped:
+        shown = shown[len(".../") :]
+    segs = [_transcript_safe(s) for s in shown.split("/") if s] or ["session"]
+    joined = "+".join(segs)
+    full = f"{head}.{joined}" if head else joined
+    if not dropped and len(full) <= _TRANSCRIPT_LABEL_MAX:
+        return full
+    budget = _TRANSCRIPT_LABEL_MAX - len(head) - len("...")
+    tail = segs[-1]
+    if len(tail) > budget:
+        stem, dot, ext = tail.rpartition(".")
+        if not dot or not stem:
+            stem, ext = tail, ""
+        else:
+            ext = "." + ext
+        keep = max(budget - len(ext) - len("..."), 2)
+        tail = stem[: keep - keep // 2] + "..." + stem[len(stem) - keep // 2 :] + ext
+        return f"{head}...{tail}"
+    kept = tail
+    for seg in reversed(segs[:-1]):
+        if len(seg) + 1 + len(kept) > budget:
+            break
+        kept = f"{seg}+{kept}"
+    return f"{head}...{kept}"
+
+
 def _write_transcript(
     cli: str,
     argv: list[str],
@@ -824,14 +890,8 @@ def _write_transcript(
             directory = config.WORKSPACE_ROOT / directory
         config.robust_mkdir(directory)
         stamp = time.strftime("%Y%m%d-%H%M%S")
-        safe = "".join(c if (c.isalnum() or c in "-._") else "_" for c in (label or "session"))
-        if len(safe) > 80:
-            # The label is `kind[.pNofM].<source key>`, and for an out-of-workspace source the key
-            # is a long absolute path whose FILENAME sits at the END — a plain head-cut keeps the
-            # noise (host + folders) and drops the one part that identifies the session. Keep both
-            # ends instead: the kind/pass prefix and the filename tail, with an ASCII `...` marking
-            # the cut (the full label is still inside the transcript itself).
-            safe = safe[:24] + "..." + safe[-53:]
+        # Shortened by path segment, never mid-folder (the full label is still inside the file).
+        safe = _transcript_label(label)
         path = directory / f"{stamp}.{os.getpid()}.{seq}.{safe}.log"
         body = [
             "# citadel ingest — LLM agent session transcript",
@@ -1017,10 +1077,11 @@ def run_ingest_session(
     cli_path = _resolve_cli(cli)
     prompt = _build_instruction(rel_key, kind, read_path, segment, line_range)
     argv, stdin_text = _build_invocation(cli, cli_path, prompt, _external_dirs(rel_key, read_path))
-    # The segment goes in FRONT of the source key: when a transcript filename is composed the
-    # label is truncated in the MIDDLE (head + tail kept), so on a chunked source "which pass is
-    # this" and the source's basename both survive a long absolute key.
-    label = f"{kind}.p{segment[0]}of{segment[1]}.{rel_key}" if segment else f"{kind}.{rel_key}"
+    # The segment goes in FRONT of the source key: a transcript filename keeps the head and the
+    # filename end of a long key, so on a chunked source "which pass is this" and the source's
+    # basename both survive. The head names how the source was READ (_log_kind), display-only.
+    log_kind = _log_kind(kind, rel_key, read_path)
+    label = f"{log_kind}.p{segment[0]}of{segment[1]}.{rel_key}" if segment else f"{log_kind}.{rel_key}"
     hermetic = _hermetic_flags(cli, cli_path)  # session isolation (claude --bare), probe-gated
     try:
         return _run_session(cli, argv + hermetic, stdin_text, log_label=label)

@@ -30,7 +30,7 @@ uv run python -m citadel <subcommand>
 
 Subcommands: `init [DIR]` (scaffold a workspace: `citadel.toml` marker, `.env`, `raw/`, `wiki/`;
 idempotent), `ingest [paths…]` (fold raw/ into the wiki; `--verbose`/`-v` streams the agent
-session, `--log-dir DIR` writes a transcript per source, `--quiet` drops the live progress display,
+session, `--log-dir DIR` writes a transcript per agent session (named after how the source was read — `pdf-text`/`pdf-native`/`office-text` — shortened by path segment), `--quiet` drops the live progress display,
 `--jobs N`/`-j` folds N sources in CONCURRENTLY (default 1 = serial; `CITADEL_JOBS`),
 `--full-rescan` distrusts the manifest's stat cache and re-hashes every tracked source,
 `--force <paths>` deliberately re-reads already-ingested sources as a reconcile — it requires
@@ -456,7 +456,7 @@ the `ingested_at` stamp, the last session's cost when recorded, with copilot's A
 beside the dollars they converted into — with `Recorded LLM cost` / `Recorded AI credits` corpus
 totals above the table, and a `NO PAGES (nothing cites this source)` marker on every ingested
 source the wiki does not cite — a paid session that produced zero entries), failed (reason, attempts),
-skipped-duplicate, ignored (pattern), oversized (over `CITADEL_MAX_SOURCE_BYTES`, with the size),
+skipped-duplicate, ignored (one row per distinct ignored name with the files it keeps out — read off discovery's own walk via `_Walk.ignored`, a skipped folder's files counted bounded), oversized (over `CITADEL_MAX_SOURCE_BYTES`, with the size),
 not-included (outside `CITADEL_INCLUDE_PATTERNS` — the row is hidden entirely when no allowlist is
 configured, but the JSON key is always there),
 pending — closing with a `citadel ingest --retry` hint whenever anything is failed or uncited.

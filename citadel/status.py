@@ -12,7 +12,8 @@ sits in —
 - **failed** — unreadable / errored / timed-out, with the coarse reason and, for a stuck curate-
   style record, its attempt count;
 - **skipped-duplicate** — a same-basename twin skipped in favor of another format;
-- **ignored** — an OS/junk file matched by ``CITADEL_IGNORE_PATTERNS``;
+- **ignored** — files and folders matched by ``CITADEL_IGNORE_PATTERNS``, one row per distinct
+  name with how many files it keeps out (a skipped folder's files are counted, bounded);
 - **oversized** — on disk under a raw root but past the ``CITADEL_MAX_SOURCE_BYTES`` ceiling, so
   discovery skips it (never hashed, never tracked);
 - **not included** — on disk under a raw root but outside the ``CITADEL_INCLUDE_PATTERNS``
@@ -42,6 +43,13 @@ _ID_WIDTH = 12
 # How many allowlist-filtered keys the table lists before collapsing the rest into a count (the
 # excluded side of an allowlist is normally the big half of the tree — see ingest's twin).
 _NOT_INCLUDED_SHOWN = 10
+
+# Bounds of the per-ignored-directory file count: at most this many entries are examined per
+# directory, and this many in total per ignored directory tree. `$RECYCLE.BIN` / `System Volume
+# Information` (default ignore globs) on a drive-root raw dir are huge or unreadable, and status
+# must stay cheap and never raise — a capped count renders as a lower bound (`N+`).
+_IGNORED_DIR_ENTRY_CAP = 1000
+_IGNORED_TREE_ENTRY_CAP = 10000
 
 
 def _format_duration(seconds: float) -> str:
@@ -92,6 +100,24 @@ class SourceState:
 
 
 @dataclass
+class IgnoredGroup:
+    """One rendered ``Ignored`` row: every walked entry an ignore glob skipped under one basename,
+    split by kind (a file name and a folder name never share a row). ``matches`` counts the
+    entries, ``files`` the files they stand for — the entries themselves for a file row, the files
+    inside the skipped folders for a folder row; ``capped`` marks ``files`` as a lower bound."""
+
+    name: str
+    dir: bool
+    matches: int
+    files: int
+    capped: bool = False
+
+
+def _plural(n: int, word: str, capped: bool = False) -> str:
+    return f"{n}{'+' if capped else ''} {word}{'' if n == 1 and not capped else 's'}"
+
+
+@dataclass
 class StatusReport:
     """The per-source corpus state, split into its lifecycle buckets plus the current rules-tree
     hash (so the ``(stale)`` markers are self-explaining)."""
@@ -100,6 +126,9 @@ class StatusReport:
     failed: list[SourceState] = field(default_factory=list)
     skipped_duplicate: list[SourceState] = field(default_factory=list)
     ignored: list[str] = field(default_factory=list)
+    # One row per distinct (name, is-dir) the ignore globs skipped, with real file counts —
+    # ``ignored`` above stays the plain sorted name list for existing JSON consumers.
+    ignored_detail: list[IgnoredGroup] = field(default_factory=list)
     # (key, size_bytes) for files the CITADEL_MAX_SOURCE_BYTES ceiling keeps out of discovery.
     oversized: list[tuple[str, int]] = field(default_factory=list)
     # Keys the CITADEL_INCLUDE_PATTERNS allowlist keeps out of discovery ("read only .pdf/.txt").
@@ -180,9 +209,19 @@ class StatusReport:
                 row += f"  {s.detail}"
             lines.append(row)
 
-        lines.append(f"Ignored ({len(self.ignored)})")
-        for name in self.ignored:
-            lines.append(f"  {name}")
+        if self.ignored_detail:
+            total = sum(g.files for g in self.ignored_detail)
+            capped = any(g.capped for g in self.ignored_detail)
+            rows = len(self.ignored_detail)
+            lines.append(f"Ignored ({_plural(total, 'file', capped)}, {_plural(rows, 'name')})")
+            for g in self.ignored_detail:
+                if g.dir:
+                    count = f"{_plural(g.matches, 'folder')}, {_plural(g.files, 'file', g.capped)}"
+                    lines.append(f"  {g.name}/  ({count})")
+                else:
+                    lines.append(f"  {g.name}  ({_plural(g.files, 'file')})")
+        else:
+            lines.append("Ignored (0)")
 
         lines.append(f"Oversized ({len(self.oversized)})")
         for key, size in self.oversized:
@@ -232,7 +271,9 @@ class StatusReport:
         get a predictable shape for 'which sources failed and why' (and which produced no pages)
         without scraping :meth:`render`'s table.
         ``oversized`` carries ``{"key", "size_bytes"}`` objects rather than bare strings, since the
-        size is the reason the row exists."""
+        size is the reason the row exists. ``ignored`` stays the sorted list of distinct ignored
+        names; ``ignored_detail`` adds one ``{"name", "dir", "matches", "files", "capped"}`` object
+        per rendered row (``files`` a lower bound when ``capped``)."""
 
         def row(s: SourceState) -> dict:
             return {k: v for k, v in asdict(s).items() if v is not None}
@@ -250,6 +291,7 @@ class StatusReport:
             "failed": [row(s) for s in self.failed],
             "skipped_duplicate": [row(s) for s in self.skipped_duplicate],
             "ignored": list(self.ignored),
+            "ignored_detail": [asdict(g) for g in self.ignored_detail],
             "oversized": [{"key": key, "size_bytes": size} for key, size in self.oversized],
             # Always present (empty without an allowlist), so a script never has to branch on the
             # knob being configured; render() hides the empty case, JSON keeps the shape stable.
@@ -265,51 +307,73 @@ def _is_stale_rules(entry, current_rules_version: str) -> bool:
     return recorded is not None and recorded != current_rules_version
 
 
-def _walk_state() -> tuple[set[str], list[tuple[str, int]], list[str]]:
+def _walk_state() -> tuple[set[str], list[tuple[str, int]], list[str], list[tuple[Path, bool]]]:
     """ONE stat-only discovery walk (ingest's own — no hashing, repo-aware, dead-mount-safe), read
-    for the three things status needs from disk: every source key visible under the raw roots RIGHT
+    for the four things status needs from disk: every source key visible under the raw roots RIGHT
     NOW (files plus repo dirs), the ``(key, size)`` pairs the ``CITADEL_MAX_SOURCE_BYTES``
-    ceiling kept out of it, and the keys the ``CITADEL_INCLUDE_PATTERNS`` allowlist kept out.
-    Defensive: any walk failure degrades to empty (pending/oversized/not-included simply
-    show nothing) rather than raising."""
+    ceiling kept out of it, the keys the ``CITADEL_INCLUDE_PATTERNS`` allowlist kept out, and the
+    ``(path, is_dir)`` entries the ``CITADEL_IGNORE_PATTERNS`` globs skipped — the same roots and
+    repo pruning as discovery, by construction. Defensive: any walk failure degrades to empty
+    (pending/oversized/not-included/ignored simply show nothing) rather than raising."""
     try:
         walk = ingest._discover_walk(None)
     except OSError:
-        return set(), [], []
+        return set(), [], [], []
     keys = {manifest.rel_key(path) for path, _st in walk.files}
     keys |= {manifest.rel_key(path) for path in walk.repos}
     oversized = sorted((manifest.rel_key(path), size) for path, size in walk.oversized)
     not_included = sorted(manifest.rel_key(path) for path in walk.not_included)
-    return keys, oversized, not_included
+    return keys, oversized, not_included, list(walk.ignored)
 
 
-def _ignored_names() -> list[str]:
-    """The OS/junk basenames under the raw roots that discovery skips (``CITADEL_IGNORE_PATTERNS``)
-    — a light, stat-free ``os.walk`` that prunes ignored/hidden directories (and the wiki dir)
-    exactly as discovery does, through discovery's OWN predicates
-    (:func:`ingest._is_ignored_name` / :func:`ingest._is_wiki_internal`). Deduped + sorted; degrades
-    to an empty list on any walk error."""
-    found: set[str] = set()
-    for root in config.source_roots():
+def _count_files(top: Path) -> tuple[int, bool]:
+    """The files under an ignored directory — status-only (ingest never descends into one): a
+    bounded iterative scandir (no symlinks followed, hidden names skipped, at most
+    :data:`_IGNORED_DIR_ENTRY_CAP` entries per directory and :data:`_IGNORED_TREE_ENTRY_CAP` per
+    tree). Returns ``(count, capped)``; a cap hit or any ``OSError`` makes the count a lower
+    bound. Never raises."""
+    count = 0
+    examined = 0
+    capped = False
+    stack = [top]
+    while stack:
+        d = stack.pop()
         try:
-            for dirpath, dirnames, filenames in os.walk(root):
-                kept = []
-                for d in dirnames:
-                    if d.startswith("."):
+            with os.scandir(d) as it:
+                for seen, entry in enumerate(it):
+                    if seen >= _IGNORED_DIR_ENTRY_CAP or examined >= _IGNORED_TREE_ENTRY_CAP:
+                        capped = True
+                        break
+                    examined += 1
+                    if entry.name.startswith("."):
                         continue
-                    if ingest._is_wiki_internal(Path(dirpath) / d):
-                        continue  # generated output, not a source tree — never walked
-                    if ingest._is_ignored_name(d):
-                        found.add(d)
-                    else:
-                        kept.append(d)
-                dirnames[:] = kept  # prune (don't descend into hidden/ignored dirs)
-                for f in filenames:
-                    if not f.startswith(".") and ingest._is_ignored_name(f):
-                        found.add(f)
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            stack.append(Path(entry.path))
+                        elif entry.is_file(follow_symlinks=False):
+                            count += 1
+                    except OSError:
+                        capped = True
         except OSError:
-            continue
-    return sorted(found)
+            capped = True
+    return count, capped
+
+
+def _ignored_groups(entries: list[tuple[Path, bool]]) -> list[IgnoredGroup]:
+    """Group the walk's ignored entries into one row per distinct (name, is-dir) — by NAME, not by
+    the pattern that matched, so a broad glob shows exactly which names it catches. Sorted by name
+    (case-insensitively), file row before folder row on a tie."""
+    groups: dict[tuple[str, bool], IgnoredGroup] = {}
+    for path, is_dir in entries:
+        g = groups.setdefault((path.name, is_dir), IgnoredGroup(name=path.name, dir=is_dir, matches=0, files=0))
+        g.matches += 1
+        if is_dir:
+            n, capped = _count_files(path)
+            g.files += n
+            g.capped = g.capped or capped
+        else:
+            g.files += 1
+    return [groups[k] for k in sorted(groups, key=lambda k: (k[0].lower(), k[0], k[1]))]
 
 
 def build_status() -> StatusReport:
@@ -377,11 +441,12 @@ def build_status() -> StatusReport:
             report.failed.append(row)
 
     tracked = set(manifest_dict) | set(failures_dict)
-    present, oversized, not_included = _walk_state()
+    present, oversized, not_included, ignored = _walk_state()
     report.pending = sorted(key for key in present if key not in tracked)
     report.oversized = oversized
     report.not_included = not_included
-    report.ignored = _ignored_names()
+    report.ignored_detail = _ignored_groups(ignored)
+    report.ignored = sorted({g.name for g in report.ignored_detail})
     if any(s.stale_rules for s in report.ingested):
         try:
             report.stale_refreshable = refresh.stale_count()

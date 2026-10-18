@@ -102,7 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--log-dir",
         default=None,
         metavar="DIR",
-        help="Write a transcript file per source (prompt + full CLI output + exit/duration) to "
+        help="Write a transcript file per agent session (prompt + full CLI output + exit/duration) to "
         "DIR, so you can inspect what the model did even in headless mode. Overrides "
         "CITADEL_LLM_LOG_DIR.",
     )
@@ -259,7 +259,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--log-dir",
         default=None,
         metavar="DIR",
-        help="Write a transcript file per source to DIR (see `citadel ingest --log-dir`). "
+        help="Write a transcript file per agent session to DIR (see `citadel ingest --log-dir`). "
         "Overrides CITADEL_LLM_LOG_DIR.",
     )
     p_refresh.add_argument(
