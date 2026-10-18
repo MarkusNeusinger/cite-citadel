@@ -457,6 +457,11 @@ page that does not exist is failed and rolled back whole. Compared by dangling T
 per-cluster baseline of the live wiki, never by `(page, target)` pair — a cluster MOVES pages, so a
 pre-existing dangling link would otherwise look brand new the moment its page is renamed (the same
 blame-scoping `_validate_and_restamp`'s inherited carve-out exists for).
+A cluster citing a PDF also gets that PDF's cached pypdf text layer (copied beside the findings
+file, `_TEXT_LAYERS_SHOWN` per cluster, plus the `CITADEL_PDF_MODE` line), so a curate session can
+keep `lines A-B` locators instead of re-citing by page, and a second post-condition
+(`_no_locator_downgrade`) fails a cluster that replaces a PDF's verifiable `lines A-B` locators with
+page-only `p. N` ones.
 
 **Refresh is the third lifecycle** (`refresh.py`, `citadel refresh`): budget-controlled
 re-verification of existing SOURCES, so an aging wiki is brought up to the current model + rules a

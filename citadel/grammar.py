@@ -248,6 +248,16 @@ def locator_tail(rest: str) -> str | None:
     return tail or None
 
 
+_PAGE_LOCATOR_RE = re.compile(r"^pp?\.\s*\d+(?:\s*[-–]\s*\d+)?\b")
+
+
+def is_page_locator(tail: str | None) -> bool:
+    """True for a page locator tail (``p. 12``, ``p.12``, ``pp. 3-5``) — the agent-verified form a
+    PDF citation takes when it is NOT read through a text layer. :func:`parse_locator` is unchanged
+    (it still files these under ``"other"``)."""
+    return bool(tail) and bool(_PAGE_LOCATOR_RE.match(tail.strip()))
+
+
 def parse_locator(tail: str) -> Locator:
     """Parse a locator ``tail`` (from :func:`locator_tail`) into a :class:`Locator`. A ``lines A-B``
     prefix is a line range; a ``§ Heading`` is a section, and a trailing ``, line N`` / ``, lines

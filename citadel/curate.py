@@ -56,7 +56,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from . import (
     config,
@@ -875,7 +875,14 @@ _OPERATOR_GUIDANCE_FRAME = (
 
 
 def _render_findings(
-    item: PlanItem, page: Page, inbound: dict[str, list[str]], guided_run: list[str] | None = None
+    item: PlanItem,
+    page: Page,
+    inbound: dict[str, list[str]],
+    guided_run: list[str] | None = None,
+    *,
+    pdfs: bool = False,
+    layers: list[tuple[str, str]] | None = None,
+    extra_layers: int = 0,
 ) -> str:
     """The per-cluster findings checklist the agent reads BY PATH (never embedded in the prompt).
     Names the anchor, its cited raw sources, its direct link neighbors, the run's operator guidance
@@ -898,8 +905,21 @@ def _render_findings(
         f"- Anchor page: {item.page}",
         f"- Cited raw sources: {', '.join(cited) if cited else '(none)'}",
         f"- Direct link neighbors: {', '.join(neighbors) if neighbors else '(none)'}",
-        "",
     ]
+    if pdfs:
+        lines.append(f"- PDF mode: {'images' if config.PDF_MODE == 'images' else 'text'}")
+    lines.append("")
+    if layers or extra_layers:
+        lines += [
+            "## Text layers of cited PDFs",
+            "Read THESE for each PDF's text. Cite the .pdf itself; a `lines A-B` locator is a line number in this copy.",
+        ]
+        lines += [f"- {key} -> {path}" for key, path in layers]
+        if extra_layers:
+            lines.append(
+                f"{extra_layers} more cited PDFs have a text layer that is not listed here; leave their locators unchanged."
+            )
+        lines.append("")
     if config.CURATE_GUIDANCE:
         # The steer is QUOTED as a blockquote: it is one line by construction (whitespace is
         # collapsed at every entry point), so a `>` prefix is enough to keep whatever markdown a
@@ -930,17 +950,97 @@ def _render_findings(
     return "\n".join(lines) + "\n"
 
 
+# How many cited PDFs a cluster's findings hand over a text layer for; past it, one line says to
+# leave the rest's locators unchanged.
+_TEXT_LAYERS_SHOWN = 10
+
+
+class _TextLayerMemo:
+    """Per-RUN memo of each cited PDF's verdict (key -> extraction text or None): clusters share
+    sources, so each PDF is hashed and extracted at most once per run. Best-effort throughout."""
+
+    def __init__(self) -> None:
+        self.cache: dict[str, str | None] = {}
+
+    def text(self, key: str, manifest_dict: dict) -> str | None:
+        if key in self.cache:
+            return self.cache[key]
+        result: str | None = None
+        try:
+            path = config.source_path_for_key(key)
+            entry = manifest_dict.get(key)
+            sha = manifest.entry_sha(entry) if entry is not None else None
+            # A CHANGED PDF is reconcile's job: its locators point into the OLD extraction.
+            if path.is_file() and pdftext.is_pdf_text_source(path) and sha and manifest.file_sha256(path) == sha:
+                result = pdftext.text_for(path, sha=sha)
+        except OSError:
+            result = None
+        self.cache[key] = result
+        return result
+
+
+def _cluster_pdf_keys(page: Page, inbound: dict[str, list[str]], pages_by_path: dict[str, Page]) -> list[str]:
+    """The PDFs the cluster cites: the anchor's first, then its direct link neighbors' (sorted),
+    deduped. By MAGIC (``%PDF-``), never by extension; a stat failure counts as not a PDF."""
+    keys: list[str] = []
+    for rel in [page.rel_path, *sorted(_link_neighbors(page, inbound))]:
+        member = page if rel == page.rel_path else pages_by_path.get(rel)
+        if member is None:
+            continue
+        for key in _cited_source_keys(member):
+            if key in keys:
+                continue
+            if pdftext.is_pdf_file(config.source_path_for_key(key)):
+                keys.append(key)
+    return keys
+
+
 def _write_findings(
-    item: PlanItem, page: Page, inbound: dict[str, list[str]], guided_run: list[str] | None = None
+    item: PlanItem,
+    page: Page,
+    inbound: dict[str, list[str]],
+    guided_run: list[str] | None = None,
+    *,
+    pages_by_path: dict[str, Page] | None = None,
+    manifest_dict: dict | None = None,
+    memo: _TextLayerMemo | None = None,
 ) -> tuple[str, str]:
     """Materialize the cluster findings to a fresh temp ``.md`` for the agent to READ, returning
     ``(read_path, tmpdir)``; the caller removes ``tmpdir`` after the session. ``read_path`` is
     rendered through the same :func:`config.rel_or_abs_posix` discipline as every other prepared
-    file, so ``llm._external_dirs`` grants its (out-of-workspace) temp dir to the CLI."""
+    file, so ``llm._external_dirs`` grants its (out-of-workspace) temp dir to the CLI.
+
+    When the cluster cites PDFs, each one with a usable text layer (unchanged since ingest, see
+    :class:`_TextLayerMemo`) gets a byte-for-byte COPY of that layer under ``<tmpdir>/textlayers/``
+    (the tmpdir is already granted to every backend), named in a ``## Text layers of cited PDFs``
+    section — so the session keeps ``lines A-B`` locators into it instead of re-reading the PDF's
+    pixels and downgrading them to ``p. N`` (#161). A cluster citing no PDF gets exactly the
+    findings it always got."""
     tmpdir = tempfile.mkdtemp(prefix="okf_curate_")
     out = Path(tmpdir) / "findings.md"
     try:
-        out.write_text(_render_findings(item, page, inbound, guided_run), encoding="utf-8")
+        layers: list[tuple[str, str]] = []
+        extra = 0
+        pdf_keys = _cluster_pdf_keys(page, inbound, pages_by_path or {}) if pages_by_path is not None else []
+        if pdf_keys and memo is not None:
+            for key in pdf_keys:
+                text = memo.text(key, manifest_dict or {})
+                if not text:
+                    continue
+                if len(layers) >= _TEXT_LAYERS_SHOWN:
+                    extra += 1
+                    continue
+                target = Path(tmpdir) / "textlayers" / f"{len(layers) + 1}-{PurePosixPath(key).name}.md"
+                try:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(text.encode("utf-8"))
+                except OSError:
+                    continue
+                layers.append((key, config.rel_or_abs_posix(target)))
+        out.write_text(
+            _render_findings(item, page, inbound, guided_run, pdfs=bool(pdf_keys), layers=layers, extra_layers=extra),
+            encoding="utf-8",
+        )
     except OSError:
         shutil.rmtree(tmpdir, ignore_errors=True)
         raise
@@ -978,6 +1078,62 @@ def _no_new_broken_links(baseline: set[str]):
             "must have its inbound links repointed (core.md § Restructuring)"
             for target in sorted(_broken_link_targets() - baseline)
         ]
+
+    return check
+
+
+def _pdf_locator_counts(pages: list[Page] | None = None) -> dict[str, tuple[int, int]]:
+    """``{cited .pdf target key: (lines locators, page locators)}`` over every ``[^sN]`` definition
+    in the wiki — counted wiki-wide by TARGET (like :func:`_broken_link_targets`), so renames and
+    moves are neutral."""
+    if pages is None:
+        pages = store.load()
+    counts: dict[str, list[int]] = {}
+    for page in pages:
+        for _marker, rest in grammar.source_definitions(page.body):
+            target = grammar.def_link_target(rest)
+            if not target or grammar.is_external(target) or not target.lower().endswith(".pdf"):
+                continue
+            key = config.rel_or_abs_posix(grammar.link_abs(page.rel_path, target))
+            tail = grammar.locator_tail(rest)
+            bucket = counts.setdefault(key, [0, 0])
+            if tail and grammar.parse_locator(tail).kind == "lines":
+                bucket[0] += 1
+            elif grammar.is_page_locator(tail):
+                bucket[1] += 1
+    return {k: (v[0], v[1]) for k, v in counts.items()}
+
+
+def _no_locator_downgrade(baseline: dict[str, tuple[int, int]]):
+    """The #161 post-condition (next to :func:`_no_new_broken_links`): fail a cluster that turned
+    verifiable ``lines A-B`` locators into a PDF into ``p. N`` — for each target whose ``lines``
+    count dropped WHILE its page count rose. A ``lines`` locator into a PDF is only ever written by a
+    session that read its text layer, so a baseline ``lines > 0`` identifies a text-layer target with
+    no hashing. A dropped fact lowers ``lines`` only, a split that copies a ``p. N`` raises ``page``
+    only, a merge lowers both — all pass."""
+
+    def check() -> list[str]:
+        now = _pdf_locator_counts()
+        problems = []
+        for target, (lines_before, page_before) in sorted(baseline.items()):
+            if lines_before <= 0:
+                continue
+            lines_after, page_after = now.get(target, (0, 0))
+            if lines_after < lines_before and page_after > page_before:
+                problems.append(
+                    f"locator downgrade on {target}: lines {lines_before}->{lines_after}, page "
+                    f"{page_before}->{page_after} - keep lines A-B locators into the text layer (tasks/curate.md)"
+                )
+        return problems
+
+    return check
+
+
+def _all_checks(*checks):
+    """One ``extra_check`` callable running every post-condition, problems concatenated."""
+
+    def check() -> list[str]:
+        return [problem for c in checks for problem in c()]
 
     return check
 
@@ -1196,6 +1352,8 @@ def curate(
         readdeny.install_from_discovery()  # a cluster re-reads cited sources: excluded ones stay denied
         pages_by_path = {p.rel_path: p for p in pages}
         records = load_records()  # the per-cluster record, updated per cluster, saved once below
+        run_manifest = manifest.load()  # the text-layer hand-off's "unchanged since ingest" test
+        layer_memo = _TextLayerMemo()
         # One backlink-graph pass for the whole run; every cluster's findings slice it.
         inbound = store.inbound_map(pages)
         before_map = _texts_for(pages) if diff else {}
@@ -1225,16 +1383,29 @@ def curate(
                     if page is None:  # vanished since the plan was computed (nothing to curate)
                         continue
                     emit("cluster_start", index=index, total=len(plan.items), page=page_rel)
-                    read_path, tmpdir = _write_findings(item, page, inbound, guided_run)
-                    # The link-graph baseline is the LIVE wiki as this cluster finds it — recomputed
-                    # per cluster, since an earlier cluster's promote may have changed it.
+                    read_path, tmpdir = _write_findings(
+                        item,
+                        page,
+                        inbound,
+                        guided_run,
+                        pages_by_path=pages_by_path,
+                        manifest_dict=run_manifest,
+                        memo=layer_memo,
+                    )
+                    # The link-graph and PDF-locator baselines are the LIVE wiki as this cluster
+                    # finds it — recomputed per cluster, since an earlier promote may have changed it.
                     baseline = _broken_link_targets()
+                    locator_baseline = _pdf_locator_counts()
                     try:
                         session = [
                             lambda pr=page_rel, rp=read_path: llm.run_ingest_session(pr, kind="curate", read_path=rp)
                         ]
                         outcome = ingest._run_agent_sessions(
-                            session, page_rel, extra_check=_no_new_broken_links(baseline)
+                            session,
+                            page_rel,
+                            extra_check=_all_checks(
+                                _no_new_broken_links(baseline), _no_locator_downgrade(locator_baseline)
+                            ),
                         )
                     finally:
                         shutil.rmtree(tmpdir, ignore_errors=True)

@@ -120,6 +120,11 @@ when it was ingested with `CITADEL_PDF_TEXT=0`, or in the unusual case that pypd
 no text layer at all and always falls back to agent-verified `p. N` page locators — that is
 expected, not a failure. Deleting a cache entry (or the whole dir) just costs one re-extraction.
 
+`citadel curate` hands each session the cached text layer of the PDFs its cluster cites, so a
+curate pass keeps (and fixes) `lines A-B` locators instead of falling back to `p. N`; a session that
+downgrades a verifiable `lines A-B` locator to a bare `p. N` is rolled back. When the cache entry
+is missing, curate cannot hand it over — rebuild it first with `citadel ingest --force raw/report.pdf`.
+
 ### An audio/video recording isn't in the wiki
 
 Audio transcript ingest is **opt-in**: set `CITADEL_AUDIO_SUPPORT=1` and install a whisper-class

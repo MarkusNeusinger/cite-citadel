@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Curate keeps verifiable PDF locators (#161).** A curate session never saw the pypdf text layer
+  ingest had read, so it could only re-cite a PDF by page (`p. N`) — an offline-verifiable
+  `lines A-B` locator became unverifiable. Each cluster's findings file now names the PDF mode and
+  points at a copy of the cached text layer of every cited PDF (up to 10 per cluster), and a cluster
+  whose edit replaces a PDF's `lines A-B` locators with page-only ones is failed and rolled back.
+
 - **A PDF page with a garbled text layer is read from its page image (#165).** A scanned PDF whose
   OCR layer serialized a label/value table out of order (labels first, then a detached run of
   numbers) was routed to the text path and its main content silently left out. Each page of the
