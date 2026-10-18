@@ -279,7 +279,7 @@ jobs:
           expected.append("templates/env.example")
           # The offline viewer's assets are loaded via importlib.resources at runtime — a wheel
           # that drops one breaks `citadel view` only when a user runs it, so guard them here.
-          expected += ["viewer/template.html", "viewer/app.css", "viewer/app.js"]
+          expected += ["viewer/template.html", "viewer/app.css", "viewer/app.js", "viewer/i18n.json"]
           pkg = resources.files("citadel")
           missing = [rel for rel in expected if not pkg.joinpath(rel).is_file()]
           if missing:

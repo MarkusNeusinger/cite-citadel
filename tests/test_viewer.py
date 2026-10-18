@@ -11,7 +11,9 @@ import json
 import os
 import re
 
-from citadel import failures, manifest, store, viewer
+import pytest
+
+from citadel import config, failures, manifest, store, viewer
 
 
 def _two_page_wiki(seed_page) -> None:
@@ -903,3 +905,88 @@ def test_combined_locator_embeds_the_line_range_not_the_section(tmp_citadel, see
     s = viewer.build_bundle()["sources"]["raw/big.md"]
     # 110-112 padded by _LINE_CONTEXT (3) — NOT the whole Section A span (101-199).
     assert [(g["start"], g["end"]) for g in s["segments"]] == [(107, 115)]
+
+
+# --- UI-chrome localization (issue #171, F17) ----------------------------------------------------
+
+
+def _embedded_i18n(html: str) -> dict:
+    m = re.search(r'<script id="i18n" type="application/json">(.*?)</script>', html, re.DOTALL)
+    assert m, "embedded i18n script not found"
+    return json.loads(m.group(1).replace("<\\/", "</"))
+
+
+def _html_lang(html: str) -> str:
+    m = re.search(r'<html lang="([^"]*)">', html)
+    assert m, "no <html lang> attribute"
+    return m.group(1)
+
+
+@pytest.mark.parametrize(
+    ("wiki_lang", "expected"),
+    [("de", "de"), ("de-CH", "de"), ("DE", "de"), ("fr", "fr"), ("German", "en"), ("", "en"), ("en", "en")],
+)
+def test_bundle_lang_follows_the_wiki_language(tmp_citadel, seed_page, monkeypatch, wiki_lang, expected):
+    _two_page_wiki(seed_page)
+    monkeypatch.setattr(config, "WIKI_LANG", wiki_lang)
+    assert viewer.build_bundle()["lang"] == expected
+
+
+@pytest.mark.parametrize(
+    ("wiki_lang", "html_lang", "dicts"), [("de", "de", {"en", "de"}), ("fr", "fr", {"en"}), ("en", "en", {"en"})]
+)
+def test_build_html_sets_html_lang_and_inlines_only_the_needed_dictionaries(
+    tmp_citadel, seed_page, monkeypatch, wiki_lang, html_lang, dicts
+):
+    _two_page_wiki(seed_page)
+    monkeypatch.setattr(config, "WIKI_LANG", wiki_lang)
+    html = viewer.build_html()
+    # fr has no dictionary: English chrome, but the document still declares the wiki's language.
+    assert _html_lang(html) == html_lang
+    assert set(_embedded_i18n(html)) == dicts
+    assert "/*__LANG__*/" not in html and "/*__I18N__*/" not in html
+
+
+def test_cli_view_lang_overrides_the_wiki_language(tmp_citadel, seed_page, monkeypatch):
+    from citadel import cli
+
+    _two_page_wiki(seed_page)
+    monkeypatch.setattr(config, "WIKI_LANG", "en")
+    monkeypatch.setattr(viewer, "_is_wsl", lambda: False)
+    monkeypatch.setattr(viewer.webbrowser, "open", lambda *a, **k: True)
+    args = cli.build_parser().parse_args(["view", "--no-open", "--lang", "de"])
+    assert args.lang == "de"
+    assert args.func(args) == 0
+    html = (tmp_citadel.wiki / viewer.VIEWER_FILENAME).read_text(encoding="utf-8")
+    assert _html_lang(html) == "de"
+    assert _embedded_bundle(html)[1]["lang"] == "de"
+    assert set(_embedded_i18n(html)) == {"en", "de"}
+
+
+def test_every_dictionary_has_exactly_the_english_keys():
+    catalog = json.loads(viewer._asset("i18n.json"))
+    assert {"en", "de"} <= set(catalog)
+    for lang, table in catalog.items():
+        assert set(table) == set(catalog["en"]), f"{lang}: key set differs from en"
+        assert all(isinstance(v, str) and v for v in table.values()), f"{lang}: empty/non-string value"
+
+
+def test_every_ui_string_key_is_in_the_english_dictionary():
+    en = json.loads(viewer._asset("i18n.json"))["en"]
+    template = viewer._asset("template.html")
+    app_js = viewer._asset("app.js")
+    static_keys = set(re.findall(r'data-i18n(?:-title|-placeholder)?="([^"]+)"', template))
+    plain_keys = set(re.findall(r'\bt\(\s*"([^"]+)"', app_js))
+    count_keys = set(re.findall(r'\btn\(\s*"([^"]+)"', app_js))
+    assert static_keys and plain_keys and count_keys  # the scan actually found the call sites
+    wanted = static_keys | plain_keys | {k + s for k in count_keys for s in ("_one", "_other")}
+    assert sorted(wanted - set(en)) == []
+
+
+def test_localized_viewer_keeps_page_markdown_english(tmp_citadel, seed_page, monkeypatch):
+    """The structural headings stay literal in the page files and the bundle (grammar/validate
+    parse them) — only the rendered chrome is localized, in the browser."""
+    seed_page("concepts/x.md", {"type": "Concept", "title": "X"}, "Ein Fakt.\n\n## See also\n\n- [Y](./y.md)\n")
+    monkeypatch.setattr(config, "WIKI_LANG", "de")
+    page = viewer.build_bundle()["pages"][0]
+    assert "## See also" in page["body"]

@@ -122,7 +122,8 @@ mark.cur { outline:2px solid var(--accent); outline-offset:1px; }
 #graph .node.src rect { stroke:var(--bg); stroke-width:1.5; }
 #graph .node.src:hover rect { stroke:var(--accent); stroke-width:2.5; }
 #graph .node.active rect { stroke:var(--accent); stroke-width:3.5; }
-#graph .node text { font-size:9px; fill:var(--fg); pointer-events:none; }
+/* The label font-size is set per draw (9px / zoom) so labels keep a constant ON-SCREEN size. */
+#graph .node text { fill:var(--fg); pointer-events:none; }
 #graph line { stroke:var(--line); stroke-width:1; }
 #graph line.src { stroke-dasharray:3 3; }
 /* Tag-similarity springs: barely-visible dashed layout aids (not semantic link edges). */

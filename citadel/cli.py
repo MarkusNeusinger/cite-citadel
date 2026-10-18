@@ -22,7 +22,7 @@
     citadel tags [tag]           # browse pages by tag
     citadel lint [--stale-days N]
     citadel check [paths ...]    # validate links/format/required-fields (the ingest gate)
-    citadel view [--out PATH] [--no-open] [--obsidian]   # offline single-file HTML viewer
+    citadel view [--out PATH] [--no-open] [--obsidian] [--lang CODE]   # offline single-file HTML viewer
     citadel rules list|show|eject   # inspect / fork the rules files the ingest agent reads
 
 The define/read/raw/neighbors/index/sources/capture/lint/status subcommands give an AI without MCP
@@ -439,6 +439,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--obsidian",
         action="store_true",
         help="Open the wiki folder as an Obsidian vault instead (best-effort deep link).",
+    )
+    p_view.add_argument(
+        "--lang",
+        default=None,
+        metavar="CODE",
+        help="Language of the viewer's UI chrome and <html lang> (default: CITADEL_WIKI_LANG, else en).",
     )
     p_view.set_defaults(func=cmd_view, open_browser=True)
 
@@ -1170,7 +1176,9 @@ def cmd_view(args: argparse.Namespace) -> int:
     """Generate the offline single-file HTML viewer and open it (unless --no-open)."""
     from . import viewer
 
-    return viewer.view(out=args.out, open_browser=args.open_browser, obsidian=args.obsidian)
+    return viewer.view(
+        out=args.out, open_browser=args.open_browser, obsidian=args.obsidian, lang=getattr(args, "lang", None)
+    )
 
 
 def _interrupt_message(args: argparse.Namespace, report=None) -> str:
