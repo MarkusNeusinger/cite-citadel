@@ -798,6 +798,11 @@ def rules_relnames() -> list[str]:
     return sorted(names)
 
 
+# Rules-tree files no agent session ever reads (llm._referenced_rules never lists them) — left out
+# of rules_version, so editing them never re-stales a corpus.
+_UNREAD_RULES = frozenset({"README.md"})
+
+
 def rules_version() -> str:
     """A short content hash of the effective rules tree: sha256 over the sorted
     (tree-relative name, bytes) of every effective rules file, truncated to 12 hex chars.
@@ -805,10 +810,15 @@ def rules_version() -> str:
     ``refresh --stale-rules`` / ``curate --stale-rules`` can find sources ingested under older
     rules (only a re-verifying source session — refresh, a forced ingest — re-stamps one). Zero
     manual maintenance — editing ANY effective file (packaged, workspace override, an added
-    genre, ``rules/local.md``) changes it. Cheap (the tree is ~100 KB): compute once per ingest
-    run, not per source."""
+    genre, ``rules/local.md``) changes it — except the files NO session reads
+    (:data:`_UNREAD_RULES`, the tree's own README index), so editing the index does not mark the
+    whole corpus ``(stale)``. Filtered here, not in :func:`rules_relnames`, which also drives
+    ``citadel rules list``. Cheap (the tree is ~100 KB): compute once per ingest run, not per
+    source."""
     h = hashlib.sha256()
     for rel in rules_relnames():
+        if rel in _UNREAD_RULES:
+            continue
         try:
             data = effective_rules_file(rel).read_bytes()
         except OSError:
@@ -889,6 +899,13 @@ def manifest_path() -> Path:
     """:data:`MANIFEST_PATH` (``<wiki>/.citadel_ingested.json``), redirect-aware."""
     override = _WIKI_OVERRIDE.get()
     return override / ".citadel_ingested.json" if override is not None else MANIFEST_PATH
+
+
+def curate_path() -> Path:
+    """``<wiki>/.citadel_curate.json`` — the per-cluster curate record (outcome, reasons, rules
+    version, model, usage per anchor page), redirect-aware. Derived from :func:`wiki_dir` at call
+    time, so it always sits beside the manifest of the wiki in effect."""
+    return wiki_dir() / ".citadel_curate.json"
 
 
 def failures_path() -> Path:

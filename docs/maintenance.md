@@ -21,9 +21,10 @@ When to run it:
 - **After editing the rules** (see below): `citadel status` marks every source ingested under the
   older rulebook `(stale)`. `citadel refresh --stale-rules --limit K` re-verifies exactly those
   sources and clears the marker. `citadel curate --stale-rules` re-checks their citing *pages*
-  (one session for a hub page citing many stale sources), but curate never re-stamps a source,
-  so it does not clear `(stale)` and plans the same pages again on the next run. Plain
-  `citadel curate` no longer plans rules drift at all.
+  (one session for a hub page citing many stale sources); curate never re-stamps a source, so it
+  does not clear `(stale)`, but each page is re-checked only ONCE per rules version (the per-cluster
+  record `wiki/.citadel_curate.json` remembers it was applied or NOOP under the current rules).
+  Plain `citadel curate` no longer plans rules drift at all.
 - **Periodically on a growing wiki**: after many ingest runs, `citadel lint` tends to accumulate
   advisories (contradictions, orphans, locator issues) — curate works through them.
 - **Preview first**: `citadel curate --dry-run` prints the plan and runs zero agent sessions.

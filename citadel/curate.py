@@ -49,6 +49,7 @@ from __future__ import annotations
 import contextlib
 import difflib
 import fnmatch
+import json
 import os
 import shutil
 import tempfile
@@ -203,6 +204,9 @@ class CurateReport:
     # NOOP and failed clusters included (their sessions were paid for too). None when no
     # backend reported anything.
     usage: llm.SessionUsage | None = None
+    # What each cluster's session cost, keyed by anchor page (only the clusters whose backend
+    # reported usage) — rendered beside every Applied/NOOP/Failed line and as the NOOP-spend total.
+    cluster_usage: dict[str, llm.SessionUsage] = field(default_factory=dict)
 
     def render(self) -> str:
         lines = ["Curate report", "=============", ""]
@@ -219,7 +223,9 @@ class CurateReport:
         ):
             lines.append(f"{label}: {len(group)}")
             for page in group:
-                lines.append(f"  - {page}")
+                spent = self.cluster_usage.get(page)
+                described_cluster = spent.describe() if spent is not None else ""
+                lines.append(f"  - {page}  ({described_cluster})" if described_cluster else f"  - {page}")
                 detail = self.failed_details.get(page, "") if group is self.failed else ""
                 if detail:
                     lines.append(f"      {_detail_line(detail)}")
@@ -237,6 +243,12 @@ class CurateReport:
         if described:
             lines.append("")
             lines.append(f"LLM usage: {described}.")
+        noop_spend = llm.combine_usage(self.cluster_usage.get(page) for page in self.noop)
+        noop_described = noop_spend.describe() if noop_spend is not None else ""
+        if noop_described:
+            lines.append(
+                f"NOOP spend (sessions that changed nothing): {noop_described} over {len(self.noop)} cluster(s)."
+            )
         if self.wiki_git:
             lines.append("")
             lines.append(self.wiki_git)
@@ -251,19 +263,75 @@ def _stale_hint(count: int) -> str:
     a negative ``count`` (the count itself failed) keeps the refresh command with a placeholder K."""
     if count < 0:
         return (
-            "Curate re-checks pages, not sources: the drifted sources stay (stale) - and their pages\n"
-            "stay in the --stale-rules plan - until `citadel refresh --stale-rules --limit K`\n"
-            "(K = the (stale) count `citadel status` shows) or `citadel ingest --force <paths>` re-verifies them."
+            "Curate re-checks pages, not sources: the drifted sources stay (stale) until\n"
+            "`citadel refresh --stale-rules --limit K` (K = the (stale) count `citadel status` shows)\n"
+            "or `citadel ingest --force <paths>` re-verifies them."
         )
     if count == 0:
         return (
-            "Curate re-checks pages, not sources: the drifted sources stay (stale) - and their pages\n"
-            "stay in the --stale-rules plan - until `citadel ingest --force <paths>` re-verifies them."
+            "Curate re-checks pages, not sources: the drifted sources stay (stale) until\n"
+            "`citadel ingest --force <paths>` re-verifies them."
         )
     return (
-        f"Curate re-checks pages, not sources: {count} source(s) stay (stale) - and their pages stay in\n"
-        f"the --stale-rules plan - until `{refresh.stale_command(count)}`\n"
-        "(or `citadel ingest --force <paths>`) re-verifies them."
+        f"Curate re-checks pages, not sources: {count} source(s) stay (stale) until\n"
+        f"`{refresh.stale_command(count)}` (or `citadel ingest --force <paths>`) re-verifies them."
+    )
+
+
+# --- the per-cluster record (.citadel_curate.json) ------------------------------------------
+
+APPLIED = "applied"
+NOOP = "noop"
+FAILED = "failed"
+
+
+def load_records() -> dict[str, dict]:
+    """The per-cluster curate record, keyed by anchor page — ``{}`` when absent or unreadable (it
+    is telemetry plus a convergence hint, never something a run may fail over). NOT a queue: the
+    plan is still recomputed from the detectors every run; the record only lets a rules-drift
+    finding converge (:func:`_drift_converged`) and carries what each cluster cost."""
+    try:
+        data = json.loads(config.curate_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in data.items() if isinstance(v, dict)} if isinstance(data, dict) else {}
+
+
+def save_records(records: dict[str, dict]) -> None:
+    """Atomically write the record (sorted, one file per wiki) — once per real run."""
+    config.atomic_write_text(config.curate_path(), json.dumps(records, indent=2, sort_keys=True) + "\n")
+
+
+def _record_cluster(records: dict, page_rel: str, outcome_name: str, reasons: list[str], model: str, outcome) -> None:
+    usage = outcome.usage if isinstance(outcome.usage, llm.SessionUsage) else None
+    entry = {
+        "at": manifest.now_iso(),
+        "outcome": outcome_name,
+        "reasons": list(reasons),
+        "rules_version": config.rules_version(),
+        "model": config.model_label_for(usage.model) if usage is not None and usage.model else model,
+    }
+    entry.update(
+        manifest._usage_stamp_fields(
+            usage.cost_usd if usage else None,
+            usage.input_tokens if usage else None,
+            usage.output_tokens if usage else None,
+            usage.aic if usage else None,
+            outcome.seconds,
+        )
+    )
+    records[page_rel] = entry
+
+
+def _drift_converged(records: dict, rel_path: str, current_rules_version: str) -> bool:
+    """True when ``rel_path``'s last curate session was APPLIED or NOOP under the CURRENT rules
+    version — it was re-checked under these rules, so a rules-drift finding on it is done (a
+    ``failed`` record does not count). A rules edit changes the version and re-opens it."""
+    entry = records.get(rel_path)
+    return (
+        isinstance(entry, dict)
+        and entry.get("outcome") in (APPLIED, NOOP)
+        and entry.get("rules_version") == current_rules_version
     )
 
 
@@ -472,9 +540,13 @@ def build_plan(
     stale_keys = _stale_source_keys(manifest_dict, current_rules_version) if stale_rules else set()
     reverify_keys = reverify_candidates()
     citing = store.citing_pages_map(set(stale_keys) | reverify_keys, pages)
+    records = load_records() if stale_rules else {}
     for key in stale_keys:
         for rel_path in citing.get(key, []):
-            add(rel_path, REASON_RULES_DRIFT)
+            # Converged: re-checked under the current rules already (applied or NOOP) — planning it
+            # again would re-pay the same session on every run.
+            if not _drift_converged(records, rel_path, current_rules_version):
+                add(rel_path, REASON_RULES_DRIFT)
 
     for rel_path in lint.orphans(pages):
         add(rel_path, REASON_ORPHAN)
@@ -994,6 +1066,7 @@ def curate(
         llm.reset_hermetic_refusals()  # the --bare verdict is per run (a serve process runs many)
         readdeny.install_from_discovery()  # a cluster re-reads cited sources: excluded ones stay denied
         pages_by_path = {p.rel_path: p for p in pages}
+        records = load_records()  # the per-cluster record, updated per cluster, saved once below
         # One backlink-graph pass for the whole run; every cluster's findings slice it.
         inbound = store.inbound_map(pages)
         before_map = _texts_for(pages) if diff else {}
@@ -1040,7 +1113,10 @@ def curate(
                     # The run total counts every cluster's sessions — a rolled-back or NOOP cluster
                     # spent its session too.
                     report.usage = llm.combine_usage([report.usage, outcome.usage])
+                    if isinstance(outcome.usage, llm.SessionUsage):
+                        report.cluster_usage[page_rel] = outcome.usage
                     if not outcome.ok:
+                        _record_cluster(records, page_rel, FAILED, item.reasons, model, outcome)
                         report.failed.append(page_rel)
                         report.failed_details[page_rel] = _record_cluster_failure(
                             failures_dict, page_rel, outcome, model
@@ -1051,7 +1127,9 @@ def curate(
                     # A clean session: clear any prior stuck record. The staging diff is the sole arbiter of
                     # applied vs NOOP — a non-empty promoted diff is a real edit, an empty one is a NOOP.
                     failures.clear(failures_dict, page_rel)
-                    if outcome.created or outcome.updated or outcome.deleted:
+                    applied = bool(outcome.created or outcome.updated or outcome.deleted)
+                    _record_cluster(records, page_rel, APPLIED if applied else NOOP, item.reasons, model, outcome)
+                    if applied:
                         report.applied.append(page_rel)
                         store.append_log(
                             f"curate {page_rel}: {len(outcome.created)} created, {len(outcome.updated)} updated, "
@@ -1067,6 +1145,8 @@ def curate(
         # Persist the failures catalog (attempt counters / cleared records) regardless of outcome, then —
         # only when the wiki actually changed — apply the deterministic index rebuild (the offline fix).
         failures.save(failures_dict)
+        with contextlib.suppress(OSError):  # telemetry: a failed save must never fail the run
+            save_records(records)
         if report.applied:
             store.rebuild_indexes()
             # One wiki-history commit for the whole run, after the log/index writes so it captures the

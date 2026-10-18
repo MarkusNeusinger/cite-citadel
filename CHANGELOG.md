@@ -37,6 +37,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **`curate --stale-rules` checks each page once per rules version, and shows what each cluster
+  cost (#162, Part B).** A new per-cluster record, `wiki/.citadel_curate.json` (outcome, reasons,
+  rules version, model, usage per anchor page; saved once per real run, never on `--dry-run`), puts
+  each cluster's cost on its Applied/NOOP/Failed line plus a NOOP-spend total, and lets rules drift
+  converge: a page curated (applied or NOOP) under the current rules is not planned for drift again
+  until the rules change. `rules/README.md` — the tree's index, which no session reads — no longer
+  feeds `rules_version`, so editing it cannot re-stale a corpus. This changes the hash formula, so
+  every source shows `(stale)` once after upgrading; `citadel refresh --stale-rules --limit K`
+  clears it.
+
 - **A calendar export (`.ics`) is deduped behind its PDF/Office twin (#169).** A same-folder
   `<stem>.ics` + `<stem>.pdf` pair (an appointment confirmation and its printout) was ingested twice;
   `.ics` now ranks after every document format, so the PDF/Office twin is the one read (it carries

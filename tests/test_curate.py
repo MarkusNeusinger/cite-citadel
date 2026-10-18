@@ -1163,3 +1163,79 @@ def test_lint_flags_fenced_pseudo_heading_locator(tmp_citadel, seed_page):
 
     report = lint.lint()
     assert any("concepts/topic.md" == rel for rel, _detail in report.locator_issues)
+
+
+# --- #162 Part B: the per-cluster record + convergence ----------------------------------------
+
+
+def _stale_page(tmp_citadel, seed_page):
+    (tmp_citadel.raw / "a.md").write_text("body\n", encoding="utf-8")
+    _track("raw/a.md", manifest.file_sha256(tmp_citadel.raw / "a.md"), "0000oldrules")
+    _seed_cited(seed_page, "concepts/a.md", "raw/a.md", title="A")
+
+
+def test_cluster_cost_on_each_line_and_noop_spend_total(tmp_citadel, seed_page, fake_agent):
+    from citadel import curate, llm
+
+    _stale_page(tmp_citadel, seed_page)
+    fake_agent(usage=llm.SessionUsage(cost_usd=0.8, input_tokens=1000, output_tokens=10))
+    text = curate.curate(stale_rules=True).render()
+    assert "  - concepts/a.md  ($0.80" in text
+    assert "NOOP spend (sessions that changed nothing): $0.80" in text
+
+
+def test_no_cost_text_without_reported_usage(tmp_citadel, seed_page, fake_agent):
+    from citadel import curate
+
+    _stale_page(tmp_citadel, seed_page)
+    fake_agent()
+    text = curate.curate(stale_rules=True).render()
+    assert "NOOP spend" not in text and "$" not in text
+
+
+def test_a_real_run_writes_the_record_and_a_dry_run_does_not(tmp_citadel, seed_page, fake_agent):
+    import json
+
+    from citadel import curate, llm
+
+    _stale_page(tmp_citadel, seed_page)
+    fake_agent(usage=llm.SessionUsage(cost_usd=0.5, input_tokens=7, output_tokens=3))
+    curate.curate(dry_run=True, stale_rules=True)
+    assert not config.curate_path().exists()
+    curate.curate(stale_rules=True)
+    entry = json.loads(config.curate_path().read_text(encoding="utf-8"))["concepts/a.md"]
+    assert entry["outcome"] == "noop" and "rules_version_drift" in entry["reasons"]
+    assert entry["rules_version"] == config.rules_version()
+    assert entry["cost_usd"] == 0.5 and entry["tokens_in"] == 7 and entry["tokens_out"] == 3
+    assert "seconds" in entry and entry["at"].endswith("Z")
+
+
+def test_stale_rules_converges_and_reopens_on_a_rules_change(tmp_citadel, seed_page, fake_agent, monkeypatch):
+    from citadel import curate
+
+    _stale_page(tmp_citadel, seed_page)
+    fake_agent()
+    curate.curate(stale_rules=True)  # NOOP under the current rules
+    assert "concepts/a.md" not in _plan_pages(curate.build_plan(stale_rules=True))
+    monkeypatch.setattr(config, "rules_version", lambda: "ffffnewrules")
+    assert "concepts/a.md" in _plan_pages(curate.build_plan(stale_rules=True))
+
+
+def test_a_failed_record_keeps_the_page_planned(tmp_citadel, seed_page, fake_agent):
+    from citadel import curate
+
+    _stale_page(tmp_citadel, seed_page)
+    fake_agent(error=RuntimeError("boom"))
+    curate.curate(stale_rules=True)
+    assert curate.load_records()["concepts/a.md"]["outcome"] == "failed"
+    assert "concepts/a.md" in _plan_pages(curate.build_plan(stale_rules=True, force=True))
+
+
+def test_rules_version_ignores_the_unread_readme(tmp_citadel):
+    readme = tmp_citadel.packaged_rules / "README.md"
+    readme.write_text("index\n", encoding="utf-8")
+    before = config.rules_version()
+    readme.write_text("index, edited\n", encoding="utf-8")
+    assert config.rules_version() == before
+    (tmp_citadel.packaged_rules / "core.md").write_text("changed core\n", encoding="utf-8")
+    assert config.rules_version() != before

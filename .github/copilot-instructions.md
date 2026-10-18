@@ -393,7 +393,14 @@ claude's `permission_denials` ride `SessionUsage.denials` onto a run warning, ne
   `docs/` is legal provenance (never a broken link), and a link inside a ``` code fence is literal text.
 
 **Curate is the second wiki lifecycle** (`curate.py`, `citadel curate`). It has **no persisted
-queue — the plan is recomputed from offline detectors every run** (the wiki IS the database):
+queue — the plan is recomputed from offline detectors every run** (the wiki IS the database); the
+one curate state it persists beyond the failures catalog is the per-cluster RECORD
+`wiki/.citadel_curate.json` (`load_records`/`save_records`, saved atomically once per real run,
+never on `--dry-run`, interrupt included): per anchor page the last outcome
+(applied/noop/failed), reasons, rules version, model and the manifest-shaped usage stamp — the only
+home of per-cluster curate cost (shown on every Applied/NOOP/Failed line plus a NOOP-spend total),
+and what lets rules drift CONVERGE: a page re-checked APPLIED/NOOP under the current rules is not
+planned for drift again (a failed record does not count; a rules edit re-opens it):
 `rules_version_drift` (planned ONLY under `--stale-rules`: curate re-checks pages, never whole
 sources, so it never re-stamps a manifest entry and cannot clear `(stale)` — in the default plan
 drift would be a permanent paid item that also starves the lower-ranked detectors under `--limit`;
@@ -627,7 +634,7 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   that writes files into the temp wiki. No test spawns a real LLM CLI. Follow that pattern; keep
   tests offline.
 - **Never hand-edit generated files** — `index.md`, `log.md`, any `*/index.md`, `sources/index.md`,
-  `.citadel_viewer.html`, and `.citadel_ingested.json` are regenerated. The ingest agent prompt and
+  `.citadel_viewer.html`, `.citadel_ingested.json`, and `.citadel_curate.json` are regenerated. The ingest agent prompt and
   `store.delete_page` both refuse to touch them. In the REPO, `.github/copilot-instructions.md` is
   generated too: it is THIS file with a swapped header (both agents get one instruction set, so a
   feature can't be documented for one and not the other). Edit `CLAUDE.md`, then regenerate with
