@@ -157,6 +157,8 @@ class LintReport:
     # hard": this does NOT flip ok(); `citadel curate` only plans a split
     # once a page crosses the HARD threshold.
     long_pages: list[str] = field(default_factory=list)
+    # rel_path -> (chars, lines) for each long page, rendered beside it.
+    long_page_sizes: dict[str, tuple[int, int]] = field(default_factory=dict)
 
     def ok(self) -> bool:
         """True unless there are structural-integrity problems: missing_type, broken_links,
@@ -197,8 +199,15 @@ class LintReport:
         for rel in self.stale:
             lines.append(f"  - {rel}")
 
-        lines.append(f"Long pages (over soft length, consider a split): {len(self.long_pages)}")
+        lines.append(
+            f"Long pages (over {config.CURATE_PAGE_SOFT_LINES} lines or {config.CURATE_PAGE_SOFT_CHARS:,} chars, "
+            f"consider a split): {len(self.long_pages)}"
+        )
         for rel in self.long_pages:
+            size = self.long_page_sizes.get(rel)
+            if size is not None:
+                lines.append(f"  - {rel} ({format_size(*size)})")
+                continue
             lines.append(f"  - {rel}")
 
         lines.append(f"Fabricated/missing sources: {len(self.bad_sources)}")
@@ -587,6 +596,27 @@ def check_locators(pages: list[Page]) -> list[tuple[str, str]]:
     return sorted(issues)
 
 
+def page_size(page: Page) -> tuple[int, int]:
+    """``(chars, lines)`` of the page BODY (``## Sources`` included, frontmatter excluded) — what a
+    session that touches the page reads. The ONE size measure lint's soft check and curate's hard
+    detector share."""
+    return len(page.body), len(page.body.splitlines())
+
+
+def over_page_limit(page: Page, *, hard: bool) -> bool:
+    """True when the page exceeds EITHER the line or the character threshold (hard or soft)."""
+    chars, lines = page_size(page)
+    if hard:
+        return lines > config.CURATE_PAGE_HARD_LINES or chars > config.CURATE_PAGE_HARD_CHARS
+    return lines > config.CURATE_PAGE_SOFT_LINES or chars > config.CURATE_PAGE_SOFT_CHARS
+
+
+def format_size(chars: int, lines: int) -> str:
+    """``88.3k chars, 554 lines`` (ASCII)."""
+    shown = f"{chars / 1000:.1f}k" if chars >= 1000 else str(chars)
+    return f"{shown} chars, {lines} lines"
+
+
 def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
     """If pages is None, store.load(). Build the link graph; flag orphans (no inbound
     and no outbound non-raw links), contradictions (marker present), missing_type
@@ -631,8 +661,9 @@ def lint(pages: list[Page] | None = None, stale_days: int = 365) -> LintReport:
                 report.broken_links.append((page.rel_path, target))
 
         # long_pages (advisory): over the SOFT length threshold — lint warns, curate acts at hard.
-        if len(page.body.splitlines()) > config.CURATE_PAGE_SOFT_LINES:
+        if over_page_limit(page, hard=False):
             report.long_pages.append(page.rel_path)
+            report.long_page_sizes[page.rel_path] = page_size(page)
 
         # missing_cites
         preview = _missing_cite_preview(page)

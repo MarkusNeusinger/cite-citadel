@@ -37,6 +37,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Page length is measured in characters too, and `curate --dry-run` shows what a run will
+  read (#167).** A page is now over the length thresholds when it exceeds EITHER 400/800 body lines
+  or 32,000/64,000 body characters, so a dense page (88 KB in 554 lines) gets its split. Lint's long-
+  page list shows each page's size, and the split finding names it. `curate --dry-run` adds one
+  `Cluster facts` line per planned cluster (page size, cited sources and bytes, PDFs by text-layer
+  state, link neighbors) and a labelled rough cost reference, and no longer prints the meaningless
+  Applied/NOOP/Failed counters; `refresh --dry-run` shows each source's last recorded session cost.
+
 - **`curate --stale-rules` checks each page once per rules version, and shows what each cluster
   cost (#162, Part B).** A new per-cluster record, `wiki/.citadel_curate.json` (outcome, reasons,
   rules version, model, usage per anchor page; saved once per real run, never on `--dry-run`), puts

@@ -11,7 +11,8 @@ Two layers, the Wikipedia-bot model, with **no persisted queue** — the wiki IS
    ``rules_version_drift`` (a page whose source was ingested under an older effective-rules hash;
    planned only under ``--stale-rules``, and never cleared by curate — ``citadel refresh
    --stale-rules`` re-stamps the source),
-   ``page_length_hard`` (over :data:`config.CURATE_PAGE_HARD_LINES` — lint only warns at the soft
+   ``page_length_hard`` (over :data:`config.CURATE_PAGE_HARD_LINES` lines or
+   :data:`config.CURATE_PAGE_HARD_CHARS` characters — lint only warns at the soft
    one), ``contradiction`` (an unresolved ``> [!CONTRADICTION]`` callout), ``orphan`` (an island),
    ``llm_drift`` (a page dominated by ``[^llm]`` facts with little ``[^sN]`` grounding),
    ``resort`` (a page whose ``type`` routes to a different folder than the one it sits in, via
@@ -67,6 +68,7 @@ from . import (
     manifest,
     okf,
     pagecache,
+    pdftext,
     readdeny,
     refresh,
     runlock,
@@ -207,6 +209,12 @@ class CurateReport:
     # What each cluster's session cost, keyed by anchor page (only the clusters whose backend
     # reported usage) — rendered beside every Applied/NOOP/Failed line and as the NOOP-spend total.
     cluster_usage: dict[str, llm.SessionUsage] = field(default_factory=dict)
+    # Dry runs only: one "what this session will read" line per planned cluster, and the labelled
+    # run-wide cost reference (empty when nothing records a cost). A dry run prints neither the
+    # Applied/NOOP/Failed counters (they mean nothing before a run) nor any per-cluster dollars.
+    dry_run: bool = False
+    cluster_facts: list[str] = field(default_factory=list)
+    cost_reference: str = ""
 
     def render(self) -> str:
         lines = ["Curate report", "=============", ""]
@@ -215,6 +223,23 @@ class CurateReport:
             lines.append("")
         lines.append(self.plan.render())
         lines.append("")
+        if self.dry_run:
+            if self.cluster_facts:
+                lines.append("Cluster facts (what each session will read):")
+                lines.extend(f"  - {fact}" for fact in self.cluster_facts)
+                lines.append("")
+            if self.cost_reference:
+                lines.append(self.cost_reference)
+                lines.append("")
+            if self.skipped:
+                lines.append(f"Skipped (attempt-capped): {len(self.skipped)}")
+                lines.extend(f"  - {page}" for page in self.skipped)
+                lines.append("")
+            if any(REASON_RULES_DRIFT in item.reasons for item in self.plan.items):
+                lines.append(_stale_hint(self.stale_sources))
+                lines.append("")
+            lines.append("Dry run: no agent sessions were started.")
+            return "\n".join(lines)
         for label, group in (
             ("Applied", self.applied),
             ("NOOP (findings did not hold)", self.noop),
@@ -253,6 +278,88 @@ class CurateReport:
             lines.append("")
             lines.append(self.wiki_git)
         return "\n".join(lines)
+
+
+def _cluster_fact(page: Page, inbound: dict[str, list[str]], manifest_dict: dict) -> str:
+    """One dry-run line: what the cluster's session will read — the page's size, its cited sources
+    (count + bytes on disk, one ``stat`` each), how many are PDFs and what this machine knows about
+    their text layer (from the content-addressed cache, by the MANIFEST sha — nothing is hashed),
+    and the link-neighbor count. Labels say what is KNOWN: a missing cache entry is "not extracted
+    here", never "read as images". Never raises."""
+    chars, lines = lint.page_size(page)
+    keys = _cited_source_keys(page)
+    size = 0
+    missing = 0
+    pdfs = text = no_text = unknown = 0
+    for key in keys:
+        path = config.source_path_for_key(key)
+        try:
+            size += path.stat().st_size
+        except OSError:
+            missing += 1
+        if not pdftext.is_pdf_ext(path):
+            continue
+        pdfs += 1
+        sha = manifest.entry_sha(manifest_dict.get(key))
+        try:
+            cached = pdftext.cache_path(sha) if sha else None
+        except ValueError:
+            cached = None
+        try:
+            if cached is None or not cached.is_file():
+                unknown += 1
+            elif cached.stat().st_size > 0:
+                text += 1
+            else:
+                no_text += 1
+        except OSError:
+            unknown += 1
+    parts = [
+        f"page {lint.format_size(chars, lines).replace(' chars, ', ' chars / ')}",
+        f"{len(keys)} cited source(s), {_human_size(size)} on disk" + (f" ({missing} missing)" if missing else ""),
+    ]
+    if pdfs:
+        parts.append(f"{pdfs} PDF(s): {text} text layer, {no_text} no text layer, {unknown} not extracted here")
+    parts.append(f"{len(_link_neighbors(page, inbound))} link neighbor(s)")
+    return f"{page.rel_path}: " + "; ".join(parts)
+
+
+def _human_size(size: int) -> str:
+    value = float(size)
+    for unit in ("B", "KB", "MB", "GB"):
+        if value < 1000 or unit == "GB":
+            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1000
+    return f"{size} B"
+
+
+def _cost_reference(manifest_dict: dict, records: dict, sessions: int) -> str:
+    """The run-wide, labelled cost reference for a dry run — never a per-cluster quote. Basis: the
+    median ``cost_usd`` of the recorded CURATE sessions (``.citadel_curate.json``) when there are
+    any, else of the recorded ingest sessions (manifest); "" when nothing records a cost (agy
+    reports no dollars, and seconds are not budget). ASCII only."""
+    if sessions < 1:
+        return ""
+    curate_costs = [e.get("cost_usd") for e in records.values() if isinstance(e.get("cost_usd"), (int, float))]
+    if curate_costs:
+        costs, basis = curate_costs, "recorded curate sessions"
+    else:
+        costs = [
+            manifest.entry_usage(entry).get("cost_usd")
+            for entry in manifest_dict.values()
+            if manifest.entry_usage(entry).get("cost_usd") is not None
+        ]
+        basis = "recorded ingest sessions"
+    if not costs:
+        return ""
+    ordered = sorted(float(c) for c in costs)
+    mid = len(ordered) // 2
+    median = ordered[mid] if len(ordered) % 2 else (ordered[mid - 1] + ordered[mid]) / 2
+    return (
+        f"Rough cost reference: {sessions} session(s) x {llm.format_cost(median)} (median of {len(ordered)} "
+        f"{basis}) = ~{llm.format_cost(median * sessions)}. Not a quote: a cluster citing many sources "
+        "or PDFs without a text layer can cost several times this."
+    )
 
 
 def _stale_hint(count: int) -> str:
@@ -392,11 +499,6 @@ def _reverify_sample(citing_pages: set[str], pages: list[Page]) -> list[str]:
 
     ranked = sorted(citing_pages, key=lambda rel: (-weight(rel), rel))
     return ranked[:REVERIFY_SAMPLE_K]
-
-
-def _page_line_count(page: Page) -> int:
-    """The page's length in BODY lines — what the soft/hard page-length thresholds are measured in."""
-    return len(page.body.splitlines())
 
 
 def _has_unresolved_contradiction(body: str) -> bool:
@@ -568,7 +670,7 @@ def build_plan(
 
     for page in pages:
         rel_path = page.rel_path
-        if _page_line_count(page) > config.CURATE_PAGE_HARD_LINES:
+        if lint.over_page_limit(page, hard=True):
             add(rel_path, REASON_PAGE_LENGTH)
         if _has_unresolved_contradiction(page.body):
             add(rel_path, REASON_CONTRADICTION)
@@ -680,7 +782,7 @@ _REASON_GUIDANCE = {
         "untouched."
     ),
     REASON_PAGE_LENGTH: (
-        "This page is over the hard length threshold. Split it along its topics into focused pages — "
+        "This page is over the hard length threshold{size}. Split it along its topics into focused pages — "
         "every fact keeping its `[^sN]` marker AND its `## Sources` definition — then delete the "
         "original and repoint inbound links (see `core.md` § Restructuring)."
     ),
@@ -729,7 +831,7 @@ _REASON_GUIDANCE = {
 }
 
 _REGISTRY_LENGTH_GUIDANCE = (
-    "This Registry page is over the hard length threshold. Split it by entry range or subclass "
+    "This Registry page is over the hard length threshold{size}. Split it by entry range or subclass "
     "into sibling `Registry` pages, the original becoming a short hub page linking the parts — "
     "never a topic split, and never drop or compress entries: every row keeps its `[^sN]` marker "
     "AND its `## Sources` definition (see `genres/registry.md`)."
@@ -740,8 +842,14 @@ def _reason_guidance(reason: str, page: Page) -> str:
     """The per-reason instruction line for the findings checklist. A `Registry` page over the
     length threshold must split by entry range into sibling registries — the generic topic-split
     guidance would shred its rows across topic pages."""
-    if reason == REASON_PAGE_LENGTH and (page.type or "").strip().lower() == "registry":
-        return _REGISTRY_LENGTH_GUIDANCE
+    if reason == REASON_PAGE_LENGTH:
+        chars, lines = lint.page_size(page)
+        size = (
+            f" ({chars:,} chars / {lines} lines; curate splits above "
+            f"{config.CURATE_PAGE_HARD_CHARS:,} chars or {config.CURATE_PAGE_HARD_LINES} lines)"
+        )
+        registry = (page.type or "").strip().lower() == "registry"
+        return (_REGISTRY_LENGTH_GUIDANCE if registry else _REASON_GUIDANCE[REASON_PAGE_LENGTH]).format(size=size)
     return _REASON_GUIDANCE.get(reason, "Review and repair per the rules.")
 
 
@@ -1055,6 +1163,17 @@ def curate(
     report.skipped = list(plan.skipped)
     report.unmatched = unmatched
     if dry_run:
+        report.dry_run = True
+        if plan.items:
+            manifest_dict = manifest.load()
+            inbound = store.inbound_map(pages)
+            pages_by_path = {p.rel_path: p for p in pages}
+            report.cluster_facts = [
+                _cluster_fact(pages_by_path[item.page], inbound, manifest_dict)
+                for item in plan.items
+                if item.page in pages_by_path
+            ]
+            report.cost_reference = _cost_reference(manifest_dict, load_records(), len(plan.items))
         emit("plan", clusters=len(plan.items))
         return report
 

@@ -1419,12 +1419,17 @@ WIKI_GIT: str = _wiki_git_mode()
 # (default) = commit locally only. A failed push is a report note, never a failed run.
 WIKI_GIT_REMOTE: str = os.environ.get("CITADEL_WIKI_GIT_REMOTE", "").strip()
 
-# Curate page-length thresholds, measured in BODY lines. `citadel lint`
-# only WARNS at the soft threshold; `citadel curate` ACTS (plans a topic split, every fact keeping
-# its citation) at the hard one. Deliberately module constants, not env knobs — one KISS default the
+# Curate page-length thresholds, measured in BODY lines AND body characters (a page is over a
+# threshold when it exceeds EITHER — a page of ~160-char lines is twice as heavy as its line count
+# says). `citadel lint` only WARNS at the soft threshold; `citadel curate` ACTS (plans a topic split,
+# every fact keeping its citation) at the hard one. The character limits are 400/800 lines x ~80
+# characters (the median body-line width of the showcase wikis), ~8k/16k tokens at the
+# _CHARS_PER_TOKEN convention. Deliberately module constants, not env knobs — one KISS default the
 # rules-tree page-shape guidance is written around, not a per-workspace dial.
 CURATE_PAGE_SOFT_LINES: int = 400
 CURATE_PAGE_HARD_LINES: int = 800
+CURATE_PAGE_SOFT_CHARS: int = 32_000
+CURATE_PAGE_HARD_CHARS: int = 64_000
 
 # OS/system junk files & folders to IGNORE entirely during a raw/ scan — never ingested, never
 # recorded in the manifest or the failures catalog. These are noise a file manager or the OS drops

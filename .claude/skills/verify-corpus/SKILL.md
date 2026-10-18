@@ -347,6 +347,9 @@ Curate plan (4 cluster(s)):
   - concepts/orphan-island.md [orphan]
 ```
 
+The `Cluster facts` section (and a cost reference, when the manifest records costs) that the dry
+run prints BELOW this block is informational — assert only the plan block.
+
 If a detector does NOT fire, or an unexpected page appears, FIX THE SEED/BASELINE before spending any
 LLM time — this de-risks the whole run. A spurious extra page almost always means the baseline was not
 fully neutralized (an un-restamped `rules_version`, a live reverify sha, or a showcase open

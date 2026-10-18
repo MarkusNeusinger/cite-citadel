@@ -9,7 +9,8 @@ code.
 ## Curate
 
 `citadel curate` improves **existing** pages: it re-sorts a page whose `type` doesn't match its
-folder, splits pages that grew too long, re-grounds facts against their cited sources, resolves
+folder, splits pages that grew too long (over 800 body lines **or** 64,000 body characters;
+`citadel lint` already warns above 400 lines or 32,000 characters), re-grounds facts against their cited sources, resolves
 contradictions, connects orphans, and fixes citation locators. There is no persisted queue — the
 plan is recomputed from offline detectors on every run (the wiki *is* the database), so running it
 is always safe and idempotent. Each planned page (plus its cited raw files and link neighbors)
@@ -27,13 +28,19 @@ When to run it:
   Plain `citadel curate` no longer plans rules drift at all.
 - **Periodically on a growing wiki**: after many ingest runs, `citadel lint` tends to accumulate
   advisories (contradictions, orphans, locator issues) — curate works through them.
-- **Preview first**: `citadel curate --dry-run` prints the plan and runs zero agent sessions.
+- **Preview first**: `citadel curate --dry-run` prints the plan and runs zero agent sessions. Below
+  the plan it lists, per cluster, what that session will read (page size, cited sources and their
+  bytes on disk, PDFs by known text-layer state, link neighbors) and one **rough cost reference**:
+  the session count times the median recorded cost (of earlier curate sessions, else of ingest
+  sessions). It is a budget hint, not a quote — a cluster citing many sources, or PDFs without a
+  text layer, can cost several times the median. `citadel refresh --dry-run` likewise shows each
+  source's last recorded session cost.
 
 Flags:
 
 | Flag | What it does |
 |------|--------------|
-| `--dry-run` | Recompute and print the plan only; run zero agent sessions, leave the wiki untouched. |
+| `--dry-run` | Recompute and print the plan only — plus per-cluster facts and a labelled cost reference; run zero agent sessions, leave the wiki untouched. |
 | `--limit N` | Curate at most the first N clusters of the plan (of the *scoped* plan when paths are given). |
 | `--stale-rules` | Plan (and restrict the run to) pages whose source was ingested under an older rulebook. Does **not** clear `(stale)` — `citadel refresh --stale-rules` does. |
 | `--diff PATH` | Write a per-page change report (unified diffs) for this run to PATH. |

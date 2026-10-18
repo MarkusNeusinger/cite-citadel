@@ -413,7 +413,12 @@ findings written to a temp file referenced by path. **The staging diff-by-hash i
 arbiter** (empty = NOOP, clean promoted = applied, exception/check-fail = failed → revert-and-stop).
 A failed cluster lands in the failures catalog keyed by page rel_path with an additive `attempts`
 counter (default cap 2, never auto-retried until an explicit retry). `--dry-run` prints the plan
-with zero sessions; `--limit`/`--stale-rules` shape it; `--diff PATH` writes a per-page change
+with zero sessions — plus one `Cluster facts` line per cluster (page size, cited sources + bytes,
+PDFs by cached text-layer state read off the MANIFEST sha — nothing hashed — link neighbors) and a
+labelled run-wide cost reference (median recorded curate, else ingest, session cost; never a
+per-cluster quote); page length is over a threshold by lines OR characters
+(`lint.page_size`/`over_page_limit`, `CURATE_PAGE_{SOFT,HARD}_{LINES,CHARS}` = 400/800 lines,
+32k/64k chars); `--limit`/`--stale-rules` shape it; `--diff PATH` writes a per-page change
 report; `--retry` re-includes attempt-capped clusters (the explicit retry that bypasses the cap);
 curate sessions run under `CITADEL_CURATE_MODEL` (falling back to the ingest model).
 `--guidance TEXT` (env `CITADEL_CURATE_GUIDANCE`, the shared 2000-char cap) is the lifecycle's own

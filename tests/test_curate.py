@@ -15,7 +15,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 
-from citadel import cli, config, lint, manifest, server
+import pytest
+
+from citadel import cli, config, lint, manifest, server, store
 
 
 # --- seed helpers ---------------------------------------------------------------------------
@@ -1239,3 +1241,117 @@ def test_rules_version_ignores_the_unread_readme(tmp_citadel):
     assert config.rules_version() == before
     (tmp_citadel.packaged_rules / "core.md").write_text("changed core\n", encoding="utf-8")
     assert config.rules_version() != before
+
+
+# --- #167: page length in characters; dry-run cluster facts + cost reference -------------------
+
+
+def _plain_page(seed_page, rel_path: str, body: str, type_: str = "Concept") -> None:
+    seed_page(
+        rel_path, {"type": type_, "title": "Long", "description": "d", "tags": ["t"], "resource": "raw/x.md"}, body
+    )
+
+
+def test_a_dense_page_under_800_lines_but_over_64k_chars_is_planned(tmp_citadel, seed_page):
+    from citadel import curate
+
+    (tmp_citadel.raw / "x.md").write_text("x\n", encoding="utf-8")
+    _plain_page(seed_page, "concepts/long.md", ("word " * 400 + "\n") * 40)  # ~80k chars, 40 lines
+    _plain_page(seed_page, "concepts/short.md", "short body\n" * 50)
+    plan = curate.build_plan()
+    assert curate.REASON_PAGE_LENGTH in _reasons_for(plan, "concepts/long.md")
+    assert curate.REASON_PAGE_LENGTH not in _reasons_for(plan, "concepts/short.md")
+
+
+def test_lint_warns_on_a_dense_page_with_its_size(tmp_citadel, seed_page):
+    from citadel import lint
+
+    (tmp_citadel.raw / "x.md").write_text("x\n", encoding="utf-8")
+    _plain_page(seed_page, "concepts/dense.md", ("word " * 200 + "\n") * 40)  # ~40k chars, 40 lines
+    report = lint.lint()
+    assert "concepts/dense.md" in report.long_pages
+    assert "  - concepts/dense.md (40.0k chars, 40 lines)" in report.render()
+    assert "over 400 lines or 32,000 chars" in report.render()
+
+
+@pytest.mark.parametrize("type_", ["Concept", "Registry"])
+def test_page_length_finding_names_the_size_and_both_limits(seed_page, tmp_citadel, type_):
+    from citadel import curate
+
+    _plain_page(seed_page, "concepts/x.md", "line\n" * 900, type_=type_)
+    page = store.read_page("concepts/x.md")
+    text = curate._reason_guidance(curate.REASON_PAGE_LENGTH, page)
+    assert "4,500 chars / 900 lines" in text and "64,000 chars or 800 lines" in text
+
+
+def test_dry_run_prints_cluster_facts_and_no_counters(tmp_citadel, seed_page):
+    from citadel import curate
+
+    (tmp_citadel.raw / "a.pdf").write_bytes(b"%PDF-1.7\n")
+    (tmp_citadel.raw / "b.pdf").write_bytes(b"%PDF-1.7\nb\n")
+    (tmp_citadel.raw / "c.pdf").write_bytes(b"%PDF-1.7\nc\n")
+    tracked = manifest.load()
+    for name, sha in (("a.pdf", "a" * 64), ("b.pdf", "b" * 64), ("c.pdf", "c" * 64)):
+        tracked[f"raw/{name}"] = manifest.make_entry(sha, "claude:x", config.rules_version())
+    manifest.save(tracked)
+    from citadel import pdftext
+
+    pdftext.cache_path("a" * 64).parent.mkdir(parents=True, exist_ok=True)
+    pdftext.cache_path("a" * 64).write_text("[p. 1] text\n", encoding="utf-8")
+    pdftext.cache_path("b" * 64).write_text("", encoding="utf-8")
+    seed_page(
+        "concepts/topic.md",
+        {"type": "Concept", "title": "Topic", "description": "d", "tags": ["t"], "resource": "raw/a.pdf"},
+        "One.[^s1] Two.[^s2] Three.[^s3]\n\n## Sources\n\n"
+        "[^s1]: [raw/a.pdf](../../raw/a.pdf) - a\n[^s2]: [raw/b.pdf](../../raw/b.pdf) - b\n"
+        "[^s3]: [raw/c.pdf](../../raw/c.pdf) - c\n",
+    )
+    report = curate.curate(dry_run=True)
+    text = report.render()
+    assert report.plan.render() in text
+    assert "Cluster facts (what each session will read):" in text
+    assert "3 cited source(s)" in text
+    assert "3 PDF(s): 1 text layer, 1 no text layer, 1 not extracted here" in text
+    assert "Applied:" not in text and "NOOP (findings did not hold)" not in text
+    assert text.rstrip().endswith("Dry run: no agent sessions were started.")
+    assert "Rough cost reference" not in text  # nothing records a cost
+
+
+def test_empty_plan_dry_run_is_unchanged(tmp_citadel):
+    from citadel import curate
+
+    text = curate.curate(dry_run=True).render()
+    assert "No curate work: every page is clean." in text
+    assert "Cluster facts" not in text and "cost reference" not in text
+
+
+def test_dry_run_is_read_only_and_hashes_nothing(tmp_citadel, seed_page, fake_agent, monkeypatch):
+    from citadel import curate, runlock
+
+    _stale_page(tmp_citadel, seed_page)
+    agent = fake_agent()
+    before = {p: p.read_bytes() for p in tmp_citadel.wiki.rglob("*") if p.is_file()}
+
+    def boom(*a, **k):
+        raise AssertionError("must not run")
+
+    monkeypatch.setattr(runlock, "hold", boom)
+    report = curate.curate(dry_run=True, stale_rules=True)
+    monkeypatch.setattr(manifest, "file_sha256", boom)
+    curate._cluster_fact(store.read_page("concepts/a.md"), {}, manifest.load())
+    assert agent.count == 0 and report.cluster_facts
+    assert {p: p.read_bytes() for p in tmp_citadel.wiki.rglob("*") if p.is_file()} == before
+
+
+def test_cost_reference_uses_the_median_and_is_labelled(tmp_citadel, seed_page):
+    from citadel import curate
+
+    _stale_page(tmp_citadel, seed_page)
+    tracked = manifest.load()
+    for i, cost in enumerate((0.2, 0.85, 3.0)):
+        tracked[f"raw/s{i}.md"] = manifest.make_entry("d" * 64, "claude:x", "r", cost_usd=cost)
+    manifest.save(tracked)
+    text = curate.curate(dry_run=True, stale_rules=True).render()
+    assert "Rough cost reference: 1 session(s) x $0.85 (median of 3 recorded ingest sessions)" in text
+    assert "Not a quote" in text
+    text.encode("ascii")
