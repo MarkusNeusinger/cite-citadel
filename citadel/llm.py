@@ -332,6 +332,13 @@ _RULES_LINE = {
     "local": "- Workspace house rules: {}",
 }
 
+# The roles CITADEL_RULES_IN_SYSTEM_PROMPT moves into claude's system prompt, in prompt order.
+_SYSTEM_PROMPT_ROLES = ("schema", "core")
+_SYSTEM_PROMPT_LINE = (
+    "- Format contract and how you work: {} and {} - both are ALREADY in your system prompt, in "
+    "full; do not read them again"
+)
+
 
 # How many configured exclusion patterns the prompt's bullet names before eliding the rest — the
 # prompt stays a couple thousand chars whatever the .env holds (the WinError 206 discipline).
@@ -402,6 +409,7 @@ def _build_instruction(
     segment: tuple[int, int] | None = None,
     line_range: tuple[int, int] | None = None,
     visual_pages: tuple[int, ...] | None = None,
+    rules_in_system_prompt: bool = False,
 ) -> str:
     """The short, paths-only agent prompt: ONLY the code-invariant frame. Everything the agent
     must KNOW lives in the rules tree (``citadel/rules/``, see its README) and is referenced BY
@@ -442,7 +450,11 @@ def _build_instruction(
     ``line_range`` when it is large enough to be folded in over several line windows of that one
     file), or a repo digest — the agent reads it for content while citing ``rel_key`` as the
     source of record (per the task/format briefs). A chunked PLAIN-TEXT source has no prepared
-    file at all: ``read_path`` stays None and ``line_range`` bounds the pass on the source itself."""
+    file at all: ``read_path`` stays None and ``line_range`` bounds the pass on the source itself.
+
+    ``rules_in_system_prompt`` (``CITADEL_RULES_IN_SYSTEM_PROMPT``, claude only) replaces the
+    schema.md and core.md lines with ONE line saying both are already in the system prompt; every
+    other line is unchanged."""
     wiki_rel = _agent_path(config.wiki_dir())
     # The raw-dir bullet names the root that COVERS this source (in a multi-root corpus a
     # second-root source must not be pointed at the primary); an out-of-root explicit path
@@ -457,9 +469,14 @@ def _build_instruction(
         "Read these rules files FIRST and follow them exactly:",
     ]
     genres: list[Path] = []
+    in_system_prompt: list[str] = []
     for role, path in _referenced_rules(rel_key, kind, read_path, segment):
         if role == "genre":
             genres.append(path)  # last in the canonical order — collected onto one line below
+        elif rules_in_system_prompt and role in _SYSTEM_PROMPT_ROLES:
+            in_system_prompt.append(_agent_path(path))
+            if len(in_system_prompt) == len(_SYSTEM_PROMPT_ROLES):
+                lines.append(_SYSTEM_PROMPT_LINE.format(*in_system_prompt))
         else:
             lines.append(_RULES_LINE[role].format(_agent_path(path)))
     if genres:
@@ -731,6 +748,109 @@ def _build_invocation(
         return argv, None
     # Unknown CLI: a plain headless prompt as an argument (best effort).
     return [cli_path, "-p", prompt], None
+
+
+# CITADEL_RULES_IN_SYSTEM_PROMPT: schema.md + core.md delivered through claude's
+# --append-system-prompt-file. ONE file per run, built at the first session that needs it (under a
+# lock: --jobs N sessions run in worker threads) in a private mkdtemp() dir — a guessable name in a
+# shared temp dir would be a prompt-injection vector, since everything in it becomes system prompt —
+# so it is byte-identical for every session of the run, whatever its kind. system_prompt_scope()
+# (entered by ingest() and curate()) removes it at run end; a session outside any scope builds its
+# own and removes it after the session.
+_SYSTEM_PROMPT_LOCK = threading.Lock()
+_SYSTEM_PROMPT_DEPTH = 0
+_SYSTEM_PROMPT_FILE: str | None = None
+_RULES_DELIVERY_NOTED: set[str] = set()
+
+
+def _system_prompt_text() -> str:
+    """The effective ``schema.md`` then ``core.md`` (a workspace-ejected copy wins), each under a
+    header naming the path the prompt and the other rules files use for it, so ``core.md § …``
+    cross-references still resolve."""
+    parts = []
+    for name in ("schema.md", "core.md"):
+        path = config.effective_rules_file(name)
+        parts.append(f"# Rules file: {_agent_path(path)}\n\n{path.read_text(encoding='utf-8')}")
+    return "\n\n".join(parts)
+
+
+def _write_system_prompt_file() -> str:
+    directory = tempfile.mkdtemp(prefix="citadel-sysprompt-")
+    path = os.path.join(directory, "rules.md")
+    with open(path, "w", encoding="utf-8", newline="") as fh:
+        fh.write(_system_prompt_text())
+    return path
+
+
+def _remove_system_prompt_file(path: str) -> None:
+    with contextlib.suppress(OSError):
+        os.remove(path)
+    with contextlib.suppress(OSError):
+        os.rmdir(os.path.dirname(path))
+
+
+def _system_prompt_file() -> tuple[str, bool]:
+    """``(path, owned)``: the run's shared file inside a :func:`system_prompt_scope`, else a fresh
+    one the caller owns (and removes)."""
+    global _SYSTEM_PROMPT_FILE
+    with _SYSTEM_PROMPT_LOCK:
+        if _SYSTEM_PROMPT_DEPTH <= 0:
+            return _write_system_prompt_file(), True
+        if _SYSTEM_PROMPT_FILE is None:
+            _SYSTEM_PROMPT_FILE = _write_system_prompt_file()
+        return _SYSTEM_PROMPT_FILE, False
+
+
+@contextlib.contextmanager
+def system_prompt_scope():
+    """One RUN of system-prompt delivery: the file built inside is shared by every session and
+    removed on exit (return, raise, or Ctrl+C); the one-per-run fallback notice is re-armed."""
+    global _SYSTEM_PROMPT_DEPTH, _SYSTEM_PROMPT_FILE
+    with _SYSTEM_PROMPT_LOCK:
+        _SYSTEM_PROMPT_DEPTH += 1
+        if _SYSTEM_PROMPT_DEPTH == 1:
+            _RULES_DELIVERY_NOTED.clear()
+    try:
+        yield
+    finally:
+        with _SYSTEM_PROMPT_LOCK:
+            _SYSTEM_PROMPT_DEPTH -= 1
+            path = _SYSTEM_PROMPT_FILE if _SYSTEM_PROMPT_DEPTH == 0 else None
+            if path is not None:
+                _SYSTEM_PROMPT_FILE = None
+        if path is not None:
+            _remove_system_prompt_file(path)
+
+
+def _advertises_system_prompt_file(cli_path: str) -> bool:
+    """claude's ``--help`` names ``--append-system-prompt-file`` only inside ``--bare``'s description,
+    as ``--append-system-prompt[-file]`` — so the exact-token probe alone would miss it."""
+    return _advertises(cli_path, "--append-system-prompt-file") or (
+        "--append-system-prompt[-file]" in _cli_help_text(cli_path)
+    )
+
+
+def rules_delivery(cli: str, cli_path: str) -> tuple[int, str]:
+    """``(level, note)``: the EFFECTIVE ``CITADEL_RULES_IN_SYSTEM_PROMPT`` level for this backend —
+    the configured one, lowered (2 → 1 → 0) to what the installed binary advertises, never handing
+    it an unadvertised flag — and why it was lowered ("" when it was not). Non-claude backends: 0."""
+    wanted = config.RULES_IN_SYSTEM_PROMPT
+    if wanted <= 0 or cli != "claude":
+        return 0, ""
+    if not _advertises_system_prompt_file(cli_path):
+        return 0, "claude does not advertise --append-system-prompt-file; the rules stay path lines"
+    if wanted >= 2 and not _advertises(cli_path, "--exclude-dynamic-system-prompt-sections"):
+        return 1, "claude does not advertise --exclude-dynamic-system-prompt-sections; using level 1"
+    return wanted, ""
+
+
+def _note_rules_delivery(note: str) -> None:
+    """Print a delivery fallback once per run (the first session that meets it)."""
+    with _SYSTEM_PROMPT_LOCK:
+        if note in _RULES_DELIVERY_NOTED:
+            return
+        _RULES_DELIVERY_NOTED.add(note)
+    _echo_stderr(f"  ! CITADEL_RULES_IN_SYSTEM_PROMPT: {note}.\n")
 
 
 # --help output per resolved CLI binary, probed at most once per process (the hermetic-flag
@@ -1349,11 +1469,25 @@ def run_ingest_session(
     by ingest) on a missing/failed CLI or a timeout."""
     cli = resolve_cli_name(config.LLM_CLI)
     cli_path = _resolve_cli(cli)
-    prompt = (
-        _build_instruction(rel_key, kind, read_path, segment, line_range, visual_pages)
-        if visual_pages
-        else _build_instruction(rel_key, kind, read_path, segment, line_range)
-    )
+    # CITADEL_RULES_IN_SYSTEM_PROMPT (claude only): schema.md + core.md through the system prompt.
+    level, note = rules_delivery(cli, cli_path) if config.RULES_IN_SYSTEM_PROMPT else (0, "")
+    if note:
+        _note_rules_delivery(note)
+    extra: dict = {}
+    if visual_pages:
+        extra["visual_pages"] = visual_pages
+    if level:
+        extra["rules_in_system_prompt"] = True
+    prompt = _build_instruction(rel_key, kind, read_path, segment, line_range, **extra)
+    system_flags: list[str] = []
+    owned_system_prompt = None
+    if level:
+        system_prompt, owned = _system_prompt_file()
+        if owned:
+            owned_system_prompt = system_prompt
+        system_flags = ["--append-system-prompt-file", system_prompt]
+        if level >= 2:
+            system_flags.append("--exclude-dynamic-system-prompt-sections")
     # claude only: this session's per-path Read denies for the run's excluded files (readdeny),
     # as a temp --settings file — a path, never inline JSON, so argv stays small. Removed in the
     # finally below; the flag lives in argv, so the hermetic auth retry keeps it.
@@ -1366,11 +1500,15 @@ def run_ingest_session(
             with contextlib.suppress(OSError):
                 settings_path = readdeny.write_settings(rules)
     try:
-        return _run_ingest_session(cli, cli_path, prompt, rel_key, kind, read_path, segment, settings_path)
+        return _run_ingest_session(
+            cli, cli_path, prompt, rel_key, kind, read_path, segment, settings_path, system_flags
+        )
     finally:
         if settings_path:
             with contextlib.suppress(OSError):
                 os.remove(settings_path)
+        if owned_system_prompt:
+            _remove_system_prompt_file(owned_system_prompt)
 
 
 def _run_ingest_session(
@@ -1382,11 +1520,14 @@ def _run_ingest_session(
     read_path: str | None,
     segment: tuple[int, int] | None,
     settings_path: str | None,
+    system_flags: list[str] | None = None,
 ) -> SessionUsage | None:
-    """The launch half of :func:`run_ingest_session`: build argv, run, and the one hermetic retry."""
+    """The launch half of :func:`run_ingest_session`: build argv, run, and the one hermetic retry.
+    ``system_flags`` (the system-prompt delivery) join argv, so the auth retry keeps them."""
     argv, stdin_text = _build_invocation(
         cli, cli_path, prompt, _external_dirs(rel_key, read_path), settings_path=settings_path
     )
+    argv = argv + list(system_flags or [])
     # The segment goes in FRONT of the source key: a transcript filename keeps the head and the
     # filename end of a long key, so on a chunked source "which pass is this" and the source's
     # basename both survive. The head names how the source was READ (_log_kind), display-only.

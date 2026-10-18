@@ -996,6 +996,24 @@ LLM_TIMEOUT: int = _int_env("CITADEL_LLM_TIMEOUT", 1200)
 # before; 0 deliberately re-admits the personal config. Read at call time (tests monkeypatch it).
 HERMETIC: bool = _bool_env("CITADEL_HERMETIC", True)
 
+
+def _rules_in_system_prompt() -> int:
+    """``CITADEL_RULES_IN_SYSTEM_PROMPT`` (experimental, claude only): 0 = schema.md + core.md stay
+    path lines in the prompt (default), 1 = deliver them through ``--append-system-prompt-file``,
+    2 = as 1 plus ``--exclude-dynamic-system-prompt-sections``. Any other value is a config warning
+    and behaves as 0."""
+    value = _int_env("CITADEL_RULES_IN_SYSTEM_PROMPT", 0)
+    if value not in (0, 1, 2):
+        CONFIG_WARNINGS.append(f"CITADEL_RULES_IN_SYSTEM_PROMPT={value} is not 0, 1 or 2 - using 0")
+        return 0
+    return value
+
+
+# Deliver the two every-session rules files through claude's system prompt (a cache-friendly prefix
+# shared by every session of a run) instead of as files the agent reads with tool calls. A
+# measurement knob: delivery never changes rules_version, and the default stays 0.
+RULES_IN_SYSTEM_PROMPT: int = _rules_in_system_prompt()
+
 # Observability for the otherwise-headless agent session — by default the CLI's stdout/stderr is
 # captured only to detect failure and read the result envelope's cost/usage figures, then
 # DISCARDED, so there is no record of what the model actually DID (the very thing you need when

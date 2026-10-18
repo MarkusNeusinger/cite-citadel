@@ -1358,7 +1358,7 @@ def curate(
     # ONE mutating run per workspace, shared with ingest: the staging machinery, promote, and the
     # failures save are all destructive under concurrency (see runlock's module docstring). The
     # dry-run path above stays lock-free — it is read-only by contract.
-    with runlock.hold("curate"):
+    with runlock.hold("curate"), llm.system_prompt_scope():
         started = manifest.now_iso()
         ingest._sweep_stale_staging(config.wiki_dir())
         llm.reset_hermetic_refusals()  # the --bare verdict is per run (a serve process runs many)

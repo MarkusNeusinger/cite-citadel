@@ -503,6 +503,9 @@ def knob_stamp() -> str:
             ",".join(config.INCLUDE_PATTERNS),
             str(config.MAX_SOURCE_BYTES),
         ]
+        # How schema.md + core.md reach the agent (llm system-prompt delivery). Appended only when
+        # non-zero, so the default stamp — and every checkpoint banked under it — is unchanged.
+        + ([f"sysprompt{config.RULES_IN_SYSTEM_PROMPT}"] if config.RULES_IN_SYSTEM_PROMPT else [])
     )
 
 

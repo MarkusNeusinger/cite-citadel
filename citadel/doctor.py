@@ -271,6 +271,30 @@ def check_agent_instructions() -> Check:
     )
 
 
+def check_rules_delivery() -> Check | None:
+    """``CITADEL_RULES_IN_SYSTEM_PROMPT``: None (no line) at the default 0; OK when claude
+    advertises the flag(s) the level needs, WARN naming the effective level on a probe miss, WARN on
+    a non-claude backend (the knob is claude-only and ignored there)."""
+    from . import llm
+
+    level = config.RULES_IN_SYSTEM_PROMPT
+    if not level:
+        return None
+    try:
+        cli = llm.resolve_cli_name(config.LLM_CLI)
+    except RuntimeError as exc:
+        return Check(WARN, "rules delivery", f"cannot tell: {exc}")
+    if cli != "claude":
+        return Check(WARN, "rules delivery", f"CITADEL_RULES_IN_SYSTEM_PROMPT is claude-only, ignored for {cli}")
+    try:
+        effective, note = llm.rules_delivery(cli, llm._resolve_cli(cli))
+    except RuntimeError as exc:
+        return Check(WARN, "rules delivery", f"cannot tell: {exc}")
+    if note:
+        return Check(WARN, "rules delivery", f"level {level} requested, {effective} in effect - {note}")
+    return Check(OK, "rules delivery", f"schema.md + core.md via claude's system prompt (level {level})")
+
+
 def _probe_checks() -> list[Check]:
     """``citadel doctor --probe``: one paid session per distinct model (ingest, and the curate model
     when it differs) — rendered by doctor, run by :func:`llm.probe_session`. Writes no state."""
@@ -1083,6 +1107,7 @@ def run(probe: bool = False) -> DoctorReport:
         ("config", check_config),
         ("agent CLI", check_agent_cli),
         ("agent instructions", check_agent_instructions),
+        ("rules delivery", check_rules_delivery),
         ("exclusions", check_exclusion_enforcement),
         ("ingest model", check_ingest_model),
         ("raw roots", check_raw_roots),
@@ -1103,7 +1128,9 @@ def run(probe: bool = False) -> DoctorReport:
         ("update", check_update),
         ("workspace coherence", check_workspace_coherence),
     ]
-    report = DoctorReport(checks=[_isolated(name, check) for name, check in checks])
+    # A check may return None to stay silent (rules delivery at its default).
+    lines = (_isolated(name, check) for name, check in checks)
+    report = DoctorReport(checks=[line for line in lines if line is not None])
     if probe:
         try:
             report.checks.extend(_probe_checks())

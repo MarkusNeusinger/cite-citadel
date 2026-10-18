@@ -896,7 +896,10 @@ def test_run_fallback_names_match_every_checks_own_name(tmp_citadel, monkeypatch
         if attr.startswith("check_"):
             monkeypatch.setattr(doctor, attr, lambda: 1 / 0)
     report = doctor.run()
-    assert [c.name for c in report.checks] == _CHECK_INVENTORY
+    # A crashed check always reports — including rules delivery, silent only at its default.
+    crashed = list(_CHECK_INVENTORY)
+    crashed.insert(crashed.index("agent instructions") + 1, "rules delivery")
+    assert [c.name for c in report.checks] == crashed
     assert all(c.status == doctor.FAIL and "ZeroDivisionError" in c.detail for c in report.checks)
 
 

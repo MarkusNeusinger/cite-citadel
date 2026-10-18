@@ -1076,7 +1076,7 @@ def ingest(
     # ONE mutating run per workspace: the staging sweep, promote's prune, and the manifest/
     # failures saves are all destructive under concurrency (see runlock's module docstring).
     # A second run fails loud here instead of silently eating the first one's work.
-    with runlock.hold("ingest"):
+    with runlock.hold("ingest"), llm.system_prompt_scope():
         _sweep_stale_staging(config.wiki_dir())
         # Same place, same reason: under the exclusive lock, leftovers on disk belong to dead runs.
         # Age-based only — a checkpoint's own guards decide whether it is USABLE (see resume.sweep).

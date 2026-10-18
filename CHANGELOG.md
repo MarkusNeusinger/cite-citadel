@@ -151,6 +151,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **`CITADEL_RULES_IN_SYSTEM_PROMPT` (experimental, claude only, default `0`) (#164).** `1` delivers
+  `schema.md` + `core.md` through claude's `--append-system-prompt-file` — one private temp file per
+  run, shared by every session so the prompt cache can reuse it — instead of as files the agent
+  reads with tool calls; `2` also passes `--exclude-dynamic-system-prompt-sections`. Probe-gated
+  with a one-level fallback, ignored by copilot/agy, never part of `rules_version`. A measurement
+  knob: the default stays `0` until a bench shows it pays.
+
 - **`citadel doctor --probe` and an `agent instructions` line (#158).** Plain `citadel doctor` now
   lists the `CLAUDE.md` / `AGENTS.md` / `.github/copilot-instructions.md` files in or above the
   workspace that a NON-isolated session would load next to citadel's rules, and says whether

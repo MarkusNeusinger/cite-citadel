@@ -795,6 +795,28 @@ def test_prompt_size_guard_every_kind(pip_like_workspace, kind, read_path, segme
     assert len(prompt) < PROMPT_CHAR_BUDGET
 
 
+@pytest.mark.parametrize(("kind", "read_path", "segment"), _KIND_VARIANTS)
+@pytest.mark.parametrize("in_system_prompt", [False, True])
+def test_every_referenced_rule_is_delivered_exactly_once(
+    pip_like_workspace, kind, read_path, segment, in_system_prompt
+):
+    """#164: with or without CITADEL_RULES_IN_SYSTEM_PROMPT, each _referenced_rules entry reaches
+    the agent exactly once — a prompt line, the genre list, or (schema/core) the system-prompt file —
+    and the argv size guard holds either way."""
+    prompt = llm._build_instruction("raw/notes.md", kind, read_path, segment, rules_in_system_prompt=in_system_prompt)
+    assert len(prompt) < PROMPT_CHAR_BUDGET
+    system = llm._system_prompt_text() if in_system_prompt else ""
+    for role, path in llm._referenced_rules("raw/notes.md", kind, read_path, segment):
+        token = llm._agent_path(path)
+        named = prompt.count(token)
+        if in_system_prompt and role in llm._SYSTEM_PROMPT_ROLES:
+            # Named once (the "already loaded" line), delivered once (its header in the file).
+            assert named == 1 and system.count(f"# Rules file: {token}\n") == 1
+            assert "ALREADY in your system prompt" in prompt
+        else:
+            assert named == 1, (role, token)
+
+
 def test_build_invocation_claude_uses_stdin_and_acceptedits(monkeypatch):
     monkeypatch.setattr(config, "INGEST_MODEL", "sonnet", raising=False)
     argv, stdin_text = llm._build_invocation("claude", "/bin/claude", "PROMPT")

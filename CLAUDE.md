@@ -343,7 +343,10 @@ addressing them through `ingest`. The flow per source:
 agentic mode (`cwd` = `config.child_cwd()` — the workspace root in its child-friendly spelling —
 autonomous file tools). The prompt is **paths-only** — it references
 the source and rules by path, never embeds file content — which keeps argv tiny (the Windows
-`WinError 206` fix). One per-kind spec table (`_KIND_SPECS`) maps each `kind` to its task-rule
+`WinError 206` fix). The one exception is opt-in and still paths-only on argv:
+`CITADEL_RULES_IN_SYSTEM_PROMPT` (claude only) hands `schema.md` + `core.md` to claude through
+`--append-system-prompt-file` — a file the CLI reads, built once per run in a private temp dir
+inside `llm.system_prompt_scope()` (entered by `ingest()`/`curate()`), removed at run end. One per-kind spec table (`_KIND_SPECS`) maps each `kind` to its task-rule
 file, whether it reads a source, and its format policy; an unknown kind fails loud. `kind` selects
 the propagation: `ingest` (new), `reconcile` (changed source — update/remove stale facts, don't
 just append), `delete` (source removed — strip its provenance), `repo`/`repo-reconcile` (a whole
@@ -695,7 +698,10 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   `CITADEL_INGEST_MODEL`), `CITADEL_LLM_TIMEOUT`, `CITADEL_HERMETIC` (session isolation — append claude's `--bare` / copilot's
   `--no-custom-instructions` when the installed binary advertises it, so personal config and project
   instruction files never leak into ingest; default on, probe-gated; only the credential-stripping
-  `--bare` (`llm._CREDENTIAL_STRIPPING_FLAGS`) can trigger the auth retry), `CITADEL_PAGE_CACHE` (the serve-side page snapshot cache: `auto` = on in
+  `--bare` (`llm._CREDENTIAL_STRIPPING_FLAGS`) can trigger the auth retry), `CITADEL_RULES_IN_SYSTEM_PROMPT` (experimental, claude only: `1` delivers
+  `schema.md` + `core.md` via `--append-system-prompt-file`, `2` adds
+  `--exclude-dynamic-system-prompt-sections`; probe-gated with a one-level fallback, never part of
+  `rules_version`, part of the resume knob stamp; default 0), `CITADEL_PAGE_CACHE` (the serve-side page snapshot cache: `auto` = on in
   `citadel serve` only, `1` = everywhere, `0` = never), the `CITADEL_HTTP_*` serving knobs
   (`TOKEN` — mandatory for `serve --http`, no default; `HOST`/`PORT`/`PATH` — loopback:8765/mcp;
   `READ_ONLY`), `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,
