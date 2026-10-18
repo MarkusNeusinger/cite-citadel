@@ -195,8 +195,9 @@ class IngestReport:
     # Tool calls the backend's permission layer DENIED, as `source: tool: input` — typically a Read
     # of an excluded file stopped by the per-path denies (readdeny). Passive: never a failure.
     denials: list[str] = field(default_factory=list)
-    # Read-deny entries the per-session cap (readdeny.DENY_CAP) left unenforced — partial
-    # enforcement is stated, never silent. 0 when everything was enforced (or nothing was due).
+    # Read-deny entries left unenforced (a lower bound) — the per-session cap (readdeny.DENY_CAP)
+    # overflow plus ignored folders that could not be fully listed; partial enforcement is stated,
+    # never silent. 0 when everything was enforced (or nothing was due).
     deny_unenforced: int = 0
     # PDFs whose text layer is garbled on some pages (pdftext.unreliable_pages): those pages were
     # handed to the agent to read visually — or, when every text page was garbled, the whole PDF
@@ -321,8 +322,9 @@ class IngestReport:
             lines.extend(f"  - {d}" for d in self.denials)
         if self.deny_unenforced:
             lines.append(
-                f"WARNING — {self.deny_unenforced} excluded path(s) exceeded the per-session Read-deny cap "
-                "and were NOT enforced (instruction-only for those); keep sensitive files outside every raw root."
+                f"WARNING — at least {self.deny_unenforced} excluded path(s) were NOT enforced by the per-session "
+                "Read denies (the deny cap, or an ignored folder that could not be fully listed) — instruction-only "
+                "for those; keep sensitive files outside every raw root."
             )
         if self.broken_links:
             lines.append("WARNING — broken cross-links (run `citadel lint`):")

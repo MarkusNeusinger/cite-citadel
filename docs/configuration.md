@@ -162,8 +162,11 @@ own (a sidecar beside its source, a related-source lookup) depends on the backen
 `citadel doctor` prints the line for your backend. Known limits: shell rules are text-matched, not a
 security boundary (`sh -c`, absolute binary paths); user/project `permissions.allow` rules claude
 loads can widen the allowlist (denies still win); `Glob` may still reveal a denied file's name;
-past 2000 deny rules per session the rest are reported as unenforced. **The one backend-independent
-guarantee is to keep sensitive files outside every raw root and outside the workspace.**
+past 2000 deny rules per session the rest are reported as unenforced. **Keeping sensitive files
+outside every raw root and outside the workspace is a precaution, not a guarantee** — copilot runs
+with `--allow-all-paths` and agy with `--dangerously-skip-permissions`, so a session can reach any
+path your account can read. For an enforced guarantee, use filesystem permissions or run ingest in
+a sandbox / container / separate OS user that cannot see the files.
 
 A file excluded AFTER it was ingested keeps its facts: its manifest key is dropped at the next run
 (also under a newly ignored folder), after which its citations fail lint and curate plans an

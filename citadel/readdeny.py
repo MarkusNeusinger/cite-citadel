@@ -17,7 +17,8 @@ cache siblings, the rules dirs and ``docs/`` are never denied — a directory ru
 one is expanded into its other entries (deny beats allow, so a carve-out is impossible).
 
 Rules are capped at :data:`DENY_CAP` (directory rules first); what the cap leaves unenforced is
-counted and reported, never silent. Per Anthropic's docs Read denies cover the Read/Grep/Glob tools,
+counted and reported, never silent — as is (a lower bound of) what an ignored folder that could not
+be fully listed for expansion leaves undenied. Per Anthropic's docs Read denies cover the Read/Grep/Glob tools,
 the file commands claude recognizes in Bash and redirections — not interpreters, which is why the
 shell itself is narrowed in :func:`llm._build_invocation`.
 
@@ -57,9 +58,13 @@ def entries_from_walk(walk) -> list[tuple[Path, bool]]:
     folder of 300 excluded PDFs is one rule instead of 300. Deterministic order: directories first,
     then files, each sorted."""
     admitted: set[str] = set()
-    for path, _st in walk.files:
+    # An admitted repository source counts like an admitted file: a folder holding one must never
+    # collapse into a `/**` rule (the walk records the repo dir itself, never its files).
+    for path in [*(p for p, _st in walk.files), *walk.repos]:
         for parent in Path(path).parents:
             admitted.add(str(parent))
+    for repo in walk.repos:
+        admitted.add(str(repo))
     entries: dict[str, tuple[Path, bool]] = {}
     for path, is_dir in walk.ignored:
         entries[str(path)] = (Path(path), bool(is_dir))
@@ -164,19 +169,26 @@ def _protected(rel_key: str, read_path: str | None) -> list[str]:
     return [str(p) for p in out]
 
 
-def _expand(directory: Path, keep: list[str], budget: list[int]) -> list[tuple[Path, bool]]:
+def _expand(directory: Path, keep: list[str], budget: list[int]) -> tuple[list[tuple[Path, bool]], int]:
     """``directory``'s entries minus every protected path in ``keep`` — descending only into the
-    child that leads to one. Bounded by ``budget`` (a one-item list, decremented)."""
+    child that leads to one — plus a LOWER BOUND of the entries left unenforced: a listing that
+    failed counts 1, and so does one the ``budget`` (a one-item list, decremented per entry
+    consumed) cut short. The budget bounds the iterator itself, so a pathological folder is never
+    enumerated in full. Never silent: the caller reports the bound with the cap overflow."""
     out: list[tuple[Path, bool]] = []
+    missed = 0
+    children: list[os.DirEntry] = []
     try:
         with os.scandir(directory) as it:
-            children = sorted(it, key=lambda e: e.name)
+            for entry in it:
+                if budget[0] <= 0:
+                    missed += 1  # entries remain past the budget: at least one goes undenied
+                    break
+                budget[0] -= 1
+                children.append(entry)
     except OSError:
-        return out
-    for entry in children:
-        if budget[0] <= 0:
-            break
-        budget[0] -= 1
+        missed += 1  # the listing failed (at all or part-way): its unlisted entries go undenied
+    for entry in sorted(children, key=lambda e: e.name):
         child = Path(entry.path)
         try:
             is_dir = entry.is_dir(follow_symlinks=False)
@@ -185,31 +197,37 @@ def _expand(directory: Path, keep: list[str], budget: list[int]) -> list[tuple[P
         if any(_within(str(child), k) for k in keep):
             continue  # the protected path itself (or inside one)
         if is_dir and any(_within(k, str(child)) for k in keep):
-            out.extend(_expand(child, keep, budget))
+            sub, sub_missed = _expand(child, keep, budget)
+            out.extend(sub)
+            missed += sub_missed
         else:
             out.append((child, is_dir))
-    return out
+    return out, missed
 
 
 def session_rules(rel_key: str, read_path: str | None = None) -> tuple[list[str], int]:
-    """This session's deny rules and how many entries the cap left unenforced."""
+    """This session's deny rules and how many entries were left unenforced — the cap's overflow
+    plus a lower bound for any ignored folder that could not be fully listed for expansion."""
     entries = current()
     if not entries:
         return [], 0
     keep = _protected(rel_key, read_path)
     resolved: list[tuple[Path, bool]] = []
     budget = [_EXPAND_CAP]
+    missed = 0
     for path, is_dir in entries:
         text = str(path)
         if any(_within(text, k) for k in keep):
             continue
         if is_dir and any(_within(k, text) for k in keep):
-            resolved.extend(_expand(path, keep, budget))
+            sub, sub_missed = _expand(path, keep, budget)
+            resolved.extend(sub)
+            missed += sub_missed
             continue
         resolved.append((path, is_dir))
     resolved.sort(key=lambda e: (not e[1], str(e[0])))
     rules = [rule_for(p, d) for p, d in resolved]
-    return rules[:DENY_CAP], max(len(rules) - DENY_CAP, 0)
+    return rules[:DENY_CAP], max(len(rules) - DENY_CAP, 0) + missed
 
 
 def write_settings(rules: list[str]) -> str:

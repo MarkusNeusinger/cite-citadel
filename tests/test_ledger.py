@@ -204,3 +204,15 @@ def test_a_session_writing_a_ledger_into_staging_does_not_reach_live(tmp_citadel
     ingest.ingest()
     assert all("forged" not in line for line in _lines())
     assert len(_lines()) == 1
+
+
+def test_a_non_utf8_ledger_is_left_alone_with_a_note(tmp_citadel):
+    path = config.runs_ledger_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    good = json.dumps({"v": ledger.VERSION, "lifecycle": "ingest", "started": "2026-01-01T00:00:00Z"})
+    raw = b"\xff\xfe junk\n" + good.encode("ascii") + b"\n"
+    path.write_bytes(raw)
+    note = ledger.append({"v": ledger.VERSION, "lifecycle": "ingest", "started": "2026-02-01T00:00:00Z"})
+    assert "not written" in note and "UTF-8" in note
+    assert path.read_bytes() == raw  # untouched
+    assert [r["started"] for r in ledger.load()] == ["2026-01-01T00:00:00Z"]  # load survives too

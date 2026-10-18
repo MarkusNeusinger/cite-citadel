@@ -33,8 +33,12 @@ cite-citadel has a small, honest data-flow surface — understanding it is the b
   denies and a narrowed shell; copilot gets a shell deny list but reads stay instruction-only; agy is
   instruction-only. A citation to an excluded file fails `citadel check`. Shell rules are
   text-matched, not a security boundary, so **keep sensitive files outside every raw root and outside
-  the workspace** for a guarantee that holds on every backend (`citadel doctor` prints the line for
-  yours; details in [docs/configuration.md](docs/configuration.md#excluded-files-and-what-enforces-them)).
+  the workspace** as a precaution — it is not a guarantee: copilot runs with `--allow-all-paths` and
+  agy with `--dangerously-skip-permissions`, so an agent session can still reach any path your user
+  account can read. For an *enforced* guarantee, deny that account access with filesystem
+  permissions, or run ingest in a sandbox / container / separate OS user that cannot see the files
+  (`citadel doctor` prints the enforcement line for your backend; details in
+  [docs/configuration.md](docs/configuration.md#excluded-files-and-what-enforces-them)).
 - **Data-governance caveat.** Because ingest sends raw content to your CLI/provider, do **not** ingest
   confidential or regulated material on a plan whose terms permit training on inputs. Pick the
   plan/tier appropriate to your data sensitivity.

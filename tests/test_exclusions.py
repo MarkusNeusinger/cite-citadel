@@ -173,6 +173,69 @@ def test_cap_reports_the_unenforced_count(tmp_citadel, monkeypatch):
     assert len(rules) == 2 and unenforced == 3
 
 
+def test_expansion_budget_exhaustion_is_reported_never_silent(tmp_citadel, monkeypatch):
+    _private_layout(tmp_citadel, monkeypatch)
+    for i in range(4):
+        (tmp_citadel.raw / "private" / f"other{i}.txt").write_text("y\n", encoding="utf-8")
+    monkeypatch.setattr(readdeny, "_EXPAND_CAP", 2)
+    rules, unenforced = readdeny.session_rules("raw/private/pay.txt")
+    assert not any("pay.txt" in r for r in rules)
+    assert unenforced >= 1  # the siblings past the budget are undenied — and said so
+
+
+def test_expansion_iterator_is_bounded_by_the_budget(tmp_citadel, monkeypatch):
+    _private_layout(tmp_citadel, monkeypatch)
+    consumed = []
+    real_scandir = readdeny.os.scandir
+
+    class _Counting:
+        def __init__(self, path):
+            self._ctx = real_scandir(path)
+
+        def __enter__(self):
+            it = self._ctx.__enter__()
+
+            def gen():
+                for entry in it:
+                    consumed.append(entry.name)
+                    yield entry
+
+            return gen()
+
+        def __exit__(self, *exc):
+            return self._ctx.__exit__(*exc)
+
+    for i in range(50):
+        (tmp_citadel.raw / "private" / f"other{i:02}.txt").write_text("y\n", encoding="utf-8")
+    monkeypatch.setattr(readdeny.os, "scandir", _Counting)
+    monkeypatch.setattr(readdeny, "_EXPAND_CAP", 5)
+    _rules, unenforced = readdeny.session_rules("raw/private/pay.txt")
+    assert len(consumed) <= 6 and unenforced >= 1
+
+
+def test_expansion_listing_error_is_reported_never_silent(tmp_citadel, monkeypatch):
+    _private_layout(tmp_citadel, monkeypatch)
+    (tmp_citadel.raw / "private" / "other.txt").write_text("y\n", encoding="utf-8")
+
+    def boom(path):
+        raise PermissionError(13, "denied", str(path))
+
+    monkeypatch.setattr(readdeny.os, "scandir", boom)
+    rules, unenforced = readdeny.session_rules("raw/private/pay.txt")
+    assert readdeny.rule_for(tmp_citadel.raw / "private", True) not in rules
+    assert unenforced >= 1
+
+
+def test_an_admitted_repo_blocks_collapsing_its_folder(tmp_citadel):
+    from types import SimpleNamespace
+
+    group = tmp_citadel.raw / "group"
+    walk = SimpleNamespace(
+        files=[], repos=[group / "project"], ignored=[], not_included=[group / "sidecar.txt"], oversized=[]
+    )
+    assert readdeny.entries_from_walk(walk) == [(group / "sidecar.txt", False)]
+
+
 def _session_harness(monkeypatch, run):
     monkeypatch.setattr(llm, "resolve_cli_name", lambda cli: "claude")
     monkeypatch.setattr(llm, "_resolve_cli", lambda cli: "/bin/claude")
@@ -285,6 +348,56 @@ def test_a_session_that_cites_an_excluded_file_fails_and_leaves_the_wiki(
     report = ingest.ingest()
     assert report.errors and any("excluded from the corpus" in e for e in report.errors)
     assert not (config.wiki_dir() / "misc" / "leak.md").exists()
+
+
+def test_a_session_cannot_whitelist_its_excluded_citation_through_the_manifest(
+    tmp_citadel, fake_agent, cite_page, monkeypatch
+):
+    monkeypatch.setattr(config, "IGNORE_PATTERNS", [*config.IGNORE_PATTERNS, "private"])
+    (tmp_citadel.raw / "private").mkdir()
+    (tmp_citadel.raw / "private" / "pay.txt").write_text("salary\n", encoding="utf-8")
+    (tmp_citadel.raw / "notes.md").write_text("notes\n", encoding="utf-8")
+    live_manifest = config.manifest_path()
+
+    def leak(rel_key, **kw):
+        cite_page("misc/leak.md", "raw/private/pay.txt", "Salary.")
+        # The agent "tracks" the excluded file in the manifest it can write: staging's copy, and
+        # even the live one — neither may vouch for the citation.
+        for path in {config.manifest_path(), live_manifest}:
+            data = {"meta": {}, "sources": {"raw/private/pay.txt": manifest.make_entry("aa" * 32, "x", "r")}}
+            path.write_text(json.dumps(data), encoding="utf-8")
+
+    fake_agent(side_effect=leak)
+    report = ingest.ingest()
+    assert any("excluded from the corpus" in e for e in report.errors)
+    assert not (config.WIKI_DIR / "misc" / "leak.md").exists()
+
+
+def test_tracked_keys_lookup_never_displaces_the_manifest_meta_stash(tmp_citadel, monkeypatch, tmp_path):
+    manifest.save({})
+    data = json.loads(config.manifest_path().read_text(encoding="utf-8"))
+    data["meta"] = {"format": 2, "workspace": "/elsewhere/ws", "workspaces": ["/elsewhere/ws"]}
+    config.manifest_path().write_text(json.dumps(data), encoding="utf-8")
+    manifest.load(warn=False)
+    other = tmp_path / "staging"
+    other.mkdir()
+    (other / ".citadel_ingested.json").write_text(json.dumps({"meta": {}, "sources": {"raw/a.md": {}}}), "utf-8")
+    with config.wiki_redirect(other):
+        assert "raw/a.md" in validate._tracked_keys()
+    assert manifest.stamped_workspace_mismatch() == "/elsewhere/ws"
+
+
+def test_tracked_keys_cache_is_bounded(tmp_path, monkeypatch):
+    monkeypatch.setattr(validate, "_TRACKED_CACHE", type(validate._TRACKED_CACHE)())
+    for i in range(validate._TRACKED_CACHE_MAX * 3):
+        path = tmp_path / f"m{i}.json"
+        path.write_text(json.dumps({"sources": {f"raw/{i}.md": {}}}), encoding="utf-8")
+        assert validate.manifest_keys(path) == frozenset({f"raw/{i}.md"})
+    assert len(validate._TRACKED_CACHE) == validate._TRACKED_CACHE_MAX
+    # Per-manifest invalidation still holds: a rewrite (new size) re-parses.
+    path = tmp_path / "m0.json"
+    path.write_text(json.dumps({"sources": {"raw/0.md": {}, "raw/new.md": {}}}), encoding="utf-8")
+    assert validate.manifest_keys(path) == frozenset({"raw/0.md", "raw/new.md"})
 
 
 def test_untrackable_key_under_a_newly_ignored_folder(tmp_citadel, monkeypatch):

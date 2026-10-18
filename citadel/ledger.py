@@ -77,6 +77,10 @@ def append(line: dict) -> str:
         if existing and not existing.endswith("\n"):
             existing += "\n"
         config.atomic_write_text(path, existing + json.dumps(line, sort_keys=True, ensure_ascii=True) + "\n")
+    except UnicodeDecodeError:
+        # A non-UTF-8 ledger (hand-edited, a merge in another encoding) is left exactly as it is:
+        # rewriting it would need a lossy decode of every line already recorded.
+        return f"run ledger: not written ({path.name} is not valid UTF-8); this run's spend is on this report only"
     except OSError as exc:
         return f"run ledger: not written ({exc}); this run's spend is on this report only"
     return ""
@@ -102,9 +106,10 @@ def _valid(record) -> bool:
 
 def load() -> list[dict]:
     """Every valid ledger line, in file order. Malformed lines (truncated JSON, merge leftovers, an
-    unknown version, junk or negative figures) are skipped; a missing/unreadable file is ``[]``."""
+    unknown version, junk or negative figures) are skipped; a missing/unreadable file is ``[]``.
+    Non-UTF-8 bytes are replaced, never fatal: only the lines they damage fail to parse."""
     try:
-        text = config.runs_ledger_path().read_text(encoding="utf-8")
+        text = config.runs_ledger_path().read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
     out: list[dict] = []

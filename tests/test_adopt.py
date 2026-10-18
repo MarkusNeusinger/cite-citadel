@@ -148,3 +148,21 @@ def test_doctor_names_the_matching_remedy(tmp_citadel):
 def test_adopt_needs_a_workspace(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "WORKSPACE_FOUND", False)
     assert cli.main(["adopt"]) == 2
+
+
+def test_adopt_never_saves_a_failed_reread(tmp_citadel, monkeypatch):
+    """adopt decides AND writes from ONE parse: a second read that fails (a transient share error
+    reads as "missing", i.e. {}) must never be saved back as the manifest."""
+    _write(tmp_citadel, _sources(tmp_citadel, present=2))
+    real_read = manifest._read
+    reads = []
+
+    def flaky(path=None):
+        reads.append(path)
+        return real_read(path) if len(reads) == 1 else (None, "missing")
+
+    monkeypatch.setattr(manifest, "_read", flaky)
+    result = manifest.adopt()
+    monkeypatch.setattr(manifest, "_read", real_read)
+    assert result.status == "adopted"
+    assert set(manifest.load(warn=False)) == {"raw/p0.md", "raw/p1.md"}

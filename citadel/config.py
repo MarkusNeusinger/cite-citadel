@@ -942,14 +942,33 @@ def wiki_redirect(target: Path | str):
 _SESSION_SOURCE: contextvars.ContextVar["str | None"] = contextvars.ContextVar("citadel_session_source", default=None)
 
 
+# The TRUSTED tracked-source keys for the excluded-citation guard while a session runs: captured
+# from the LIVE manifest before the session started. The redirect-aware manifest path points into
+# the agent-writable staging copy, so reading the tracked set from there would let a session add
+# an excluded key to the copied manifest and wave its own excluded citation through.
+_SESSION_TRACKED: contextvars.ContextVar["frozenset[str] | None"] = contextvars.ContextVar(
+    "citadel_session_tracked", default=None
+)
+
+
 @contextlib.contextmanager
-def session_source(key: str):
-    """Mark ``key`` as THIS context's session source for the block (restored on every exit)."""
+def session_source(key: str, tracked: "frozenset[str] | None" = None):
+    """Mark ``key`` as THIS context's session source for the block (restored on every exit), and —
+    when given — ``tracked`` as the trusted tracked-key set the citation guard reads instead of the
+    (staging) manifest."""
     token = _SESSION_SOURCE.set(key)
+    tracked_token = _SESSION_TRACKED.set(tracked) if tracked is not None else None
     try:
         yield
     finally:
+        if tracked_token is not None:
+            _SESSION_TRACKED.reset(tracked_token)
         _SESSION_SOURCE.reset(token)
+
+
+def session_tracked_keys() -> "frozenset[str] | None":
+    """The trusted tracked-key set :func:`session_source` captured for this context, else None."""
+    return _SESSION_TRACKED.get()
 
 
 def session_source_key() -> str | None:

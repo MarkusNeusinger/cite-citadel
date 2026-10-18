@@ -20,7 +20,10 @@ from __future__ import annotations
 
 import os
 import re
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass
+from pathlib import Path
 
 from . import config, grammar, okf, store
 from .okf import Page
@@ -45,26 +48,49 @@ class Issue:
     detail: str
 
 
-_TRACKED_CACHE: dict[str, tuple[tuple[int, int], frozenset[str]]] = {}
+# Parsed tracked-key sets per manifest file, keyed by path and invalidated by (mtime_ns, size).
+# Bounded LRU: every staging copy is its own path, so an unbounded dict would grow per source in a
+# long-lived `citadel serve`. Guarded by a lock — `--jobs N` workers validate concurrently.
+_TRACKED_CACHE: OrderedDict[str, tuple[tuple[int, int], frozenset[str]]] = OrderedDict()
+_TRACKED_CACHE_MAX = 8
+_TRACKED_LOCK = threading.Lock()
 
 
-def _tracked_keys() -> frozenset[str]:
-    """The manifest's source keys, cached per manifest file by (mtime_ns, size) — the excluded-
-    citation guard runs per citation, per page, and must not re-parse the manifest each time."""
+def manifest_keys(path: Path) -> frozenset[str]:
+    """The source keys of the manifest at ``path`` (empty when missing/unreadable), cached by
+    (mtime_ns, size) — the excluded-citation guard runs per citation, per page, and must not
+    re-parse the manifest each time. Side-effect-free (:func:`manifest.peek_sources`): it never
+    displaces the meta stash a running lifecycle's own ``manifest.load()`` left."""
     from . import manifest  # call-time import: manifest is heavier and not needed by every caller
 
-    path = config.manifest_path()
     try:
         st = path.stat()
         stamp = (st.st_mtime_ns, st.st_size)
     except OSError:
         return frozenset()
-    cached = _TRACKED_CACHE.get(str(path))
-    if cached is not None and cached[0] == stamp:
-        return cached[1]
-    keys = frozenset(manifest.load())
-    _TRACKED_CACHE[str(path)] = (stamp, keys)
+    key = str(path)
+    with _TRACKED_LOCK:
+        cached = _TRACKED_CACHE.get(key)
+        if cached is not None and cached[0] == stamp:
+            _TRACKED_CACHE.move_to_end(key)
+            return cached[1]
+    keys = frozenset(manifest.peek_sources(path))
+    with _TRACKED_LOCK:
+        _TRACKED_CACHE[key] = (stamp, keys)
+        _TRACKED_CACHE.move_to_end(key)
+        while len(_TRACKED_CACHE) > _TRACKED_CACHE_MAX:
+            _TRACKED_CACHE.popitem(last=False)
     return keys
+
+
+def _tracked_keys() -> frozenset[str]:
+    """The tracked-source keys the citation guard trusts: inside an ingest/curate session the set
+    captured from the LIVE manifest before the session (:func:`config.session_tracked_keys` — the
+    staging copy's manifest is agent-writable), else this context's manifest."""
+    trusted = config.session_tracked_keys()
+    if trusted is not None:
+        return trusted
+    return manifest_keys(config.manifest_path())
 
 
 def excluded_citation(resolved: str) -> str | None:

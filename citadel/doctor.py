@@ -324,8 +324,9 @@ def check_exclusion_enforcement() -> Check:
       and file readers, but ``--allow-all-paths`` reads anything);
     - agy, or a claude build lacking either flag: WARN "instruction-only".
 
-    OK whenever no exclusion is configured. The one backend-independent guarantee is to keep
-    sensitive files outside every raw root and outside the workspace."""
+    OK whenever no exclusion is configured. Keeping sensitive files outside every raw root and the
+    workspace is a precaution (copilot/agy sessions can read any path the user can); the enforced
+    guarantee is filesystem permissions or a sandbox."""
     from . import llm
 
     if not config.has_user_exclusions():
@@ -334,7 +335,10 @@ def check_exclusion_enforcement() -> Check:
         cli = llm.resolve_cli_name(config.LLM_CLI)
     except RuntimeError as exc:
         return Check(WARN, "exclusions", f"cannot tell how they are enforced: {exc}")
-    keep_out = "keep sensitive files outside every raw root and the workspace for a hard guarantee"
+    keep_out = (
+        "keep sensitive files outside every raw root and the workspace; "
+        "filesystem permissions or a sandbox for a hard guarantee"
+    )
     if cli == "claude":
         try:
             path = llm._resolve_cli(cli)

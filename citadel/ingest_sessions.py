@@ -21,7 +21,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import config, extract, llm, manifest, okf, resume, store
+from . import config, extract, llm, manifest, okf, resume, store, validate
 from .ingest_staging import (
     _LIVE_WIKI_LOCK,
     _ConcurrentChange,
@@ -271,7 +271,12 @@ def _checkpoint_delta(
 
 
 def _adopt_checkpoint(
-    ctx: _Resume, staging: Path, live: Path, rel_key: str, carried: list[str] | None = None
+    ctx: _Resume,
+    staging: Path,
+    live: Path,
+    rel_key: str,
+    carried: list[str] | None = None,
+    tracked: frozenset[str] | None = None,
 ) -> tuple[list, list, list] | None:
     """Replay ``ctx``'s checkpoint into the fresh ``staging`` copy and return the
     ``(created, updated, deleted)`` it landed there, or None when it must not be used.
@@ -295,7 +300,7 @@ def _adopt_checkpoint(
     have its inherited breakage validated once, waved through, and never surfaced. The caller merges
     it only when the adoption SUCCEEDS — a refused replay is discarded whole, and its findings with
     it."""
-    with _redirect_wiki(staging), config.session_source(rel_key):
+    with _redirect_wiki(staging), config.session_source(rel_key, tracked):
         # Baseline the cross-links BEFORE the replay: staging is still a byte copy of live here, so
         # this is the set of breakages the wiki already lives with (which resume must not be blamed
         # for, and must not repair).
@@ -453,6 +458,9 @@ def _run_agent_sessions(
     if not session_fns:
         return _SourceOutcome(True, ran_sessions=False)
     live = config.wiki_dir()
+    # The excluded-citation guard's TRUSTED tracked set, read from the LIVE manifest before any
+    # session runs: the staging copy's manifest is agent-writable (see config.session_source).
+    tracked = validate.manifest_keys(config.manifest_path())
     base: dict[str, str] | None = None
     cloned: dict[str, str] | None = None
     staging: Path | None = None
@@ -504,7 +512,7 @@ def _run_agent_sessions(
             # checkpoint is discarded whole (staging included), so its findings describe a state
             # this run never went on to promote.
             replay_issues: list[str] = []
-            seeded = _adopt_checkpoint(resume_ctx, staging, live, rel_key, carried=replay_issues)
+            seeded = _adopt_checkpoint(resume_ctx, staging, live, rel_key, carried=replay_issues, tracked=tracked)
             if seeded is None:
                 resume.clear(rel_key)
                 resume_ctx.checkpoint = None
@@ -521,7 +529,7 @@ def _run_agent_sessions(
         # The session-source mark exempts THIS source from the excluded-citation guard (an
         # explicitly named excluded file wins) — in this process's validation and, via
         # config.child_env, in the agent's own `citadel check`.
-        with _redirect_wiki(staging), config.session_source(rel_key):
+        with _redirect_wiki(staging), config.session_source(rel_key, tracked):
             prev_pages = store.load()
             prev = _hash_pages(prev_pages)
             # The wiki as this source FOUND it, kept across every segment (``prev_pages`` is

@@ -58,6 +58,7 @@ carries no model). No DB.
 
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import json
 import math
@@ -384,14 +385,22 @@ MAX_KNOWN_WORKSPACES = 8
 # ingest's, which must read the stamp as it was BEFORE this run's saves re-stamp the file, and
 # doctor's — and :func:`save`'s known-workspaces merge. The path guard keeps a stash from one wiki
 # from ever leaking into another's save (tests re-point ``config.*`` freely within one process).
-_last_meta: dict = {}
-_last_meta_path: str = ""
+# CONTEXT-local (like ``config.wiki_redirect``), never process-global: a ``citadel serve`` runs a
+# ``wiki_ingest`` and a concurrent reader (``wiki_status`` loads the manifest too) on different
+# worker threads, and a shared stash let the reader's load clear/replace the meta between ingest's
+# ``load()`` and its ``stamped_workspace_mismatch()`` — silently disarming the deletion-sweep guard.
+_LAST_META: contextvars.ContextVar[tuple[str, dict]] = contextvars.ContextVar("citadel_manifest_meta", default=("", {}))
+
+
+def _stash(meta: dict) -> None:
+    _LAST_META.set((str(config.manifest_path()), meta))
 
 
 def _stashed_meta() -> dict:
     """The stashed ``meta`` when it belongs to the CURRENT manifest path, else {} — the one
     accessor :func:`save` and :func:`stamped_workspace_mismatch` read the stash through."""
-    return _last_meta if _last_meta_path == str(config.manifest_path()) else {}
+    path, meta = _LAST_META.get()
+    return meta if path == str(config.manifest_path()) else {}
 
 
 def _stamped_workspace(meta: dict) -> str:
@@ -465,12 +474,13 @@ def _check_workspace(meta: dict) -> None:
     )
 
 
-def _read() -> tuple[object, str | None]:
-    """Read + JSON-parse MANIFEST_PATH ONCE, returning ``(parsed, error)``: the decoded top-level
-    JSON value and None on success, else ``(None, code)`` with ``code`` one of ``"missing"`` (no
-    file), ``"empty"`` (present but blank), or ``"corrupt"`` (unparseable JSON). The single reader
-    both :func:`load` and :func:`inspect` share, so neither re-reads the file."""
-    path = config.manifest_path()
+def _read(path: Path | None = None) -> tuple[object, str | None]:
+    """Read + JSON-parse MANIFEST_PATH (or ``path``) ONCE, returning ``(parsed, error)``: the decoded
+    top-level JSON value and None on success, else ``(None, code)`` with ``code`` one of
+    ``"missing"`` (no file), ``"empty"`` (present but blank), or ``"corrupt"`` (unparseable JSON).
+    The single reader :func:`load`, :func:`inspect`, :func:`adopt` and :func:`peek_sources` share.
+    Side-effect-free: it never touches the meta stash."""
+    path = config.manifest_path() if path is None else path
     try:
         text = path.read_text(encoding="utf-8")
     except UnicodeError:
@@ -493,19 +503,31 @@ def load(warn: bool = True) -> dict[str, Entry]:
     mapping (read as sources-only; upgraded on the next save). A stamped workspace differing
     from the current one triggers one stderr warning — unless ``warn=False`` (``citadel adopt`` /
     doctor, which handle the mismatch themselves)."""
-    global _last_meta, _last_meta_path
-    _last_meta, _last_meta_path = {}, str(config.manifest_path())
     data, _error = _read()
+    sources, meta = _split(data)
+    _stash(meta)
+    if meta and warn:
+        _check_workspace(meta)
+    return sources
+
+
+def _split(data: object) -> tuple[dict[str, Entry], dict]:
+    """``(sources, meta)`` of one parsed manifest: the stamped format-2 file, a legacy flat mapping
+    (the whole mapping IS the sources dict, no meta), or ``({}, {})`` for anything else."""
     if not isinstance(data, dict):
-        return {}
+        return {}, {}
     if isinstance(data.get("sources"), dict):
         meta = data.get("meta")
-        if isinstance(meta, dict):
-            _last_meta = meta
-            if warn:
-                _check_workspace(meta)
-        return data["sources"]
-    return data  # legacy flat manifest: the whole mapping IS the sources dict
+        return data["sources"], meta if isinstance(meta, dict) else {}
+    return data, {}
+
+
+def peek_sources(path: Path) -> dict[str, Entry]:
+    """The sources dict of the manifest at ``path`` ({} when missing/empty/corrupt) — WITHOUT the
+    meta stash or the workspace warning :func:`load` has, so a reader of SOME OTHER manifest (the
+    excluded-citation guard's tracked-key set) can never displace the stash the running
+    lifecycle's own load left for its mismatch probe and its save."""
+    return _split(_read(path)[0])[0]
 
 
 def inspect() -> tuple[int | None, int, str | None]:
@@ -520,24 +542,21 @@ def inspect() -> tuple[int | None, int, str | None]:
       renders each on its own line, preserving the corrupt-vs-empty distinction.
 
     Shares :func:`load`'s single parse via :func:`_read` and, like it, stashes the parsed ``meta``
-    into ``_last_meta`` so a following :func:`stamped_workspace_mismatch` reads the SAME parse (no
+    (context-local) so a following :func:`stamped_workspace_mismatch` reads the SAME parse (no
     second read). Unlike :func:`load` it does NOT emit the dual-mount stderr warning — a probe stays
     silent."""
-    global _last_meta, _last_meta_path
-    _last_meta, _last_meta_path = {}, str(config.manifest_path())
     data, error = _read()
+    return _inspect_parsed(data, error)
+
+
+def _inspect_parsed(data: object, error: str | None) -> tuple[int | None, int, str | None]:
+    """:func:`inspect` over an already-parsed manifest (stashing its meta)."""
+    sources, meta = _split(data if error is None else None)
+    _stash(meta)
     if error is not None or not isinstance(data, dict):
         return None, 0, error
-    sources = data.get("sources")
-    if isinstance(sources, dict):
-        meta = data.get("meta")
-        fmt: int | None = None
-        if isinstance(meta, dict):
-            _last_meta = meta
-            raw_fmt = meta.get("format")
-            fmt = raw_fmt if isinstance(raw_fmt, int) else None
-        return fmt, len(sources), None
-    return None, len(data), None  # legacy flat manifest: the whole mapping IS the sources dict
+    raw_fmt = meta.get("format")
+    return (raw_fmt if isinstance(raw_fmt, int) else None), len(sources), None
 
 
 def stamped_workspace_mismatch() -> str | None:
@@ -600,8 +619,13 @@ def adopt() -> AdoptResult:
     resolve here (:func:`workspace_rekeyed` — a re-keyed or moved checkout, not a second path to
     the same workspace) it refuses, because adopting would re-arm the next run's deletion sweep
     against a key space that is not here. Otherwise ``sources`` is written back unchanged and only
-    ``meta`` is re-stamped. The caller holds the run lock."""
-    _fmt, _count, error = inspect()
+    ``meta`` is re-stamped. The caller holds the run lock.
+
+    ONE parse serves the whole decision and the write: a second read that failed (a transient
+    share error reads as "missing", i.e. ``{}``) would otherwise be saved back as the manifest,
+    wiping every tracked source."""
+    data, error = _read()
+    _fmt, _count, error = _inspect_parsed(data, error)
     if error == "corrupt":
         return AdoptResult("corrupt")
     if error is not None:
@@ -609,7 +633,7 @@ def adopt() -> AdoptResult:
     stamped = stamped_workspace_mismatch()
     if stamped is None:
         return AdoptResult("nothing")
-    sources = load(warn=False)
+    sources = _split(data)[0]
     if workspace_rekeyed(sources):
         return AdoptResult("rekeyed", previous=stamped)
     missing = unresolved_relative_keys(sources)
