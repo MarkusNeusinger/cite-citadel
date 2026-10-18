@@ -213,6 +213,11 @@ class CurateReport:
     # What each cluster's session cost, keyed by anchor page (only the clusters whose backend
     # reported usage) — rendered beside every Applied/NOOP/Failed line and as the NOOP-spend total.
     cluster_usage: dict[str, llm.SessionUsage] = field(default_factory=dict)
+    # The exclusion-enforcement warnings ingest's report carries, for curate's sessions too: claude's
+    # denied tool calls (``anchor: denial``) and the excluded paths the per-session Read denies could
+    # not cover (a lower bound).
+    denials: list[str] = field(default_factory=list)
+    deny_unenforced: int = 0
     # Dry runs only: one "what this session will read" line per planned cluster, and the labelled
     # run-wide cost reference (empty when nothing records a cost). A dry run prints neither the
     # Applied/NOOP/Failed counters (they mean nothing before a run) nor any per-cluster dollars.
@@ -279,6 +284,17 @@ class CurateReport:
         if noop_described:
             lines.append(
                 f"NOOP spend (sessions that changed nothing): {noop_described} over {len(self.noop)} cluster(s)."
+            )
+        if self.denials:
+            lines.append("")
+            lines.append("WARNING — the agent tried tool calls its permissions denied (excluded files stay unread):")
+            lines.extend(f"  - {d}" for d in self.denials)
+        if self.deny_unenforced:
+            lines.append("")
+            lines.append(
+                f"WARNING — at least {self.deny_unenforced} excluded path(s) were NOT enforced by the per-session "
+                "Read denies (the deny cap, or an ignored folder that could not be fully listed) — instruction-only "
+                "for those; keep sensitive files outside every raw root."
             )
         if self.ledger_note:
             lines.append("")
@@ -1428,6 +1444,11 @@ def curate(
                     report.usage = llm.combine_usage([report.usage, outcome.usage])
                     if isinstance(outcome.usage, llm.SessionUsage):
                         report.cluster_usage[page_rel] = outcome.usage
+                        for denial in outcome.usage.denials:
+                            line = f"{page_rel}: {denial}"
+                            if line not in report.denials:
+                                report.denials.append(line)
+                    report.deny_unenforced = readdeny.unenforced()
                     if not outcome.ok:
                         _record_cluster(records, page_rel, FAILED, item.reasons, model, outcome)
                         report.failed.append(page_rel)

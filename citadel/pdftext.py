@@ -254,7 +254,9 @@ NUMERIC_RUN = 4
 NOISE_SHARE = 0.20
 _MARKER_LINE_RE = re.compile(r"^\[p\. (\d+)\]$")
 _NUMBERISH_RE = re.compile(r"^\d[\d.,/%:-]*$")
-_INTERLEAVED_RE = re.compile(r"[^\W\d_]+\d+[^\W\d_]+|\d+[^\W\d_]+\d+")
+# Single-character outer classes: the same yes/no answer as `letters digits letters`, without the
+# quadratic retries an unanchored search() makes over a long run of letters or digits.
+_INTERLEAVED_RE = re.compile(r"[^\W\d_]\d+[^\W\d_]|\d[^\W\d_]+\d")
 _LONE_SYMBOLS = frozenset("|~^_")
 
 

@@ -212,8 +212,9 @@ Read these before upgrading — three one-time effects:
   to an untracked excluded file fails `citadel check` (so the source fails, lint exits 3, curate plans
   `bad_source`), claude's denied tool calls are listed as a run warning, a manifest key under a newly
   ignored FOLDER is dropped like one with an ignored name, and `citadel doctor` prints how far your
-  backend enforces the exclusions. The guarantee that holds on every backend stays: keep sensitive
-  files outside every raw root.
+  backend enforces the exclusions. None of this is a security boundary: keeping sensitive files outside
+  every raw root and the workspace is a precaution (copilot runs with `--allow-all-paths`, agy without
+  permission checks); for a guarantee, deny the agent's OS account access or run ingest in a sandbox.
 
 - **`citadel refresh --stale-rules`** narrows the refresh queue to the `(stale)` sources
   (oldest-checked first, composes with `--min-age-days`), so `--limit K` re-verifies exactly the

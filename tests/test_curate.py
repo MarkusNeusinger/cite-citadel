@@ -1374,3 +1374,16 @@ def test_contradiction_reason_offers_the_dissolve_path():
     from citadel import curate
 
     assert "dissolve" in curate._REASON_GUIDANCE[curate.REASON_CONTRADICTION]
+
+
+def test_curate_report_carries_the_exclusion_enforcement_warnings(tmp_citadel, seed_page, fake_agent, monkeypatch):
+    """Like ingest's report: claude's denied tool calls and the unenforced-deny lower bound are shown
+    — here on a NOOP cluster, whose session still ran under the denies."""
+    from citadel import curate, llm, readdeny
+
+    _stale_page(tmp_citadel, seed_page)
+    fake_agent(usage=llm.SessionUsage(cost_usd=0.1, denials=("Read: raw/private/x.txt",)))
+    monkeypatch.setattr(readdeny, "unenforced", lambda: 3)
+    text = curate.curate(stale_rules=True).render()
+    assert "  - concepts/a.md: Read: raw/private/x.txt" in text
+    assert "at least 3 excluded path(s) were NOT enforced" in text

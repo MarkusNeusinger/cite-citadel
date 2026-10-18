@@ -608,3 +608,18 @@ def test_visual_bullet_only_for_pdf_kinds_ascii_and_capped(tmp_citadel):
     many = tuple(range(1, 63, 2))  # 31 single-page ranges
     capped = llm._build_instruction("raw/x.pdf", "pdf", "/tmp/x.md", None, None, many)
     assert "(+1 more pages" in capped and len(capped) < 8000
+
+
+def test_interleaving_check_is_linear_on_long_tokens():
+    """A long unspaced OCR token must not make the noise check quadratic, and the answer is
+    unchanged: an interleaving inside a word still counts, a pure run never does."""
+    import time
+
+    from citadel import pdftext
+
+    assert pdftext._INTERLEAVED_RE.search("c0de") and pdftext._INTERLEAVED_RE.search("1l1")
+    assert not pdftext._INTERLEAVED_RE.search("code") and not pdftext._INTERLEAVED_RE.search("2026")
+    start = time.perf_counter()
+    for token in ("a" * 200_000, "1" * 200_000, "a" * 100_000 + "1" * 100_000):
+        assert not pdftext._INTERLEAVED_RE.search(token)
+    assert time.perf_counter() - start < 1.0
