@@ -174,6 +174,25 @@ def source_definitions(body: str) -> Iterator[tuple[str, str]]:
         yield match.group(1), match.group(2)
 
 
+def llm_definitions(body: str) -> Iterator[tuple[str, str]]:
+    """Yield ``(marker_id, rest)`` for every model-supplied ``[^llmN]`` definition line inside the
+    ``## Sources`` section — the twin of :func:`source_definitions` (which keeps skipping them), so
+    the ``[^llmN]`` gate in ``validate`` reads the same section/fence-aware walk."""
+    in_sources = False
+    for line, in_code in iter_lines(body):
+        if in_code:
+            continue
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            in_sources = bool(SOURCES_HEADING_RE.match(stripped))
+            continue
+        if not in_sources:
+            continue
+        match = DEF_LINE_RE.match(line)
+        if match and is_llm_marker(match.group(1)):
+            yield match.group(1), match.group(2)
+
+
 # --- source-citation locators (the `[^sN]` tail after the source link) -----------------------
 
 # The full link span `](path)` / `](<path>)` on a definition line; what follows is the locator tail.

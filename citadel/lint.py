@@ -297,6 +297,38 @@ def _is_link_list_line(stripped: str) -> bool:
     return not re.search(r"[0-9A-Za-z]", residue)
 
 
+# Sentence-count protection for the missing-citation heuristic: dots that do NOT end a sentence.
+_DOTTED_ABBREVS = sorted(
+    ["e.g.", "i.e.", "vs.", "etc.", "cf.", "approx.", "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "No.", "Nr.", "St.",
+     "z. B.", "d. h.", "u. a.", "bzw.", "ca.", "ggf.", "evtl.", "inkl.", "vgl.", "usw.", "sog."],
+    key=len,
+    reverse=True,
+)  # fmt: skip
+_MONTHS = (
+    "Jan|Januar|January|Feb|Februar|February|Mär|März|Mar|March|Apr|April|Mai|May|Jun|Juni|June|Jul|Juli|July|"
+    "Aug|August|Sep|Sept|September|Okt|Oktober|Oct|October|Nov|November|Dez|Dezember|Dec|December"
+)
+_DAY_MONTH_RE = re.compile(rf"(?<!\d)(\d{{1,2}})\.(\s+(?:{_MONTHS})\b)")
+_INITIAL_RE = re.compile(r"(?:(?<=\s)|^)([A-Z])\.(\s+[A-Z])")
+# A sentence that only points elsewhere or describes the page itself states no fact.
+_NAV_OPENERS = (
+    "this page", "this section", "see the", "see also", "see [", "for details", "for more",
+    "diese seite", "dieser abschnitt", "siehe", "details siehe", "details unter", "weitere unter",
+    "mehr dazu", "mehr unter",
+)  # fmt: skip
+_PROTECTED_DOT = "\x00"
+
+
+def _sentences(text: str) -> list[str]:
+    """``text`` split into sentences, NOT splitting after a dotted abbreviation (``z. B.``, ``Dr.``),
+    a day number before a month (``1. März``) or an initial before a capitalized word (``J. Smith``)."""
+    for abbr in _DOTTED_ABBREVS:
+        text = re.sub(rf"(?:(?<=\s)|^){re.escape(abbr)}", abbr.replace(".", _PROTECTED_DOT), text)
+    text = _DAY_MONTH_RE.sub(rf"\1{_PROTECTED_DOT}\2", text)
+    text = _INITIAL_RE.sub(rf"\1{_PROTECTED_DOT}\2", text)
+    return [s.strip() for s in re.split(r"[.!?]+\s+|[.!?]+$", text) if s.strip()]
+
+
 def _missing_cite_preview(page: Page) -> str | None:
     """Return a short preview of the first factual-looking paragraph in the page
     body that lacks a footnote marker, or None if every such paragraph is cited.
@@ -306,22 +338,34 @@ def _missing_cite_preview(page: Page) -> str | None:
     in_sources = False
     paragraph_lines: list[str] = []
 
-    def flush(buf: list[str]) -> str | None:
+    def flush(buf: list[str], next_line: str = "") -> str | None:
         text = " ".join(buf).strip()
         if not text:
             return None
-        # Sentence count heuristic: count terminal punctuation.
-        sentences = [s for s in re.split(r"[.!?]+\s+|[.!?]+$", text) if s.strip()]
+        sentences = _sentences(text)
+        # A lead-in whose sentence ENDS in ':' introducing a list below it is not a fact of its own.
+        if sentences and sentences[-1].endswith(":") and _LIST_BULLET_RE.match(next_line):
+            sentences = sentences[:-1]
+        sentences = [s for s in sentences if not s.lower().startswith(_NAV_OPENERS)]
         if len(sentences) <= 1:
             return None
         if _has_footnote(text):
             return None
         return text[:80]
 
+    # A paragraph closed by a blank line is HELD until the next non-blank line is seen, so the lead-in
+    # rule can tell whether a list follows it.
+    held: list[str] = []
+
     for line, in_code in grammar.iter_lines(page.body):
         if in_code:
             continue
         stripped = line.strip()
+        if held and stripped:
+            preview = flush(held, stripped)
+            held = []
+            if preview is not None:
+                return preview
         if stripped.startswith("#"):
             # Heading: paragraph boundary; detect the Sources section.
             preview = flush(paragraph_lines)
@@ -340,16 +384,14 @@ def _missing_cite_preview(page: Page) -> str | None:
             # A `## See also`-style link list — navigation, not an uncited factual paragraph.
             continue
         if not stripped:
-            preview = flush(paragraph_lines)
-            paragraph_lines = []
-            if preview is not None:
-                return preview
+            if paragraph_lines:
+                held, paragraph_lines = paragraph_lines, []
             continue
         paragraph_lines.append(stripped)
 
     # Trailing paragraph (only if not inside the Sources section).
     if not in_sources:
-        preview = flush(paragraph_lines)
+        preview = flush(held or paragraph_lines)
         if preview is not None:
             return preview
     return None
@@ -385,20 +427,60 @@ def _preceding_word(line: str, index: int) -> str:
     return before.rsplit(maxsplit=1)[-1].strip(".,;:—–-").lower()
 
 
+# Context-gated exclusions (the #63 pattern: the same token OUT of context is still surfaced).
+# An email-subject prefix directly followed by ':' (`AW: Termin`); a bare `WG` stays (working group).
+_SUBJECT_PREFIXES = frozenset({"RE", "AW", "WG", "FW", "FWD", "SV", "VS", "TR", "ANTW"})
+# A legal form directly after a capitalized word (`Muster AG`); `the AG decided` stays.
+_LEGAL_FORMS = frozenset(
+    {"AG", "SE", "KG", "OHG", "SA", "NV", "BV", "PLC", "LLC", "LLP", "LTD", "INC", "AB", "AS", "ASA", "OY", "OYJ",
+     "SPA", "SRL", "SARL", "SAS"}
+)  # fmt: skip
+# A storage unit or currency code with a number directly before or after it (`16 GB`, `EUR 500`).
+_UNITS = frozenset({"KB", "MB", "GB", "TB", "EUR", "USD", "CHF", "GBP", "JPY"})
+_LINK_TARGET_RE = re.compile(r"\]\([^)]*\)")
+_NUMBER_RE = re.compile(r"^[\d.,']+$")
+
+
+def _next_word(line: str, index: int) -> str:
+    after = line[index:].lstrip()
+    return after.split(maxsplit=1)[0].strip(".,;:") if after else ""
+
+
+def _abbrev_in_exempt_context(line: str, m: re.Match) -> bool:
+    token = m.group(0)
+    if token in _SUBJECT_PREFIXES and line[m.end() : m.end() + 1] == ":":
+        return True
+    before = line[: m.start()].rstrip()
+    prev_raw = before.rsplit(maxsplit=1)[-1] if before else ""
+    if token in _LEGAL_FORMS and prev_raw[:1].isupper():
+        return True
+    if token in _UNITS:
+        prev = prev_raw.strip(".,;:")
+        if _NUMBER_RE.match(prev or "x") or _NUMBER_RE.match(_next_word(line, m.end()) or "x"):
+            return True
+    return False
+
+
 def _abbrev_token_uses(body: str) -> set[str]:
     """Abbreviation-shaped tokens (see ABBREV_RE) used in the prose of ``body`` (see
     :func:`grammar.prose_lines` — headings count, code fences and ``## Sources`` do not), skipping
     chemistry formulae (a token trailed by a subscript digit, e.g. CO₂), fiscal-period labels
-    (``Q1``..``Q4`` / ``H1``/``H2``), and roman numerals in an ordinal context (``Chapter IV``)."""
+    (``Q1``..``Q4`` / ``H1``/``H2``), roman numerals in an ordinal context (``Chapter IV``), link
+    TARGETS (only link text is prose), the context-gated email prefixes / legal forms / units
+    (:func:`_abbrev_in_exempt_context`), and the ``CITADEL_ABBREV_STOPLIST`` universal terms."""
     found: set[str] = set()
+    stoplist = {t.upper() for t in config.ABBREV_STOPLIST}
     for line in grammar.prose_lines(body, skip_sources=True):
+        line = _LINK_TARGET_RE.sub("]", line)
         for m in ABBREV_RE.finditer(line):
             if m.end() < len(line) and line[m.end()] in _SCRIPT_DIGITS:
                 continue
             token = m.group(0)
-            if _FISCAL_RE.match(token):
+            if token in stoplist or _FISCAL_RE.match(token):
                 continue
             if _ROMAN_RE.match(token) and _preceding_word(line, m.start()) in _ORDINAL_CONTEXT:
+                continue
+            if _abbrev_in_exempt_context(line, m):
                 continue
             found.add(token)
     return found

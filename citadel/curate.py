@@ -804,7 +804,10 @@ _REASON_GUIDANCE = {
         "source's (`tasks/delete.md`): drop a fact whose ONLY source it was — sentence, marker, "
         "and definition — keep a fact another `[^sN]` still grounds (removing only the dead "
         "marker + definition), and delete a page left with no cited source, repointing inbound "
-        "links (`core.md` § Restructuring). Never invent a replacement source or fact."
+        "links (`core.md` § Restructuring). Never invent a replacement source or fact. An "
+        "undefined or empty `[^llmN]` note: add its definition in the `schema.md` format "
+        "(`[^llm1]: LLM - <what the model supplied and why> (added YYYY-MM-DD)`), or drop the marker "
+        "and its claim if the model cannot support it."
     ),
     REASON_CONTRADICTION: (
         "This page carries a `> [!CONTRADICTION]` callout with no resolution. Add a labeled `[^llmN]` "

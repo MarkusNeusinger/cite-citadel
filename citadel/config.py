@@ -1577,6 +1577,28 @@ def _resolve_include_patterns() -> list[str]:
 INCLUDE_PATTERNS: list[str] = _resolve_include_patterns()
 
 
+# Universal terms the undefined-abbreviation lint nudge never lists (CITADEL_ABBREV_STOPLIST). Short
+# and conservative on purpose: domain jargon the nudge exists for (KPI, SLA, FAQ, TCO, ...) stays out.
+_DEFAULT_ABBREV_STOPLIST: tuple[str, ...] = (
+    "IT", "AI", "KI", "API", "CEO", "CFO", "CTO", "CV", "HR", "PR", "EU", "UK", "USA", "UN", "ID",
+    "PDF", "URL", "PC", "TV", "USB", "UTC", "CET", "CEST", "GMT", "ISO",
+)  # fmt: skip
+
+
+def _resolve_abbrev_stoplist() -> list[str]:
+    """``CITADEL_ABBREV_STOPLIST``: unset/blank keeps the built-ins, a ``+`` marker extends them, any
+    other value replaces them; entries are upper-cased (parsed like the ignore globs)."""
+    raw = os.environ.get("CITADEL_ABBREV_STOPLIST", "").strip()
+    if not raw:
+        return list(_DEFAULT_ABBREV_STOPLIST)
+    extend, entries = _split_pattern_env(raw)
+    entries = [e.upper() for e in entries]
+    return list(_DEFAULT_ABBREV_STOPLIST) + entries if extend else entries
+
+
+ABBREV_STOPLIST: list[str] = _resolve_abbrev_stoplist()
+
+
 def user_ignore_patterns() -> list[str]:
     """The ignore globs the USER configured — :data:`IGNORE_PATTERNS` minus the built-in OS/junk
     defaults (``Thumbs.db``, ``~$*``, …). Those are the deliberate exclusions the agent must be

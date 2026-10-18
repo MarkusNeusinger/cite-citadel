@@ -8,6 +8,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Lint noise cut; `[^llmN]` notes are now validated (#166).** The undefined-abbreviation nudge no
+  longer reads link targets, skips email-subject prefixes (`AW:`, `WG:`), legal forms after a name
+  (`Muster AG`) and units/currencies beside a number by context, and drops a short built-in list of
+  universal terms (`CITADEL_ABBREV_STOPLIST` replaces or `+`-extends it). "Missing citations" no
+  longer splits sentences after `z. B.`, `Dr.`, `1. März` or an initial, ignores a lead-in sentence
+  ending in `:` above a list, and ignores navigational sentences ("This page ...", "Siehe ...").
+  **Possible new `check`/`lint` failures:** an `[^llmN]` marker with no definition, or a definition
+  with no note (`[^llm1]: LLM`), is now a `bad_source` error, as `schema.md` always required. Fix it
+  by writing the note (`[^llm1]: LLM - <what the model supplied> (added YYYY-MM-DD)`) or dropping the
+  marker; `citadel curate` plans the repair. A page that already carried one does not fail the next
+  ingest of an unrelated source.
+
 - **Folder notes are folded in before the files beside them (#159).** A `README`/`INDEX`/`ABOUT`/
   `_index`/`00-…` file saying "these year files are unconfirmed reconstructions" was ingested AFTER
   its siblings (digit names sort first), so every sibling was attributed as a first-hand account.

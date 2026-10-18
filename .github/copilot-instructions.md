@@ -710,6 +710,9 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   allowlist keeps its pages instead of reading as deleted — the sweep's `.exists()` confirm. What it
   filtered out is reported: ingest's `Not included` section, `citadel status`' bucket, and a
   `citadel doctor` line that WARNs when the allowlist admits nothing),
+  `CITADEL_ABBREV_STOPLIST` (universal terms lint's undefined-abbreviation nudge never lists —
+  `config._DEFAULT_ABBREV_STOPLIST`; a list replaces, a `+` extends; email-subject prefixes, legal
+  forms and units are skipped by CONTEXT in `lint._abbrev_in_exempt_context`, not by the list),
   `CITADEL_MAX_SOURCE_BYTES` (the SIZE complement to those globs: a raw file bigger than this many
   bytes is skipped at discovery — never hashed, never tracked, but reported; 0 = no limit, the
   default; an explicitly named path always wins), `CITADEL_WIKI_LANG`

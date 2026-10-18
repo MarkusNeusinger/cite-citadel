@@ -84,6 +84,18 @@ def excluded_citation(resolved: str) -> str | None:
     return reason
 
 
+# What an `[^llmN]` definition is left with once its boilerplate is gone: a trailing `(added ...)`
+# stamp, a leading `LLM` label, and separators. No letter left = an empty note.
+_LLM_ADDED_RE = re.compile(r"\(\s*added\b[^)]*\)\s*$", re.IGNORECASE)
+_LLM_LABEL_RE = re.compile(r"^\s*LLM\b", re.IGNORECASE)
+
+
+def _empty_llm_note(rest: str) -> bool:
+    text = _LLM_ADDED_RE.sub("", rest.strip())
+    text = _LLM_LABEL_RE.sub("", text)
+    return not re.search(r"[^\W\d_]", text)
+
+
 def source_issues(rel_path: str, body: str) -> list[str]:
     """Structural guard against fabricated/unverifiable provenance. Returns a detail string
     for each problem found:
@@ -91,12 +103,16 @@ def source_issues(rel_path: str, body: str) -> list[str]:
       1. a raw-fact definition (``[^sN]``, not ``[^llmN]``) whose linked file does not exist;
       2. a raw-fact definition with no resolvable ``[..](path)`` link (bare/malformed line);
       3. a footnote marker used on a fact but never defined in ``## Sources``;
-      4. a raw-fact definition citing a file discovery EXCLUDES from the corpus (an ignore glob on
+      4. a model-supplied ``[^llmN]`` marker used but never defined, or an ``[^llmN]`` definition
+         with no note left once its ``LLM`` label and ``(added ...)`` stamp are removed (``schema.md``
+         § Per-fact provenance requires every marker defined; an empty note explains nothing);
+      5. a raw-fact definition citing a file discovery EXCLUDES from the corpus (an ignore glob on
          it or a parent folder, a hidden component, outside the include allowlist, over the size
          cap) that is neither tracked nor the running session's own source — the post-hoc net
          for an agent that read an excluded file (:func:`excluded_citation`).
 
-    Model-supplied (``[^llmN]``) facts are exempt — they cite "LLM", not a raw file. Purely
+    Model-supplied (``[^llmN]``) facts are exempt from the raw-file checks — they cite "LLM" — but
+    not from being defined with a real note (4). Purely
     STRUCTURAL: confirms a citation points at a real file and is defined; does NOT verify the
     cited file actually contains the fact. Definitions are read only inside the ``## Sources``
     section and code fences are skipped, so a page documenting the citation format is not
@@ -132,8 +148,15 @@ def source_issues(rel_path: str, body: str) -> list[str]:
         if in_code or line.strip().startswith("#"):
             continue
         used.update(grammar.USED_MARKER_RE.findall(line))
+    llm_defined: set[str] = set()
+    for marker_id, rest in grammar.llm_definitions(body):
+        llm_defined.add(marker_id)
+        if _empty_llm_note(rest):
+            bad.append(f"[^{marker_id}]: empty note")
     for marker_id in sorted(used - defined):
         if grammar.is_llm_marker(marker_id):
+            if marker_id not in llm_defined:
+                bad.append(f"[^{marker_id}] used but undefined")
             continue
         bad.append(f"[^{marker_id}] used but undefined")
     return bad
