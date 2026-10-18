@@ -84,7 +84,7 @@ folds it in — the conversational-capture bridge, MCP twin `wiki_capture`),
 — full CLI↔MCP parity),
 `tags [tag]`, `lint [--stale-days N]` (exit 3 when the report is not clean — its own code, distinct
 from the usage/no-workspace exit 2), `check [paths…]`, `view [--out PATH] [--no-open]
-[--obsidian]`, `rules list|show|eject`. `citadel --version` prints the version and (like `--help`)
+[--obsidian] [--lang CODE]` (`--lang` overrides `CITADEL_WIKI_LANG` for the viewer's UI chrome + `<html lang>`), `rules list|show|eject`. `citadel --version` prints the version and (like `--help`)
 needs no workspace.
 
 Tests (pytest, all offline — no LLM CLI and no network is ever spawned; only `test_wikigit`
@@ -722,7 +722,7 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   `CITADEL_MAX_SOURCE_BYTES` (the SIZE complement to those globs: a raw file bigger than this many
   bytes is skipped at discovery — never hashed, never tracked, but reported; 0 = no limit, the
   default; an explicitly named path always wins), `CITADEL_WIKI_LANG`
-  (target language of all wiki prose, default `en`; verbatim quotes stay original),
+  (target language of all wiki prose, default `en`; verbatim quotes stay original; it also picks the offline viewer's UI-chrome language, en fallback),
   `CITADEL_INGEST_GUIDANCE` (free-text steer appended to each source-reading session's prompt —
   usually passed per run as `ingest --guidance` instead; permanent house rules belong in
   `rules/local.md`), `CITADEL_CURATE_GUIDANCE` (its curate twin — STRUCTURAL only, carried in the

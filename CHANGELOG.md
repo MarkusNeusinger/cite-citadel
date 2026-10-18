@@ -64,6 +64,19 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Viewer: UI chrome follows the wiki language; map labels no longer pile up (#171).** `citadel view`
+  now localizes everything AROUND the pages — toolbar tooltips, the search placeholder, "On this
+  page", the "Sources (N)" summaries, "Referenced by:"/"Links to:"/"Related:", the sources overview
+  and could-not-ingest tables — from `CITADEL_WIKI_LANG` (normalized to its primary subtag: `de-CH`
+  → `de`), overridable per run with `citadel view --lang CODE`, and sets `<html lang>` to match. Ships
+  English and German (`citadel/viewer/i18n.json`); a language without a dictionary keeps English
+  chrome but still declares its own `<html lang>`. A page's `## See also` heading is relabeled for
+  display only — the page files keep the literal English structural headings the format requires.
+  The map's labels now keep a constant on-screen size, are budgeted to the top 40% of pages by link
+  degree, and are culled so no two labels overlap (the hovered node and its neighbours always win);
+  every node carries its full title as a native tooltip, and long titles are shortened in the middle
+  ("Annual m…port 2019") so same-prefix pages stay distinguishable.
+
 - **The MCP server runs on the mcp 2.x SDK (`mcp>=2,<3`) (#173).** `citadel/server.py` builds on
   `MCPServer` and `citadel serve --http` on its keyword `streamable_http_app` settings (DNS-rebinding
   checks stay with citadel's own Host/Origin guard, passed explicitly so a tunnel hostname is never
