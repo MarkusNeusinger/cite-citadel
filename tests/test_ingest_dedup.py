@@ -99,3 +99,122 @@ def test_dedup_disabled_ingests_every_format(tmp_citadel, fake_agent, make_pptx,
     report = ingest.ingest()
     assert set(report.processed) == {"raw/report.pdf", "raw/report.pptx"}
     assert report.duplicates == []
+
+
+# --- #169: tracked members are never dropped; .ics ranks after every document ---------------
+
+
+def _track_file(path, sha: str | None = None) -> None:
+    from citadel import manifest
+
+    m = manifest.load()
+    m[manifest.rel_key(path)] = manifest.make_entry(
+        sha or manifest.file_sha256(path), "claude:x", config.rules_version()
+    )
+    manifest.save(m)
+
+
+def test_dedup_keeps_a_changed_tracked_twin_and_drops_the_new_one(tmp_citadel):
+    raw = tmp_citadel.raw
+    (raw / "x.docx").write_bytes(b"PK")
+    (raw / "x.pdf").write_bytes(b"%PDF-1.7\n")
+    kept, dups, _ = ingest._dedup_by_basename([raw / "x.docx", raw / "x.pdf"], {"raw/x.docx": {"sha256": "old"}})
+    assert kept == [raw / "x.docx"]
+    assert dups == [("raw/x.pdf", "raw/x.docx")]
+
+
+def test_dedup_both_tracked_one_changed_keeps_it(tmp_citadel):
+    raw = tmp_citadel.raw
+    (raw / "deck.pdf").write_bytes(b"%PDF-1.7\n")
+    (raw / "deck.docx").write_bytes(b"PK")
+    kept, dups, _ = ingest._dedup_by_basename(
+        [raw / "deck.pdf"], {"raw/deck.pdf": {"sha256": "old"}, "raw/deck.docx": {"sha256": "s"}}
+    )
+    assert kept == [raw / "deck.pdf"] and dups == []
+
+
+def test_mixed_tracked_and_new_end_to_end_reconciles_the_tracked_twin(tmp_citadel, fake_agent, cite_page):
+    from citadel import failures, status
+
+    raw = tmp_citadel.raw
+    (raw / "x.md").write_text("placeholder\n", encoding="utf-8")
+    (raw / "x.ics").write_text("BEGIN:VCALENDAR\nSUMMARY:old\nEND:VCALENDAR\n", encoding="utf-8")
+    _track_file(raw / "x.ics", sha="00" * 32)  # tracked, and its bytes have changed since
+    (raw / "x.md").unlink()
+    (raw / "x.pdf").write_text("BEGIN:VCALENDAR\nnot really a pdf\n", encoding="utf-8")
+    agent = fake_agent(side_effect=lambda rel_key, **kw: cite_page("misc/x.md", rel_key, "A fact."))
+    ingest.ingest()
+    assert agent.calls == [("raw/x.ics", "reconcile")]
+    assert failures.load()["raw/x.pdf"]["reason"] == failures.DUPLICATE
+    report = status.build_status()
+    assert [s.key for s in report.ingested] == ["raw/x.ics"]
+    assert [s.key for s in report.skipped_duplicate] == ["raw/x.pdf"]
+
+
+def test_a_stale_duplicate_record_on_a_tracked_twin_heals(tmp_citadel, fake_agent, cite_page):
+    from citadel import failures
+
+    raw = tmp_citadel.raw
+    (raw / "x.ics").write_text("BEGIN:VCALENDAR\nEND:VCALENDAR\n", encoding="utf-8")
+    _track_file(raw / "x.ics", sha="00" * 32)
+    stuck = failures.load()
+    failures.record(stuck, "raw/x.ics", failures.DUPLICATE, "same basename as raw/x.pdf", None)
+    failures.save(stuck)
+    agent = fake_agent(side_effect=lambda rel_key, **kw: cite_page("misc/x.md", rel_key, "A fact."))
+    ingest.ingest()
+    assert agent.calls == [("raw/x.ics", "reconcile")]
+    assert "raw/x.ics" not in failures.load()
+
+
+def test_dedup_priority_ends_with_ics_and_ranks_no_vcf_eml_msg():
+    from citadel import ingest_scan
+
+    assert ingest_scan._DEDUP_PRIORITY[-2:] == [".xls", ".ics"]
+    assert not {".vcf", ".eml", ".msg"} & set(ingest_scan._DEDUP_PRIORITY)
+
+
+def test_new_pdf_plus_ics_keeps_the_pdf(tmp_citadel):
+    raw = tmp_citadel.raw
+    (raw / "x.pdf").write_bytes(b"%PDF-1.7\n")
+    (raw / "x.ics").write_text("BEGIN:VCALENDAR\n", encoding="utf-8")
+    kept, dups, _ = ingest._dedup_by_basename([raw / "x.ics", raw / "x.pdf"], {})
+    assert kept == [raw / "x.pdf"] and dups == [("raw/x.ics", "raw/x.pdf")]
+
+
+def test_new_docx_plus_ics_keeps_the_docx(tmp_citadel):
+    raw = tmp_citadel.raw
+    (raw / "x.docx").write_bytes(b"PK")
+    (raw / "x.ics").write_text("BEGIN:VCALENDAR\n", encoding="utf-8")
+    kept, dups, _ = ingest._dedup_by_basename([raw / "x.ics", raw / "x.docx"], {})
+    assert kept == [raw / "x.docx"] and dups == [("raw/x.ics", "raw/x.docx")]
+
+
+def test_ics_with_md_or_vcf_with_pdf_are_not_collapsed(tmp_citadel):
+    raw = tmp_citadel.raw
+    for name in ("a.ics", "a.md", "b.vcf", "b.pdf"):
+        (raw / name).write_text("x\n", encoding="utf-8")
+    paths = [raw / n for n in ("a.ics", "a.md", "b.vcf", "b.pdf")]
+    kept, dups, _ = ingest._dedup_by_basename(paths, {})
+    assert set(kept) == set(paths) and dups == []
+
+
+def test_staggered_new_pdf_behind_a_tracked_ics(tmp_citadel):
+    raw = tmp_citadel.raw
+    (raw / "x.ics").write_text("BEGIN:VCALENDAR\n", encoding="utf-8")
+    (raw / "x.pdf").write_bytes(b"%PDF-1.7\n")
+    kept, dups, _ = ingest._dedup_by_basename([raw / "x.pdf"], {"raw/x.ics": {"sha256": "s"}})
+    assert kept == [] and dups == [("raw/x.pdf", "raw/x.ics")]
+
+
+def test_both_tracked_ics_pdf_no_retroactive_effect(tmp_citadel, fake_agent, cite_page):
+    raw = tmp_citadel.raw
+    (raw / "x.ics").write_text("BEGIN:VCALENDAR\n", encoding="utf-8")
+    (raw / "x.pdf").write_bytes(b"%PDF-1.7\n")
+    _track_file(raw / "x.ics")
+    _track_file(raw / "x.pdf")
+    agent = fake_agent(side_effect=lambda rel_key, **kw: cite_page("misc/x.md", rel_key, "A fact."))
+    report = ingest.ingest()
+    assert agent.count == 0 and report.duplicates == []
+    (raw / "x.ics").write_text("BEGIN:VCALENDAR\nCHANGED\n", encoding="utf-8")
+    report = ingest.ingest()
+    assert agent.calls == [("raw/x.ics", "reconcile")] and report.duplicates == []

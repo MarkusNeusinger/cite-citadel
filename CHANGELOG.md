@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A changed, already-ingested twin is never dropped as a duplicate (#169).** Same-basename dedup
+  decided by format rank alone, so an edited, tracked `report.docx` with a freshly exported
+  `report.pdf` beside it was skipped as a duplicate of the PDF — its old facts stayed in the wiki
+  next to the PDF's and it was pending (and dropped) again on every run. Dedup now gates only NEW
+  keys: a tracked member is always kept and reconciled, and new same-stem files are recorded as
+  duplicates of it.
+
 - **`citadel status` counts what the ignore globs keep out, not distinct names.** `Ignored (N)` was
   the number of distinct matched basenames from a second `os.walk` that disagreed with discovery
   (other roots, descended into repo sources). It now reads discovery's own walk (`_Walk.ignored`)
@@ -27,6 +34,16 @@ All notable changes to this project are documented here. The format is based on
   longer carries it as a permanent paid item that also starved the lower-ranked detectors under
   `--limit`), and whenever drift is planned the curate report says the marker stays until the
   source is re-verified (#162, Part A).
+
+### Changed
+
+- **A calendar export (`.ics`) is deduped behind its PDF/Office twin (#169).** A same-folder
+  `<stem>.ics` + `<stem>.pdf` pair (an appointment confirmation and its printout) was ingested twice;
+  `.ics` now ranks after every document format, so the PDF/Office twin is the one read (it carries
+  local times and the body text). `.vcf` and `.eml` are deliberately not ranked (a same-stem PDF is
+  usually a different document). No retroactive effect: a pair where both twins are already tracked
+  stays tracked. To drop a redundant tracked twin, delete it or move it out of every raw root — the
+  next full ingest's delete cleanup strips its facts (an ignore pattern alone keeps its pages).
 
 ### Added
 

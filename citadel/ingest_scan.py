@@ -535,7 +535,11 @@ def _is_image_source(path: Path) -> bool:
 # .pptx and .pdf, a doc saved as .docx and .pdf, etc.). A group is collapsed ONLY when EVERY member
 # is one of these, so a hand-authored notes.md sharing a stem with notes.pdf is never dropped. The
 # order is the KEEP preference (earliest wins): PDF first, then modern Office, then legacy.
-_DEDUP_PRIORITY = [".pdf", ".docx", ".docm", ".doc", ".pptx", ".pptm", ".ppt", ".xlsx", ".xlsm", ".xls"]
+# Keep preference: PDF, modern Office, legacy Office, then a calendar export (.ics) — the PDF/Office
+# twin is the human-facing rendering (local times, body text), the .ics a machine subset with UTC
+# times and RFC 5545 line folding. .vcf/.eml are deliberately NOT ranked: a same-stem PDF beside
+# them is usually a different document (a letter about the person, the email's attachment).
+_DEDUP_PRIORITY = [".pdf", ".docx", ".docm", ".doc", ".pptx", ".pptm", ".ppt", ".xlsx", ".xlsm", ".xls", ".ics"]
 _DEDUP_EXTS = set(_DEDUP_PRIORITY)
 
 
@@ -554,13 +558,17 @@ def _dedup_by_basename(
     are ALL document formats (:data:`_DEDUP_EXTS`) is collapsed — so a plain-text/markdown/code/image
     source sharing a stem with a document is left alone.
 
-    Two cases:
-    - both formats are NEW this run → keep the preferred one (:func:`_dedup_rank`, PDF first), drop
-      the rest;
-    - a same-basename document was ALREADY ingested in another format (still on disk) → skip the new
-      one(s), keeping what is already in the wiki (so re-runs are stable and no second copy sneaks
-      in). Grouping is by the sources' posix identity keys, so pending and manifest members compare
-      in the same space."""
+    Dedup only ever gates NEW keys — a TRACKED member (in the manifest: pending because it CHANGED)
+    is always kept, so it runs as a reconcile and is never stranded with stale facts:
+
+    - the group has a tracked pending member, or an unchanged same-basename sibling is already
+      ingested (still on disk) → every NEW member is dropped as a duplicate of the best-ranked
+      tracked pending member, else of that sibling (re-runs stay stable, no second copy sneaks in);
+    - an all-new group with no tracked sibling → keep the preferred one (:func:`_dedup_rank`, PDF
+      first), drop the rest.
+
+    Grouping is by the sources' posix identity keys, so pending and manifest members compare in the
+    same space."""
     # A CHANGED document source is BOTH pending and in the manifest; excluding pending keys here
     # keeps it from matching itself as an "already-ingested sibling" and being dropped as a
     # duplicate of itself (which would stop it re-ingesting).
@@ -585,18 +593,26 @@ def _dedup_by_basename(
         if not all(m.suffix.lower() in _DEDUP_EXTS for m in members):
             kept.extend(members)  # a non-document shares this stem: leave the whole group alone
             continue
-        if gid in ingested:
+        tracked = [m for m in members if manifest.rel_key(m) in manifest_dict]
+        new = [m for m in members if manifest.rel_key(m) not in manifest_dict]
+        kept.extend(tracked)  # a changed tracked source is reconciled, never dropped
+        if tracked or gid in ingested:
             # A same-basename document is already in the wiki (another format): skip the new one(s).
-            for m in members:
+            anchor = (
+                manifest.rel_key(min(tracked, key=lambda m: (_dedup_rank(m.suffix.lower()), m.suffix.lower())))
+                if tracked
+                else ingested[gid]
+            )
+            for m in new:
                 dropped.add(m)
-                duplicates.append((manifest.rel_key(m), ingested[gid]))
+                duplicates.append((manifest.rel_key(m), anchor))
             continue
-        if len(members) == 1:
-            kept.append(members[0])
+        if len(new) == 1:
+            kept.append(new[0])
             continue
-        winner = min(members, key=lambda m: (_dedup_rank(m.suffix.lower()), m.suffix.lower()))
+        winner = min(new, key=lambda m: (_dedup_rank(m.suffix.lower()), m.suffix.lower()))
         kept.append(winner)
-        for m in members:
+        for m in new:
             if m is winner:
                 continue
             dropped.add(m)

@@ -1118,8 +1118,10 @@ STYLE_PROFILES: bool = _bool_env("CITADEL_STYLE_PROFILES", False)
 # share a basename and are all document-export formats (a deck saved as both report.pptx AND
 # report.pdf, say — set below), only ONE is ingested and the rest are skipped as duplicates (the
 # skip is recorded in the failures report, pointing at the file that was kept). Preference order is
-# PDF first, then modern Office, then legacy. Re-evaluated every run, so deleting the kept file
-# promotes another. Set CITADEL_DEDUP_BY_BASENAME=0 to ingest every format separately.
+# PDF first, then modern Office, then legacy Office, then a calendar export (.ics). Only NEW files
+# are ever skipped: a tracked twin that changed is always reconciled. Re-evaluated every run, so
+# deleting the kept file promotes another. Set CITADEL_DEDUP_BY_BASENAME=0 to ingest every format
+# separately.
 DEDUP_BY_BASENAME: bool = _bool_env("CITADEL_DEDUP_BY_BASENAME", True)
 
 # Large-source chunking. A single raw source whose extractable/readable text exceeds this many
