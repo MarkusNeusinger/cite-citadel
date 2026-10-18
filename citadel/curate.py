@@ -194,8 +194,9 @@ class CurateReport:
     # The wiki-history note from wikigit.autocommit — empty when the history layer had nothing to say.
     wiki_git: str = ""
     # How many sources stay (stale) — refresh.stale_count(), the K of the `refresh --stale-rules
-    # --limit K` hint render() prints whenever the plan carries rules_version_drift. Curate
-    # re-checks pages, never whole sources, so it cannot clear the marker itself.
+    # --limit K` hint render() prints whenever the plan carries rules_version_drift (-1: the count
+    # failed, the hint keeps a placeholder K). Curate re-checks pages, never whole sources, so it
+    # cannot clear the marker itself.
     stale_sources: int = 0
     # What this run's cluster sessions cost, summed over every session that reported usage —
     # NOOP and failed clusters included (their sessions were paid for too). None when no
@@ -245,8 +246,15 @@ def _stale_hint(count: int) -> str:
     """The note a ``rules_version_drift`` plan carries: curate re-checks PAGES, so it never
     re-stamps a source and the ``(stale)`` marker (and the --stale-rules plan) outlives every
     curate run until the source lifecycle re-verifies the source. ``count`` 0 (a drifted source
-    refresh cannot take: gone from disk, or never model-imported) leaves only the forced ingest."""
-    if count < 1:
+    refresh cannot take: gone from disk, or never model-imported) leaves only the forced ingest;
+    a negative ``count`` (the count itself failed) keeps the refresh command with a placeholder K."""
+    if count < 0:
+        return (
+            "Curate re-checks pages, not sources: the drifted sources stay (stale) - and their pages\n"
+            "stay in the --stale-rules plan - until `citadel refresh --stale-rules --limit K`\n"
+            "(K = the (stale) count `citadel status` shows) or `citadel ingest --force <paths>` re-verifies them."
+        )
+    if count == 0:
         return (
             "Curate re-checks pages, not sources: the drifted sources stay (stale) - and their pages\n"
             "stay in the --stale-rules plan - until `citadel ingest --force <paths>` re-verifies them."
@@ -965,7 +973,12 @@ def curate(
 
     report = CurateReport(plan=plan)
     if any(REASON_RULES_DRIFT in item.reasons for item in plan.items):
-        report.stale_sources = refresh.stale_count()
+        # Advisory only: one unreachable source (a dead share — Path.exists can raise) must never
+        # abort a curate run over a hint; -1 keeps the hint with a placeholder K.
+        try:
+            report.stale_sources = refresh.stale_count()
+        except OSError:
+            report.stale_sources = -1
     report.skipped = list(plan.skipped)
     report.unmatched = unmatched
     if dry_run:

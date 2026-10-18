@@ -122,6 +122,24 @@ def test_curate_report_names_refresh_stale_rules_whenever_drift_is_planned(tmp_c
     assert "citadel refresh --stale-rules" not in curate.curate(dry_run=True).render()
 
 
+def test_curate_survives_a_failing_stale_count(tmp_citadel, seed_page, monkeypatch):
+    """The K lookup stats every tracked source; an unreachable one (Path.exists raising on a dead
+    share) must not abort the run over an advisory hint — it keeps a placeholder K."""
+    from citadel import curate, refresh
+
+    (tmp_citadel.raw / "a.md").write_text("body\n", encoding="utf-8")
+    _track("raw/a.md", manifest.file_sha256(tmp_citadel.raw / "a.md"), "0000oldrules")
+    _seed_cited(seed_page, "concepts/a.md", "raw/a.md", title="A")
+
+    def boom():
+        raise PermissionError("share unreachable")
+
+    monkeypatch.setattr(refresh, "stale_count", boom)
+    report = curate.curate(dry_run=True, stale_rules=True)
+    assert report.stale_sources == -1
+    assert "`citadel refresh --stale-rules --limit K`" in report.render()
+
+
 def test_curate_stale_hint_never_suggests_a_zero_refresh_budget():
     """A drifted source refresh cannot take (gone, never model-imported) makes K 0; `--limit 0`
     is refused by refresh, so the hint falls back to the forced ingest alone."""
