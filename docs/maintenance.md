@@ -205,6 +205,15 @@ top of the old facts); a tracked git repo gets the first-time `repo` brief inste
 reconcile; and the flag requires explicit paths exactly like `--force` (`--force` and `--retry`
 refuse to combine with it).
 
+
+## Folder notes
+
+A `README`, `ABOUT`, `INDEX`, `_index` or `00-…` file in a raw folder is treated as a **folder
+note**: it is ingested before the files beside it (under `--jobs N` too — notes run as a first
+phase), and every later session is told to look for the folder's note in the wiki and apply its
+caveats ("these are unconfirmed reconstructions"). A note you add or correct LATER reconciles only
+its own page — its siblings are unchanged and never re-read automatically. To re-attribute them,
+re-import the folder: `citadel ingest --reingest raw/<folder>/`.
 ## Rules
 
 The wiki is built by rules files the ingest agent reads at run time — `schema.md` (the format

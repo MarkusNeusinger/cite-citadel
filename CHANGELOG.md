@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Folder notes are folded in before the files beside them (#159).** A `README`/`INDEX`/`ABOUT`/
+  `_index`/`00-…` file saying "these year files are unconfirmed reconstructions" was ingested AFTER
+  its siblings (digit names sort first), so every sibling was attributed as a first-hand account.
+  Pending sources are now ordered folder by folder (the same on POSIX and Windows), a folder note
+  first; under `--jobs N` the notes run as a first phase before any sibling session starts; a failed
+  note names `citadel ingest --reingest` for its siblings.
+
 - **A changed, already-ingested twin is never dropped as a duplicate (#169).** Same-basename dedup
   decided by format rank alone, so an edited, tracked `report.docx` with a freshly exported
   `report.pdf` beside it was skipped as a duplicate of the PDF — its old facts stayed in the wiki

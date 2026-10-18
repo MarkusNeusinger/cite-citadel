@@ -681,3 +681,69 @@ def test_explicit_paths_expand_a_leading_tilde(tmp_citadel, wiki_under_raw, monk
 def test_explicit_path_with_an_unresolvable_home_never_raises(tmp_citadel):
     """`~nosuchuser` must degrade, not crash: Path.expanduser() raises there, os.path's does not."""
     assert ingest._candidates(["~nosuchuser-zzz/notes.md"]) == []
+
+
+# --- #159: folder notes lead their folder ------------------------------------------------------
+
+
+def test_is_folder_note_matches_exact_stems_only():
+    from citadel import ingest_scan
+
+    for name in ("README.md", "readme.txt", "INDEX.md", "About.pdf", "_index.md", "00-overview.md"):
+        assert ingest_scan._is_folder_note(name), name
+    for name in ("about-us-flyer.pdf", "index-of-invoices.xlsx", "budget.pdf", "2012.md"):
+        assert not ingest_scan._is_folder_note(name), name
+
+
+def test_pending_order_is_the_same_on_posix_and_windows():
+    from pathlib import PurePosixPath, PureWindowsPath
+
+    from citadel import ingest_scan
+
+    names = [
+        "raw/f/2012.md",
+        "raw/f/README.md",
+        "raw/f/_index.md",
+        "raw/f/00-overview.md",
+        "raw/f/budget.pdf",
+        "raw/f/summary.pdf",
+        "raw/f/sub/a.md",
+        "raw/B/x.md",
+        "raw/a/y.md",
+    ]
+    posix = [
+        str(p).replace("\\", "/") for p in sorted((PurePosixPath(n) for n in names), key=ingest_scan._pending_order)
+    ]
+    windows = [
+        str(p).replace("\\", "/") for p in sorted((PureWindowsPath(n) for n in names), key=ingest_scan._pending_order)
+    ]
+    assert posix == windows
+    f_files = [n for n in posix if n.startswith("raw/f/")]
+    assert set(f_files[:3]) == {"raw/f/00-overview.md", "raw/f/README.md", "raw/f/_index.md"}
+    assert posix.index("raw/f/README.md") < posix.index("raw/f/sub/a.md")
+    assert posix.index("raw/a/y.md") < posix.index("raw/B/x.md")
+
+
+def test_partition_returns_pending_in_folder_note_order(tmp_citadel, fake_agent, cite_page):
+    from citadel import ingest
+
+    folder = tmp_citadel.raw / "f"
+    folder.mkdir()
+    for name in ("2012.md", "2013.md", "README.md"):
+        (folder / name).write_text(f"{name} content\n", encoding="utf-8")
+    agent = fake_agent(
+        side_effect=lambda rel_key, **kw: cite_page(f"misc/{rel_key.split('/')[-1]}", rel_key, "A fact.")
+    )
+    ingest.ingest()
+    assert agent.calls[0][0] == "raw/f/README.md"
+
+
+def test_an_ignored_folder_note_never_becomes_pending(tmp_citadel, fake_agent, cite_page, monkeypatch):
+    from citadel import config, ingest
+
+    monkeypatch.setattr(config, "IGNORE_PATTERNS", [*config.IGNORE_PATTERNS, "INDEX.md"])
+    (tmp_citadel.raw / "INDEX.md").write_text("index\n", encoding="utf-8")
+    (tmp_citadel.raw / "a.md").write_text("a\n", encoding="utf-8")
+    agent = fake_agent(side_effect=lambda rel_key, **kw: cite_page("misc/a.md", rel_key, "A fact."))
+    ingest.ingest()
+    assert [c[0] for c in agent.calls] == ["raw/a.md"]

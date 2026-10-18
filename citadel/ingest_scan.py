@@ -37,6 +37,12 @@ _TEXT_BYTES = bytes({7, 8, 9, 10, 11, 12, 13, 27} | set(range(0x20, 0x7F)) | set
 # normal text sniff instead. Gated by config.IMAGE_SUPPORT.
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff"}
 
+# Folder notes: a file that says what the files BESIDE it are (drafts, reconstructions, copies).
+# Matched on the EXACT case-folded stem before the first dot (README.md, readme.txt, About.pdf,
+# _index.md) or a `00-` name prefix — never a prefix match, because a note also runs AHEAD of its
+# siblings under --jobs N, so a false positive (about-us-flyer.pdf) is no longer free.
+_FOLDER_NOTE_STEMS = frozenset({"readme", "about", "index", "_index"})
+
 
 def _same_path(a: Path, b: Path) -> bool:
     """True if ``a`` and ``b`` resolve to the same location (never raises)."""
@@ -172,6 +178,25 @@ def exclusion_reason(path: Path | str) -> str | None:
         except OSError:
             pass
     return None
+
+
+def _is_folder_note(name: str) -> bool:
+    """True for a folder note's file name (see :data:`_FOLDER_NOTE_STEMS`)."""
+    lowered = name.casefold()
+    return lowered.split(".", 1)[0] in _FOLDER_NOTE_STEMS or lowered.startswith("00-")
+
+
+def _pending_order(p: PurePath) -> tuple:
+    """The pending-source sort key: case-folded folder first (the SAME order on POSIX and Windows,
+    and every file of a folder before its sub-folders' files), a folder note leading its folder, then
+    the case-folded name, with the exact spellings as the tie-break (POSIX case twins)."""
+    return (
+        tuple(part.casefold() for part in p.parent.parts),
+        0 if _is_folder_note(p.name) else 1,
+        p.name.casefold(),
+        p.parent.parts,
+        p.name,
+    )
 
 
 def _is_untrackable_key(key: str) -> bool:
@@ -880,7 +905,7 @@ def _partition_sources(
                 images.discard(p)
                 audio.discard(p)
     return _Scan(
-        pending=sorted(pending),
+        pending=sorted(pending, key=_pending_order),
         skipped=skipped,
         moved=moved,
         unreadable=unreadable,

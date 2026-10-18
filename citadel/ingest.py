@@ -65,6 +65,7 @@ from .ingest_scan import (
     _discover_repos,
     _discover_walk,
     _human_bytes,
+    _is_folder_note,
     _is_untrackable_key,
     _partition_repos,
     _partition_sources,
@@ -76,6 +77,7 @@ from .ingest_scan import _is_included_name as _is_included_name
 from .ingest_scan import _is_ingestible as _is_ingestible
 from .ingest_scan import _is_repo_source as _is_repo_source
 from .ingest_scan import _is_wiki_internal as _is_wiki_internal
+from .ingest_scan import _pending_order as _pending_order
 from .ingest_sessions import _checkpoint_delta as _checkpoint_delta
 from .ingest_sessions import (
     _office_write_temp,
@@ -393,6 +395,10 @@ class _SourceJob:
     warn_no_pages: bool = False
     expects_changes: bool = False
     failure_hint: str = ""
+    # A folder note (README/INDEX/ABOUT/_index/00-…, ingest_scan._is_folder_note): under --jobs N the
+    # notes of a file group run as a FIRST phase, so every sibling session clones a wiki that already
+    # holds what the note says about the files beside it.
+    folder_note: bool = False
 
 
 @dataclass
@@ -706,7 +712,29 @@ def _run_source_jobs(
     doing its work; the un-attempted sources stay pending for the next run."""
     if workers <= 1 or len(jobs) <= 1:
         return _run_serially(list(enumerate(jobs, 1)), len(jobs), emit, report, failures_dict, model, stall)
+    notes = [job for job in jobs if job.folder_note]
+    rest = [job for job in jobs if not job.folder_note]
+    if notes and rest:
+        # A barrier, not best effort: every folder note is promoted (or has failed) — its raced
+        # re-runs included — before any sibling clones the live wiki, because a sibling folded in
+        # without its folder's caveat is silent misattribution check/lint never flag. The group
+        # stays ONE group for progress: notes are 1..k, the rest k+1..n, total n.
+        total = len(jobs)
+        interrupt = _run_phase(notes, 1, total, emit, report, failures_dict, model, workers, stall)
+        if interrupt is not None or (stall is not None and stall.tripped):
+            return interrupt
+        return _run_phase(rest, len(notes) + 1, total, emit, report, failures_dict, model, workers, stall)
     return _run_source_jobs_parallel(jobs, emit, report, failures_dict, model, workers, stall)
+
+
+def _run_phase(
+    jobs: list[_SourceJob], start: int, total: int, emit, report, failures_dict, model, workers: int, stall
+) -> BaseException | None:
+    """One phase of a two-phase group: the parallel driver, or the serial one for a single job,
+    numbered ``start..start+len-1`` of ``total``."""
+    if len(jobs) <= 1:
+        return _run_serially(list(enumerate(jobs, start)), total, emit, report, failures_dict, model, stall)
+    return _run_source_jobs_parallel(jobs, emit, report, failures_dict, model, workers, stall, start=start, total=total)
 
 
 def _run_serially(
@@ -728,7 +756,16 @@ def _run_serially(
 
 
 def _run_source_jobs_parallel(
-    jobs: list[_SourceJob], emit, report: IngestReport, failures_dict, model, workers: int, stall=None
+    jobs: list[_SourceJob],
+    emit,
+    report: IngestReport,
+    failures_dict,
+    model,
+    workers: int,
+    stall=None,
+    *,
+    start: int = 1,
+    total: int | None = None,
 ) -> BaseException | None:
     """Run one group's sources through a bounded thread pool, then re-run serially whichever of
     them raced another source's promote.
@@ -749,8 +786,11 @@ def _run_source_jobs_parallel(
     cancelled and their workers told to stop before starting anything new, in-flight ones roll
     themselves back — and it is returned for the caller's capture-finalize-reraise. Sources that had
     already finished cleanly are still recorded, so an interrupt never throws away work the run
-    already paid for and promoted."""
-    total = len(jobs)
+    already paid for and promoted.
+
+    ``start``/``total`` number the jobs ``start..`` of ``total`` (default: 1.. of this list) — a
+    two-phase group's second phase continues the first one's numbering."""
+    total = total if total is not None else len(jobs)
     abort = threading.Event()
     interrupt: BaseException | None = None
     conflicted: list[tuple[int, _SourceJob]] = []
@@ -775,8 +815,8 @@ def _run_source_jobs_parallel(
             stall.note(job, run.outcome)
         return run
 
-    with futures.ThreadPoolExecutor(max_workers=min(workers, total), thread_name_prefix="citadel-ingest") as pool:
-        submitted = [pool.submit(attempt, index, job) for index, job in enumerate(jobs, 1)]
+    with futures.ThreadPoolExecutor(max_workers=min(workers, len(jobs)), thread_name_prefix="citadel-ingest") as pool:
+        submitted = [pool.submit(attempt, index, job) for index, job in enumerate(jobs, start)]
         try:
             for future in futures.as_completed(submitted):
                 if future.cancelled():
@@ -1525,6 +1565,13 @@ def _ingest_run(
             # session means the agent did not work, not that there was nothing to do.
             warn_no_pages=rel_key not in changed_keys,
             expects_changes=rel_key not in changed_keys,
+            folder_note=_is_folder_note(src.name),
+            failure_hint=(
+                f"Folder note {rel_key} failed, so files beside it may have been folded in without what it "
+                "says. Once it ingests, re-read them with `citadel ingest --reingest <paths>`."
+                if _is_folder_note(src.name)
+                else ""
+            ),
         )
 
     # Repo sources: each git repository under raw/ is folded in by ONE session reading a

@@ -325,7 +325,11 @@ addressing them through `ingest`. The flow per source:
   Under it the promote is **base-aware** — it prunes only what its own clone had and its staging
   lacks (else it would delete a concurrent source's new pages), and it REFUSES, before writing a
   byte, if a path it would touch has moved since the clone; that source is then re-run SERIALLY at
-  the end of its group, where it merges into the winner's page (reported as `raced`). What
+  the end of its group, where it merges into the winner's page (reported as `raced`). Folder notes
+  (`ingest_scan._is_folder_note`: README/ABOUT/INDEX/_index stems or a `00-` name) lead their
+  folder in the pending order (`_pending_order`, case-folded so POSIX and Windows agree) and, under
+  `--jobs N`, run as a FIRST phase of their group — a barrier, so every sibling clones a wiki that
+  already holds the note; a failed note carries a `--reingest` failure hint. What
   parallelism costs is cross-linking, not safety — concurrent sessions cannot see each other's new
   pages — which is why the default is 1. The redirect this rides on is context-local
   (`config.wiki_redirect` → a ContextVar behind `config.wiki_dir()`; children get their wiki via
