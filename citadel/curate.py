@@ -66,6 +66,7 @@ from . import (
     manifest,
     okf,
     pagecache,
+    readdeny,
     refresh,
     runlock,
     store,
@@ -991,6 +992,7 @@ def curate(
     with runlock.hold("curate"):
         ingest._sweep_stale_staging(config.wiki_dir())
         llm.reset_hermetic_refusals()  # the --bare verdict is per run (a serve process runs many)
+        readdeny.install_from_discovery()  # a cluster re-reads cited sources: excluded ones stay denied
         pages_by_path = {p.rel_path: p for p in pages}
         # One backlink-graph pass for the whole run; every cluster's findings slice it.
         inbound = store.inbound_map(pages)

@@ -53,7 +53,7 @@ lives once in the README:
 
 | Variable | Default | What it does |
 |----------|---------|--------------|
-| `CITADEL_LLM_CLI` | `claude` | Which CLI ingest shells out to: `claude` \| `copilot` \| `agy` (Google's Antigravity CLI, successor to the retired `gemini` CLI — setting `gemini` now fails with a migration hint). Run agentically (claude with acceptEdits + allowlist, copilot `--allow-all-tools`, agy `--dangerously-skip-permissions`); the CLI must be installed and logged in. If your workspace is a git checkout, run ingest on a clean working tree so any stray edit shows up (git is optional otherwise). |
+| `CITADEL_LLM_CLI` | `claude` | Which CLI ingest shells out to: `claude` \| `copilot` \| `agy` (Google's Antigravity CLI, successor to the retired `gemini` CLI — setting `gemini` now fails with a migration hint). Run agentically (claude with acceptEdits + a narrowed allowlist — no bare `Bash`, only the `citadel check` self-check and page `rm`/`rmdir`/`mv`/`mkdir`, `--permission-prompts none` and per-path Read denies for [excluded files](#excluded-files-and-what-enforces-them) where the build supports them; copilot `--allow-all-tools` with a `--deny-tool` list of interpreters and file readers; agy `--dangerously-skip-permissions`); the CLI must be installed and logged in. If your workspace is a git checkout, run ingest on a clean working tree so any stray edit shows up (git is optional otherwise). |
 | `CITADEL_INGEST_MODEL` | *(unset)* | Model for **every** backend — passed through as `--model` to `claude`, `copilot` and `agy` alike. claude takes an alias (`sonnet`/`opus`/`haiku`) or a full id, copilot a model name (or `auto`), agy an id from `agy models`. Unset means "run the CLI's own default". This knob is only the *request*: the manifest, `citadel status` and the viewer record the model the backend actually **reported** for the session, falling back to this label only when the backend named none. |
 | `CITADEL_CURATE_MODEL` | (reuses ingest model) | Cheaper/faster model for `citadel curate` sessions, passed as `--model` on any backend. |
 | `CLAUDE_CODE_PATH` / `COPILOT_CLI_PATH` / `AGY_CLI_PATH` | (PATH lookup) | Override the CLI binary path when it isn't on `PATH`. |
@@ -127,6 +127,29 @@ prerequisite. **Set it to `0` if every session fails on authentication while the
 | `CITADEL_LLM_LOG_DIR` | (off) | Write one transcript per agent session (prompt + full CLI stdout/stderr + exit code + duration) — a chunked source writes one per pass. Relative paths resolve under the workspace root. **Local-only — keep out of VCS** (transcripts can contain source content). CLI flag: `--log-dir`. File names: see [transcript names](#transcript-names). |
 | `CITADEL_LLM_VERBOSE` | `0` | `1`/`true` streams each session's output live. CLI flag: `-v`. |
 
+### Excluded files and what enforces them
+
+Files kept out by your own `CITADEL_IGNORE_PATTERNS` entries, by `CITADEL_INCLUDE_PATTERNS` or by
+`CITADEL_MAX_SOURCE_BYTES` are never ingested. What keeps an agent session from opening one on its
+own (a sidecar beside its source, a related-source lookup) depends on the backend:
+
+| Backend | Enforcement |
+|---------|-------------|
+| every backend | The run instruction lists the exclusions ("never open, list, search or cite") — the floor. A `[^sN]` citation to an untracked excluded file fails `citadel check` (and so the source), is a structural `citadel lint` issue, and is planned by curate as `bad_source`. |
+| claude (a build advertising `--settings` and `--permission-prompts`) | **Enforced**: a per-session `--settings` file of per-path `Read(...)` denies built from the run's own discovery walk, plus a narrowed shell (no bare `Bash`; `grep`/`rg`/`find`/`cp` disallowed; anything else denied, not prompted). Denied tool calls are listed as a run-report warning. |
+| copilot | **Shell-restricted, reads instruction-only**: `--deny-tool` stops interpreters and file readers, but `--allow-all-paths` lets its file tools read anything. |
+| agy | **Instruction-only**: it has no permission flags. |
+
+`citadel doctor` prints the line for your backend. Known limits: shell rules are text-matched, not a
+security boundary (`sh -c`, absolute binary paths); user/project `permissions.allow` rules claude
+loads can widen the allowlist (denies still win); `Glob` may still reveal a denied file's name;
+past 2000 deny rules per session the rest are reported as unenforced. **The one backend-independent
+guarantee is to keep sensitive files outside every raw root and outside the workspace.**
+
+A file excluded AFTER it was ingested keeps its facts: its manifest key is dropped at the next run
+(also under a newly ignored folder), after which its citations fail lint and curate plans an
+explicit, budgeted `bad_source` repair — never an automatic mass cleanup a pattern typo could trigger.
+
 ### Transcript names
 
 Each transcript is named `<stamp>.<pid>.<seq>.<logkind>[.pNofM](. or ...)<folders+file>.log`. The
@@ -174,7 +197,7 @@ the transcript. The log kind says how the session read its source:
 | `CITADEL_RESUME` | `1` | Resume checkpoints for those chunked sources: each completed segment banks the delta it produced (`.citadel_resume/` next to the wiki), so a run that dies at segment N continues there next time instead of re-buying segments 1…N-1. Promotion stays all-or-nothing — nothing partial ever reaches the wiki — and every guard (changed source/model/rules/knobs, a page changed underneath, a replay that no longer validates) falls back to a full restart. `0` turns it off; only chunked sources ever write one. |
 | `CITADEL_DEDUP_BY_BASENAME` | `1` | When several same-folder files share a basename and are all export formats (e.g. `report.pptx` + `report.pdf`), ingest one (PDF → modern Office → legacy) and record the rest as skipped duplicates. |
 | `CITADEL_INCLUDE_PATTERNS` | *(unset — every file)* | The discovery **allowlist**: when set, a raw file is read only if its **name** matches one of these case-insensitive globs — "in `raw/`, read only `.pdf` and `.txt`". Everything else is skipped exactly like an ignore match (never hashed, never ingested, never recorded in the manifest or the failures catalog) but stays **visible**: the run report's *Not included* section, `citadel status`' *Not included* bucket, and a `citadel doctor` line that WARNs when the allowlist admits nothing. Write extensions (`.pdf`), globs (`*.pdf`, `report-*.md`), or exact names (`notes.md`); a bare `pdf` is read as both `*.pdf` and the literal name. Matching is per **file name**, so a path-shaped entry (`reports/*.pdf`) can never match — doctor's config check says so. Directories and git-repo sources are never matched (a repo is folded in as one digest, not as its files). Two escapes stay open: an explicitly named path (`citadel ingest one-off.docx`) is ingested regardless, and an already-ingested source that falls outside a newly narrowed allowlist keeps its pages — it is never read as deleted, it just stops being re-checked. |
-| `CITADEL_IGNORE_PATTERNS` | (built-in OS/junk globs) | The **blocklist**, applied first — deny beats allow, so whitelisting `*.db` does not resurrect `Thumbs.db`. Case-insensitive globs skipped at discovery (`Thumbs.db`, `.DS_Store`, `~$` locks, editor swap/backup files). A comma-separated list **replaces** the defaults; a `+` marker **extends** them (see [Writing a list setting](#writing-a-list-setting-in-env)). |
+| `CITADEL_IGNORE_PATTERNS` | (built-in OS/junk globs) | The **blocklist**, applied first — deny beats allow, so whitelisting `*.db` does not resurrect `Thumbs.db`. Case-insensitive globs skipped at discovery (`Thumbs.db`, `.DS_Store`, `~$` locks, editor swap/backup files); a glob matching a **folder** keeps its whole subtree out. A comma-separated list **replaces** the defaults; a `+` marker **extends** them (see [Writing a list setting](#writing-a-list-setting-in-env)). Also usable to keep private files (`+private,*.payslip.pdf`) out on purpose — see [what enforces that](#excluded-files-and-what-enforces-them). |
 | `CITADEL_MAX_SOURCE_BYTES` | `0` (no limit) | Discovery **size** ceiling, in bytes — the complement to the name-matching patterns above. A raw file over it is skipped from the walk's own stat: never opened, never hashed, never ingested, and never recorded in the manifest or the failures catalog. It is *reported*, though — the run report's *Oversized* section and `citadel status`' *Oversized* bucket — so nothing is dropped silently. Set it when a raw root also holds machine data (a folder of multi-GB `.tdms` sensor dumps is useless to a wiki but expensive to scan: every untracked candidate is stream-hashed in full before anything can classify it as unreadable binary). Off by default, because silently skipping a large-but-legitimate source (a 2 GB lecture recording, a scanned archive PDF) would be worse than a slow scan. An explicitly named path (`citadel ingest big.tdms`) bypasses it — explicit always wins — and an already-ingested source that later crosses the ceiling stays in the wiki, it just stops being re-checked. |
 
 ## Audio/video sources (whisper)

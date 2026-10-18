@@ -288,7 +288,7 @@ def _adopt_checkpoint(
     have its inherited breakage validated once, waved through, and never surfaced. The caller merges
     it only when the adoption SUCCEEDS — a refused replay is discarded whole, and its findings with
     it."""
-    with _redirect_wiki(staging):
+    with _redirect_wiki(staging), config.session_source(rel_key):
         # Baseline the cross-links BEFORE the replay: staging is still a byte copy of live here, so
         # this is the set of breakages the wiki already lives with (which resume must not be blamed
         # for, and must not repair).
@@ -511,7 +511,10 @@ def _run_agent_sessions(
                 carried = dict(resume_ctx.checkpoint.usage)
                 carried_issues.extend(replay_issues)
                 resumed_note = f"{rel_key} (segments 1-{start_at} of {len(session_fns)} restored from checkpoint)"
-        with _redirect_wiki(staging):
+        # The session-source mark exempts THIS source from the excluded-citation guard (an
+        # explicitly named excluded file wins) — in this process's validation and, via
+        # config.child_env, in the agent's own `citadel check`.
+        with _redirect_wiki(staging), config.session_source(rel_key):
             prev_pages = store.load()
             prev = _hash_pages(prev_pages)
             # The wiki as this source FOUND it, kept across every segment (``prev_pages`` is

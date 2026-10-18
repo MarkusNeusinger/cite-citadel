@@ -17,7 +17,7 @@ import fnmatch
 import os
 import stat
 from dataclasses import dataclass, field
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath, PurePosixPath
 
 from . import config, extract, grammar, manifest, repo, transcribe
 
@@ -128,12 +128,62 @@ def _explicit_path(raw: str | os.PathLike) -> Path:
     return Path(os.path.expanduser(raw))
 
 
+def _ignored_component(path: Path) -> bool:
+    """True when a path component BELOW its raw root matches an ignore glob — the basename or any
+    parent folder (discovery never descends into an ignored folder, so everything under one is
+    excluded). A path under no configured root is judged by its basename alone."""
+    root = config.root_covering(path)
+    if root is None:
+        return _is_ignored_name(PurePath(path).name)
+    try:
+        parts = PurePath(path).relative_to(PurePath(root)).parts
+    except ValueError:
+        parts = (PurePath(path).name,)
+    return any(_is_ignored_name(part) for part in parts)
+
+
+def exclusion_reason(path: Path | str) -> str | None:
+    """Why discovery would keep ``path`` out of the corpus, or None — the ONE predicate scan and
+    check share, so a citation ``citadel check`` accepts is one discovery could have admitted.
+    Checked below the covering raw root: a hidden component (``hidden``), an ignore-matched
+    component (``ignored``), a basename the include allowlist does not admit (``not included``),
+    or a file over the size ceiling (``oversized``, best-effort stat). A path under no configured
+    root is never excluded — there is no discovery rule to apply to it."""
+    p = Path(path)
+    root = config.root_covering(p)
+    if root is None:
+        return None
+    try:
+        parts = PurePath(p).relative_to(PurePath(root)).parts
+    except ValueError:
+        return None
+    if not parts:
+        return None
+    if any(part.startswith(".") for part in parts):
+        return "hidden"
+    if any(_is_ignored_name(part) for part in parts):
+        return "ignored"
+    if not _is_included_name(parts[-1]):
+        return "not included"
+    if config.MAX_SOURCE_BYTES > 0:
+        try:
+            if _exceeds_size_cap(p.stat().st_size):
+                return "oversized"
+        except OSError:
+            pass
+    return None
+
+
 def _is_untrackable_key(key: str) -> bool:
     """True for a tracked key that must not be tracked AT ALL any more — the run-start migration
-    sweep's predicate: an OS/junk basename (an ignore pattern added after it was recorded) or a
-    path inside the wiki itself (a page self-ingested before :func:`_is_wiki_internal` guarded
-    discovery). Both keep existing on disk, so deletion detection would never clean them up."""
-    return _is_ignored_name(PurePosixPath(key).name) or _is_wiki_internal(config.source_path_for_key(key))
+    sweep's predicate: an OS/junk basename or a file under an ignored FOLDER (an ignore pattern
+    added after it was recorded) or a path inside the wiki itself (a page self-ingested before
+    :func:`_is_wiki_internal` guarded discovery). Both keep existing on disk, so deletion detection
+    would never clean them up. Dropping the key leaves the pages that cite it: ``citadel check`` /
+    lint then flag the citation as excluded and curate's ``bad_source`` plans an explicit repair —
+    a pattern typo must never trigger a paid, destructive mass cleanup."""
+    path = config.source_path_for_key(key)
+    return _ignored_component(path) or _is_wiki_internal(path)
 
 
 def _exceeds_size_cap(size: int) -> bool:

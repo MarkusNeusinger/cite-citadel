@@ -479,7 +479,8 @@ def knob_stamp() -> str:
 
     Each of these changes what the agent WRITES without touching the rules tree: the wiki's target
     language, persona/style capture, whether a PDF's figures are read, whether an Office source's
-    embedded images came along, how many OTHER sources a session may consult. Flipping one between
+    embedded images came along, how many OTHER sources a session may consult, which files the run
+    instruction names as excluded from the corpus. Flipping one between
     runs and then merging the new segments into the old ones would produce a page cluster no single
     run could — half English, half German — so a flip invalidates the checkpoint like any other
     identity change.
@@ -497,6 +498,10 @@ def knob_stamp() -> str:
             str(int(bool(config.AUDIO_SUPPORT))),
             config.INGEST_GUIDANCE,
             str(config.RELATED_SOURCES),
+            # The prompt's exclusion bullet (llm._exclusion_bullet) is built from these three.
+            ",".join(config.user_ignore_patterns()),
+            ",".join(config.INCLUDE_PATTERNS),
+            str(config.MAX_SOURCE_BYTES),
         ]
     )
 

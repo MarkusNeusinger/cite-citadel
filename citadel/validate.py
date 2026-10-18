@@ -45,13 +45,56 @@ class Issue:
     detail: str
 
 
+_TRACKED_CACHE: dict[str, tuple[tuple[int, int], frozenset[str]]] = {}
+
+
+def _tracked_keys() -> frozenset[str]:
+    """The manifest's source keys, cached per manifest file by (mtime_ns, size) — the excluded-
+    citation guard runs per citation, per page, and must not re-parse the manifest each time."""
+    from . import manifest  # call-time import: manifest is heavier and not needed by every caller
+
+    path = config.manifest_path()
+    try:
+        st = path.stat()
+        stamp = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return frozenset()
+    cached = _TRACKED_CACHE.get(str(path))
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+    keys = frozenset(manifest.load())
+    _TRACKED_CACHE[str(path)] = (stamp, keys)
+    return keys
+
+
+def excluded_citation(resolved: str) -> str | None:
+    """The reason a cited raw file is OUT of the corpus (hidden / ignored / not included /
+    oversized — discovery's own predicate, :func:`ingest_scan.exclusion_reason`), or None when the
+    citation is legitimate: not excluded, TRACKED in the manifest (it was ingested — e.g. an
+    allowlist narrowed after the fact keeps its pages, and an explicitly named path wins), or the
+    source the running session was started for (:func:`config.session_source_key`)."""
+    from . import ingest_scan  # call-time import: ingest_scan imports manifest/extract/repo
+
+    reason = ingest_scan.exclusion_reason(resolved)
+    if reason is None:
+        return None
+    key = config.rel_or_abs_posix(resolved)
+    if key == config.session_source_key() or key in _tracked_keys():
+        return None
+    return reason
+
+
 def source_issues(rel_path: str, body: str) -> list[str]:
     """Structural guard against fabricated/unverifiable provenance. Returns a detail string
     for each problem found:
 
       1. a raw-fact definition (``[^sN]``, not ``[^llmN]``) whose linked file does not exist;
       2. a raw-fact definition with no resolvable ``[..](path)`` link (bare/malformed line);
-      3. a footnote marker used on a fact but never defined in ``## Sources``.
+      3. a footnote marker used on a fact but never defined in ``## Sources``;
+      4. a raw-fact definition citing a file discovery EXCLUDES from the corpus (an ignore glob on
+         it or a parent folder, a hidden component, outside the include allowlist, over the size
+         cap) that is neither tracked nor the running session's own source — the post-hoc net
+         for an agent that read an excluded file (:func:`excluded_citation`).
 
     Model-supplied (``[^llmN]``) facts are exempt — they cite "LLM", not a raw file. Purely
     STRUCTURAL: confirms a citation points at a real file and is defined; does NOT verify the
@@ -76,6 +119,10 @@ def source_issues(rel_path: str, body: str) -> list[str]:
         resolved = grammar.link_abs(rel_path, target)
         if not os.path.exists(resolved):
             bad.append(target)
+            continue
+        reason = excluded_citation(resolved)
+        if reason is not None:
+            bad.append(f"{target} (excluded from the corpus: {reason} - must not be read or cited)")
 
     # A raw-fact marker used but never defined in ## Sources is unverifiable provenance. Markers
     # are collected outside code fences and headings; def lines themselves never match USED_MARKER_RE

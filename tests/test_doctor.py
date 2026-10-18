@@ -832,6 +832,7 @@ _CHECK_INVENTORY = [
     "rules",
     "config",
     "agent CLI",
+    "exclusions",
     "ingest model",
     "raw roots",
     "include patterns",

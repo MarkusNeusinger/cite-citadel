@@ -913,14 +913,40 @@ def wiki_redirect(target: Path | str):
         _WIKI_OVERRIDE.reset(token)
 
 
+# The source key the running agent session was started for — context-local like the wiki
+# redirect. The excluded-citation guard (validate.source_issues) exempts it: an explicitly named
+# source wins over the exclusion globs, so citing it is legitimate even before it is tracked.
+_SESSION_SOURCE: contextvars.ContextVar["str | None"] = contextvars.ContextVar("citadel_session_source", default=None)
+
+
+@contextlib.contextmanager
+def session_source(key: str):
+    """Mark ``key`` as THIS context's session source for the block (restored on every exit)."""
+    token = _SESSION_SOURCE.set(key)
+    try:
+        yield
+    finally:
+        _SESSION_SOURCE.reset(token)
+
+
+def session_source_key() -> str | None:
+    """The active session source: the context's own, else ``CITADEL_SESSION_SOURCE`` from the
+    environment (how the agent's `citadel check` child learns it), else None."""
+    return _SESSION_SOURCE.get() or (os.environ.get("CITADEL_SESSION_SOURCE") or None)
+
+
 def child_env() -> dict[str, str]:
     """The environment to hand a CHILD process that must see THIS context's wiki: ``os.environ``
-    plus an explicit ``CITADEL_WIKI_DIR``. The agentic CLI (and the ``citadel check`` it shells
-    out to) resolves its own config at import, so the redirect has to reach it through the
-    environment — passed per spawn rather than assigned into ``os.environ``, which is
-    process-global and would make two concurrent sessions overwrite each other's wiki."""
+    plus an explicit ``CITADEL_WIKI_DIR`` (and ``CITADEL_SESSION_SOURCE`` inside a session). The
+    agentic CLI (and the ``citadel check`` it shells out to) resolves its own config at import, so
+    the redirect has to reach it through the environment — passed per spawn rather than assigned
+    into ``os.environ``, which is process-global and would make two concurrent sessions overwrite
+    each other's wiki."""
     env = dict(os.environ)
     env["CITADEL_WIKI_DIR"] = str(wiki_dir())
+    source = _SESSION_SOURCE.get()
+    if source:
+        env["CITADEL_SESSION_SOURCE"] = source
     return env
 
 
@@ -1519,6 +1545,19 @@ def _resolve_include_patterns() -> list[str]:
 # Read at call time by ingest's discovery walk (tests monkeypatch this list directly). Empty =
 # no allowlist = every file is a candidate.
 INCLUDE_PATTERNS: list[str] = _resolve_include_patterns()
+
+
+def user_ignore_patterns() -> list[str]:
+    """The ignore globs the USER configured — :data:`IGNORE_PATTERNS` minus the built-in OS/junk
+    defaults (``Thumbs.db``, ``~$*``, …). Those are the deliberate exclusions the agent must be
+    told about; listing the 22 junk globs in every prompt would only be noise. Read at call time."""
+    return [p for p in IGNORE_PATTERNS if p not in _DEFAULT_IGNORE_PATTERNS]
+
+
+def has_user_exclusions() -> bool:
+    """True when the user configured any exclusion: an own ignore glob, an include allowlist, or
+    a size ceiling — the gate for the prompt's exclusion bullet and doctor's enforcement line."""
+    return bool(user_ignore_patterns() or INCLUDE_PATTERNS or MAX_SOURCE_BYTES > 0)
 
 
 # The model a source was ingested with is recorded in two layers, and only one of them is a fact:

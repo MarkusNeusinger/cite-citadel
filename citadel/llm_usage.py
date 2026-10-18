@@ -42,6 +42,10 @@ class SessionUsage:
       recording it as fact would claim a model that may never have served the session (an `auto`
       selection, a backend fallback, a stale ``.env``). None when the backend named nothing.
 
+    - ``denials`` — the tool calls the backend's permission layer DENIED, as ``tool: input``
+      strings (claude's envelope ``permission_denials``) — typically a Read of an excluded file the
+      per-path denies stopped. Passive like the rest: surfaced as a run warning, never a failure.
+
     Every field is None when unknown; a whole-unknown session is represented as ``None`` rather
     than an empty instance (:func:`combine_usage` returns None when no part knew anything), so
     "no data" never renders as "$0.00"."""
@@ -51,6 +55,7 @@ class SessionUsage:
     output_tokens: int | None = None
     aic: float | None = None
     model: str | None = None
+    denials: tuple[str, ...] = ()
 
     def describe(self) -> str:
         """One ASCII report fragment: ``$0.42, tokens 1,234,567 in / 45,678 out, 2.51 AIC``
@@ -82,9 +87,11 @@ def combine_usage(parts) -> SessionUsage | None:
     reported per source anyway). Returns None when no part carried anything, and skips
     non-``SessionUsage`` values entirely (the test fakes return None)."""
     cost = tokens_in = tokens_out = aic = model = None
+    denials: list[str] = []
     for part in parts:
         if not isinstance(part, SessionUsage):
             continue
+        denials.extend(part.denials)
         if part.cost_usd is not None:
             cost = (cost or 0.0) + part.cost_usd
         if part.input_tokens is not None:
@@ -95,9 +102,11 @@ def combine_usage(parts) -> SessionUsage | None:
             aic = (aic or 0.0) + part.aic
         if model is None and part.model:
             model = part.model
-    if cost is None and tokens_in is None and tokens_out is None and aic is None and model is None:
+    if cost is None and tokens_in is None and tokens_out is None and aic is None and model is None and not denials:
         return None
-    return SessionUsage(cost_usd=cost, input_tokens=tokens_in, output_tokens=tokens_out, aic=aic, model=model)
+    return SessionUsage(
+        cost_usd=cost, input_tokens=tokens_in, output_tokens=tokens_out, aic=aic, model=model, denials=tuple(denials)
+    )
 
 
 def format_cost(cost_usd: float) -> str:
@@ -334,11 +343,43 @@ def _usage_from_claude_envelope(env: dict | None) -> SessionUsage | None:
     tokens_in = count("input_tokens") + count("cache_creation_input_tokens") + count("cache_read_input_tokens")
     tokens_out = count("output_tokens")
     model = _model_from_claude_envelope(env)
-    if cost_usd is None and not tokens_in and not tokens_out and model is None:
+    denials = _claude_denials(env.get("permission_denials"))
+    if cost_usd is None and not tokens_in and not tokens_out and model is None and not denials:
         return None
     return SessionUsage(
-        cost_usd=cost_usd, input_tokens=tokens_in or None, output_tokens=tokens_out or None, model=model
+        cost_usd=cost_usd,
+        input_tokens=tokens_in or None,
+        output_tokens=tokens_out or None,
+        model=model,
+        denials=denials,
     )
+
+
+def _claude_denials(raw) -> tuple[str, ...]:
+    """claude's ``permission_denials`` (a list of ``{"tool_name", "tool_input"}``) as short
+    ``tool: input`` strings — the input's ``file_path``/``path``/``command``/``pattern`` when one is
+    there, else its JSON, clipped. Defensive: anything malformed is skipped."""
+    if not isinstance(raw, list):
+        return ()
+    out: list[str] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        tool = str(item.get("tool_name") or "?")
+        tool_input = item.get("tool_input")
+        detail = ""
+        if isinstance(tool_input, dict):
+            for key in ("file_path", "path", "command", "pattern"):
+                if tool_input.get(key):
+                    detail = str(tool_input[key])
+                    break
+            else:
+                detail = json.dumps(tool_input, ensure_ascii=True)[:200]
+        elif tool_input is not None:
+            detail = str(tool_input)
+        flat = " ".join(f"{tool}: {detail}".split())
+        out.append(flat if len(flat) <= 240 else flat[:237] + "...")
+    return tuple(out)
 
 
 def _last_result_envelope(text: str) -> dict | None:

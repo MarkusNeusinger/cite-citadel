@@ -56,7 +56,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import config
+from . import config, readdeny
 from .llm_usage import AIC_USD as AIC_USD
 
 # --- Facade re-exports (the session-usage accounting layer, split into llm_usage.py) ------------
@@ -332,6 +332,44 @@ _RULES_LINE = {
 }
 
 
+# How many configured exclusion patterns the prompt's bullet names before eliding the rest — the
+# prompt stays a couple thousand chars whatever the .env holds (the WinError 206 discipline).
+_EXCLUSIONS_SHOWN = 20
+
+
+def _exclusion_bullet() -> str | None:
+    """The run instruction's ``Excluded from this corpus`` bullet, or None when the user
+    configured no exclusion: their OWN ignore globs (never the built-in junk ones), the include
+    allowlist, the size ceiling. Discovery already keeps these files out of the source list; the
+    bullet is what keeps a session from opening one on its own (a sidecar beside its source, a
+    related-source lookup) — read uncited, excluded content would shape prose with no citation
+    ever surfacing it. Patterns are elided past :data:`_EXCLUSIONS_SHOWN`."""
+    if not config.has_user_exclusions():
+        return None
+    parts: list[str] = []
+    budget = _EXCLUSIONS_SHOWN
+
+    def shown(patterns: list[str]) -> str:
+        nonlocal budget
+        head = patterns[: max(budget, 0)]
+        budget -= len(head)
+        rest = len(patterns) - len(head)
+        return ", ".join(head) + (f", +{rest} more" if rest else "")
+
+    ignored = config.user_ignore_patterns()
+    if ignored:
+        parts.append("every file or folder whose name matches " + shown(ignored))
+    if config.INCLUDE_PATTERNS:
+        parts.append("every file whose name does NOT match " + shown(list(config.INCLUDE_PATTERNS)))
+    if config.MAX_SOURCE_BYTES > 0:
+        parts.append(f"every file larger than {config.MAX_SOURCE_BYTES} bytes")
+    return (
+        "- Excluded from this corpus (the user keeps these out on purpose): " + "; ".join(parts) + " — "
+        "under the raw directories. Never open, list, search, or cite such a file, not even beside "
+        "your source or under the related-source budget; the source named above is the only exception"
+    )
+
+
 def _build_instruction(
     rel_key: str,
     kind: str = "ingest",
@@ -478,6 +516,13 @@ def _build_instruction(
             "not explain, each cited for whatever is taken from it (see `core.md` § Related "
             "sources); the source above stays the source of record"
         )
+    # Exclusions (CITADEL_IGNORE_PATTERNS user entries / CITADEL_INCLUDE_PATTERNS /
+    # CITADEL_MAX_SOURCE_BYTES): for every kind that may open raw files on its own — source-reading
+    # kinds and curate (which re-reads cited sources); never delete (it opens nothing).
+    if spec.reads_source or kind == "curate":
+        excluded = _exclusion_bullet()
+        if excluded:
+            lines.append(excluded)
     # Operator guidance (--guidance / CITADEL_INGEST_GUIDANCE): a per-run steer from the human
     # running ingest — unlike text inside a source, it comes from the run instruction itself, so
     # following it is legitimate. Only for kinds that read a source (a delete cleanup has no source
@@ -510,8 +555,57 @@ def _build_instruction(
     return "\n".join(lines)
 
 
+# claude's tool allowlist, one rule per argv element after the variadic --allowedTools (so no
+# separator question arises). NO bare `Bash`: that auto-approves every shell command, and any Read
+# restriction is moot while `python -c "open(...)"` runs unasked. The shell is narrowed to exactly
+# what the rules permit — the `citadel check` self-check and page-file deletes/renames.
+_CLAUDE_CHECK_COMMANDS = ("citadel check", "uv run python -m citadel check", "python -m citadel check")
+_CLAUDE_FILE_COMMANDS = ("rm", "rmdir", "mv", "mkdir")
+
+
+def _claude_allowed_tools() -> list[str]:
+    rules = ["Read", "Edit", "Write", "Grep", "Glob"]
+    shells = ["Bash", "PowerShell"] if sys.platform == "win32" else ["Bash"]
+    for shell in shells:
+        for command in _CLAUDE_CHECK_COMMANDS:
+            rules += [f"{shell}({command})", f"{shell}({command} *)"]
+    rules += [f"Bash({command} *)" for command in _CLAUDE_FILE_COMMANDS]
+    return rules
+
+
+# Read-only shell commands claude would otherwise run without approval in every mode: searching
+# the raw tree through them sidesteps both the Grep/Glob tools the rules require and the per-path
+# Read denies. Nothing in the rules needs `cp`.
+_CLAUDE_DISALLOWED_TOOLS = ("Bash(grep *)", "Bash(rg *)", "Bash(find *)", "Bash(cp *)")
+
+# copilot's deny list (`--deny-tool` takes precedence over --allow-all-tools): interpreters and
+# file readers that would sidestep the run instruction's file discipline — the F12 one-liner path.
+# copilot has no per-file read deny and runs --allow-all-paths, so reads stay instruction-only.
+_COPILOT_DENIED_TOOLS = (
+    "shell(python)",
+    "shell(python3)",
+    "shell(py)",
+    "shell(node)",
+    "shell(perl)",
+    "shell(ruby)",
+    "shell(cat)",
+    "shell(head)",
+    "shell(tail)",
+    "shell(grep)",
+    "shell(rg)",
+    "shell(find)",
+    "shell(cp)",
+)
+
+
+def _advertises(cli_path: str, flag: str) -> bool:
+    """Whether the installed binary's ``--help`` names ``flag`` (exact token) — the probe that gates
+    every optional flag, so an older CLI is never handed one it would reject."""
+    return bool(re.search(re.escape(flag) + r"(?![\w-])", _cli_help_text(cli_path)))
+
+
 def _build_invocation(
-    cli: str, cli_path: str, prompt: str, extra_dirs: list[str] | None = None
+    cli: str, cli_path: str, prompt: str, extra_dirs: list[str] | None = None, settings_path: str | None = None
 ) -> tuple[list[str], str | None]:
     """Return ``(argv, stdin_text)`` for the chosen CLI in agentic, non-interactive mode.
 
@@ -526,15 +620,23 @@ def _build_invocation(
     is not (the knob has no default, so an unset workspace runs each CLI on its own default model
     rather than being handed a foreign model id).
 
-    All three CLIs run in their fully autonomous mode (each backend's headless YOLO equivalent);
-    which files the agent may touch and which tools it should use is governed by the run
-    instruction (:func:`_build_instruction`) — ``raw/`` is read-only, edits go only under the
-    wiki, and the shell is reserved for the ``citadel check`` self-check and page deletes/renames —
-    not by divergent per-CLI permission flags."""
+    The run instruction (:func:`_build_instruction`) is the common floor every backend gets —
+    ``raw/`` is read-only, edits go only under the wiki, excluded files are never opened, and the
+    shell is reserved for the ``citadel check`` self-check and page deletes/renames. On top of it,
+    each backend gets whatever ENFORCEMENT it offers, because instructions alone have failed
+    silently: claude a narrowed tool allowlist (no bare ``Bash``), read-only shell searches
+    disallowed, ``--permission-prompts none`` (anything else is denied, not left to a prompt), and
+    a per-session ``--settings`` file of per-path Read denies (``settings_path``, built by
+    :func:`_read_deny_settings`); copilot a ``--deny-tool`` list of interpreters and file readers;
+    agy has only ``--dangerously-skip-permissions`` and stays instruction-only. Everything
+    security-relevant lives here in argv — never in :data:`_HERMETIC_FLAGS`, which the auth retry
+    drops."""
     extra_dirs = extra_dirs or []
     if cli == "claude":
         # acceptEdits auto-applies file edits; the allowlist scopes tools (Read/Edit/Write to
-        # author pages, Grep/Glob to search the wiki, Bash so the agent can run `citadel check`).
+        # author pages, Grep/Glob to search the wiki, the shell ONLY for `citadel check` and the
+        # page-file rm/rmdir/mv/mkdir the rules permit — listed explicitly so deletes/renames work
+        # on every claude version instead of relying on acceptEdits auto-approving them).
         # cwd=workspace root covers everything under it; --add-dir grants access to what is not —
         # an out-of-workspace wiki/raw (network drive) and the packaged rules under site-packages —
         # since claude's file tools are otherwise scoped to cwd. No extra_dirs in the
@@ -547,8 +649,14 @@ def _build_invocation(
             "--permission-mode",
             "acceptEdits",
             "--allowedTools",
-            "Read Edit Write Grep Glob Bash",
+            *_claude_allowed_tools(),
+            "--disallowedTools",
+            *_CLAUDE_DISALLOWED_TOOLS,
         ]
+        if _advertises(cli_path, "--permission-prompts"):
+            argv += ["--permission-prompts", "none"]
+        if settings_path and _advertises(cli_path, "--settings"):
+            argv += ["--settings", settings_path]
         for d in extra_dirs:
             argv += ["--add-dir", d]
         if config.INGEST_MODEL:
@@ -573,6 +681,8 @@ def _build_invocation(
             "--output-format",
             "json",
         ]
+        for tool in _COPILOT_DENIED_TOOLS:
+            argv += ["--deny-tool", tool]
         if config.INGEST_MODEL:
             argv += ["--model", config.INGEST_MODEL]
         return argv, None
@@ -678,8 +788,7 @@ def _hermetic_flags(cli: str, cli_path: str) -> list[str]:
     flags = _HERMETIC_FLAGS.get(cli, ()) if config.HERMETIC else ()
     if not flags or _hermetic_refused(cli_path):
         return []
-    help_text = _cli_help_text(cli_path)
-    return [flag for flag in flags if re.search(re.escape(flag) + r"(?![\w-])", help_text)]
+    return [flag for flag in flags if _advertises(cli_path, flag)]
 
 
 # Auth-shaped failure signatures in a backend's own error text.
@@ -1076,7 +1185,39 @@ def run_ingest_session(
     cli = resolve_cli_name(config.LLM_CLI)
     cli_path = _resolve_cli(cli)
     prompt = _build_instruction(rel_key, kind, read_path, segment, line_range)
-    argv, stdin_text = _build_invocation(cli, cli_path, prompt, _external_dirs(rel_key, read_path))
+    # claude only: this session's per-path Read denies for the run's excluded files (readdeny),
+    # as a temp --settings file — a path, never inline JSON, so argv stays small. Removed in the
+    # finally below; the flag lives in argv, so the hermetic auth retry keeps it.
+    settings_path = None
+    if cli == "claude":
+        rules, unenforced = readdeny.session_rules(rel_key, read_path)
+        if unenforced:
+            readdeny.note_unenforced(unenforced)
+        if rules and _advertises(cli_path, "--settings"):
+            with contextlib.suppress(OSError):
+                settings_path = readdeny.write_settings(rules)
+    try:
+        return _run_ingest_session(cli, cli_path, prompt, rel_key, kind, read_path, segment, settings_path)
+    finally:
+        if settings_path:
+            with contextlib.suppress(OSError):
+                os.remove(settings_path)
+
+
+def _run_ingest_session(
+    cli: str,
+    cli_path: str,
+    prompt: str,
+    rel_key: str,
+    kind: str,
+    read_path: str | None,
+    segment: tuple[int, int] | None,
+    settings_path: str | None,
+) -> SessionUsage | None:
+    """The launch half of :func:`run_ingest_session`: build argv, run, and the one hermetic retry."""
+    argv, stdin_text = _build_invocation(
+        cli, cli_path, prompt, _external_dirs(rel_key, read_path), settings_path=settings_path
+    )
     # The segment goes in FRONT of the source key: a transcript filename keeps the head and the
     # filename end of a long key, so on a chunked source "which pass is this" and the source's
     # basename both survive. The head names how the source was READ (_log_kind), display-only.

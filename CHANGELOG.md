@@ -30,6 +30,20 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Corpus exclusions now reach the agent sessions (#157).** Files kept out by your own
+  `CITADEL_IGNORE_PATTERNS` entries, `CITADEL_INCLUDE_PATTERNS` or `CITADEL_MAX_SOURCE_BYTES` were
+  only kept out of the source LIST — a session could still open one (a sidecar beside its source)
+  and its content could shape the prose uncited. Now every source-reading and curate prompt lists
+  the exclusions; claude sessions run with a narrowed shell (no bare `Bash`: only `citadel check` and
+  page `rm`/`rmdir`/`mv`/`mkdir`; `grep`/`rg`/`find`/`cp` disallowed; `--permission-prompts none`)
+  and a per-session `--settings` file of per-path Read denies built from the discovery walk; copilot
+  gets a `--deny-tool` list of interpreters and file readers; agy stays instruction-only. A citation
+  to an untracked excluded file fails `citadel check` (so the source fails, lint exits 3, curate plans
+  `bad_source`), claude's denied tool calls are listed as a run warning, a manifest key under a newly
+  ignored FOLDER is dropped like one with an ignored name, and `citadel doctor` prints how far your
+  backend enforces the exclusions. The guarantee that holds on every backend stays: keep sensitive
+  files outside every raw root.
+
 - **`citadel refresh --stale-rules`** narrows the refresh queue to the `(stale)` sources
   (oldest-checked first, composes with `--min-age-days`), so `--limit K` re-verifies exactly the
   stale set after a rules edit and clears the marker without spending on fresh sources. `citadel

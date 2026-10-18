@@ -26,6 +26,15 @@ cite-citadel has a small, honest data-flow surface — understanding it is the b
   governed by that provider's terms, not by cite-citadel. See the README's
   [License & third-party tools](https://github.com/MarkusNeusinger/cite-citadel#license--third-party-tools)
   section for the linked provider terms.
+- **Excluded files stay unread only as far as your backend enforces it.** Your own
+  `CITADEL_IGNORE_PATTERNS` entries, `CITADEL_INCLUDE_PATTERNS` and `CITADEL_MAX_SOURCE_BYTES` keep
+  files out of the source list for every backend, and every session is told not to open them. claude
+  sessions (on a build with `--settings` / `--permission-prompts`) additionally get per-path Read
+  denies and a narrowed shell; copilot gets a shell deny list but reads stay instruction-only; agy is
+  instruction-only. A citation to an excluded file fails `citadel check`. Shell rules are
+  text-matched, not a security boundary, so **keep sensitive files outside every raw root and outside
+  the workspace** for a guarantee that holds on every backend (`citadel doctor` prints the line for
+  yours; details in [docs/configuration.md](docs/configuration.md#excluded-files-and-what-enforces-them)).
 - **Data-governance caveat.** Because ingest sends raw content to your CLI/provider, do **not** ingest
   confidential or regulated material on a plan whose terms permit training on inputs. Pick the
   plan/tier appropriate to your data sensitivity.

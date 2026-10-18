@@ -362,6 +362,22 @@ the backend plus what actually ran, and falls back to the configured label only 
 named nothing (an Ollama/proxy backend, or agy left on its own default), so the manifest never
 claims a model that never ran.
 
+**Corpus exclusions reach the agent sessions** (`readdeny.py`, `llm._exclusion_bullet`): what
+discovery keeps out (user ignore globs — never the built-in junk ones — the include allowlist, the
+size cap) is listed in every source-reading/curate prompt as "never open, list, search or cite";
+claude additionally gets ENFORCEMENT — a narrowed `--allowedTools` (no bare `Bash`: only the
+`citadel check` self-check and page `rm`/`rmdir`/`mv`/`mkdir`), `--disallowedTools` for
+`grep`/`rg`/`find`/`cp`, `--permission-prompts none` and a per-session `--settings` temp file of
+`Read(//abs/path)` denies built from the run's own discovery walk (`_Walk.ignored`, not-included,
+oversized; folders collapse to one `/**` rule; never the session's source/prepared file, the wiki,
+the caches, the rules or `docs/`; capped at `readdeny.DENY_CAP`, the rest reported), each optional
+flag probe-gated like `--bare` and kept in argv so the hermetic retry keeps it; copilot a
+`--deny-tool` list; agy stays instruction-only (`citadel doctor`'s exclusions line says which).
+The post-hoc net is `validate.source_issues`: a `[^sN]` into a file `ingest_scan.exclusion_reason`
+excludes that is neither tracked nor the running session's source (`config.session_source`, passed
+to the agent's `citadel check` as `CITADEL_SESSION_SOURCE`) is a check error, so the source fails;
+claude's `permission_denials` ride `SessionUsage.denials` onto a run warning, never a failure.
+
 **Two checking layers, one implementation** (`validate.py`):
 - `citadel check` / `wiki_validate` — the **strict per-page gate** (required fields, honest/defined
   citations, relative non-broken links, no `[[wikilinks]]`). The ingest agent self-runs it; ingest

@@ -197,6 +197,46 @@ def check_agent_cli() -> Check:
     return Check(OK, "agent CLI", f"{cli!r} -> {path}")
 
 
+def check_exclusion_enforcement() -> Check:
+    """How far the configured exclusions (own ignore globs, include allowlist, size cap) are
+    ENFORCED in agent sessions, per backend. Discovery always keeps excluded files out of the
+    source list; whether a session can still open one on its own depends on the backend:
+
+    - claude with ``--settings`` and ``--permission-prompts`` advertised: OK "enforced" (per-path
+      Read denies + a narrowed shell);
+    - copilot: WARN "shell-restricted, reads instruction-only" (``--deny-tool`` stops interpreters
+      and file readers, but ``--allow-all-paths`` reads anything);
+    - agy, or a claude build lacking either flag: WARN "instruction-only".
+
+    OK whenever no exclusion is configured. The one backend-independent guarantee is to keep
+    sensitive files outside every raw root and outside the workspace."""
+    from . import llm
+
+    if not config.has_user_exclusions():
+        return Check(OK, "exclusions", "none configured")
+    try:
+        cli = llm.resolve_cli_name(config.LLM_CLI)
+    except RuntimeError as exc:
+        return Check(WARN, "exclusions", f"cannot tell how they are enforced: {exc}")
+    keep_out = "keep sensitive files outside every raw root and the workspace for a hard guarantee"
+    if cli == "claude":
+        try:
+            path = llm._resolve_cli(cli)
+        except RuntimeError:
+            return Check(WARN, "exclusions", f"claude not launchable - enforcement unknown; {keep_out}")
+        missing = [flag for flag in ("--settings", "--permission-prompts") if not llm._advertises(path, flag)]
+        if not missing:
+            return Check(OK, "exclusions", "enforced in claude sessions (per-path Read denies + narrowed shell)")
+        return Check(
+            WARN,
+            "exclusions",
+            f"instruction-only: this claude build lacks {', '.join(missing)} - upgrade claude, or {keep_out}",
+        )
+    if cli == "copilot":
+        return Check(WARN, "exclusions", f"copilot: shell-restricted, reads instruction-only - {keep_out}")
+    return Check(WARN, "exclusions", f"{cli}: instruction-only (no permission flags to enforce them) - {keep_out}")
+
+
 def check_ingest_model() -> Check:
     """What model ingest will ASK the backend for — and, when the manifest already knows, what the
     backend last REPORTED actually running.
@@ -944,6 +984,7 @@ def run() -> DoctorReport:
         ("rules", check_rules),
         ("config", check_config),
         ("agent CLI", check_agent_cli),
+        ("exclusions", check_exclusion_enforcement),
         ("ingest model", check_ingest_model),
         ("raw roots", check_raw_roots),
         ("include patterns", check_include_patterns),

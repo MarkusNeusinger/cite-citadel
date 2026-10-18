@@ -38,7 +38,21 @@ from concurrent import futures
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import config, failures, llm, manifest, pagecache, pdftext, repo, resume, runlock, store, transcribe, wikigit
+from . import (
+    config,
+    failures,
+    llm,
+    manifest,
+    pagecache,
+    pdftext,
+    readdeny,
+    repo,
+    resume,
+    runlock,
+    store,
+    transcribe,
+    wikigit,
+)
 from .ingest_scan import _candidates as _candidates
 from .ingest_scan import _dedup_by_basename as _dedup_by_basename
 
@@ -175,6 +189,12 @@ class IngestReport:
     # failed sources included (their money was spent too; only the manifest stamp is
     # success-only). None when no backend reported anything (copilot, the test fakes).
     usage: llm.SessionUsage | None = None
+    # Tool calls the backend's permission layer DENIED, as `source: tool: input` — typically a Read
+    # of an excluded file stopped by the per-path denies (readdeny). Passive: never a failure.
+    denials: list[str] = field(default_factory=list)
+    # Read-deny entries the per-session cap (readdeny.DENY_CAP) left unenforced — partial
+    # enforcement is stated, never silent. 0 when everything was enforced (or nothing was due).
+    deny_unenforced: int = 0
 
     def render(self) -> str:
         """Human-readable multi-line summary for CLI/MCP."""
@@ -278,6 +298,14 @@ class IngestReport:
             lines.append(
                 "  These did not fail the sources that found them. Run `citadel lint` for the full "
                 "picture, and `citadel curate` to have them repaired."
+            )
+        if self.denials:
+            lines.append("WARNING — the agent tried tool calls its permissions denied (excluded files stay unread):")
+            lines.extend(f"  - {d}" for d in self.denials)
+        if self.deny_unenforced:
+            lines.append(
+                f"WARNING — {self.deny_unenforced} excluded path(s) exceeded the per-session Read-deny cap "
+                "and were NOT enforced (instruction-only for those); keep sensitive files outside every raw root."
             )
         if self.broken_links:
             lines.append("WARNING — broken cross-links (run `citadel lint`):")
@@ -505,7 +533,7 @@ def _attempt_source(job: _SourceJob, index: int, total: int, emit, concurrent: b
     return run
 
 
-def _record_spend(outcome: _SourceOutcome, report: IngestReport) -> None:
+def _record_spend(outcome: _SourceOutcome, report: IngestReport, key: str = "") -> None:
     """Book what one attempt COST and what it REUSED — the two facts that hold whatever its verdict
     was, so they have exactly one owner instead of one per branch.
 
@@ -521,6 +549,12 @@ def _record_spend(outcome: _SourceOutcome, report: IngestReport) -> None:
     usage has no surface to appear on — the completed sources' manifest stamps were already saved
     per-source with their usage intact."""
     report.usage = llm.combine_usage([report.usage, outcome.usage])
+    report.deny_unenforced = readdeny.unenforced()
+    if isinstance(outcome.usage, llm.SessionUsage):
+        for denial in outcome.usage.denials:
+            line = f"{key}: {denial}" if key else denial
+            if line not in report.denials:
+                report.denials.append(line)
     # The first session that NAMES its model upgrades the report's label from "what we asked for"
     # to "what actually ran" (the manifest entries are stamped with the same id per source).
     if isinstance(outcome.usage, llm.SessionUsage) and outcome.usage.model:
@@ -555,7 +589,7 @@ def _record_source_run(run: _JobRun, emit, report: IngestReport, failures_dict, 
     outcome = run.outcome
     if outcome is None:  # an interrupted attempt: the caller re-raises, nothing to book
         return
-    _record_spend(outcome, report)  # cost + any restored checkpoint, before the ok/failed branch
+    _record_spend(outcome, report, job.key)  # cost + any restored checkpoint, before the ok/failed branch
     if not outcome.ok:
         # Nothing was promoted (the live wiki is untouched) and the source is NOT marked
         # done, so it is retried next run. Persist the failure for triage.
@@ -731,7 +765,7 @@ def _run_source_jobs_parallel(
                     # but what it spent and what it replayed are facts of this run either way, and
                     # the source goes into the serial tail below (where it can no longer race
                     # anybody).
-                    _record_spend(run.outcome, report)
+                    _record_spend(run.outcome, report, run.job.key)
                     report.raced.append(run.job.key)
                     conflicted.append((run.index, run.job))
                     emit("source_retry", index=run.index, total=total, source=run.job.key, seconds=run.outcome.seconds)
@@ -1053,6 +1087,9 @@ def _ingest_run(
         # does not look hung.
         print("NOTE: --full-rescan: re-hashing every tracked source (sha256 still decides).", file=sys.stderr)
     walk = _discover_walk(paths)
+    # The per-session Read denies (claude) need EVERY excluded entry, not just those under the
+    # requested paths: an explicit-path run pays one extra stat-only walk for them.
+    readdeny.install_from_discovery(walk if paths is None else None)
     # The ONE sweep decision: None = NO deletion sweep this run — a path-scoped run, a
     # degraded walk (any error anywhere has an unknown blast radius), or the workspace guard
     # above — else exactly the roots discovery ENTERED (an unreachable root contributes no
