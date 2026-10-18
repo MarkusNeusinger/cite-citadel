@@ -63,6 +63,7 @@ from . import (
     failures,
     grammar,
     ingest,
+    ledger,
     lint,
     llm,
     manifest,
@@ -212,6 +213,8 @@ class CurateReport:
     # Dry runs only: one "what this session will read" line per planned cluster, and the labelled
     # run-wide cost reference (empty when nothing records a cost). A dry run prints neither the
     # Applied/NOOP/Failed counters (they mean nothing before a run) nor any per-cluster dollars.
+    # The run-ledger note when writing this run's line failed (rendered like `wiki_git`).
+    ledger_note: str = ""
     dry_run: bool = False
     cluster_facts: list[str] = field(default_factory=list)
     cost_reference: str = ""
@@ -274,6 +277,9 @@ class CurateReport:
             lines.append(
                 f"NOOP spend (sessions that changed nothing): {noop_described} over {len(self.noop)} cluster(s)."
             )
+        if self.ledger_note:
+            lines.append("")
+            lines.append(self.ledger_note)
         if self.wiki_git:
             lines.append("")
             lines.append(self.wiki_git)
@@ -1181,6 +1187,7 @@ def curate(
     # failures save are all destructive under concurrency (see runlock's module docstring). The
     # dry-run path above stays lock-free — it is read-only by contract.
     with runlock.hold("curate"):
+        started = manifest.now_iso()
         ingest._sweep_stale_staging(config.wiki_dir())
         llm.reset_hermetic_refusals()  # the --bare verdict is per run (a serve process runs many)
         readdeny.install_from_discovery()  # a cluster re-reads cited sources: excluded ones stay denied
@@ -1266,6 +1273,25 @@ def curate(
         failures.save(failures_dict)
         with contextlib.suppress(OSError):  # telemetry: a failed save must never fail the run
             save_records(records)
+        # The run ledger line — whether or not anything was applied (NOOP and failed clusters were
+        # paid for too), before the commit so a page-changing run's commit carries it.
+        attempted = len(report.applied) + len(report.noop) + len(report.failed)
+        if attempted:
+            report.ledger_note = ledger.append(
+                ledger.make_line(
+                    "curate",
+                    started=started,
+                    model=model,
+                    usage=report.usage,
+                    counts={"applied": len(report.applied), "noop": len(report.noop), "failed": len(report.failed)},
+                    flags={
+                        "stale_rules": bool(stale_rules),
+                        "limit": int(limit or 0),
+                        "guided": bool(config.CURATE_GUIDANCE),
+                    },
+                    interrupted=pending_interrupt is not None,
+                )
+            )
         if report.applied:
             store.rebuild_indexes()
             # One wiki-history commit for the whole run, after the log/index writes so it captures the

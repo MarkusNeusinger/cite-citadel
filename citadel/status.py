@@ -34,7 +34,7 @@ import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from . import config, failures, ingest, llm, manifest, refresh, store
+from . import config, failures, ingest, ledger, llm, manifest, refresh, store
 
 
 # How much of a (long) content hash / rules-version / commit id to show in the table.
@@ -139,6 +139,8 @@ class StatusReport:
     # refresh.stale_count(): how many (stale) sources `citadel refresh --stale-rules` would
     # re-verify — the K of the closing hint. Render-only (status --json keeps its shape).
     stale_refreshable: int = 0
+    # The run ledger's summary (ledger.summarize) — lifetime spend; None without a ledger.
+    spend: dict | None = None
 
     def render(self) -> str:
         """A plain-text, ASCII-only per-source table — one bucket per section, counts in the
@@ -150,13 +152,20 @@ class StatusReport:
             # The sum of each source's LAST verifying session — a maintenance-cost snapshot of
             # the current corpus, not lifetime spend (per-run spend is on each run's report).
             total = llm.format_cost(sum(s.cost_usd for s in costed))
-            lines.append(f"Recorded LLM cost: {total} over {len(costed)} source(s) (last session each)")
+            lines.append(
+                f"Current corpus cost: {total} over {len(costed)} source(s) "
+                "(last verifying session each, not lifetime spend)"
+            )
         credited = [s for s in self.ingested if s.aic is not None]
         if credited:
             # copilot's own billing unit, shown beside the dollars it was converted into — the
             # same "last session each" snapshot as the cost line.
             total_aic = llm.format_aic(sum(s.aic for s in credited))
-            lines.append(f"Recorded AI credits: {total_aic} AIC over {len(credited)} source(s) (last session each)")
+            lines.append(
+                f"Current corpus AI credits: {total_aic} AIC over {len(credited)} source(s) "
+                "(last verifying session each, not lifetime spend)"
+            )
+        lines.extend(self._spend_lines())
         lines.append("")
 
         lines.append(f"Ingested ({len(self.ingested)})")
@@ -264,6 +273,28 @@ class StatusReport:
 
         return "\n".join(lines).rstrip() + "\n"
 
+    def _spend_lines(self) -> list[str]:
+        """The lifetime-spend line(s) from the run ledger (ASCII only)."""
+        spend = self.spend
+        if spend is None:
+            return ["Spend to date: not recorded yet (the run ledger starts with the next ingest/curate/refresh run)"]
+        since = f"since {spend['since']}"
+        runs = f"{spend['runs']} run(s)"
+        out: list[str] = []
+        if spend["cost_usd"] is not None:
+            parts = [
+                f"{name} {llm.format_cost(entry['cost_usd'])}"
+                for name, entry in spend["by_lifecycle"].items()
+                if entry.get("cost_usd") is not None
+            ]
+            tail = f" ({', '.join(parts)})" if parts else ""
+            out.append(f"Spend to date: {llm.format_cost(spend['cost_usd'])} over {runs} {since}{tail}")
+        if spend["aic"] is not None:
+            out.append(f"AI credits to date: {llm.format_aic(spend['aic'])} AIC over {runs} {since}")
+        if not out:
+            out.append(f"Spend to date: {runs} recorded, no cost reported by the backend")
+        return out
+
     def as_dict(self) -> dict:
         """The report as one JSON-ready dict (``citadel status --json``): the seven buckets plus
         ``rules_version``, ``cost_usd_total`` and ``aic_total``, each source row a plain dict with only its None fields dropped —
@@ -282,11 +313,14 @@ class StatusReport:
         credits = [s.aic for s in self.ingested if s.aic is not None]
         return {
             "rules_version": self.rules_version,
-            # The render()'s "Recorded LLM cost" total, machine-readably: the sum of each
+            # The render()'s "Current corpus cost" total, machine-readably: the sum of each
             # source's last-session cost stamp (null when no entry carries one).
             "cost_usd_total": round(sum(costed), 4) if costed else None,
             # The same snapshot in copilot's billing unit (null when no entry carries one).
             "aic_total": round(sum(credits), 6) if credits else None,
+            # Lifetime spend from the run ledger (null without one) — the snapshot totals above
+            # stay exactly what they were.
+            "spend": self.spend,
             "ingested": [row(s) for s in self.ingested],
             "failed": [row(s) for s in self.failed],
             "skipped_duplicate": [row(s) for s in self.skipped_duplicate],
@@ -445,6 +479,10 @@ def build_status() -> StatusReport:
     report.pending = sorted(key for key in present if key not in tracked)
     report.oversized = oversized
     report.not_included = not_included
+    try:
+        report.spend = ledger.summarize(ledger.load())
+    except Exception:  # noqa: BLE001 - status is read-only and must degrade, never raise
+        report.spend = None
     report.ignored_detail = _ignored_groups(ignored)
     report.ignored = sorted({g.name for g in report.ignored_detail})
     if any(s.stale_rules for s in report.ingested):

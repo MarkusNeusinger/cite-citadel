@@ -211,7 +211,7 @@ def test_refresh_hands_jobs_through_to_ingest(tmp_citadel, monkeypatch):
     than by topic, so it is the lifecycle where parallelism costs the least cross-linking."""
     seen: dict = {}
 
-    def fake_ingest(paths=None, progress=None, full_rescan=False, force=False, jobs=None):
+    def fake_ingest(paths=None, progress=None, full_rescan=False, force=False, jobs=None, lifecycle="ingest"):
         seen["jobs"] = jobs
         seen["force"] = force
         return ingest.IngestReport([], [], [], [])

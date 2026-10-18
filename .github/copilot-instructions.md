@@ -481,8 +481,12 @@ table — ingested
 `K (stale) source(s): re-verify with citadel refresh --stale-rules --limit K` hint (the same K as
 the curate report's), `checked YYYY-MM-DD` from
 the `ingested_at` stamp, the last session's cost when recorded, with copilot's AI credits shown
-beside the dollars they converted into — with `Recorded LLM cost` / `Recorded AI credits` corpus
-totals above the table, and a `NO PAGES (nothing cites this source)` marker on every ingested
+beside the dollars they converted into — with `Current corpus cost` / `Current corpus AI credits` snapshot
+totals (each source's last verifying session) plus a `Spend to date` lifetime line from the
+append-only run ledger `wiki/.citadel_runs.jsonl` (`ledger.py`: one JSONL line per mutating run that
+ran a session — usage totals, counts and flags only, never a key, path or steer; written in-run
+before the finalize gate or once on the exception path, atomically, a failed write a report note)
+above the table, and a `NO PAGES (nothing cites this source)` marker on every ingested
 source the wiki does not cite — a paid session that produced zero entries), failed (reason, attempts),
 skipped-duplicate, ignored (one row per distinct ignored name with the files it keeps out — read off discovery's own walk via `_Walk.ignored`, a skipped folder's files counted bounded), oversized (over `CITADEL_MAX_SOURCE_BYTES`, with the size),
 not-included (outside `CITADEL_INCLUDE_PATTERNS` — the row is hidden entirely when no allowlist is
@@ -639,7 +643,7 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   that writes files into the temp wiki. No test spawns a real LLM CLI. Follow that pattern; keep
   tests offline.
 - **Never hand-edit generated files** — `index.md`, `log.md`, any `*/index.md`, `sources/index.md`,
-  `.citadel_viewer.html`, `.citadel_ingested.json`, and `.citadel_curate.json` are regenerated. The ingest agent prompt and
+  `.citadel_viewer.html`, `.citadel_ingested.json`, `.citadel_curate.json`, and `.citadel_runs.jsonl` are regenerated. The ingest agent prompt and
   `store.delete_page` both refuse to touch them. In the REPO, `.github/copilot-instructions.md` is
   generated too: it is THIS file with a swapped header (both agents get one instruction set, so a
   feature can't be documented for one and not the other). Edit `CLAUDE.md`, then regenerate with

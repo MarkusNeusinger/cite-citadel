@@ -65,6 +65,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **An append-only run ledger makes lifetime spend visible (#163).** `citadel status`' cost total
+  was a snapshot of each source's LAST session, so curate clusters, forced reconciles/refreshes,
+  failed sources and delete cleanups were paid for and then invisible (a real run showed $69 of $89).
+  Every ingest/refresh/curate run that ran an agent session now appends one line to
+  `wiki/.citadel_runs.jsonl` — the run's usage totals, counts and flags only, never a source key,
+  page path or guidance text — and `citadel status` shows `Spend to date: $X over N run(s) since
+  DATE (ingest $A, curate $B, refresh $C)` beside the renamed snapshot line `Current corpus cost`.
+  `status --json` gains `spend` (null without a ledger). Interrupted runs are recorded as such; a
+  ledger write that fails is a report note, never a failure. Spend from before the ledger cannot be
+  recovered.
+
 - **Corpus exclusions now reach the agent sessions (#157).** Files kept out by your own
   `CITADEL_IGNORE_PATTERNS` entries, `CITADEL_INCLUDE_PATTERNS` or `CITADEL_MAX_SOURCE_BYTES` were
   only kept out of the source LIST — a session could still open one (a sidecar beside its source)

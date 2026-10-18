@@ -519,8 +519,10 @@ def wiki_status() -> str:
     One bucket per lifecycle state: **ingested** (with the importing model + the rules version it
     ran under, flagged ``(stale)`` when that predates the current rulebook), **failed** (unreadable /
     errored / timed-out, with the reason and attempt count), **skipped-duplicate**, **ignored**
-    (OS/junk files), and **pending** (on disk under a raw root but not yet ingested). Built from the
-    manifest + failures catalog + one stat-only walk — it never re-hashes a byte and never mutates,
+    (files per ignored name), and **pending** (on disk under a raw root but not yet ingested), above
+    them the current-corpus cost snapshot and the lifetime ``Spend to date`` from the run ledger.
+    Built from the manifest + failures catalog + run ledger + one stat-only walk — it never re-hashes
+    a byte and never mutates,
     so it is the cheap check to run before/after ``wiki_ingest`` to see what is pending, stale, or
     stuck. Never raises out of the tool.
     """

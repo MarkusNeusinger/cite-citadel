@@ -41,6 +41,7 @@ from pathlib import Path
 from . import (
     config,
     failures,
+    ledger,
     llm,
     manifest,
     pagecache,
@@ -195,6 +196,13 @@ class IngestReport:
     # Read-deny entries the per-session cap (readdeny.DENY_CAP) left unenforced — partial
     # enforcement is stated, never silent. 0 when everything was enforced (or nothing was due).
     deny_unenforced: int = 0
+    # How many source attempts actually ran an agent session (a deletion nothing cites runs none) —
+    # the run ledger's skip rule: a run that paid for nothing writes no line.
+    sessions_attempted: int = 0
+    # Whether this run's run-ledger line was written (exactly once, in-run or on the exception
+    # path), and the note when writing it failed — rendered like `wiki_git`, never a failure.
+    ledger_written: bool = False
+    ledger_note: str = ""
 
     def render(self) -> str:
         """Human-readable multi-line summary for CLI/MCP."""
@@ -322,6 +330,8 @@ class IngestReport:
             # ...but a retry is not the whole story when the failure left damage in the wiki.
             for hint in self.failure_hints:
                 lines.append(f"  {hint}")
+        if self.ledger_note:
+            lines.append(self.ledger_note)
         if self.wiki_git:
             lines.append(self.wiki_git)
         return "\n".join(lines)
@@ -550,6 +560,8 @@ def _record_spend(outcome: _SourceOutcome, report: IngestReport, key: str = "") 
     per-source with their usage intact."""
     report.usage = llm.combine_usage([report.usage, outcome.usage])
     report.deny_unenforced = readdeny.unenforced()
+    if outcome.ran_sessions:
+        report.sessions_attempted += 1
     if isinstance(outcome.usage, llm.SessionUsage):
         for denial in outcome.usage.denials:
             line = f"{key}: {denial}" if key else denial
@@ -561,6 +573,29 @@ def _record_spend(outcome: _SourceOutcome, report: IngestReport, key: str = "") 
         report.model = config.model_label_for(outcome.usage.model)
     if outcome.resumed_note:
         report.resumed.append(outcome.resumed_note)
+
+
+def _write_run_ledger(report: IngestReport, lifecycle: str, started: str, flags: dict, interrupted: bool) -> None:
+    """Append this run's ledger line once (skipped when no agent session ran) — counts are the
+    report's own list lengths, never a key or path. A failed write is a report note."""
+    if report.ledger_written or report.sessions_attempted == 0:
+        return
+    report.ledger_written = True
+    line = ledger.make_line(
+        lifecycle,
+        started=started,
+        model=report.model or config.ingest_model_label(),
+        usage=report.usage,
+        counts={
+            "processed": len(report.processed),
+            "sources_deleted": len(report.sources_deleted),
+            "reingest_cleaned": len(report.reingest_cleaned),
+            "errors": len(report.errors),
+        },
+        flags=flags,
+        interrupted=interrupted,
+    )
+    report.ledger_note = ledger.append(line)
 
 
 def _record_source_run(run: _JobRun, emit, report: IngestReport, failures_dict, model, stall=None) -> None:
@@ -861,6 +896,7 @@ def ingest(
     force: bool = False,
     jobs: int | None = None,
     reingest: bool = False,
+    lifecycle: str = "ingest",
 ) -> IngestReport:
     """Run one ingest. Exactly one source = one all-or-nothing agent job (a chunked source runs
     several ``llm.run_ingest_session`` passes inside that one job).
@@ -977,11 +1013,29 @@ def ingest(
         resume.sweep()
         llm.reset_hermetic_refusals()  # the --bare verdict is per run (a serve process runs many)
         report = IngestReport([], [], [], [])
+        started = manifest.now_iso()
+        ledger_flags = {
+            "force": bool(force),
+            "reingest": bool(reingest),
+            "jobs": int(workers),
+            "guided": bool(config.INGEST_GUIDANCE),
+        }
         try:
             return _ingest_run(
-                paths, progress, report, full_rescan=full_rescan, force=force, jobs=workers, reingest=reingest
+                paths,
+                progress,
+                report,
+                full_rescan=full_rescan,
+                force=force,
+                jobs=workers,
+                reingest=reingest,
+                ledger_meta=(lifecycle, started, ledger_flags),
             )
         except BaseException as exc:
+            # Spend is recorded exactly once: an exception raised AFTER the in-run write leaves the
+            # line alone; one raised before it (success bookkeeping, the index/log/git work) still
+            # records what the completed sources cost. Still under the run lock.
+            _write_run_ledger(report, lifecycle, started, ledger_flags, interrupted=True)
             # The report rides along on whatever ends the run early — above all the Ctrl+C the
             # source loop captures and re-raises after finalizing, but equally one that lands in a
             # source's success bookkeeping or in the final index/log/git work. The CLI prints it,
@@ -1000,6 +1054,7 @@ def _ingest_run(
     force: bool,
     jobs: int = 1,
     reingest: bool = False,
+    ledger_meta: tuple[str, str, dict] | None = None,
 ) -> IngestReport:
     """The body of :func:`ingest`, running under the exclusive workspace run lock. Fills in the
     ``report`` its caller holds, so the caller still has it when the run ends in an exception."""
@@ -1639,6 +1694,12 @@ def _ingest_run(
         # root and the load-time warning keeps its promise that one completed `citadel ingest`
         # run makes it stop, a no-op run included.
         manifest.save(manifest_dict)
+
+    # The run ledger line: after the session loop and the manifest saves, BEFORE the finalize
+    # gate — so the run's own wiki-history commit includes it, a run whose every session failed
+    # still records its spend, and a captured Ctrl+C is recorded as interrupted.
+    if ledger_meta is not None:
+        _write_run_ledger(report, *ledger_meta, interrupted=pending_interrupt is not None)
 
     failures_changed = failures_dict != failures_before
     if (

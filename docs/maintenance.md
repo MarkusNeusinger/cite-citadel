@@ -161,7 +161,7 @@ yet ingested — the next `citadel ingest` will pick it up). An ingested source 
 cites** — a session ran and was paid for, yet it produced zero entries — is marked
 `NO PAGES (nothing cites this source)` (`"uncited": true` in `--json`); the same condition is
 flagged at ingest time as a `WARNING — ingested but produced NO wiki changes` section on the run
-report and a yellow `no changes` verdict in the live progress. A `Recorded LLM cost` line above the table
+report and a yellow `no changes` verdict in the live progress. A `Current corpus cost` line (each source's LAST verifying session — a snapshot, not lifetime spend) and a `Spend to date` line (the lifetime total from the append-only run ledger `wiki/.citadel_runs.jsonl`, one line per ingest/refresh/curate run that ran a session, per lifecycle) above the table
 totals the per-source stamps (the maintenance-cost snapshot of the current corpus; `--json`
 carries it as `cost_usd_total`). It never runs an agent and never re-hashes
 sources, so it is always cheap to run. An MCP client gets the same table via the read-only

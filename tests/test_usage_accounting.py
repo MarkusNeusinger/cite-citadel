@@ -577,7 +577,7 @@ def test_status_renders_cost_column_and_total(tmp_citadel, fake_agent):
 
     report = status.build_status()
     text = report.render()
-    assert "Recorded LLM cost: $0.06 over 2 source(s) (last session each)" in text
+    assert "Current corpus cost: $0.06 over 2 source(s) (last verifying session each, not lifetime spend)" in text
     assert "$0.03" in text  # the per-source column
 
     data = report.as_dict()
@@ -600,7 +600,7 @@ def test_ai_credits_travel_from_the_session_to_status(tmp_citadel, fake_agent):
     report = status.build_status()
     rendered = report.render()
     assert "$0.0251 (2.5083 AIC)" in rendered
-    assert "Recorded AI credits: 2.5083 AIC over 1 source(s)" in rendered
+    assert "Current corpus AI credits: 2.5083 AIC over 1 source(s)" in rendered
     assert report.as_dict()["aic_total"] == pytest.approx(2.5083)
 
 
@@ -641,7 +641,7 @@ def test_status_without_cost_stamps_shows_no_cost_line(tmp_citadel, fake_agent):
     ingest.ingest()
 
     report = status.build_status()
-    assert "Recorded LLM cost" not in report.render()
+    assert "Current corpus cost" not in report.render()
     assert report.as_dict()["cost_usd_total"] is None
     assert "cost_usd" not in {k for row in report.as_dict()["ingested"] for k in row}
 

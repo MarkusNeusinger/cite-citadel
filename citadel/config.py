@@ -901,6 +901,12 @@ def manifest_path() -> Path:
     return override / ".citadel_ingested.json" if override is not None else MANIFEST_PATH
 
 
+def runs_ledger_path() -> Path:
+    """``<wiki>/.citadel_runs.jsonl`` — the append-only run ledger (one line per mutating run's
+    spend), redirect-aware. Derived from :func:`wiki_dir` at call time."""
+    return wiki_dir() / ".citadel_runs.jsonl"
+
+
 def curate_path() -> Path:
     """``<wiki>/.citadel_curate.json`` — the per-cluster curate record (outcome, reasons, rules
     version, model, usage per anchor page), redirect-aware. Derived from :func:`wiki_dir` at call

@@ -214,5 +214,5 @@ def refresh(
     # Hand ingest ABSOLUTE paths: manifest keys are workspace-relative, but ingest resolves
     # requested path strings against the CWD — which need not be the workspace root.
     paths = [str(config.source_path_for_key(c.key)) for c in selected]
-    report.ingest_report = ingest.ingest(paths, progress=progress, force=True, jobs=jobs)
+    report.ingest_report = ingest.ingest(paths, progress=progress, force=True, jobs=jobs, lifecycle="refresh")
     return report
