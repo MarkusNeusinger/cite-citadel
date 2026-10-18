@@ -293,3 +293,20 @@ def test_cli_refresh_stale_rules_flag_reaches_refresh(tmp_citadel, fake_agent, c
     _track(tmp_citadel, "stale.md", "s\n", ingested_at=OLD)
     assert cli.main(["refresh", "--stale-rules", "--dry-run"]) == 0
     assert "stale-rules candidate" in capsys.readouterr().out
+
+
+def test_plan_stale_only_never_stats_a_fresh_source(tmp_citadel, monkeypatch):
+    """An unreachable FRESH source (Path.exists raising on a dead share) must not block the stale
+    queue: the rules filter runs before any disk access."""
+    stale = _track(tmp_citadel, "stale.md", "s\n", ingested_at=OLD)
+    current = _track(tmp_citadel, "current.md", "c\n", ingested_at=OLD)
+    _stamp_current_rules(current)
+    real = config.source_path_for_key
+
+    def guarded(key):
+        if key == current:
+            raise PermissionError("share unreachable")
+        return real(key)
+
+    monkeypatch.setattr(config, "source_path_for_key", guarded)
+    assert [c.key for c in refresh.plan(stale_only=True)] == [stale]

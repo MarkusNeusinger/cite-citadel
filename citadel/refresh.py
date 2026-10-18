@@ -132,19 +132,17 @@ def plan(min_age_days: int = 0, stale_only: bool = False) -> list[RefreshCandida
         model = manifest.entry_model(entry)
         if not model:
             continue
+        recorded_rules = manifest.entry_rules_version(entry)
+        stale = recorded_rules is not None and recorded_rules != current_rules
+        # Filter BEFORE touching the disk: a source outside the stale queue must never be able to
+        # block it (Path.exists raises on an unreachable share instead of returning False).
+        if stale_only and not stale:
+            continue
         if not config.source_path_for_key(key).exists():
             continue
-        recorded_rules = manifest.entry_rules_version(entry)
         out.append(
-            RefreshCandidate(
-                key=key,
-                ingested_at=manifest.entry_ingested_at(entry),
-                model=model,
-                stale_rules=recorded_rules is not None and recorded_rules != current_rules,
-            )
+            RefreshCandidate(key=key, ingested_at=manifest.entry_ingested_at(entry), model=model, stale_rules=stale)
         )
-    if stale_only:
-        out = [c for c in out if c.stale_rules]
     out.sort(key=lambda c: (c.ingested_at or "", c.key))
     return _age_floor(out, min_age_days)
 
