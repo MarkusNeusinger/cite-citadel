@@ -1,6 +1,6 @@
 """MCP stdio server exposing the OKF wiki to AI clients.
 
-A FastMCP instance over stdio with thirteen tools: eleven read-only
+An MCP SDK (2.x ``MCPServer``) instance over stdio with thirteen tools: eleven read-only
 (wiki_search / wiki_define / wiki_read / wiki_raw / wiki_neighbors / wiki_index / wiki_sources /
 wiki_tags / wiki_validate / wiki_lint / wiki_status) and two mutating — wiki_capture (append ONE
 attributed conversational note to the raw/ capture log; it never touches the wiki) and wiki_ingest
@@ -31,19 +31,15 @@ from __future__ import annotations
 
 import threading
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
+from mcp.types import ToolAnnotations
 
-
-try:  # tool behavior annotations are an optional MCP hint; older mcp releases lack the type
-    from mcp.types import ToolAnnotations
-except ImportError:  # pragma: no cover - depends on the installed mcp version
-    ToolAnnotations = None
+from . import __version__
 
 
 def _annotations(**hints):
-    """A :class:`ToolAnnotations` carrying the given behavior hints, or None when the installed
-    ``mcp`` predates them (the decorator then registers the tool without annotations)."""
-    return ToolAnnotations(**hints) if ToolAnnotations is not None else None
+    """A :class:`ToolAnnotations` carrying the given behavior hints."""
+    return ToolAnnotations(**hints)
 
 
 # The eleven readers share this profile; wiki_capture and wiki_ingest override it at their
@@ -99,7 +95,12 @@ _INSTRUCTIONS = (
     "wiki://page/{folder}/{name})."
 )
 
-mcp = FastMCP("citadel", instructions=_INSTRUCTIONS)
+# `version=` makes `serverInfo.version` citadel's own release (the SDK reports "" without it). The
+# 2.x SDK runs sync tools on worker threads, so a minutes-long wiki_ingest no longer freezes every
+# other request; _INGEST_LOCK keeps a second concurrent ingest a fail-loud refusal. The SDK's default
+# ResourceSecurity (refuses `..`, absolute paths and NUL in template parameters before the handler
+# runs) is kept as defense in depth in front of okf.safe_join.
+mcp = MCPServer("citadel", instructions=_INSTRUCTIONS, version=__version__)
 
 _SNIPPET_CHARS = 200
 
@@ -632,9 +633,10 @@ def wiki_health() -> str:
 # ``wiki://page/{folder}/{name}`` template (an OKF rel_path is always exactly
 # ``folder/name.md`` — pages are routed one folder deep by okf.folder_for_type). Each
 # resource returns the SAME text as its tool twin and shares the tools' never-raise
-# contract: a missing page, an unsafe path, or a broken store reads back as a clear
-# ``error: …`` body, so a resource-pulling client can never crash the server. Subscribe /
-# ``listChanged`` notifications are deliberately not offered — FastMCP's registry is static,
+# contract: a missing page or a broken store reads back as a clear ``error: …`` body, and a
+# traversal URI (``wiki://page/../x``) is refused at the protocol layer by the SDK's
+# ResourceSecurity with an error response — never a crashed server. Subscribe /
+# ``listChanged`` notifications are deliberately not offered — the SDK registry is static,
 # and the wiki only changes through staged ingest/curate runs anyway.
 
 

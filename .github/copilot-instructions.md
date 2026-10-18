@@ -64,7 +64,7 @@ per-source state table: ingested / failed / skipped-duplicate / ignored / oversi
 agent CLI / the configured ingest model / raw roots / wiki placement
 (the wiki nested inside a raw root) / child paths (the UNC-vs-drive-letter cwd) /
 manifest / billing / `agent instructions` (instruction files in/above the workspace a NON-isolated
-session would load, per backend — `llm._INSTRUCTION_FILES`) / the MCP SDK (`mcp.server.fastmcp` imports, version inside the `mcp>=1.10,<2` pin) / the HTTP-serve posture / wiki-git state / a best-effort PyPI update check / workspace coherence; every check runs isolated, so one that raises is its own FAIL line, never a traceback; needs no workspace, exits 1 only on a FAIL; `--probe` ADDS one tiny paid
+session would load, per backend — `llm._INSTRUCTION_FILES`) / the MCP SDK (`mcp.server.mcpserver` imports, version inside the `mcp>=2,<3` pin; CI's `mcp-floor` job runs the server tests on exactly 2.0.0) / the HTTP-serve posture / wiki-git state / a best-effort PyPI update check / workspace coherence; every check runs isolated, so one that raises is its own FAIL line, never a traceback; needs no workspace, exits 1 only on a FAIL; `--probe` ADDS one tiny paid
 session per configured model — `llm.probe_session`, production argv + hermetic flags, claude also
 `--tools ""`/`--max-budget-usd`/`--no-session-persistence` when advertised, in a throwaway temp dir
 with a ≤120 s timeout, following ingest's `--bare` retry rule — so a credential-stripping `--bare`, a
@@ -590,7 +590,7 @@ display).
 curate) it commits the whole wiki dir as ONE commit (and pushes to `CITADEL_WIKI_GIT_REMOTE` when
 set), so every change is a reviewable diff; `auto` (default) only acts when the wiki dir is already
 its own git repo, `CITADEL_WIKI_GIT=1` also `git init`s it on first use (refusing an embedded repo
-inside another working tree), and any git problem is a report note, never a failed run. `server.py` is the FastMCP stdio server (13
+inside another working tree), and any git problem is a report note, never a failed run. `server.py` is the MCP SDK 2.x (`MCPServer`, `version=` citadel's own) stdio server — sync tools on worker threads, so readers run during a `wiki_ingest` while a second ingest is refused by `_INGEST_LOCK`; a traversal resource URI is refused at the protocol layer by the SDK's `ResourceSecurity` (13
 tools — 11 read-only incl. `wiki_raw` (the cited-source reader, backed by `rawsource.py`),
 `wiki_neighbors` (a page's links-out/backlinks/cited-sources graph), `wiki_lint` (with a tunable
 `stale_days`) and `wiki_status` (the per-source state view), plus two mutating:

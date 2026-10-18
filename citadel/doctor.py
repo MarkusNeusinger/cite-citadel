@@ -53,11 +53,11 @@ One command answering "is my setup sane?" without touching a byte. Each check em
   ``CITADEL_MAX_SOURCE_CHARS`` ceiling and, when stated, the ``CITADEL_MODEL_CONTEXT_TOKENS``
   budget derived from the model's context. Shows the arithmetic, and WARNs when the stated context
   is so small that the segment floor had to engage.
-- **MCP SDK** — does the installed ``mcp`` package provide ``mcp.server.fastmcp`` in a version
-  ``citadel serve`` can use (``>=1.10,<2``)? mcp 2.x renamed FastMCP and a pre-1.10 FastMCP rejects
-  the keywords citadel passes, so an environment holding either cannot serve at all; FAIL with the
+- **MCP SDK** — does the installed ``mcp`` package provide ``mcp.server.mcpserver`` (the 2.x
+  ``MCPServer``) in a version ``citadel serve`` can use (``>=2,<3``)? A 1.x SDK lacks the module and
+  a 3.x is outside the tested range, so an environment holding either cannot serve; FAIL with the
   installed version and a fix worded for the cause that version points at (out of range or missing
-  -> ``mcp>=1.10,<2``; an in-range 1.x whose own imports break -> rebuild the environment), spelled
+  -> ``mcp>=2,<3``; an in-range 2.x whose own imports break -> rebuild the environment), spelled
   for the detected install method.
 - **HTTP serve** — the opt-in Streamable HTTP transport (``citadel serve --http``): a plain "stdio
   only" note while no ``CITADEL_HTTP_TOKEN`` is set, otherwise where it would listen and whether the
@@ -615,11 +615,11 @@ _REINSTALL_COMMANDS = {
 }
 
 
-# The `mcp` range pyproject.toml declares, and its floor as a comparable tuple. An SDK below the floor
-# imports `mcp.server.fastmcp` fine but rejects the tool `annotations` / prompt `title` keywords
-# citadel/server.py passes, so the import check alone cannot see it.
-MCP_SDK_RANGE = ">=1.10,<2"
-_MCP_SDK_FLOOR = (1, 10)
+# The `mcp` range pyproject.toml declares, and its floor/cap as comparable tuples (a drift guard in
+# tests/test_doctor.py keeps them equal to pyproject's, and CI's floor leg pins exactly the floor).
+MCP_SDK_RANGE = ">=2,<3"
+_MCP_SDK_FLOOR = (2, 0)
+_MCP_SDK_CAP = (3, 0)
 
 
 def _mcp_sdk_in_range(version: str) -> bool:
@@ -634,7 +634,7 @@ def _mcp_sdk_in_range(version: str) -> bool:
         parts.append(int(digits.group()))
     if len(parts) < 2:
         parts.append(0)
-    return _MCP_SDK_FLOOR <= tuple(parts) < (2, 0)
+    return _MCP_SDK_FLOOR <= tuple(parts) < _MCP_SDK_CAP
 
 
 def mcp_sdk_version() -> str | None:
@@ -647,12 +647,12 @@ def mcp_sdk_version() -> str | None:
 
 
 def mcp_sdk_remedy(version: str | None, module_file: str | None = None, prefix: str | None = None) -> str:
-    """The fix for an environment whose ``mcp.server.fastmcp`` does not import, worded for the cause
+    """The fix for an environment whose ``mcp.server.mcpserver`` does not import, worded for the cause
     the installed ``version`` points at and spelled for THIS install (``module_file``/``prefix`` as in
     :func:`detect_update_command`).
 
-    Only a missing SDK or one outside :data:`MCP_SDK_RANGE` (a 2.x, or a 1.x older than the floor) is
-    the SDK's own fault: "citadel needs mcp>=1.10,<2". An in-range 1.x that still fails had its import
+    Only a missing SDK or one outside :data:`MCP_SDK_RANGE` (a 1.x, or a 3.x past the cap) is
+    the SDK's own fault: "citadel needs mcp>=2,<3". An in-range 2.x that still fails had its import
     chain broken UNDERNEATH it (a missing or incompatible pydantic-settings, starlette, ...), where
     pinning mcp is already satisfied and would change nothing — so that cause is named instead, with
     the rebuild. How an out-of-range SDK lands next to a build that pins it: put into the environment
@@ -672,31 +672,31 @@ def mcp_sdk_remedy(version: str | None, module_file: str | None = None, prefix: 
 
 
 def check_mcp_sdk() -> Check:
-    """FAIL when the installed MCP SDK does not provide ``mcp.server.fastmcp`` — the module
+    """FAIL when the installed MCP SDK does not provide ``mcp.server.mcpserver`` — the module
     :mod:`citadel.server` imports at load time, so ``citadel serve`` (stdio and HTTP alike) cannot
-    start at all. mcp 2.x renamed FastMCP; the line names the installed version and the fix
+    start at all. A 1.x SDK (FastMCP) lacks it; the line names the installed version and the fix
     :func:`mcp_sdk_remedy` derives from it. OK otherwise, with that version."""
     version = mcp_sdk_version()
     try:
-        importlib.import_module("mcp.server.fastmcp")
+        importlib.import_module("mcp.server.mcpserver")
     except ImportError as exc:
         found = f"mcp {version} is installed" if version else "the mcp package is not installed"
         return Check(
             FAIL,
             "MCP SDK",
-            f"{found}; mcp.server.fastmcp does not import ({_one_line(exc)}) - `citadel serve` cannot start; "
+            f"{found}; mcp.server.mcpserver does not import ({_one_line(exc)}) - `citadel serve` cannot start; "
             f"{mcp_sdk_remedy(version)}",
         )
     if version and not _mcp_sdk_in_range(version):
-        # FastMCP imports, but an SDK below the floor rejects the keywords citadel/server.py passes
-        # (a TypeError at import), so `citadel serve` would still die — name it here, not there.
+        # MCPServer imports, but the version is outside the tested range (a future 3.x that kept the
+        # module path) — name it here, before `citadel serve` meets whatever changed.
         return Check(
             FAIL,
             "MCP SDK",
             f"mcp {version} is installed, outside the supported {MCP_SDK_RANGE} - `citadel serve` cannot start; "
             f"{mcp_sdk_remedy(version)}",
         )
-    return Check(OK, "MCP SDK", f"mcp {version or '(version unknown)'} - FastMCP imports, `citadel serve` can start")
+    return Check(OK, "MCP SDK", f"mcp {version or '(version unknown)'} - MCPServer imports, `citadel serve` can start")
 
 
 def check_http_serve() -> Check:
@@ -1051,7 +1051,7 @@ def _isolated(name: str, check: Callable[[], Check]) -> Check:
 
     Each check already degrades its EXPECTED problems to WARN/FAIL lines, but not every failure is
     expected: under an mcp 2.x install ``check_http_serve``'s import of :mod:`citadel.httpserve`
-    (which imports :mod:`citadel.server`, which imports ``mcp.server.fastmcp``) raised
+    (which imports :mod:`citadel.server`, which imported the 1.x ``mcp.server.fastmcp``) raised
     ModuleNotFoundError, and because the list was built eagerly the whole report died in a traceback
     — on exactly the broken install doctor exists to diagnose. A FAIL (not a WARN) because a check
     that could not run vouches for nothing."""

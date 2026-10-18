@@ -242,9 +242,11 @@ def build_app(
 ):
     """The guarded ASGI app serving :mod:`citadel.server`'s MCP surface over Streamable HTTP.
 
-    Settings are stamped onto the shared FastMCP instance first (endpoint path, bind address), then
-    :meth:`FastMCP.streamable_http_app` builds the Starlette app and :func:`bearer_guard` wraps it
-    with the Host/Origin/token policy. Omitting ``hosts``/``origins`` resolves them from the
+    :meth:`MCPServer.streamable_http_app` builds the Starlette app from keyword settings (endpoint
+    path, bind host, transport security — a fresh session manager per call, so building twice in one
+    process is safe) and :func:`bearer_guard` wraps it with the Host/Origin/token policy. The SDK's
+    own HTTP defaults stand: idle sessions are reaped after 30 minutes (a remote client must then
+    re-initialize), at most 10,000 sessions, request bodies capped at 4 MiB. Omitting ``hosts``/``origins`` resolves them from the
     ``CITADEL_HTTP_ALLOWED_*`` knobs via :func:`allowed_host_names` / :func:`allowed_origins`
     (passing them explicitly is for tests and for :func:`serve`, which resolves them first; ``None``
     accepts any name, ``[]`` accepts none). Exposed
@@ -256,22 +258,19 @@ def build_app(
     port = config.HTTP_PORT if port is None else port
     path = normalize_path(config.HTTP_PATH if path is None else path)
 
-    server.mcp.settings.host = host
-    server.mcp.settings.port = port
-    server.mcp.settings.streamable_http_path = path
-    # The SDK's own Host/Origin checking stays OFF: bearer_guard implements that policy (see its
-    # docstring for why), and this middleware would otherwise reject the very deployments the
-    # allowlist knobs exist for. Its POST Content-Type check runs regardless of the flag, which is
-    # the reason the middleware is still configured at all.
-    server.mcp.settings.transport_security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
-    # FastMCP caches its StreamableHTTP session manager on the first build, and that manager's
-    # run() is single-use — so a SECOND build in the same process (a retried start, a test) would
-    # hand out an app whose lifespan raises. Dropping the cached one makes build_app repeatable;
-    # the attribute is private, so this stays a best-effort reset rather than a hard requirement.
-    if hasattr(server.mcp, "_session_manager"):
-        server.mcp._session_manager = None
+    del port  # uvicorn binds the port (serve()); the app itself does not need it
+    # The SDK's own Host/Origin checking stays OFF, and is ALWAYS passed explicitly: with None and a
+    # loopback host (citadel's default bind) the 2.x SDK auto-enables a loopback-only Host/Origin
+    # allowlist, which would 421 every tunnel hostname CITADEL_HTTP_ALLOWED_HOSTS admits.
+    # bearer_guard owns that policy (see its docstring for why). The middleware's POST Content-Type
+    # check runs regardless of the flag, which is the reason it is still configured at all.
+    app = server.mcp.streamable_http_app(
+        streamable_http_path=path,
+        host=host,
+        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+    )
     return bearer_guard(
-        server.mcp.streamable_http_app(),
+        app,
         token,
         hosts=allowed_host_names(host) if hosts is _FROM_CONFIG else hosts,
         origins=allowed_origins() if origins is _FROM_CONFIG else origins,

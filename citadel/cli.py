@@ -909,8 +909,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
     are rejected the same way rather than silently ignored — a ``--port`` that did nothing would be
     a security surprise waiting to happen.
 
-    An installed MCP SDK that cannot provide what the server imports (mcp 2.x dropped
-    ``mcp.server.fastmcp``) exits 1 with the reinstall command instead of a ModuleNotFoundError
+    An installed MCP SDK that cannot provide what the server imports (a 1.x SDK has no
+    ``mcp.server.mcpserver``) exits 1 with the reinstall command instead of a ModuleNotFoundError
     traceback — see :func:`_import_mcp_server`."""
     http = getattr(args, "http", False)
     if not http:

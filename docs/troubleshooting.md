@@ -269,3 +269,10 @@ upgrading citadel (the table above) brings a usable 1.x SDK back. On 0.7.0, pin 
 install: `uv tool install cite-citadel --with "mcp<2"` or `pip install "mcp<2"`. From 0.7.1 on,
 `citadel doctor` has an **MCP SDK** line that names the installed version and the command for your
 install method, and `citadel serve` refuses with that same command instead of a traceback.
+
+### `No module named 'mcp.server.mcpserver'` — an mcp 1.x SDK in the environment
+
+From the release after 0.7.1, citadel runs on the MCP SDK's **2.x** line (`mcp>=2,<3`). An
+environment that still holds a 1.x SDK (a shared venv, a manual `pip install "mcp<2"`) cannot start
+`citadel serve`: `citadel doctor`'s **MCP SDK** line FAILs and names the fix, e.g.
+`pip install "mcp>=2,<3"`. If you must stay on mcp 1.x, pin citadel to the 0.7.x line.

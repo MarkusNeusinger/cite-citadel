@@ -1128,8 +1128,8 @@ def test_ctrl_c_at_the_process_entry_dies_of_sigint_so_a_shell_loop_stops(tmp_ci
 
 
 @pytest.mark.parametrize("argv", [["serve"], ["serve", "--http"]])
-def test_serve_with_an_mcp_sdk_lacking_fastmcp_exits_1_with_the_remedy(tmp_citadel, monkeypatch, capsys, argv):
-    """mcp 2.x dropped ``mcp.server.fastmcp``, which citadel.server imports at load time (and
+def test_serve_with_an_mcp_sdk_lacking_mcpserver_exits_1_with_the_remedy(tmp_citadel, monkeypatch, capsys, argv):
+    """A 1.x SDK has no ``mcp.server.mcpserver``, which citadel.server imports at load time (and
     httpserve through it): both transports must exit 1 naming the failed import and the reinstall
     command, instead of a ModuleNotFoundError traceback. The command is ``citadel doctor``'s own
     (worded for the installed version, spelled for this install) — never a copy that could drift
@@ -1138,22 +1138,22 @@ def test_serve_with_an_mcp_sdk_lacking_fastmcp_exits_1_with_the_remedy(tmp_citad
 
     # A None entry makes the import machinery raise ModuleNotFoundError for that name; dropping the
     # loaded citadel.server forces the real import chain to run again (monkeypatch restores both).
-    monkeypatch.setitem(sys.modules, "mcp.server.fastmcp", None)
+    monkeypatch.setitem(sys.modules, "mcp.server.mcpserver", None)
     monkeypatch.delitem(sys.modules, "citadel.server", raising=False)
     monkeypatch.delattr(citadel, "server", raising=False)
-    monkeypatch.setattr(doctor, "mcp_sdk_version", lambda: "2.0.1")  # the breakage: a 2.x SDK installed
+    monkeypatch.setattr(doctor, "mcp_sdk_version", lambda: "1.28.1")  # the breakage: a 1.x SDK installed
 
     assert cli.main(argv) == 1
     err = capsys.readouterr().err
     assert "Traceback" not in err
     assert err.startswith("error: `citadel serve` cannot start - the installed MCP SDK does not import")
-    assert "mcp.server.fastmcp" in err
-    assert err.rstrip("\n").endswith(doctor.mcp_sdk_remedy("2.0.1"))
-    assert "citadel needs mcp>=1.10,<2 - run: " in err
+    assert "mcp.server.mcpserver" in err
+    assert err.rstrip("\n").endswith(doctor.mcp_sdk_remedy("1.28.1"))
+    assert "citadel needs mcp>=2,<3 - run: " in err
 
 
 def test_serve_does_not_relabel_an_unrelated_import_error(tmp_citadel, monkeypatch):
-    """Only an ImportError about the MCP SDK itself gets the mcp>=1.10,<2 remedy: a broken citadel module
+    """Only an ImportError about the MCP SDK itself gets the mcp>=2,<3 remedy: a broken citadel module
     is a real bug, and pointing its user at a reinstall of mcp would send them the wrong way."""
     monkeypatch.setitem(sys.modules, "citadel.server", None)
     monkeypatch.delattr(citadel, "server", raising=False)

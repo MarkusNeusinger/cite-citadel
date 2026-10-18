@@ -37,6 +37,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The MCP server runs on the mcp 2.x SDK (`mcp>=2,<3`) (#173).** `citadel/server.py` builds on
+  `MCPServer` and `citadel serve --http` on its keyword `streamable_http_app` settings (DNS-rebinding
+  checks stay with citadel's own Host/Origin guard, passed explicitly so a tunnel hostname is never
+  421'd). Behavior changes: tools run on worker threads, so readers answer while a `wiki_ingest`
+  runs (a second ingest is refused); a traversal resource URI (`wiki://page/../x`) is refused at the
+  protocol layer instead of returning an `error: unsafe path` body; HTTP sessions idle for 30 minutes
+  are reaped and request bodies are capped at 4 MiB; `serverInfo.version` is citadel's own version.
+  `citadel doctor` checks `mcp.server.mcpserver` and the new range; CI runs the server tests on the
+  `mcp==2.0.0` floor. Users who must stay on mcp 1.x pin citadel to 0.7.x.
+
 - **Page length is measured in characters too, and `curate --dry-run` shows what a run will
   read (#167).** A page is now over the length thresholds when it exceeds EITHER 400/800 body lines
   or 32,000/64,000 body characters, so a dense page (88 KB in 554 lines) gets its split. Lint's long-

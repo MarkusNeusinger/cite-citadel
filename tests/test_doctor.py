@@ -872,7 +872,7 @@ def test_run_isolates_a_check_that_raises(tmp_citadel, monkeypatch):
     monkeypatch.setattr(doctor, "_fetch_latest_pypi_version", lambda timeout=2.0: None)
 
     def _boom():
-        raise ModuleNotFoundError("No module named 'mcp.server.fastmcp'")
+        raise ModuleNotFoundError("No module named 'mcp.server.mcpserver'")
 
     monkeypatch.setattr(doctor, "check_http_serve", _boom)
     report = doctor.run()
@@ -880,7 +880,7 @@ def test_run_isolates_a_check_that_raises(tmp_citadel, monkeypatch):
     by_name = {c.name: c for c in report.checks}
     crashed = by_name["HTTP serve"]
     assert crashed.status == doctor.FAIL
-    assert "ModuleNotFoundError" in crashed.detail and "mcp.server.fastmcp" in crashed.detail
+    assert "ModuleNotFoundError" in crashed.detail and "mcp.server.mcpserver" in crashed.detail
     # The checks on either side of it ran normally.
     assert by_name["workspace"].status == doctor.OK
     assert by_name["workspace coherence"].status == doctor.OK
@@ -900,17 +900,17 @@ def test_run_fallback_names_match_every_checks_own_name(tmp_citadel, monkeypatch
     assert all(c.status == doctor.FAIL and "ZeroDivisionError" in c.detail for c in report.checks)
 
 
-def test_doctor_exits_1_instead_of_crashing_when_mcp_2_is_installed(tmp_citadel, monkeypatch, capsys):
-    """End to end over the real import chain: with ``mcp.server.fastmcp`` unimportable (what mcp 2.x
-    looks like) and citadel's server modules not yet loaded, ``citadel doctor`` prints the whole
-    report — the MCP SDK line with the ``mcp>=1.10,<2`` remedy, HTTP serve as its own FAIL — and exits 1."""
+def test_doctor_exits_1_instead_of_crashing_when_mcp_1x_is_installed(tmp_citadel, monkeypatch, capsys):
+    """End to end over the real import chain: with ``mcp.server.mcpserver`` unimportable (what a 1.x
+    SDK looks like) and citadel's server modules not yet loaded, ``citadel doctor`` prints the whole
+    report — the MCP SDK line with the ``mcp>=2,<3`` remedy, HTTP serve as its own FAIL — and exits 1."""
     import citadel
 
     monkeypatch.setattr(llm_mod, "_resolve_cli", lambda cli: "/opt/bin/claude")
     monkeypatch.setattr(doctor, "_fetch_latest_pypi_version", lambda timeout=2.0: None)
-    monkeypatch.setattr(doctor, "mcp_sdk_version", lambda: "2.0.0")
+    monkeypatch.setattr(doctor, "mcp_sdk_version", lambda: "1.28.1")
     # A None entry makes the import machinery raise ModuleNotFoundError for that name.
-    monkeypatch.setitem(sys.modules, "mcp.server.fastmcp", None)
+    monkeypatch.setitem(sys.modules, "mcp.server.mcpserver", None)
     # Force check_http_serve to re-import citadel.httpserve -> citadel.server as a fresh install would;
     # monkeypatch puts the already-loaded modules back afterwards.
     for name in ("httpserve", "server"):
@@ -919,7 +919,7 @@ def test_doctor_exits_1_instead_of_crashing_when_mcp_2_is_installed(tmp_citadel,
 
     assert cli.main(["doctor"]) == 1
     out = capsys.readouterr().out
-    assert "[FAIL] MCP SDK: mcp 2.0.0 is installed" in out and "citadel needs mcp>=1.10,<2" in out
+    assert "[FAIL] MCP SDK: mcp 1.28.1 is installed" in out and "citadel needs mcp>=2,<3" in out
     assert "[FAIL] HTTP serve: could not run this check - ModuleNotFoundError" in out
     assert "workspace coherence:" in out  # the checks after the crash still ran
 
@@ -930,45 +930,48 @@ def test_doctor_exits_1_instead_of_crashing_when_mcp_2_is_installed(tmp_citadel,
 def test_mcp_sdk_ok_names_the_installed_version():
     c = doctor.check_mcp_sdk()
     assert (c.status, c.name) == (doctor.OK, "MCP SDK")
-    assert f"mcp {metadata.version('mcp')}" in c.detail
+    assert f"mcp {metadata.version('mcp')}" in c.detail and "MCPServer imports" in c.detail
 
 
-def test_mcp_sdk_fails_with_the_remedy_when_fastmcp_does_not_import(monkeypatch):
-    """mcp 2.x renamed FastMCP: the check FAILs, names the installed version and the import error, and
-    hands over the reinstall command for this install method."""
-    monkeypatch.setattr(doctor, "mcp_sdk_version", lambda: "2.1.0")
-    monkeypatch.setitem(sys.modules, "mcp.server.fastmcp", None)
+def test_mcp_sdk_fails_with_the_remedy_when_mcpserver_does_not_import(monkeypatch):
+    """A 1.x SDK has no ``mcp.server.mcpserver``: the check FAILs, names the installed version and the
+    import error, and hands over the reinstall command for this install method."""
+    monkeypatch.setattr(doctor, "mcp_sdk_version", lambda: "1.28.1")
+    monkeypatch.setitem(sys.modules, "mcp.server.mcpserver", None)
     c = doctor.check_mcp_sdk()
     assert (c.status, c.name) == (doctor.FAIL, "MCP SDK")
-    assert "mcp 2.1.0 is installed" in c.detail
-    assert "mcp.server.fastmcp" in c.detail and "ModuleNotFoundError" in c.detail
-    assert c.detail.endswith(doctor.mcp_sdk_remedy("2.1.0"))
-    assert "citadel needs mcp>=1.10,<2 - run: " in c.detail
+    assert "mcp 1.28.1 is installed" in c.detail
+    assert "mcp.server.mcpserver" in c.detail and "ModuleNotFoundError" in c.detail
+    assert c.detail.endswith(doctor.mcp_sdk_remedy("1.28.1"))
+    assert "citadel needs mcp>=2,<3 - run: " in c.detail
 
 
 def test_mcp_sdk_fails_when_the_package_is_missing(monkeypatch):
     monkeypatch.setattr(doctor, "mcp_sdk_version", lambda: None)
-    monkeypatch.setitem(sys.modules, "mcp.server.fastmcp", None)
+    monkeypatch.setitem(sys.modules, "mcp.server.mcpserver", None)
     c = doctor.check_mcp_sdk()
     assert c.status == doctor.FAIL
     assert "the mcp package is not installed" in c.detail
-    assert "citadel needs mcp>=1.10,<2" in c.detail
+    assert "citadel needs mcp>=2,<3" in c.detail
 
 
-def test_mcp_sdk_does_not_blame_a_1x_sdk_for_a_broken_dependency(monkeypatch):
-    """Review regression: with a supported 1.x installed, a FastMCP import that breaks on a transitive
-    dependency (here pydantic-settings) must not say "citadel needs mcp>=1.10,<2" — that is already
-    satisfied, and its command would fix nothing. Over the real import chain: FastMCP is loaded first
-    so every module the failed re-import replaces has an original monkeypatch puts back."""
-    importlib.import_module("mcp.server.fastmcp")
-    for name in [n for n in sys.modules if n == "mcp.server.fastmcp" or n.startswith("mcp.server.fastmcp.")]:
-        monkeypatch.delitem(sys.modules, name)
-    monkeypatch.setitem(sys.modules, "pydantic_settings", None)
+def test_mcp_sdk_does_not_blame_a_2x_sdk_for_a_broken_dependency(monkeypatch):
+    """With a supported 2.x installed, an MCPServer import that breaks on a transitive dependency must
+    not say "citadel needs mcp>=2,<3" — that is already satisfied, and its command would fix nothing."""
+    monkeypatch.setattr(doctor, "mcp_sdk_version", lambda: "2.3.0")
+
+    real_import = importlib.import_module
+
+    def broken(name, *a, **k):
+        if name == "mcp.server.mcpserver":
+            raise ModuleNotFoundError("No module named 'pydantic_core'", name="pydantic_core")
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(doctor.importlib, "import_module", broken)
     c = doctor.check_mcp_sdk()
     assert (c.status, c.name) == (doctor.FAIL, "MCP SDK")
-    assert f"mcp {metadata.version('mcp')} is installed" in c.detail
-    assert "pydantic_settings" in c.detail
-    assert "needs mcp>=1.10,<2" not in c.detail
+    assert "mcp 2.3.0 is installed" in c.detail and "pydantic_core" in c.detail
+    assert "needs mcp>=2,<3" not in c.detail
     assert "a dependency it imports is broken - repair the environment: " in c.detail
 
 
@@ -987,53 +990,55 @@ def test_mcp_sdk_does_not_blame_a_1x_sdk_for_a_broken_dependency(monkeypatch):
     ],
 )
 def test_mcp_sdk_remedy_is_spelled_for_the_install_method(tmp_path, method, prefix, command):
-    """One re-resolve per installer, for both causes — and never `uv tool install --with "mcp<2"`,
-    which would persist the cap in uv's tool receipt and hold back every later upgrade. Plain pip is
-    the one exception for a too-new SDK: pin just mcp back down instead of reinstalling everything."""
+    """One re-resolve per installer, for both causes — and never `uv tool install --with "mcp..."`,
+    which would persist the pin in uv's tool receipt and hold back every later upgrade. Plain pip is
+    the one exception for an out-of-range SDK: pin just mcp back into range instead."""
     mod = _make_module(tmp_path, dev=method == "dev")
-    too_new = doctor.mcp_sdk_remedy("2.0.0", module_file=mod, prefix=prefix)
-    broken = doctor.mcp_sdk_remedy("1.28.1", module_file=mod, prefix=prefix)
-    expected_too_new = 'pip install "mcp>=1.10,<2"' if method == "pip" else command
-    assert too_new == f"citadel needs mcp>=1.10,<2 - run: {expected_too_new}"
-    assert broken.startswith("mcp 1.28.1 itself is supported") and broken.endswith(command)
-    assert "--with" not in too_new + broken
+    out_of_range = doctor.mcp_sdk_remedy("1.28.1", module_file=mod, prefix=prefix)
+    broken = doctor.mcp_sdk_remedy("2.3.0", module_file=mod, prefix=prefix)
+    expected = 'pip install "mcp>=2,<3"' if method == "pip" else command
+    assert out_of_range == f"citadel needs mcp>=2,<3 - run: {expected}"
+    assert broken.startswith("mcp 2.3.0 itself is supported") and broken.endswith(command)
+    assert "--with" not in out_of_range + broken
 
 
 @pytest.mark.parametrize(
     ("version", "sdk_at_fault"),
     [
-        ("2.0.0", True),
-        ("2.0.0rc1", True),
+        ("1.28.1", True),
+        ("1.10.0", True),
+        ("3.0.0", True),
         ("10.1", True),
         (None, True),
-        ("1.9.4", True),  # below the floor: FastMCP rejects the keywords server.py passes
-        ("1.2", True),
-        ("1.10.0", False),
-        ("1.28.1", False),
-        ("1.28.1rc1", False),
+        ("2.0.0", False),
+        ("2.0.0rc1", False),
+        ("2.3.0", False),
     ],
 )
 def test_mcp_sdk_remedy_blames_the_sdk_only_when_missing_or_out_of_range(tmp_path, version, sdk_at_fault):
     mod = _make_module(tmp_path, dev=False)
     remedy = doctor.mcp_sdk_remedy(version, module_file=mod, prefix="/home/u/.venvs/myproject")
-    assert remedy.startswith("citadel needs mcp>=1.10,<2") is sdk_at_fault
+    assert remedy.startswith("citadel needs mcp>=2,<3") is sdk_at_fault
 
 
-def test_mcp_sdk_fails_on_a_1x_below_the_floor_even_though_fastmcp_imports(monkeypatch):
-    """mcp 1.9.x has ``mcp.server.fastmcp``, but its FastMCP rejects the tool ``annotations`` and
-    prompt ``title`` keywords citadel/server.py passes — a TypeError at import, so `citadel serve`
-    dies anyway. The import check alone cannot see that; the version range does."""
-    monkeypatch.setattr(doctor, "mcp_sdk_version", lambda: "1.9.4")
+def test_mcp_sdk_fails_on_a_version_past_the_cap_even_though_mcpserver_imports(monkeypatch):
+    """A future 3.x that kept the module path still imports, but is outside the tested range."""
+    monkeypatch.setattr(doctor, "mcp_sdk_version", lambda: "3.0.0")
     c = doctor.check_mcp_sdk()
     assert c.status == doctor.FAIL
-    assert "mcp 1.9.4 is installed, outside the supported >=1.10,<2" in c.detail
-    assert c.detail.endswith(doctor.mcp_sdk_remedy("1.9.4"))
+    assert "mcp 3.0.0 is installed, outside the supported >=2,<3" in c.detail
+    assert c.detail.endswith(doctor.mcp_sdk_remedy("3.0.0"))
 
 
 def test_pyproject_declares_the_range_doctor_checks():
-    """doctor's MCP_SDK_RANGE and the dependency pyproject.toml declares must not drift apart."""
-    pyproject = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+    """doctor's MCP_SDK_RANGE and the dependency pyproject.toml declares must not drift apart, and
+    CI's floor leg must pin exactly doctor's floor."""
+    root = Path(__file__).resolve().parents[1]
+    pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
     assert f'"mcp{doctor.MCP_SDK_RANGE}"' in pyproject
+    ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    floor = ".".join(str(n) for n in doctor._MCP_SDK_FLOOR) + ".0"
+    assert f'"mcp=={floor}"' in ci
 
 
 def test_every_install_method_has_both_commands():

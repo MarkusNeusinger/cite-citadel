@@ -9,6 +9,11 @@ compared against the walk taken when the snapshot was built. At 1000 pages that 
 against the ~700 ms the parse costs, so a warm ``wiki_search`` drops from ~1.4 s to ~0.1 s while
 still reading the filesystem's own answer to "did anything change?" on every single call.
 
+**Threading contract (mcp 2.x runs sync tools on worker threads):** the pause below is
+process-global, so while an in-process ``wiki_ingest`` runs EVERY reader thread is served
+uncached — correct (each ``get`` re-validates the stat fingerprint anyway), just slower — until the
+ingest ends.
+
 **Correctness comes first, three times over:**
 
 1. *Bracketed fingerprints.* The snapshot is only stored when the stat walk taken BEFORE the load

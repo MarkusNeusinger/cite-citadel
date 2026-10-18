@@ -186,6 +186,28 @@ jobs:
       - name: Ruff format check
         run: uv run ruff format --check .
 
+  # The declared mcp floor must hold at RUNTIME, not just in metadata (0.7.0 shipped a `>=1.2` floor
+  # nothing ever ran): the server/HTTP/doctor/CLI tests against exactly the floor release. A drift
+  # guard in tests/test_doctor.py keeps this pin equal to doctor's _MCP_SDK_FLOOR.
+  mcp-floor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install dependencies at the mcp floor
+        run: |
+          uv sync --dev
+          uv pip install "mcp==2.0.0"
+
+      - name: Server / HTTP / doctor / CLI tests on the floor SDK
+        run: uv run --no-sync pytest tests/test_server.py tests/test_httpserve.py tests/test_doctor.py tests/test_cli.py -q
+
   # Regression gate for the phantom-workspace bug class: prove the WHEEL ALONE works — installed
   # into a clean venv (no checkout on sys.path, no dev deps) and driven from a temp CWD outside
   # the checkout (no citadel.toml above it, no CITADEL_* env). Each step checks exactly one layer,
