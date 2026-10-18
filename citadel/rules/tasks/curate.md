@@ -42,9 +42,10 @@ finding like any other: act on it where it holds, leave the cluster alone where 
 
 - **Never invent, never break provenance.** See `schema.md` § Grounding for the `[^sN]` (raw) vs
   `[^llmN]` (labeled model note) grammar and how a fact carries its marker + `## Sources` definition
-  when it moves (`core.md` § Restructuring). Curation only reorganizes and repairs what is already
-  cited — it never manufactures a fact, and never cites a raw file that does not state the
-  sentence.
+  when it moves (`core.md` § Restructuring). Curation only reorganizes and repairs the wiki's
+  existing content — it never manufactures a fact, and never cites a raw file that does not state
+  the sentence. Grounding an uncited sentence in a raw file that states it (see *Operator guidance*)
+  is such a repair.
 - **Preserve counterfactuals as stated** (`schema.md` § Grounding): a sourced claim you believe is
   wrong stays as the source stated it, cited — never "corrected" out.
 - **Never resurrect a deleted fact or invent a replacement for one.**
