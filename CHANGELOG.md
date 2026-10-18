@@ -80,6 +80,26 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Rules batch — every ingested source shows `(stale)` after this upgrade.** One release carries
+  all of this cycle's edits under `citadel/rules/`, so `rules_version` changes once:
+  - `core.md`: a new § Letterhead & page furniture (issuer letterhead, register numbers, VAT IDs,
+    bank details and board names are context, not facts — #160); a source's own housekeeping
+    (to-dos, "to follow", "TBD") is never a fact (#160); house rules refine style within
+    `schema.md`, and the schema wins on a format collision (#160); a folder note's caveats apply to
+    the files beside it (#159); excluded sources are off-limits, including for related-source
+    lookups (#157).
+  - `schema.md`: partial lists from different sources are merged as a union, not flagged as a
+    contradiction (#160); a text-layer PDF is cited `lines A-B` into its extraction (#161); an
+    undefined or empty `[^llmN]` fails `citadel check` (#166).
+  - `tasks/curate.md`: dissolve a callout that is not a contradiction (#160); never downgrade a PDF
+    locator (#161); the `--guidance` boundary — a steer may ground an uncited sentence and never
+    changes a cited fact (#172).
+  - `formats/pdf.md`: pages named as an unreliable text layer are read from the page image (#165).
+
+  Clear the marker a budget at a time with `citadel refresh --stale-rules --limit N`
+  (`citadel status` prints the command with the right N); `citadel curate --stale-rules` re-checks
+  the citing pages but does not clear it.
+
 - **Viewer: UI chrome follows the wiki language; map labels no longer pile up (#171).** `citadel view`
   now localizes everything AROUND the pages — toolbar tooltips, the search placeholder, "On this
   page", the "Sources (N)" summaries, "Referenced by:"/"Links to:"/"Related:", the sources overview

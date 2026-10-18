@@ -15,4 +15,5 @@ structure — is `genres/chat.md`'s job, with its own per-speaker, end-state att
   `schema.md` § Opinions & style.
 - **A status mail is tracking material.** A mail reporting progress on open items is ALSO a
   time-anchored tracking artifact — apply `genres/meeting-minutes.md` on top (genres compose).
-- **Ignore boilerplate**: signatures, legal disclaimers, and greetings are not facts.
+- **Ignore boilerplate**: signatures, legal disclaimers, and greetings are not facts (`core.md`
+  § Letterhead & page furniture).

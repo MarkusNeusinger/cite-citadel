@@ -22,7 +22,10 @@ given.
 ## Workflow — every session
 
 1. **Read the rules files your run instruction names** — this file, `schema.md`, the task brief,
-   and any format brief — and follow them exactly.
+   and any format brief — and follow them exactly. Workspace house rules, when named, refine style
+   and behavior **within** `schema.md`: where one collides with a format the schema fixes
+   (frontmatter fields, the `ABBR — Full Form` abbreviation title, citation and locator grammar,
+   the reserved section headings), the schema wins.
 2. **Read the source** the way the task/format brief says. If it holds no usable text (a stray
    binary that slipped through), make no edits and stop — the system records it as unreadable.
    (Obvious binaries are filtered out before you run, so assume yours is readable.)
@@ -51,6 +54,16 @@ Read them deliberately and use them **together with the content** to:
 The content stays primary: facts and their numbers/names/claims come from the file's **text** and
 cite the **file**. **Never cite the path itself as a fact, and never invent a fact from a folder
 name.** The path says *where things belong*; the content says *what they say.*
+
+**A folder note is context too.** A `README`, `ABOUT`, `INDEX`, `_index` or `00-…` file in your
+source's folder or a parent folder often says what the folder's files are: drafts,
+reconstructions, copies, someone else's text. Before you attribute your source, search the wiki's
+`## Sources` definitions for files in those folders. If one is such a note, read the page that
+cites it. Notes are ingested before the files beside them, so a note that is a source is already
+there. Never list or open the raw folder to find one: a note the wiki does not cite is not a
+source (it may be excluded on purpose). A caveat the note states applies to your facts too.
+Attribute them as the note describes them, and cite the note for the caveat, reusing the locator
+from the definition that already cites it.
 
 ## Code & structured sources — essence, not structure
 
@@ -84,6 +97,19 @@ rule holds: it must follow from the file's contents (never from assumption) and 
 like any fact. Route these facts into a page about the **module / subsystem / project** (use the
 path as context) — never one page per source file.
 
+## Letterhead & page furniture — context, not content
+
+A letterhead, page header/footer, or fine-print block says who ISSUED a document, not what the
+document says. From it take only what places the document: the issuer's name and place (and the
+issuing department), plus the people who actually sign it. Everything else such paper repeats —
+board, supervisory-board or management names, commercial-register / company numbers, VAT or tax
+IDs, bank details, phone/fax numbers, office addresses, legal notices — is not a fact about the
+document's subject: leave it out.
+
+Capture such details only when the document is ABOUT that organization (its own annual report, a
+register extract, a company profile), or when the body itself makes one operative (an invoice's
+payment account — the operative-document case of `genres/contract.md`).
+
 ## Genres — judged from the content
 
 Beyond its file format, a source has a **genre** — what kind of text it is — and that is YOUR
@@ -95,6 +121,13 @@ genre briefs; each begins with one line saying when it applies. After reading th
 - A genre can match a **part** of the source: a prose report whose appendix enumerates like
   entries is prose PLUS that enumeration — the list-shaped section still gets its brief's
   treatment (`genres/registry.md`). Judge sections as well as the whole.
+- **A source's own housekeeping is not content.** Notes the author left about the DOCUMENT —
+  to-dos, "still to clarify", "to follow", "TBD", "check this", draft or placeholder markers —
+  say what the document still lacks, not what is true of its subject: never write one as a fact in
+  a page body. An open question it raises about the SUBJECT ("still to clarify whether the team
+  moves to the new site") is an `## Open Points` entry, attributed and dated per
+  `genres/meeting-minutes.md`, even when the rest of the source is no tracking artifact; a remark
+  about the document's own completeness ("description to follow") is left out.
 - A source matching no brief simply follows the core + schema + task rules.
 - When in doubt whether a genre applies, don't force it — the core rules are always safe.
 
@@ -114,7 +147,8 @@ source.
   and you are done. Curiosity is not a gap: a source that explains itself needs nothing.
 - **Find the file through the wiki.** The wiki is the index into `raw/`: search it for the term,
   and the page that explains it names its raw file in the `## Sources` definitions — that file is
-  your candidate. Failing that, look for an obviously related file name or folder in the raw tree.
+  your candidate. Failing that, look for an obviously related file name or folder in the raw tree
+  — never one your run instruction lists as excluded.
 - **Spend the budget on the FEWEST, most promising files** and stop at it, whether or not the gap
   closed. Never sweep the raw tree, never open a file "to see what is in it", and never let a
   lookup pull you into a second one.
@@ -176,7 +210,9 @@ translated).
 The generated navigation/provenance files are catalogued in `schema.md` § Generated layer — never
 create or edit the files it lists (nor any `*/index.md` or dotfile). No changes outside the wiki.
 The **raw sources are read-only inputs**: read them for content and citations, but never write,
-create, move, or delete anything under the raw source tree.
+create, move, or delete anything under the raw source tree. A source your run instruction lists
+as **excluded** ("Excluded from this corpus") is off-limits entirely: never open, list, search, or
+cite it, not even under the related-source budget — the user keeps it out on purpose.
 
 **Your pages stay in the wiki directory your run instruction names — there is no publish step.**
 The files you write there *are* the result: the system validates and imports them **after** your

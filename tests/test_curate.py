@@ -1360,10 +1360,17 @@ def test_cost_reference_uses_the_median_and_is_labelled(tmp_citadel, seed_page):
 
 def test_guidance_boundary_anchors_in_the_curate_frames():
     """#172: the steer boundary is stated with the same two anchor phrases in both agent-facing
-    curate texts (the packaged ``tasks/curate.md`` is pinned with the rules batch)."""
+    curate texts (the packaged ``tasks/curate.md`` is pinned in ``test_llm``)."""
     from citadel import curate
 
     for text in (curate._OPERATOR_GUIDANCE_FRAME, curate._REASON_GUIDANCE[curate.REASON_OPERATOR]):
         assert "ground an uncited sentence" in text
         assert "never changes a cited fact" in text
         assert "[^llmN]" in text
+
+
+def test_contradiction_reason_offers_the_dissolve_path():
+    """#160: a false callout (open-ended list, dated evolution, plan vs. actual) is dissolved."""
+    from citadel import curate
+
+    assert "dissolve" in curate._REASON_GUIDANCE[curate.REASON_CONTRADICTION]

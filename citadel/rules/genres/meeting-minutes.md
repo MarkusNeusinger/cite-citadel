@@ -16,7 +16,9 @@ unstructured note that names an owner and an unresolved action — "Ana will loo
 for next sprint"). It is **not** a tracking artifact when its items are **standing/recurring** —
 a runbook, checklist, policy, or reference table. Test: *can this item reach a terminal "done"
 state?* If items are perennial, no thread: ingest as ordinary facts — and when they form a
-uniform enumeration of like entries, as a registry (`genres/registry.md`).
+uniform enumeration of like entries, as a registry (`genres/registry.md`). A single to-do inside an
+otherwise non-tracking source does not make it a tracking artifact; `core.md` § Genres covers that
+one line.
 
 ## Fan-out stays mandatory; the thread is an additive overlay
 

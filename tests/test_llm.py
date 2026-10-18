@@ -131,6 +131,62 @@ def test_core_rules_teach_path_and_filename_as_routing_context():
     assert "never cite" in core
 
 
+def _rule_text(name: str) -> str:
+    return (REAL_RULES_DIR / name).read_text(encoding="utf-8").lower()
+
+
+def test_core_rules_keep_letterhead_and_housekeeping_out_of_the_wiki():
+    """#160: letterhead/page furniture is context, a source's own to-dos are not content, and house
+    rules refine style only WITHIN the schema's formats."""
+    core = _rule_text("core.md")
+    for token in ("letterhead", "register", "bank", "vat"):
+        assert token in core
+    assert "housekeeping" in core and "open points" in core
+    assert "house rules" in core and "schema wins" in core
+
+
+def test_schema_rules_treat_partial_lists_as_a_union():
+    """#160: two sources naming different members of an open-ended list do not contradict."""
+    schema = _rule_text("schema.md")
+    assert "partial list" in schema and "union" in schema
+
+
+def test_core_rules_teach_folder_notes_as_context():
+    """#159: a folder note's caveats apply to its siblings, found through the wiki, never by
+    listing the raw folder."""
+    core = _rule_text("core.md")
+    section = core.split("## path & filename are context", 1)[1].split("\n## ", 1)[0]
+    assert "folder note" in section and "readme" in section
+    assert "never list or open the raw folder" in section
+
+
+def test_core_rules_put_excluded_sources_off_limits():
+    """#157: excluded sources are off-limits, and the related-source fallback never picks one."""
+    core = _rule_text("core.md")
+    off_limits = core.split("## off-limits", 1)[1].split("\n## ", 1)[0]
+    assert "excluded" in off_limits
+    related = core.split("## related sources", 1)[1].split("\n## ", 1)[0]
+    assert "excluded" in related
+
+
+def test_curate_brief_pins_locators_dissolve_and_the_guidance_boundary():
+    """#161/#160/#172: never downgrade a PDF locator, dissolve a non-contradiction callout, and the
+    steer's two anchor phrases."""
+    brief = _rule_text("tasks/curate.md")
+    assert "never downgrade a locator" in brief
+    assert "dissolve" in brief
+    assert "ground an uncited sentence" in brief
+    assert "never changes a cited fact" in brief
+    schema = _rule_text("schema.md")
+    assert "extracted is cited `lines a-b`" in " ".join(schema.split())
+
+
+def test_pdf_brief_reads_unreliable_pages_visually():
+    """#165: pages named as an unreliable text layer are read from the page image in both modes."""
+    pdf = _rule_text("formats/pdf.md")
+    assert "unreliable" in pdf and "both" in pdf
+
+
 def test_core_rules_teach_raw_read_only_and_tool_discipline():
     """core.md must keep telling the agent that raw sources are READ-ONLY (never written) and that
     reading/searching go through the built-in file tools, with the shell reserved for the

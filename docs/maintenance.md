@@ -265,7 +265,11 @@ Two customization mechanisms, from lightest to heaviest:
 - **`rules/local.md` — additive house rules.** Create `<workspace>/rules/local.md` and write your
   own instructions in it (preferred page style, domain glossary, "always tag X as Y", …). It is
   appended to every session's rules list on top of the packaged defaults, so it survives package
-  upgrades untouched. This is the right home for most customization.
+  upgrades untouched. This is the right home for most customization. It refines style and
+  behavior *within* the format contract: where a house rule collides with a format `schema.md`
+  fixes (frontmatter fields, the `ABBR — Full Form` abbreviation title, citation and locator
+  grammar), the schema wins. To change a format, eject `schema.md` — and the code that parses those
+  formats (`citadel check`, the glossary, lint) still decides what is valid.
 - **`rules eject` — fork a packaged file.** `citadel rules eject <name>` copies the packaged file
   to `<workspace>/rules/<name>`; a workspace file **shadows** the packaged one with the same
   tree-relative name (first-hit-wins per filename — `citadel rules list` shows which layer wins).

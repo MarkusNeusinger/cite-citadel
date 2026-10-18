@@ -51,7 +51,9 @@ Rules resolve in two layers, first hit wins **per filename**: the workspace `rul
 over this packaged tree. To fork a default, copy that one file into the workspace
 (`citadel rules eject <name>`) — a copied file is owned by the user; everything else keeps
 updating with pip. A workspace `rules/local.md`, when present, is always appended as one more
-path — the additive, upgrade-safe home for house rules.
+path — the additive, upgrade-safe home for house rules. `local.md` never overrides a `schema.md`
+format; to change a format, eject `schema.md`. The code that parses those formats (`citadel
+check`, the glossary, lint) still decides what is valid.
 
 ## How the system drives a session (context, not agent rules)
 

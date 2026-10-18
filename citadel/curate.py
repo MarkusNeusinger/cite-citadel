@@ -819,7 +819,9 @@ _REASON_GUIDANCE = {
     REASON_CONTRADICTION: (
         "This page carries a `> [!CONTRADICTION]` callout with no resolution. Add a labeled `[^llmN]` "
         "resolution line ONLY if you are highly confident which side is correct — never by dropping a "
-        "side (see `schema.md` § Contradictions)."
+        "side (see `schema.md` § Contradictions). If it is not a contradiction under that section (an "
+        "open-ended list, a dated evolution, a plan vs. an actual), dissolve it per `tasks/curate.md` "
+        "instead: keep every cited claim, drop only the callout wrapper."
     ),
     REASON_RULES_DRIFT: (
         "A source this page cites was ingested under an older rulebook. Re-check the page against the "
