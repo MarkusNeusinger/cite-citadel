@@ -8,6 +8,8 @@ layout; no CLI, no network.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from citadel import cli, config, failures, manifest, status
 
 
@@ -131,6 +133,90 @@ def test_os_junk_file_is_ignored_not_pending(tmp_citadel):
     assert "Thumbs.db" in report.ignored
     assert "raw/Thumbs.db" not in report.pending  # ignored, never pending
     assert "raw/real.md" in report.pending  # the genuine untracked file still surfaces
+
+
+def _ignore_index_and_private(tmp_citadel, monkeypatch):
+    monkeypatch.setattr(config, "IGNORE_PATTERNS", [*config.IGNORE_PATTERNS, "INDEX.md", "private"])
+    for sub in ("a", "b", "c"):
+        (tmp_citadel.raw / sub).mkdir()
+        (tmp_citadel.raw / sub / "INDEX.md").write_text("x\n", encoding="utf-8")
+    private = tmp_citadel.raw / "private"
+    (private / "sub").mkdir(parents=True)
+    for name in ("1.txt", "2.txt", "3.txt"):
+        (private / name).write_text("secret\n", encoding="utf-8")
+    (private / "sub" / "4.txt").write_text("secret\n", encoding="utf-8")
+
+
+def test_ignored_counts_files_per_name_not_distinct_names(tmp_citadel, monkeypatch):
+    """F08: one row per distinct (name, is-dir) with real file counts — three INDEX.md files are
+    three files, an ignored folder counts the files inside it (subfolders included)."""
+    _ignore_index_and_private(tmp_citadel, monkeypatch)
+    report = status.build_status()
+    text = report.render()
+    assert "Ignored (7 files, 2 names)" in text
+    assert "  INDEX.md  (3 files)" in text
+    assert "  private/  (1 folder, 4 files)" in text
+    assert report.ignored == ["INDEX.md", "private"]
+    assert report.as_dict()["ignored_detail"] == [
+        {"name": "INDEX.md", "dir": False, "matches": 3, "files": 3, "capped": False},
+        {"name": "private", "dir": True, "matches": 1, "files": 4, "capped": False},
+    ]
+    text.encode("ascii")
+
+
+def test_discover_walk_records_ignored_entries_but_never_hidden_ones(tmp_citadel, monkeypatch):
+    from citadel import ingest
+
+    _ignore_index_and_private(tmp_citadel, monkeypatch)
+    (tmp_citadel.raw / ".hidden.md").write_text("h\n", encoding="utf-8")
+    (tmp_citadel.raw / "real.md").write_text("r\n", encoding="utf-8")
+    walk = ingest._discover_walk(None)
+    ignored = {(p.relative_to(tmp_citadel.raw).as_posix(), d) for p, d in walk.ignored}
+    assert ignored == {("a/INDEX.md", False), ("b/INDEX.md", False), ("c/INDEX.md", False), ("private", True)}
+    assert [p.name for p, _st in walk.files] == ["real.md"]
+
+    # An explicitly named ignored file wins: it is a candidate, not an ignored entry.
+    explicit = ingest._discover_walk([str(tmp_citadel.raw / "a" / "INDEX.md")])
+    assert [p.name for p, _st in explicit.files] == ["INDEX.md"] and explicit.ignored == []
+
+
+def test_ignored_folder_count_is_capped_and_never_raises(tmp_citadel, monkeypatch):
+    monkeypatch.setattr(config, "IGNORE_PATTERNS", [*config.IGNORE_PATTERNS, "bulk", "locked"])
+    bulk = tmp_citadel.raw / "bulk"
+    bulk.mkdir()
+    for i in range(1500):
+        (bulk / f"{i}.bin").write_bytes(b"x")
+    (tmp_citadel.raw / "locked").mkdir()
+    real_scandir = status.os.scandir
+
+    def scandir(path):
+        if Path(path).name == "locked":
+            raise PermissionError("denied")
+        return real_scandir(path)
+
+    monkeypatch.setattr(status.os, "scandir", scandir)
+    report = status.build_status()
+    text = report.render()
+    assert "  bulk/  (1 folder, 1000+ files)" in text
+    assert "  locked/  (1 folder, 0+ files)" in text
+    assert "Ignored (1000+ files, 2 names)" in text
+    detail = {g["name"]: g for g in report.as_dict()["ignored_detail"]}
+    assert detail["bulk"]["capped"] is True and detail["bulk"]["files"] == 1000
+
+
+def test_ignored_matches_discovery_roots_and_repo_pruning(tmp_citadel, monkeypatch, tmp_path):
+    """The bucket comes from discovery's own walk: a junk file inside a repo source dir, or under a
+    RAW_DIR outside RAW_DIRS, is not reported (discovery never walks either)."""
+    repo_dir = tmp_citadel.raw / "proj"
+    (repo_dir / ".git").mkdir(parents=True)
+    (repo_dir / "Thumbs.db").write_bytes(b"x")
+    monkeypatch.setattr(config, "REPO_SUPPORT", True)
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    (outside / "Thumbs.db").write_bytes(b"x")
+    monkeypatch.setattr(config, "RAW_DIRS", [tmp_citadel.raw])
+    monkeypatch.setattr(config, "RAW_DIR", outside)
+    assert status.build_status().ignored == []
 
 
 # --- the CLI entry point -------------------------------------------------------------------

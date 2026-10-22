@@ -474,3 +474,47 @@ def test_a_raced_source_does_not_advance_the_overall_bar():
 
     assert progress._overall.tasks[0].completed == 0
     progress("done", {})
+
+
+def test_folder_notes_run_as_a_first_phase_under_jobs(tmp_citadel, fake_agent, cite_page):
+    """#159: every note is promoted before any sibling session clones the live wiki, and the group
+    keeps one continuous [index/total] numbering."""
+    from citadel import config
+
+    for folder, names in (("f", ("2012.md", "2013.md", "2014.md", "README.md")), ("g", ("2015.md", "INDEX.md"))):
+        (tmp_citadel.raw / folder).mkdir()
+        for name in names:
+            (tmp_citadel.raw / folder / name).write_text(f"{folder}/{name}\n", encoding="utf-8")
+    live = tmp_citadel.wiki
+
+    def effect(rel_key, **kw):
+        name = rel_key.split("/")[-1]
+        if name not in ("README.md", "INDEX.md"):
+            assert (live / "misc" / "f-README.md").exists() and (live / "misc" / "g-INDEX.md").exists()
+        cite_page(f"misc/{rel_key.split('/')[-2]}-{name}", rel_key, f"Fact from {rel_key}.")
+
+    fake_agent(side_effect=effect)
+    events: list[tuple[str, dict]] = []
+    report = ingest.ingest(jobs=2, progress=lambda e, d: events.append((e, d)))
+    assert not report.errors, report.errors
+    starts = [d for e, d in events if e == "source_start"]
+    assert sorted(d["index"] for d in starts) == [1, 2, 3, 4, 5, 6]
+    assert {d["total"] for d in starts} == {6}
+    assert config.wiki_dir() == live
+
+
+def test_a_failed_folder_note_hints_reingest_and_siblings_still_run(tmp_citadel, fake_agent, cite_page):
+    (tmp_citadel.raw / "f").mkdir()
+    for name in ("2012.md", "2013.md", "README.md"):
+        (tmp_citadel.raw / "f" / name).write_text(f"{name}\n", encoding="utf-8")
+
+    def effect(rel_key, **kw):
+        if rel_key.endswith("README.md"):
+            raise RuntimeError("note session failed")
+        cite_page(f"misc/{rel_key.split('/')[-1]}", rel_key, "A fact.")
+
+    fake_agent(side_effect=effect)
+    report = ingest.ingest(jobs=2)
+    assert len(report.failure_hints) == 1
+    assert "raw/f/README.md" in report.failure_hints[0] and "--reingest" in report.failure_hints[0]
+    assert {"raw/f/2012.md", "raw/f/2013.md"} <= set(report.processed)

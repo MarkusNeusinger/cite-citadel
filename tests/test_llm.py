@@ -10,6 +10,7 @@ real CLI is ever spawned.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import threading
@@ -129,6 +130,62 @@ def test_core_rules_teach_path_and_filename_as_routing_context():
     assert "tag" in core
     # ...and the load-bearing guardrail: the path ROUTES facts, it is never itself a cited fact.
     assert "never cite" in core
+
+
+def _rule_text(name: str) -> str:
+    return (REAL_RULES_DIR / name).read_text(encoding="utf-8").lower()
+
+
+def test_core_rules_keep_letterhead_and_housekeeping_out_of_the_wiki():
+    """#160: letterhead/page furniture is context, a source's own to-dos are not content, and house
+    rules refine style only WITHIN the schema's formats."""
+    core = _rule_text("core.md")
+    for token in ("letterhead", "register", "bank", "vat"):
+        assert token in core
+    assert "housekeeping" in core and "open points" in core
+    assert "house rules" in core and "schema wins" in core
+
+
+def test_schema_rules_treat_partial_lists_as_a_union():
+    """#160: two sources naming different members of an open-ended list do not contradict."""
+    schema = _rule_text("schema.md")
+    assert "partial list" in schema and "union" in schema
+
+
+def test_core_rules_teach_folder_notes_as_context():
+    """#159: a folder note's caveats apply to its siblings, found through the wiki, never by
+    listing the raw folder."""
+    core = _rule_text("core.md")
+    section = core.split("## path & filename are context", 1)[1].split("\n## ", 1)[0]
+    assert "folder note" in section and "readme" in section
+    assert "never list or open the raw folder" in section
+
+
+def test_core_rules_put_excluded_sources_off_limits():
+    """#157: excluded sources are off-limits, and the related-source fallback never picks one."""
+    core = _rule_text("core.md")
+    off_limits = core.split("## off-limits", 1)[1].split("\n## ", 1)[0]
+    assert "excluded" in off_limits
+    related = core.split("## related sources", 1)[1].split("\n## ", 1)[0]
+    assert "excluded" in related
+
+
+def test_curate_brief_pins_locators_dissolve_and_the_guidance_boundary():
+    """#161/#160/#172: never downgrade a PDF locator, dissolve a non-contradiction callout, and the
+    steer's two anchor phrases."""
+    brief = _rule_text("tasks/curate.md")
+    assert "never downgrade a locator" in brief
+    assert "dissolve" in brief
+    assert "ground an uncited sentence" in brief
+    assert "never changes a cited fact" in brief
+    schema = _rule_text("schema.md")
+    assert "extracted is cited `lines a-b`" in " ".join(schema.split())
+
+
+def test_pdf_brief_reads_unreliable_pages_visually():
+    """#165: pages named as an unreliable text layer are read from the page image in both modes."""
+    pdf = _rule_text("formats/pdf.md")
+    assert "unreliable" in pdf and "both" in pdf
 
 
 def test_core_rules_teach_raw_read_only_and_tool_discipline():
@@ -739,6 +796,28 @@ def test_prompt_size_guard_every_kind(pip_like_workspace, kind, read_path, segme
     assert len(prompt) < PROMPT_CHAR_BUDGET
 
 
+@pytest.mark.parametrize(("kind", "read_path", "segment"), _KIND_VARIANTS)
+@pytest.mark.parametrize("in_system_prompt", [False, True])
+def test_every_referenced_rule_is_delivered_exactly_once(
+    pip_like_workspace, kind, read_path, segment, in_system_prompt
+):
+    """#164: with or without CITADEL_RULES_IN_SYSTEM_PROMPT, each _referenced_rules entry reaches
+    the agent exactly once — a prompt line, the genre list, or (schema/core) the system-prompt file —
+    and the argv size guard holds either way."""
+    prompt = llm._build_instruction("raw/notes.md", kind, read_path, segment, rules_in_system_prompt=in_system_prompt)
+    assert len(prompt) < PROMPT_CHAR_BUDGET
+    system = llm._system_prompt_text() if in_system_prompt else ""
+    for role, path in llm._referenced_rules("raw/notes.md", kind, read_path, segment):
+        token = llm._agent_path(path)
+        named = prompt.count(token)
+        if in_system_prompt and role in llm._SYSTEM_PROMPT_ROLES:
+            # Named once (the "already loaded" line), delivered once (its header in the file).
+            assert named == 1 and system.count(f"# Rules file: {token}\n") == 1
+            assert "ALREADY in your system prompt" in prompt
+        else:
+            assert named == 1, (role, token)
+
+
 def test_build_invocation_claude_uses_stdin_and_acceptedits(monkeypatch):
     monkeypatch.setattr(config, "INGEST_MODEL", "sonnet", raising=False)
     argv, stdin_text = llm._build_invocation("claude", "/bin/claude", "PROMPT")
@@ -856,8 +935,9 @@ def test_hermetic_flags_empty_when_not_advertised(monkeypatch):
 
 
 def test_hermetic_flags_off_by_knob_and_absent_for_other_clis(monkeypatch):
-    """CITADEL_HERMETIC=0 disables the flag even when advertised; copilot/agy have no isolation
-    flag registered — nothing is probed (the help cache stays untouched) and nothing is passed."""
+    """CITADEL_HERMETIC=0 disables the flag even when advertised; agy has no isolation flag
+    registered — nothing is probed for it and nothing is passed; copilot's flag is probe-gated like
+    claude's, so a help text without it passes nothing."""
     _seed_help(monkeypatch, "/bin/claude", "--bare\n")
     monkeypatch.setattr(config, "HERMETIC", False, raising=False)
     assert llm._hermetic_flags("claude", "/bin/claude") == []
@@ -865,7 +945,7 @@ def test_hermetic_flags_off_by_knob_and_absent_for_other_clis(monkeypatch):
     cache = _seed_help(monkeypatch, "/bin/claude", "--bare\n")
     assert llm._hermetic_flags("copilot", "/bin/copilot") == []
     assert llm._hermetic_flags("agy", "/bin/agy") == []
-    assert set(cache) == {"/bin/claude"}  # no probe was attempted for copilot/agy
+    assert "/bin/agy" not in cache  # no probe was attempted for agy
 
 
 def test_run_ingest_session_appends_hermetic_flag_probe_gated(monkeypatch):
@@ -1313,7 +1393,8 @@ def test_run_session_writes_transcript_when_log_dir_set(tmp_path, monkeypatch):
     text = logs[0].read_text(encoding="utf-8")
     assert "the model said hello" in text  # stdout captured
     assert "a warning" in text  # stderr captured
-    assert "ingest.raw_notes.md" in logs[0].name  # label sanitized into the filename
+    assert logs[0].name.endswith(".ingest.raw+notes.md.log")  # `/` spelled `+` in the filename
+    assert "label:       ingest.raw/notes.md" in text  # the full label stays inside
 
 
 def test_transcript_filename_keeps_the_source_filename_tail_of_a_long_label(tmp_path, monkeypatch):
@@ -1378,9 +1459,83 @@ def test_transcript_label_names_the_pass_of_a_chunked_source(monkeypatch):
 
     monkeypatch.setattr(llm, "_run_session", fake_session)
     llm.run_ingest_session("raw/big.pdf", kind="pdf", read_path="/tmp/seg.md", segment=(3, 8))
-    assert seen["label"] == "pdf.p3of8.raw/big.pdf"
+    assert seen["label"] == "pdf-text.p3of8.raw/big.pdf"
     llm.run_ingest_session("raw/notes.md", kind="ingest")
     assert seen["label"] == "ingest.raw/notes.md"  # unchanged for a single-pass source
+
+
+def test_transcript_label_names_how_the_source_was_read(monkeypatch):
+    """F09: the label carries the DISPLAY kind (pdf-text / pdf-native / office-text), while the
+    prompt is still built from the internal kind."""
+    monkeypatch.setattr(llm, "_resolve_cli", lambda cli: cli)
+    monkeypatch.setattr(llm, "_hermetic_flags", lambda *a, **k: [])
+    kinds: list = []
+    monkeypatch.setattr(llm, "_build_instruction", lambda rel_key, kind, *a, **k: kinds.append(kind) or "p")
+    monkeypatch.setattr(llm, "_build_invocation", lambda *a, **k: (["copilot"], None))
+    seen: list = []
+    monkeypatch.setattr(llm, "_run_session", lambda cli, argv, stdin, *, log_label=None: seen.append(log_label))
+
+    llm.run_ingest_session("raw/scan.pdf")
+    llm.run_ingest_session("raw/big.pdf", kind="pdf", read_path="/tmp/x.md", segment=(3, 8))
+    llm.run_ingest_session("raw/deck.pptx", kind="reconcile", read_path="/tmp/deck.md")
+    llm.run_ingest_session("raw/notes.md")
+    assert seen == [
+        "pdf-native.raw/scan.pdf",
+        "pdf-text.p3of8.raw/big.pdf",
+        "office-text-reconcile.raw/deck.pptx",
+        "ingest.raw/notes.md",
+    ]
+    assert kinds == ["ingest", "pdf", "reconcile", "ingest"]
+
+
+@pytest.mark.parametrize(
+    ("kind", "key", "read_path", "expected"),
+    [
+        ("pdf", "raw/a.pdf", "/t", "pdf-text"),
+        ("pdf-reconcile", "raw/a.pdf", "/t", "pdf-text-reconcile"),
+        ("ingest", "raw/A.PDF", None, "pdf-native"),
+        ("reconcile", "raw/a.pdf", None, "pdf-native-reconcile"),
+        ("ingest", "raw/d.docx", "/t", "office-text"),
+        ("reconcile", "raw/d.docx", "/t", "office-text-reconcile"),
+        ("ingest", "raw/n.md", None, "ingest"),
+        ("delete", "raw/a.pdf", None, "delete"),
+        ("repo", "raw/proj", None, "repo"),
+        ("image", "raw/p.png", None, "image"),
+        ("audio", "raw/a.mp3", "/t", "audio"),
+        ("curate", "concepts/x.md", "/t", "curate"),
+    ],
+)
+def test_log_kind_table(kind, key, read_path, expected):
+    assert llm._log_kind(kind, key, read_path) == expected
+
+
+@pytest.mark.parametrize(
+    ("label", "expect_in"),
+    [
+        ("ingest.raw/notes.md", "ingest.raw+notes.md"),
+        ("ingest.raw/a+b/c.md", "raw+a_b+c.md"),
+        (
+            "pdf-native.raw/archive/2019/board/some long folder name/2019-annual-summary-of-operations.pdf",
+            "pdf-native...board+some_long_folder_name+2019-annual-summary-of-operations.pdf",
+        ),
+    ],
+)
+def test_transcript_label_is_cut_by_path_segment(label, expect_in):
+    name = llm._transcript_label(label)
+    assert expect_in in name
+    assert len(name) <= llm._TRANSCRIPT_LABEL_MAX
+    assert name.count("...") <= 1
+
+
+def test_transcript_label_shortens_an_overlong_filename_stem_keeping_its_extension():
+    name = llm._transcript_label("pdf-native.raw/" + "x" * 150 + ".pdf")
+    assert name.endswith(".pdf") and len(name) <= llm._TRANSCRIPT_LABEL_MAX
+    assert name.startswith("pdf-native...") and name[len("pdf-native...") :].count("...") == 1
+
+
+def test_transcript_label_drops_the_host_of_an_absolute_key():
+    name = llm._transcript_label("ingest.//fileserver.corp.example/share/a/b/c/d/e/f/notes.md")
+    assert "fileserver" not in name and name.endswith("notes.md")
 
 
 def test_run_session_no_transcript_when_log_dir_unset(tmp_path, monkeypatch):
@@ -1426,7 +1581,7 @@ def test_run_session_verbose_uses_streaming_not_capture(monkeypatch):
 
     used = {"stream": 0, "run": 0}
 
-    def fake_stream(cli, argv, stdin_text):
+    def fake_stream(cli, argv, stdin_text, **_kw):
         used["stream"] += 1
         return 0, "streamed transcript", ""
 
@@ -1603,3 +1758,14 @@ def test_ingest_task_brief_states_the_window_numbering_is_the_files_own():
     assert "line numbers are the locator line numbers" in brief
     assert "never renumber" in brief
     assert "sliced" not in brief and "all there is" not in brief
+
+
+def test_prompt_names_the_wiki_absolutely_and_the_self_check_bare(tmp_citadel):
+    """Verify-corpus 2026-10-22: with raw outside the workspace a session resolved the RELATIVE
+    staging wiki against the raw's tree and wrote pages nobody imported; and a wrapped self-check
+    (`(citadel check || …) | tail`) is denied by claude's narrowed shell, so the check never ran."""
+    prompt = llm._build_instruction("raw/notes.md")
+    wiki_line = next(line for line in prompt.splitlines() if line.startswith("- Wiki directory:"))
+    assert f"(absolute: {config.wiki_dir().as_posix()}/" in wiki_line
+    assert "nothing around it" in prompt and "no pipe" in prompt
+    assert re.search(r"^- Today: \d{4}-\d{2}-\d{2} ", prompt, re.MULTILINE)

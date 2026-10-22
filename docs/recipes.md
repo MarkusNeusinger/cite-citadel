@@ -16,6 +16,12 @@ cannot protect across a sync service: propagation delay means two machines can e
 lock locally, and the manifest is last-write-wins — the loser's work gets silently re-ingested or
 pruned. Reading a synced copy anywhere is always safe; writing from two places is never worth it.
 
+After you **move** the workspace or **switch which machine is the writer**, run `citadel adopt` once
+on the (new) writer: it records that machine's workspace root in the manifest without any agent
+session, so the "written by a workspace rooted at ..." warning stops. Never run it on a read-only
+mirror — it writes the manifest, which makes the mirror a second writer (and dirties a git-pulled
+copy so the next pull refuses to merge).
+
 ### Recipe: wiki-history git + a private remote (recommended)
 
 The [wiki-history layer](configuration.md#wiki-history-git) already commits the whole wiki after
@@ -211,9 +217,12 @@ runs the same two commands, then *reads the outcome* and acts on it. A prompt th
 > status) and summarize what's wrong; otherwise summarize in two sentences what the wiki learned
 > tonight (the run report names created/updated pages).
 
-This is the autonomous nightly fold-in as a recipe. The nesting is clean by design: ingest's own
-sub-sessions run hermetically (`CITADEL_HERMETIC`, claude's `--bare`), so the outer agent's
-configuration never leaks into the wiki-building sessions.
+This is the autonomous nightly fold-in as a recipe. The nesting is clean when ingest's own
+sub-sessions run hermetically (`CITADEL_HERMETIC`, claude's `--bare`, copilot's
+`--no-custom-instructions`), so the outer agent's configuration never leaks into the wiki-building
+sessions — confirm it once with `citadel doctor --probe` (it reports "session ran hermetic"). In a
+managed container where `--bare` strips the credentials, sessions fall back to non-hermetic and
+load the instruction files `citadel doctor` lists.
 
 ### No watch mode, on purpose
 

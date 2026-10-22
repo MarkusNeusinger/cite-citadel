@@ -14,12 +14,13 @@ executable for environments with a pre-provisioned browser build.
 
 from __future__ import annotations
 
+import math
 import os
 
 import pytest
 
+from citadel import config, viewer
 from citadel import failures as failures_mod
-from citadel import viewer
 
 
 pytest.importorskip("playwright.sync_api", reason="optional browser group not installed")
@@ -273,6 +274,225 @@ def test_spacey_angle_citation_renders_as_live_source_link(browser, tmp_citadel,
     reader = page.locator("#reader")
     reader.wait_for()
     assert "measured value was 42" in reader.inner_text()
+
+    page.close()
+    assert errors == [], f"viewer JS reported errors: {errors}"
+
+
+def _open_viewer(browser, out, hash_: str = ""):
+    """Load a built viewer document; returns ``(page, errors)`` with errors collected throughout."""
+    errors: list[str] = []
+    page = browser.new_page()
+    page.on("pageerror", lambda exc: errors.append(str(exc)))
+    page.on("console", lambda msg: errors.append(msg.text) if msg.type == "error" else None)
+    page.goto(out.as_uri() + hash_)
+    page.wait_for_selector("#page-list a.navitem")
+    return page, errors
+
+
+# --- UI-chrome localization (issue #171, F17) ----------------------------------------------------
+
+
+def test_german_wiki_renders_german_chrome(browser, tmp_citadel, seed_page, monkeypatch):
+    """With CITADEL_WIKI_LANG=de the CHROME around the pages is German — toolbar tooltips, the
+    search placeholder, the TOC, both Sources summaries, the backlink rows — and the structural
+    "## See also" heading renders localized (with a matching TOC entry) while the page markdown in
+    the bundle keeps the literal English heading."""
+    monkeypatch.setattr(config, "WIKI_LANG", "de-CH")
+    (tmp_citadel.raw / "a.md").write_text("# Kaffee\n\nEspresso braucht neun Bar Druck.\n", encoding="utf-8")
+    seed_page(
+        "concepts/espresso.md",
+        {"type": "Concept", "title": "Espresso", "description": "Eine Brühmethode.", "tags": ["kaffee"]},
+        "## Überblick\n\nEspresso braucht neun Bar.[^s1]\n\n## Zubereitung\n\nMit Druck.\n\n"
+        "## See also\n\n- [Koffein](./caffeine.md)\n\n## Sources\n\n"
+        "[^s1]: [raw/a.md](../../raw/a.md) - lines 3-3 (ingested 2026-06-22)\n",
+    )
+    seed_page(
+        "concepts/caffeine.md",
+        {"type": "Concept", "title": "Koffein", "description": "Der Wirkstoff.", "tags": ["kaffee"]},
+        "Siehe [Espresso](./espresso.md).[^s1]\n\n## Sources\n\n[^s1]: [raw/a.md](../../raw/a.md) - n\n",
+    )
+    out = viewer.write_viewer()
+    page, errors = _open_viewer(browser, out, "#concepts%2Fespresso.md")
+    page.wait_for_selector("#reader details.toc")
+
+    assert page.evaluate("document.documentElement.lang") == "de"
+    assert page.get_attribute("#g-zoomin", "title") == "Vergrößern"
+    assert page.get_attribute("#g-fit", "title") == "Ansicht einpassen"
+    assert page.get_attribute("#g-sidebar", "title") == "Seitenleiste ein-/ausblenden (\\)"
+    assert page.get_attribute("#g-sources", "title") == "Quellen in der Karte zeigen"
+    assert page.get_attribute("#graph-resizer", "title") == "Ziehen, um die Kartengröße zu ändern"
+    assert page.get_attribute("#g-theme", "title").startswith("Farbschema:")
+    assert page.locator("#graph-title").text_content().strip() == "Karte"
+    assert page.get_attribute("#search", "placeholder").startswith("Suchen")
+
+    assert page.locator("#reader details.toc > summary").text_content().strip() == "Auf dieser Seite"
+    assert page.locator("#reader details.sources > summary").text_content().strip() == "Quellen (1)"
+    assert "Verlinkt von:" in page.locator("#reader").inner_text()
+    assert page.locator("#source-list details.src-axis > summary").text_content().strip() == "Quellen (1)"
+
+    # "## See also" renders localized, and the TOC entry matches; the bundle body is untouched.
+    h2s = page.locator("#reader h2").all_text_contents()
+    assert "Siehe auch" in h2s and not any(h.strip().lower() == "see also" for h in h2s)
+    assert "Siehe auch" in page.locator("#reader details.toc a").all_text_contents()
+    body = page.evaluate(
+        "JSON.parse(document.getElementById('bundle').textContent).pages"
+        ".find(function (p) { return p.rel_path === 'concepts/espresso.md'; }).body"
+    )
+    assert "## See also" in body
+
+    page.click("#reader a[data-page='concepts/caffeine.md']")
+    page.wait_for_selector("#reader .backlinks")
+    assert "Verlinkt auf:" in page.locator("#reader").inner_text()
+
+    page.close()
+    assert errors == [], f"viewer JS reported errors: {errors}"
+
+
+# --- Map label declutter (issue #171, F27) -------------------------------------------------------
+
+_SPOKES = [f"Annual summary {i:02d}" for i in range(1, 17)]
+_REPORTS = ["Annual maintenance report 2019", "Annual maintenance report 2020"]
+
+
+def _visible_label_boxes(page):
+    return page.evaluate(
+        """() => Array.from(document.querySelectorAll('#graph g.node text')).map(function (el) {
+          var r = el.getBoundingClientRect(), op = getComputedStyle(el).opacity;
+          return { x0: r.left, y0: r.top, x1: r.right, y1: r.bottom, h: r.height, op: +op,
+                   text: el.textContent };
+        }).filter(function (b) { return b.h > 0 && b.op > 0; })"""
+    )
+
+
+def _zoom_scale(page) -> float:
+    return page.evaluate(
+        """() => { var m = /scale\\(([0-9.]+)\\)/.exec(document.getElementById('gzoom').getAttribute('transform') || '');
+                 return m ? +m[1] : 1; }"""
+    )
+
+
+def _label_passes(page) -> int:
+    return int(page.get_attribute("#graph", "data-label-passes") or 0)
+
+
+def _node_center(page, rel: str):
+    return page.evaluate(
+        """(rel) => { var g = document.querySelector("#graph g.node[data-page='" + rel + "'] circle");
+                      var r = g.getBoundingClientRect();
+                      return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }""",
+        rel,
+    )
+
+
+def _move_off_map(page):
+    box = page.locator("#reader").bounding_box()
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] - 5)
+
+
+def test_map_labels_declutter(browser, tmp_citadel, seed_page):
+    """A hub linked from 16 same-prefix spokes plus two same-prefix yearly pages used to knot into
+    an unreadable label pile. Labels are now culled in screen space (never overlapping), budgeted
+    to the top ~40% by degree, kept at a constant on-screen size, truncated in the middle so the
+    yearly pages stay distinguishable, backed by a native <title> tooltip, and re-culled only when
+    an input changes (a pan reuses the last pass)."""
+    seed_page("concepts/hub.md", {"type": "Concept", "title": "Annual overview"}, "The yearly hub.\n")
+    titles = ["Annual overview"]
+    for i, title in enumerate(_SPOKES + _REPORTS):
+        seed_page(f"concepts/p{i:02d}.md", {"type": "Concept", "title": title}, "Part of [the hub](./hub.md).\n")
+        titles.append(title)
+    n = len(titles)
+    out = viewer.write_viewer()
+    page, errors = _open_viewer(browser, out)
+    page.set_viewport_size({"width": 1280, "height": 900})
+    page.wait_for_selector("#graph[data-sim='idle']", timeout=30_000)
+    _move_off_map(page)
+
+    # Every node carries its full title as a native tooltip.
+    tips = page.evaluate(
+        "Array.from(document.querySelectorAll('#graph g.node')).map(function (g) {"
+        " var t = g.querySelector(':scope > title'); return t ? t.textContent : null; })"
+    )
+    assert sorted(tips) == sorted(titles)
+
+    # After settle no two visible labels overlap.
+    boxes = _visible_label_boxes(page)
+    assert boxes, "no labels rendered at all"
+    eps = 0.5
+    for i, a in enumerate(boxes):
+        for b in boxes[i + 1 :]:
+            overlap = a["x0"] < b["x1"] - eps and b["x0"] < a["x1"] - eps
+            overlap = overlap and a["y0"] < b["y1"] - eps and b["y0"] < a["y1"] - eps
+            assert not overlap, f"labels overlap: {a['text']!r} / {b['text']!r}"
+
+    # A pan reuses the last culling pass; a zoom step runs exactly one new pass.
+    empty = page.evaluate(
+        """() => {
+          var svg = document.getElementById('graph').getBoundingClientRect(), best = null, bestD = -1;
+          var cs = Array.from(document.querySelectorAll('#graph g.node')).map(function (g) {
+            var r = g.querySelector('circle, rect').getBoundingClientRect();
+            return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+          });
+          for (var x = svg.left + 20; x < svg.right - 60; x += 8) for (var y = svg.top + 20; y < svg.bottom - 20; y += 8) {
+            var d = Infinity;
+            cs.forEach(function (c) { d = Math.min(d, Math.hypot(c.x - x, c.y - y)); });
+            if (d > bestD) { bestD = d; best = { x: x, y: y }; }
+          }
+          return best;
+        }"""
+    )
+    passes = _label_passes(page)
+    assert passes > 0
+    page.mouse.move(empty["x"], empty["y"])
+    page.mouse.down()
+    page.mouse.move(empty["x"] + 40, empty["y"] + 10, steps=20)
+    page.mouse.up()
+    assert _label_passes(page) == passes
+    page.click("#g-zoomin")
+    assert _label_passes(page) == passes + 1
+
+    # Hovering any spoke makes its own label visible (hovered + neighbours are placed first).
+    page.click("#g-fit")  # bring every node back on screen after the pan + zoom above
+    for i, title in enumerate(_SPOKES):
+        c = _node_center(page, f"concepts/p{i:02d}.md")
+        page.mouse.move(c["x"], c["y"])
+        label = page.locator(f"#graph g.node[data-page='concepts/p{i:02d}.md'] text")
+        label.wait_for(state="visible")
+        assert label.text_content() == title
+
+    # The two same-prefix yearly pages render DIFFERENT labels (middle ellipsis keeps the tail).
+    shown = []
+    for i in (16, 17):
+        c = _node_center(page, f"concepts/p{i:02d}.md")
+        page.mouse.move(c["x"], c["y"])
+        label = page.locator(f"#graph g.node[data-page='concepts/p{i:02d}.md'] text")
+        label.wait_for(state="visible")
+        shown.append(label.text_content())
+    assert shown == ["Annual m…port 2019", "Annual m…port 2020"]
+    _move_off_map(page)
+
+    # Zoomed out (scale <= 1.4, no hover): the label budget holds (top 40% + the active page).
+    for _ in range(20):
+        if _zoom_scale(page) <= 1.4:
+            break
+        page.click("#g-zoomout")
+    s_out = _zoom_scale(page)
+    assert s_out <= 1.4
+    _move_off_map(page)
+    out_boxes = _visible_label_boxes(page)
+    assert len(out_boxes) <= math.ceil(0.4 * n) + 1
+    h_out = out_boxes[0]["h"]
+
+    # Zoomed in (scale at least doubled, or the 4x clamp): at least as many labels, same size.
+    for _ in range(20):
+        s_now = _zoom_scale(page)
+        if s_now >= 2 * s_out or s_now >= 4:
+            break
+        page.click("#g-zoomin")
+    _move_off_map(page)
+    in_boxes = _visible_label_boxes(page)
+    assert len(in_boxes) >= len(out_boxes)
+    assert all(abs(b["h"] - h_out) <= 1 for b in in_boxes)
 
     page.close()
     assert errors == [], f"viewer JS reported errors: {errors}"

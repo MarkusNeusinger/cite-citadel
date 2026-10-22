@@ -14,3 +14,6 @@
 *.doc binary
 *.ppt binary
 *.xls binary
+
+# Calendar fixtures are compared byte-for-byte by the gazette dedup case; keep LF on every checkout.
+*.ics text eol=lf

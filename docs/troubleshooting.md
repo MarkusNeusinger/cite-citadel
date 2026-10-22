@@ -4,7 +4,11 @@
 lines over workspace resolution, the rules tree, env-setting parse fallbacks (a numeric knob whose
 value didn't parse silently falls back to its default — doctor is where that becomes visible), the
 agent CLI on PATH, raw-root reachability, the manifest, and the API-key/PDF advisories — it needs
-no workspace and exits non-zero only on a FAIL. Most problems below show up there first.
+no workspace and exits non-zero only on a FAIL. Most problems below show up there first. Its
+`agent instructions` line also tells you when a `CLAUDE.md`/`AGENTS.md` in or above the workspace
+will be loaded into non-isolated sessions. Then, once, run **`citadel doctor --probe`**: it spends one
+tiny agent session (in a throwaway temp dir) to prove the backend authenticates non-interactively and
+accepts your `CITADEL_INGEST_MODEL` (and `CITADEL_CURATE_MODEL`), before a real ingest pays to find out.
 
 ### "another citadel run is already running on this workspace"
 
@@ -23,6 +27,10 @@ the binary isn't on `PATH`, point at it with `CLAUDE_CODE_PATH` / `COPILOT_CLI_P
 `AGY_CLI_PATH`.
 
 ### Every session fails with an authentication error, but the CLI works when I run it myself
+
+`citadel doctor --probe` diagnoses this in one short session: it WARNs when `--bare` strips the CLI's
+credentials on this machine (and names `CITADEL_HERMETIC=0`), and FAILs when the CLI is not logged
+in for non-interactive use at all.
 
 Hermetic sessions (`CITADEL_HERMETIC=1`, the default) append the backend's session-isolation flag —
 claude's `--bare` — so your personal agent configuration never leaks into ingest. On some machines
@@ -112,6 +120,11 @@ when it was ingested with `CITADEL_PDF_TEXT=0`, or in the unusual case that pypd
 no text layer at all and always falls back to agent-verified `p. N` page locators — that is
 expected, not a failure. Deleting a cache entry (or the whole dir) just costs one re-extraction.
 
+`citadel curate` hands each session the cached text layer of the PDFs its cluster cites, so a
+curate pass keeps (and fixes) `lines A-B` locators instead of falling back to `p. N`; a session that
+downgrades a verifiable `lines A-B` locator to a bare `p. N` is rolled back. When the cache entry
+is missing, curate cannot hand it over — rebuild it first with `citadel ingest --force raw/report.pdf`.
+
 ### An audio/video recording isn't in the wiki
 
 Audio transcript ingest is **opt-in**: set `CITADEL_AUDIO_SUPPORT=1` and install a whisper-class
@@ -125,6 +138,20 @@ CLI (see [configuration — Audio/video sources](configuration.md#audiovideo-sou
   unchanged recording is never transcribed twice — including after you switch
   `CITADEL_WHISPER_MODEL`. To re-transcribe with a better model, delete the file's cache entry
   (or the whole cache dir) and run `citadel ingest --force <path>`.
+
+### "the ingest manifest ... was written by a workspace rooted at ..."
+
+The manifest records which workspace root wrote it. A workspace kept in a sync folder, used from a
+second machine, or moved to a new path sits at a different absolute path, so every command that
+reads the manifest warns. `citadel doctor`'s manifest line says which case you are in:
+
+- **The source keys still resolve here** (same workspace, new path): run `citadel adopt` once — it
+  records this root, needs no agent session, and the warning stops. (A path-less `citadel ingest`
+  with nothing pending does the same.) Do this only on the machine that runs `ingest`/`curate`/
+  `refresh` — never on a read-only mirror.
+- **Most keys do not resolve here** (a re-keyed or moved checkout): `citadel adopt` refuses, because
+  the next run's deletion sweep would read the whole old key space as deleted. Fix the mount or the
+  `CITADEL_*_DIR` settings; if the move is intentional, run `citadel ingest --full-rescan` once.
 
 ### "Nothing got ingested"
 
@@ -140,7 +167,7 @@ CLI (see [configuration — Audio/video sources](configuration.md#audiovideo-sou
   plus every `NO PAGES` source (as a forced reconcile). No paths needed — it prints the set first.
 - Already-ingested sources are skipped by sha match — that's not a bug. To deliberately re-read one,
   use `citadel ingest --force <paths>`.
-- Watch a run live with `citadel ingest --verbose` (`-v`), or capture a full transcript per source
+- Watch a run live with `citadel ingest --verbose` (`-v`), or capture a full transcript per agent session
   with `citadel ingest --log-dir DIR`.
 - If discovery seems to miss files, confirm they're under a walked raw root (`CITADEL_RAW_DIR`, or
   every root in `CITADEL_RAW_DIRS` when set) and aren't matching an ignore glob.
@@ -247,3 +274,10 @@ upgrading citadel (the table above) brings a usable 1.x SDK back. On 0.7.0, pin 
 install: `uv tool install cite-citadel --with "mcp<2"` or `pip install "mcp<2"`. From 0.7.1 on,
 `citadel doctor` has an **MCP SDK** line that names the installed version and the command for your
 install method, and `citadel serve` refuses with that same command instead of a traceback.
+
+### `No module named 'mcp.server.mcpserver'` — an mcp 1.x SDK in the environment
+
+From the release after 0.7.1, citadel runs on the MCP SDK's **2.x** line (`mcp>=2,<3`). An
+environment that still holds a 1.x SDK (a shared venv, a manual `pip install "mcp<2"`) cannot start
+`citadel serve`: `citadel doctor`'s **MCP SDK** line FAILs and names the fix, e.g.
+`pip install "mcp>=2,<3"`. If you must stay on mcp 1.x, pin citadel to the 0.7.x line.

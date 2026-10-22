@@ -211,7 +211,7 @@ def test_refresh_hands_jobs_through_to_ingest(tmp_citadel, monkeypatch):
     than by topic, so it is the lifecycle where parallelism costs the least cross-linking."""
     seen: dict = {}
 
-    def fake_ingest(paths=None, progress=None, full_rescan=False, force=False, jobs=None):
+    def fake_ingest(paths=None, progress=None, full_rescan=False, force=False, jobs=None, lifecycle="ingest"):
         seen["jobs"] = jobs
         seen["force"] = force
         return ingest.IngestReport([], [], [], [])
@@ -310,3 +310,17 @@ def test_plan_stale_only_never_stats_a_fresh_source(tmp_citadel, monkeypatch):
 
     monkeypatch.setattr(config, "source_path_for_key", guarded)
     assert [c.key for c in refresh.plan(stale_only=True)] == [stale]
+
+
+def test_refresh_dry_run_shows_the_last_recorded_cost(tmp_citadel, fake_agent):
+    fake_agent()
+    _track(tmp_citadel, "a.md", "a\n", ingested_at=OLD)
+    m = manifest.load()
+    m["raw/a.md"]["cost_usd"] = 0.42
+    manifest.save(m)
+    _track(tmp_citadel, "b.md", "b\n", ingested_at=OLD)
+    text = refresh.refresh(limit=5, dry_run=True).render()
+    a_line = next(line for line in text.splitlines() if "raw/a.md" in line)
+    b_line = next(line for line in text.splitlines() if "raw/b.md" in line)
+    assert "last session $0.42" in a_line and "last session" not in b_line
+    assert "Last recorded sessions for these sources: $0.42 total." in text

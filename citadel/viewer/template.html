@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="/*__LANG__*/">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OKF Wiki Viewer</title>
+<title data-i18n="doc_title">OKF Wiki Viewer</title>
 <style>
 /*__CSS__*/</style>
 </head>
@@ -12,10 +12,10 @@
   <aside id="sidebar">
     <div id="side-head">
       <span id="wiki-name"></span>
-      <button class="iconbtn" id="g-theme" title="Theme (auto / light / dark)" type="button">&#9680;</button>
-      <button class="iconbtn" id="g-width" title="Reading width" type="button">&#8596;</button>
+      <button class="iconbtn" id="g-theme" title="Theme (auto / light / dark)" data-i18n-title="theme_title" type="button">&#9680;</button>
+      <button class="iconbtn" id="g-width" title="Reading width" data-i18n-title="width_title" type="button">&#8596;</button>
     </div>
-    <input id="search" type="search" placeholder="Search full text… (press /)" autocomplete="off">
+    <input id="search" type="search" placeholder="Search... (tag:x type:y, / to focus)" data-i18n-placeholder="search_placeholder" autocomplete="off">
     <div id="facets"></div>
     <div id="tag-filter"></div>
     <nav id="page-list"></nav>
@@ -24,26 +24,27 @@
   <main id="content">
     <section id="graph-pane">
       <div id="graph-bar">
-        <button class="gbtn" id="g-sidebar" title="Toggle sidebar (\)" type="button">&#9776;</button>
-        <span id="graph-title">Map</span>
+        <button class="gbtn" id="g-sidebar" title="Toggle sidebar (\)" data-i18n-title="sidebar_title" type="button">&#9776;</button>
+        <span id="graph-title" data-i18n="map_title">Map</span>
         <span class="spacer"></span>
-        <button class="gbtn" id="g-sources" title="Show sources in the map" type="button">&#9673;</button>
-        <button class="gbtn" id="g-zoomout" title="Zoom out" type="button">&#8722;</button>
-        <button class="gbtn" id="g-zoomin" title="Zoom in" type="button">+</button>
-        <button class="gbtn" id="g-fit" title="Fit to view" type="button">&#10530;</button>
-        <button class="gbtn" id="g-random" title="Open a random page" type="button">&#9860;</button>
-        <button class="gbtn" id="g-expand" title="Expand map to full height" type="button">&#9633;</button>
-        <button class="gbtn" id="g-collapse" title="Collapse map" type="button">&#9662;</button>
+        <button class="gbtn" id="g-sources" title="Show sources in the map" data-i18n-title="map_sources_show" type="button">&#9673;</button>
+        <button class="gbtn" id="g-zoomout" title="Zoom out" data-i18n-title="zoom_out" type="button">&#8722;</button>
+        <button class="gbtn" id="g-zoomin" title="Zoom in" data-i18n-title="zoom_in" type="button">+</button>
+        <button class="gbtn" id="g-fit" title="Fit to view" data-i18n-title="zoom_fit" type="button">&#10530;</button>
+        <button class="gbtn" id="g-random" title="Open a random page" data-i18n-title="random_page" type="button">&#9860;</button>
+        <button class="gbtn" id="g-expand" title="Expand map to full height" data-i18n-title="map_expand" type="button">&#9633;</button>
+        <button class="gbtn" id="g-collapse" title="Collapse map" data-i18n-title="map_collapse" type="button">&#9662;</button>
       </div>
       <svg id="graph"></svg>
       <div id="graph-legend"></div>
     </section>
-    <div id="graph-resizer" title="Drag to resize the map"></div>
+    <div id="graph-resizer" title="Drag to resize the map" data-i18n-title="map_resize"></div>
     <article id="reader"></article>
   </main>
 </div>
 <div id="srcpop"></div>
 <script id="bundle" type="application/json">/*__BUNDLE__*/</script>
+<script id="i18n" type="application/json">/*__I18N__*/</script>
 <script>
 /*__VIEWER_JS__*/</script>
 </body>

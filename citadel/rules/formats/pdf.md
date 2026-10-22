@@ -7,7 +7,8 @@ run instruction tells you which one you are in.
 
 The system extracted the PDF's embedded text layer for you (pypdf pre-pass). The prepared file is
 the **verification copy** of the source: read IT for the body text — do not re-read the PDF for
-text — and cite the **original `.pdf` file** as the source of record.
+text, except the pages your run instruction names as unreliable (below) — and cite the **original
+`.pdf` file** as the source of record.
 
 - **Locators are `lines A-B` into the prepared file.** Its line numbers are exactly what the
   offline checks (`citadel check`/`lint`, `wiki_raw`, the viewer) verify against — never rebase
@@ -26,6 +27,12 @@ text — and cite the **original `.pdf` file** as the source of record.
 - An empty stretch under a `[p. N]` marker means that page has no text layer (a figure-only or
   scanned page). In **text** mode, note nothing for it; in **images** mode, read that page in the
   original PDF (below).
+- **Pages named as an unreliable text layer** ("Unreliable text layer" in your run instruction —
+  a scrambled table or OCR noise the system detected) are read from the original PDF's page image
+  in **both** modes: take their body text from the image and cite those pixel-read facts `p. N`.
+  Never cite the garbled lines for a fact only the image could pair (a label with its value); a
+  fact that IS legible in the extraction keeps its `lines A-B` locator. If your reader cannot
+  render the page, record nothing from its garbled part.
 
 Your run instruction also names the active **PDF mode**:
 

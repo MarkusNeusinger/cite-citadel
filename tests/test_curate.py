@@ -15,7 +15,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 
-from citadel import cli, config, lint, manifest, server
+import pytest
+
+from citadel import cli, config, lint, manifest, server, store
 
 
 # --- seed helpers ---------------------------------------------------------------------------
@@ -489,7 +491,8 @@ def test_guidance_reaches_the_cluster_findings_file(tmp_citadel, seed_page, fake
     assert "Operator guidance for THIS run" in findings
     assert "move the machine pages into registries/" in findings
     assert "raw/notes.md" in findings  # the cluster's cited sources, to be re-read
-    assert "re-attributed" in findings  # the frame: a steer can never change what the wiki SAYS
+    assert "ground an uncited sentence" in findings  # the frame: the one fact-level edit a steer may make
+    assert "never changes a cited fact" in findings
     assert curate.REASON_OPERATOR in findings
 
 
@@ -1163,3 +1166,224 @@ def test_lint_flags_fenced_pseudo_heading_locator(tmp_citadel, seed_page):
 
     report = lint.lint()
     assert any("concepts/topic.md" == rel for rel, _detail in report.locator_issues)
+
+
+# --- #162 Part B: the per-cluster record + convergence ----------------------------------------
+
+
+def _stale_page(tmp_citadel, seed_page):
+    (tmp_citadel.raw / "a.md").write_text("body\n", encoding="utf-8")
+    _track("raw/a.md", manifest.file_sha256(tmp_citadel.raw / "a.md"), "0000oldrules")
+    _seed_cited(seed_page, "concepts/a.md", "raw/a.md", title="A")
+
+
+def test_cluster_cost_on_each_line_and_noop_spend_total(tmp_citadel, seed_page, fake_agent):
+    from citadel import curate, llm
+
+    _stale_page(tmp_citadel, seed_page)
+    fake_agent(usage=llm.SessionUsage(cost_usd=0.8, input_tokens=1000, output_tokens=10))
+    text = curate.curate(stale_rules=True).render()
+    assert "  - concepts/a.md  ($0.80" in text
+    assert "NOOP spend (sessions that changed nothing): $0.80" in text
+
+
+def test_no_cost_text_without_reported_usage(tmp_citadel, seed_page, fake_agent):
+    from citadel import curate
+
+    _stale_page(tmp_citadel, seed_page)
+    fake_agent()
+    text = curate.curate(stale_rules=True).render()
+    assert "NOOP spend" not in text and "$" not in text
+
+
+def test_a_real_run_writes_the_record_and_a_dry_run_does_not(tmp_citadel, seed_page, fake_agent):
+    import json
+
+    from citadel import curate, llm
+
+    _stale_page(tmp_citadel, seed_page)
+    fake_agent(usage=llm.SessionUsage(cost_usd=0.5, input_tokens=7, output_tokens=3))
+    curate.curate(dry_run=True, stale_rules=True)
+    assert not config.curate_path().exists()
+    curate.curate(stale_rules=True)
+    entry = json.loads(config.curate_path().read_text(encoding="utf-8"))["concepts/a.md"]
+    assert entry["outcome"] == "noop" and "rules_version_drift" in entry["reasons"]
+    assert entry["rules_version"] == config.rules_version()
+    assert entry["cost_usd"] == 0.5 and entry["tokens_in"] == 7 and entry["tokens_out"] == 3
+    assert "seconds" in entry and entry["at"].endswith("Z")
+
+
+def test_stale_rules_converges_and_reopens_on_a_rules_change(tmp_citadel, seed_page, fake_agent, monkeypatch):
+    from citadel import curate
+
+    _stale_page(tmp_citadel, seed_page)
+    fake_agent()
+    curate.curate(stale_rules=True)  # NOOP under the current rules
+    assert "concepts/a.md" not in _plan_pages(curate.build_plan(stale_rules=True))
+    monkeypatch.setattr(config, "rules_version", lambda: "ffffnewrules")
+    assert "concepts/a.md" in _plan_pages(curate.build_plan(stale_rules=True))
+
+
+def test_a_failed_record_keeps_the_page_planned(tmp_citadel, seed_page, fake_agent):
+    from citadel import curate
+
+    _stale_page(tmp_citadel, seed_page)
+    fake_agent(error=RuntimeError("boom"))
+    curate.curate(stale_rules=True)
+    assert curate.load_records()["concepts/a.md"]["outcome"] == "failed"
+    assert "concepts/a.md" in _plan_pages(curate.build_plan(stale_rules=True, force=True))
+
+
+def test_rules_version_ignores_the_unread_readme(tmp_citadel):
+    readme = tmp_citadel.packaged_rules / "README.md"
+    readme.write_text("index\n", encoding="utf-8")
+    before = config.rules_version()
+    readme.write_text("index, edited\n", encoding="utf-8")
+    assert config.rules_version() == before
+    (tmp_citadel.packaged_rules / "core.md").write_text("changed core\n", encoding="utf-8")
+    assert config.rules_version() != before
+
+
+# --- #167: page length in characters; dry-run cluster facts + cost reference -------------------
+
+
+def _plain_page(seed_page, rel_path: str, body: str, type_: str = "Concept") -> None:
+    seed_page(
+        rel_path, {"type": type_, "title": "Long", "description": "d", "tags": ["t"], "resource": "raw/x.md"}, body
+    )
+
+
+def test_a_dense_page_under_800_lines_but_over_64k_chars_is_planned(tmp_citadel, seed_page):
+    from citadel import curate
+
+    (tmp_citadel.raw / "x.md").write_text("x\n", encoding="utf-8")
+    _plain_page(seed_page, "concepts/long.md", ("word " * 400 + "\n") * 40)  # ~80k chars, 40 lines
+    _plain_page(seed_page, "concepts/short.md", "short body\n" * 50)
+    plan = curate.build_plan()
+    assert curate.REASON_PAGE_LENGTH in _reasons_for(plan, "concepts/long.md")
+    assert curate.REASON_PAGE_LENGTH not in _reasons_for(plan, "concepts/short.md")
+
+
+def test_lint_warns_on_a_dense_page_with_its_size(tmp_citadel, seed_page):
+    from citadel import lint
+
+    (tmp_citadel.raw / "x.md").write_text("x\n", encoding="utf-8")
+    _plain_page(seed_page, "concepts/dense.md", ("word " * 200 + "\n") * 40)  # ~40k chars, 40 lines
+    report = lint.lint()
+    assert "concepts/dense.md" in report.long_pages
+    assert "  - concepts/dense.md (40.0k chars, 40 lines)" in report.render()
+    assert "over 400 lines or 32,000 chars" in report.render()
+
+
+@pytest.mark.parametrize("type_", ["Concept", "Registry"])
+def test_page_length_finding_names_the_size_and_both_limits(seed_page, tmp_citadel, type_):
+    from citadel import curate
+
+    _plain_page(seed_page, "concepts/x.md", "line\n" * 900, type_=type_)
+    page = store.read_page("concepts/x.md")
+    text = curate._reason_guidance(curate.REASON_PAGE_LENGTH, page)
+    assert "4,500 chars / 900 lines" in text and "64,000 chars or 800 lines" in text
+
+
+def test_dry_run_prints_cluster_facts_and_no_counters(tmp_citadel, seed_page):
+    from citadel import curate
+
+    (tmp_citadel.raw / "a.pdf").write_bytes(b"%PDF-1.7\n")
+    (tmp_citadel.raw / "b.pdf").write_bytes(b"%PDF-1.7\nb\n")
+    (tmp_citadel.raw / "c.pdf").write_bytes(b"%PDF-1.7\nc\n")
+    tracked = manifest.load()
+    for name, sha in (("a.pdf", "a" * 64), ("b.pdf", "b" * 64), ("c.pdf", "c" * 64)):
+        tracked[f"raw/{name}"] = manifest.make_entry(sha, "claude:x", config.rules_version())
+    manifest.save(tracked)
+    from citadel import pdftext
+
+    pdftext.cache_path("a" * 64).parent.mkdir(parents=True, exist_ok=True)
+    pdftext.cache_path("a" * 64).write_text("[p. 1] text\n", encoding="utf-8")
+    pdftext.cache_path("b" * 64).write_text("", encoding="utf-8")
+    seed_page(
+        "concepts/topic.md",
+        {"type": "Concept", "title": "Topic", "description": "d", "tags": ["t"], "resource": "raw/a.pdf"},
+        "One.[^s1] Two.[^s2] Three.[^s3]\n\n## Sources\n\n"
+        "[^s1]: [raw/a.pdf](../../raw/a.pdf) - a\n[^s2]: [raw/b.pdf](../../raw/b.pdf) - b\n"
+        "[^s3]: [raw/c.pdf](../../raw/c.pdf) - c\n",
+    )
+    report = curate.curate(dry_run=True)
+    text = report.render()
+    assert report.plan.render() in text
+    assert "Cluster facts (what each session will read):" in text
+    assert "3 cited source(s)" in text
+    assert "3 PDF(s): 1 text layer, 1 no text layer, 1 not extracted here" in text
+    assert "Applied:" not in text and "NOOP (findings did not hold)" not in text
+    assert text.rstrip().endswith("Dry run: no agent sessions were started.")
+    assert "Rough cost reference" not in text  # nothing records a cost
+
+
+def test_empty_plan_dry_run_is_unchanged(tmp_citadel):
+    from citadel import curate
+
+    text = curate.curate(dry_run=True).render()
+    assert "No curate work: every page is clean." in text
+    assert "Cluster facts" not in text and "cost reference" not in text
+
+
+def test_dry_run_is_read_only_and_hashes_nothing(tmp_citadel, seed_page, fake_agent, monkeypatch):
+    from citadel import curate, runlock
+
+    _stale_page(tmp_citadel, seed_page)
+    agent = fake_agent()
+    before = {p: p.read_bytes() for p in tmp_citadel.wiki.rglob("*") if p.is_file()}
+
+    def boom(*a, **k):
+        raise AssertionError("must not run")
+
+    monkeypatch.setattr(runlock, "hold", boom)
+    report = curate.curate(dry_run=True, stale_rules=True)
+    monkeypatch.setattr(manifest, "file_sha256", boom)
+    curate._cluster_fact(store.read_page("concepts/a.md"), {}, manifest.load())
+    assert agent.count == 0 and report.cluster_facts
+    assert {p: p.read_bytes() for p in tmp_citadel.wiki.rglob("*") if p.is_file()} == before
+
+
+def test_cost_reference_uses_the_median_and_is_labelled(tmp_citadel, seed_page):
+    from citadel import curate
+
+    _stale_page(tmp_citadel, seed_page)
+    tracked = manifest.load()
+    for i, cost in enumerate((0.2, 0.85, 3.0)):
+        tracked[f"raw/s{i}.md"] = manifest.make_entry("d" * 64, "claude:x", "r", cost_usd=cost)
+    manifest.save(tracked)
+    text = curate.curate(dry_run=True, stale_rules=True).render()
+    assert "Rough cost reference: 1 session(s) x $0.85 (median of 3 recorded ingest sessions)" in text
+    assert "Not a quote" in text
+    text.encode("ascii")
+
+
+def test_guidance_boundary_anchors_in_the_curate_frames():
+    """#172: the steer boundary is stated with the same two anchor phrases in both agent-facing
+    curate texts (the packaged ``tasks/curate.md`` is pinned in ``test_llm``)."""
+    from citadel import curate
+
+    for text in (curate._OPERATOR_GUIDANCE_FRAME, curate._REASON_GUIDANCE[curate.REASON_OPERATOR]):
+        assert "ground an uncited sentence" in text
+        assert "never changes a cited fact" in text
+        assert "[^llmN]" in text
+
+
+def test_contradiction_reason_offers_the_dissolve_path():
+    """#160: a false callout (open-ended list, dated evolution, plan vs. actual) is dissolved."""
+    from citadel import curate
+
+    assert "dissolve" in curate._REASON_GUIDANCE[curate.REASON_CONTRADICTION]
+
+
+def test_curate_report_carries_the_exclusion_enforcement_warnings(tmp_citadel, seed_page, fake_agent, monkeypatch):
+    """Like ingest's report: claude's denied tool calls and the unenforced-deny lower bound are shown
+    — here on a NOOP cluster, whose session still ran under the denies."""
+    from citadel import curate, llm, readdeny
+
+    _stale_page(tmp_citadel, seed_page)
+    fake_agent(usage=llm.SessionUsage(cost_usd=0.1, denials=("Read: raw/private/x.txt",)))
+    monkeypatch.setattr(readdeny, "unenforced", lambda: 3)
+    text = curate.curate(stale_rules=True).render()
+    assert "  - concepts/a.md: Read: raw/private/x.txt" in text
+    assert "at least 3 excluded path(s) were NOT enforced" in text

@@ -51,14 +51,14 @@ classifiers = [
 # because that is where every API used here (Group, Live, MofNCompleteColumn, Column overflow) is
 # stable; nothing newer is required.
 #
-# `mcp` is pinned to the 1.x line it is tested on: capped below 2 because the 2.x SDK renamed FastMCP
-# (`mcp.server.fastmcp` is gone), which citadel/server.py imports at module level — an uncapped fresh
-# install resolved 2.x and `citadel serve`/`citadel doctor` died with ModuleNotFoundError; floored at
-# 1.10 because server.py passes tool `annotations` and prompt/resource `title`, which older FastMCP
-# rejects with a TypeError at import (verified: 1.9.4 fails, 1.10.0 imports). Migrating to the 2.x
-# API is a separate change.
+# `mcp` is the 2.x SDK line (`mcp.server.mcpserver.MCPServer`): floored at 2.0.0, which already has
+# every API server.py/httpserve.py use (MCPServer(version=), streamable_http_app(streamable_http_path=,
+# transport_security=, host=), title/mime_type/annotations on the decorators, worker-thread sync
+# tools) — CI's floor leg runs the server tests against exactly 2.0.0; capped below 3 so a future
+# major cannot break `citadel serve` on a fresh install (0.7.0's uncapped `>=1.2` resolved a renamed
+# API). Users who must stay on mcp 1.x pin citadel to the 0.7.x line.
 dependencies = [
-    "mcp>=1.10,<2",
+    "mcp>=2,<3",
     "pyyaml>=6.0",
     "pypdf>=4",
     "rich>=13",

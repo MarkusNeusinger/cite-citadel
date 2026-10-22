@@ -5,6 +5,39 @@
   BUNDLE.pages.forEach(function (p) { PAGES[p.rel_path] = p; });
   var SOURCES = BUNDLE.sources || {};
   var FAILURES = BUNDLE.failures || [];  // the persisted could-not-ingest catalog (may be empty)
+  // UI-chrome dictionaries: the build inlines English (the per-key fallback) plus the wiki's own
+  // language when one ships. Only the chrome is translated — page text is the wiki's, verbatim.
+  var I18N = {};
+  try { I18N = JSON.parse(document.getElementById("i18n").textContent) || {}; } catch (e) {}
+  var I18N_EN = I18N.en || {};
+  var I18N_LOC = (BUNDLE.lang && I18N[BUNDLE.lang]) || I18N_EN;
+  var I18N_LOCALIZED = I18N_LOC !== I18N_EN;  // a non-English dictionary is active
+  // t(key, a0, a1, ...): the localized string for `key` (English fallback per key, the key itself as
+  // a last resort) with {0}, {1}, ... replaced by the extra arguments.
+  function t(key) {
+    var str = I18N_LOC[key];
+    if (str == null) str = I18N_EN[key];
+    if (str == null) str = key;
+    var args = arguments;
+    return String(str).replace(/\{(\d+)\}/g, function (m, n) {
+      var v = args[+n + 1];
+      return v == null ? m : String(v);
+    });
+  }
+  // Count-aware twin: picks `key + "_one"` for 1 and `key + "_other"` otherwise, with {0} = n.
+  function tn(key, n) { return t(key + (n === 1 ? "_one" : "_other"), n); }
+  // Apply the static template strings (data-i18n / -title / -placeholder) once at boot.
+  function applyStaticI18n() {
+    function each(attr, fn) {
+      Array.prototype.forEach.call(document.querySelectorAll("[" + attr + "]"), function (el) {
+        fn(el, t(el.getAttribute(attr)));
+      });
+    }
+    each("data-i18n", function (el, v) { el.textContent = v; });
+    each("data-i18n-title", function (el, v) { el.title = v; });
+    each("data-i18n-placeholder", function (el, v) { el.placeholder = v; });
+  }
+  applyStaticI18n();
   // The flat {source, target} link edges the graph consumes are NOT shipped (they duplicated the
   // per-page outbound/inbound lists ~3x in every file). Rebuild them ONCE here at boot, from each
   // page's outbound list, BEFORE any consumer runs (Graph.clusters()/buildModel read BUNDLE.edges).
@@ -109,7 +142,7 @@
     if (typeof u.tokens_out === "number") tok.push(fmtTokens(u.tokens_out) + " out");
     if (tok.length) out.push({ cls: "src-usage", text: tok.join(" / ") });
     if (typeof u.seconds === "number") out.push({ cls: "src-usage", text: fmtDuration(u.seconds) });
-    if (s.checked) out.push({ cls: "src-checked", text: "checked " + String(s.checked).slice(0, 10) });
+    if (s.checked) out.push({ cls: "src-checked", text: t("checked", String(s.checked).slice(0, 10)) });
     return out;
   }
 
@@ -284,8 +317,8 @@
   // space). The stable #tag-filter container holds it; a delegated change listener does the filter.
   function renderTags() {
     var box = document.getElementById("tag-filter");
-    var html = "<select id='tag-select'><option value=''>All tags (" + BUNDLE.pages.length +
-      ")</option>";
+    var html = "<select id='tag-select'><option value=''>" + esc(t("tags_all", BUNDLE.pages.length)) +
+      "</option>";
     Object.keys(BUNDLE.tags).sort().forEach(function (tag) {
       html += "<option value='" + esc(tag) + "'" + (tag === activeTag ? " selected" : "") + ">" +
         esc(tag) + " (" + BUNDLE.tags[tag].length + ")</option>";
@@ -298,12 +331,12 @@
   // a glance from the sidebar.
   function badgesHtml(p) {
     var out = "";
-    if (p.cites) out += "<span class='badge badge-cite' title='" + p.cites +
-      " citation(s) to raw sources'>&#8220;" + p.cites + "</span>";
-    if (p.llm) out += "<span class='badge badge-llm' title='" + p.llm +
-      " model-supplied (LLM) fact(s)'>LLM " + p.llm + "</span>";
-    if (p.contradictions) out += "<span class='badge badge-contra' title='" + p.contradictions +
-      " contradiction(s)'>&#9888; " + p.contradictions + "</span>";
+    if (p.cites) out += "<span class='badge badge-cite' title='" + esc(t("badge_cite_title", p.cites)) +
+      "'>&#8220;" + p.cites + "</span>";
+    if (p.llm) out += "<span class='badge badge-llm' title='" + esc(t("badge_llm_title", p.llm)) +
+      "'>LLM " + p.llm + "</span>";
+    if (p.contradictions) out += "<span class='badge badge-contra' title='" +
+      esc(t("badge_contra_title", p.contradictions)) + "'>&#9888; " + p.contradictions + "</span>";
     return out ? "<span class='badges'>" + out + "</span>" : "";
   }
 
@@ -426,11 +459,10 @@
     var terms = parseQuery(q).terms;  // the bare terms to center + highlight snippets on
     document.getElementById("source-list").innerHTML = "";  // sources appear inline in results
     if (!res.length) {
-      nav.innerHTML = "<p class='ext'>No matches for “" + esc(q) + "”.</p>";
+      nav.innerHTML = "<p class='ext'>" + esc(t("no_matches", q)) + "</p>";
       return;
     }
-    var html = "<div class='result-head'>" + res.length + " result" +
-      (res.length === 1 ? "" : "s") + "</div>";
+    var html = "<div class='result-head'>" + esc(tn("results", res.length)) + "</div>";
     res.forEach(function (r) {
       if (r.kind === "page") {
         var p = r.p;
@@ -467,7 +499,7 @@
       });
       html += "</details>";
     });
-    nav.innerHTML = html || "<p class='ext'>No pages.</p>";
+    nav.innerHTML = html || "<p class='ext'>" + esc(t("no_pages")) + "</p>";
     renderSources();
     markActiveNav();
   }
@@ -482,9 +514,9 @@
     var html = "";
     if (nContra) html += "<span class='facet contra" +
       (activeFacet === "contradiction" ? " active" : "") +
-      "' data-facet='contradiction'>&#9888; Contradictions " + nContra + "</span>";
+      "' data-facet='contradiction'>&#9888; " + esc(t("facet_contradictions")) + " " + nContra + "</span>";
     if (nLlm) html += "<span class='facet llm" + (activeFacet === "llm" ? " active" : "") +
-      "' data-facet='llm'>LLM notes " + nLlm + "</span>";
+      "' data-facet='llm'>" + esc(t("facet_llm")) + " " + nLlm + "</span>";
     box.innerHTML = html;
   }
 
@@ -541,9 +573,9 @@
     var open = false;
     try { open = localStorage.getItem("okf_sources_open") === "1"; } catch (e) {}
     var html = "<details class='src-axis'" + (open ? " open" : "") +
-      "><summary>Sources (" + ids.length + ")</summary>" +
-      "<a class='navitem src-overview' href='#sources'>All sources — overview" +
-      (FAILURES.length ? " <span class='fail-count'>" + FAILURES.length + " failed</span>" : "") +
+      "><summary>" + esc(t("sources_count", ids.length)) + "</summary>" +
+      "<a class='navitem src-overview' href='#sources'>" + esc(t("sources_overview_link")) +
+      (FAILURES.length ? " <span class='fail-count'>" + esc(t("failed_count", FAILURES.length)) + "</span>" : "") +
       "</a>" + renderNode(root, null);
     box.innerHTML = html + "</details>";
   }
@@ -563,7 +595,18 @@
     var hiddenTypes = {};  // type name -> 1 when that category is toggled off in the legend
     var hiddenTopics = {}; // cluster key -> 1 when that topic cluster is toggled off (topic mode)
     var hoverIdx = null;   // index of the hovered node (dims non-neighbours), or null
-    var degCut = 1;        // real-link-degree threshold above which a label always renders
+    // Label declutter state. A label is a CANDIDATE when its node is hovered / a hovered node's
+    // neighbour / the active page / inside the top-degree budget (or the user zoomed past 1.4); the
+    // candidates are then culled greedily in SCREEN space so no two drawn labels overlap. The pass
+    // result is cached and recomputed only when its inputs change (see draw()) — a pan reuses it.
+    var inBudget = {};     // node index -> 1 for the top ceil(0.4 * pages) pages by link degree
+    var labelOn = {};      // node index -> 1 when its label survived the last culling pass
+    var labelSig = null;   // the inputs the last pass ran under (zoom, hover, active, sources)
+    var labelDirty = true; // force a pass on the next draw (model rebuilt, sim tick, sim stopped)
+    var labelPasses = 0;   // how many culling passes ran (exposed as #graph[data-label-passes])
+    var widthCache = {};   // label string -> measured on-screen width (px)
+    var measureEl = null;  // a hidden <text> used once per label string to measure its width
+    var LABEL_PX = 9, LABEL_DY = 11;  // on-screen label font size and offset above the node (px)
     var raf = null, animating = false;
     var dragNode = null, panning = false, last = null, moved = false, activePointer = null;
     var W = 600, H = 420;
@@ -728,10 +771,10 @@
       });
       if (otherN) {
         index["__other__"] = list.length;
-        list.push({ key: "__other__", label: "other", size: otherN, color: OTHER_COLOR });
+        list.push({ key: "__other__", label: t("legend_other"), size: otherN, color: OTHER_COLOR });
       }
       index["__sources__"] = list.length;
-      list.push({ key: "__sources__", label: "Sources", size: 0, color: SOURCE_COLOR });
+      list.push({ key: "__sources__", label: t("legend_sources"), size: 0, color: SOURCE_COLOR });
 
       _clusters = { of: of, list: list, index: index };
       return _clusters;
@@ -849,10 +892,17 @@
         (adj[e.t] = adj[e.t] || {})[e.s] = 1;
         if (!e.src) { nodes[e.s].deg++; nodes[e.t].deg++; }
       });
-      // Label declutter threshold: the ~60th-percentile degree, so only the top ~40% of connected
-      // nodes label by default (floored at 1 so degree-0 nodes never label except on hover/zoom).
-      var degs = nodes.map(function (nd) { return nd.deg; }).sort(function (a, b) { return a - b; });
-      degCut = degs.length ? Math.max(1, degs[Math.floor(degs.length * 0.6)]) : 1;
+      // Label budget: the top ceil(40%) of the PAGE nodes by link degree (ties -> title, then
+      // index, so it is deterministic and a flat degree distribution can no longer admit every tied
+      // node). Degree-0 pages never enter it (they label only on hover / active / zoom).
+      var pageIdx = [];
+      nodes.forEach(function (nd, i) { if (nd.kind === "page") pageIdx.push(i); });
+      var budget = Math.ceil(0.4 * pageIdx.length);
+      inBudget = {};
+      pageIdx.filter(function (i) { return nodes[i].deg >= 1; })
+        .sort(function (a, b) { return nodes[b].deg - nodes[a].deg || titleCmp(a, b) || a - b; })
+        .slice(0, budget).forEach(function (i) { inBudget[i] = 1; });
+      labelDirty = true;
       // Tag-similarity springs over the page nodes (indices 0..pgs.length-1, matching `pgs` order).
       buildSimEdges(pgs);
     }
@@ -947,10 +997,86 @@
       return maxd;
     }
 
+    function titleCmp(a, b) {
+      var ta = String(nodes[a].title || ""), tb = String(nodes[b].title || "");
+      return ta < tb ? -1 : ta > tb ? 1 : 0;
+    }
+
+    // A map label: titles over 18 chars keep their first 8 and last 9 chars around a middle
+    // ellipsis, so same-prefix titles ("... report 2019" / "... report 2020") stay distinguishable.
+    function labelText(title) {
+      var str = String(title || "");
+      return str.length > 18 ? str.slice(0, 8) + "…" + str.slice(-9) : str;
+    }
+
+    // On-screen width of a label at LABEL_PX, measured once per string (getComputedTextLength on a
+    // hidden <text>); falls back to chars x 0.6em when the map cannot be measured (e.g. collapsed).
+    // Only real measurements are cached, so a fallback taken while hidden is retried later.
+    function labelWidth(txt) {
+      if (Object.prototype.hasOwnProperty.call(widthCache, txt)) return widthCache[txt];
+      var w = 0;
+      if (measureEl) {
+        try { measureEl.textContent = txt; w = measureEl.getComputedTextLength(); } catch (e) { w = 0; }
+        measureEl.textContent = "";
+      }
+      if (w > 0) { widthCache[txt] = w; return w; }
+      return txt.length * 0.6 * LABEL_PX;
+    }
+
+    // One greedy screen-space culling pass. Candidates are ordered hovered node, active page, the
+    // hovered node's neighbours, then degree desc, then title — so the label the user is pointing at
+    // always wins — and each is accepted only when its estimated box intersects no accepted box.
+    // Uniform grid buckets keep the pass ~linear. While hovering, the dimmed rest is skipped (CSS
+    // hides a dimmed node's text anyway, so it must not claim space).
+    function computeLabels() {
+      labelPasses++;
+      if (svg) svg.setAttribute("data-label-passes", String(labelPasses));
+      var hi = hoverIdx, revealAll = view.k > 1.4, cand = [], i;
+      for (i = 0; i < nodes.length; i++) {
+        var isHover = i === hi, isNb = hi != null && !!(adj[hi] && adj[hi][i]);
+        var isAct = nodes[i].id === activeRel;
+        if (hi != null && !isHover && !isNb) continue;
+        if (!(isHover || isNb || isAct || revealAll || inBudget[i])) continue;
+        cand.push({ i: i, rank: isHover ? 0 : isAct ? 1 : isNb ? 2 : 3 });
+      }
+      cand.sort(function (a, b) {
+        return a.rank - b.rank || nodes[b.i].deg - nodes[a.i].deg || titleCmp(a.i, b.i) || a.i - b.i;
+      });
+      var CELL = 64, grid = {}, on = {};
+      cand.forEach(function (c) {
+        var nd = nodes[c.i], w = labelWidth(labelText(nd.title)) + 4;
+        var sx = view.x + nd.x * view.k, base = view.y + nd.y * view.k - LABEL_DY;
+        // A generous box around the glyphs: ascent ~1.1em above the baseline, descent ~0.4em below.
+        var box = { x0: sx - w / 2, x1: sx + w / 2, y0: base - 1.1 * LABEL_PX, y1: base + 0.4 * LABEL_PX };
+        var gx0 = Math.floor(box.x0 / CELL), gx1 = Math.floor(box.x1 / CELL);
+        var gy0 = Math.floor(box.y0 / CELL), gy1 = Math.floor(box.y1 / CELL), gx, gy, k, cell;
+        for (gx = gx0; gx <= gx1; gx++) for (gy = gy0; gy <= gy1; gy++) {
+          cell = grid[gx + "," + gy];
+          if (!cell) continue;
+          for (k = 0; k < cell.length; k++) {
+            var o = cell[k];
+            if (box.x0 < o.x1 && o.x0 < box.x1 && box.y0 < o.y1 && o.y0 < box.y1) return;  // overlaps
+          }
+        }
+        for (gx = gx0; gx <= gx1; gx++) for (gy = gy0; gy <= gy1; gy++) {
+          (grid[gx + "," + gy] = grid[gx + "," + gy] || []).push(box);
+        }
+        on[c.i] = 1;
+      });
+      labelOn = on;
+    }
+
+    function r3(v) { return Math.round(v * 1000) / 1000; }
+
     function draw() {
       if (!gzoom) return;
       var s = "", i;
-      var hi = hoverIdx, cl = clusters().list, revealAll = view.k > 1.4;
+      var hi = hoverIdx, cl = clusters().list;
+      // Re-cull only when an input of the pass changed; a pan (view.x/y only) reuses the result,
+      // since translation never changes which screen boxes overlap.
+      var sig = view.k + "|" + hi + "|" + activeRel + "|" + showSources;
+      if (labelDirty || sig !== labelSig) { computeLabels(); labelSig = sig; labelDirty = false; }
+      var fs = r3(LABEL_PX / view.k), dy = LABEL_DY / view.k;
       // Sim edges are barely-visible dashed layout aids, drawn behind the real link edges.
       for (i = 0; i < simEdges.length; i++) {
         var sa = nodes[simEdges[i].s], sb = nodes[simEdges[i].t];
@@ -966,22 +1092,23 @@
       for (i = 0; i < nodes.length; i++) {
         var nd = nodes[i];
         var act = nd.id === activeRel ? " active" : "";
-        var isNb = hi != null && (i === hi || (adj[hi] && adj[hi][i]));
         var ndim = hi != null && i !== hi && !(adj[hi] && adj[hi][i]) ? " dim" : "";
-        // Declutter: a label renders only when the node is hovered/its neighbour, or it is a
-        // top-degree hub, or the user has zoomed in (dimmed non-neighbours also hide text via CSS).
-        var label = (isNb || revealAll || nd.deg >= degCut)
-          ? "<text x='" + r2(nd.x) + "' y='" + r2(nd.y - 11) + "' text-anchor='middle'>" +
-            esc(nd.title.length > 18 ? nd.title.slice(0, 17) + "…" : nd.title) + "</text>"
+        // Declutter: only labels that survived the culling pass render, at a constant on-screen
+        // size (font and offset divided by the zoom the group is scaled by). Every node carries
+        // its full title as a native tooltip, label or not.
+        var label = labelOn[i]
+          ? "<text x='" + r2(nd.x) + "' y='" + r3(nd.y - dy) + "' font-size='" + fs +
+            "' text-anchor='middle'>" + esc(labelText(nd.title)) + "</text>"
           : "";
+        var tip = "<title>" + esc(nd.title) + "</title>";
         if (nd.kind === "source") {
-          s += "<g class='node src" + act + ndim + "' data-page='" + esc(nd.id) + "'><rect x='" +
+          s += "<g class='node src" + act + ndim + "' data-page='" + esc(nd.id) + "'>" + tip + "<rect x='" +
                r2(nd.x - 6) + "' y='" + r2(nd.y - 6) + "' width='12' height='12' rx='2' fill='" +
                SOURCE_COLOR + "'/>" + label + "</g>";
         } else {
           var fill = colorMode === "topic"
             ? (cl[nd.cluster] ? cl[nd.cluster].color : "#888") : (typeColor[nd.type] || "#888");
-          s += "<g class='node" + act + ndim + "' data-page='" + esc(nd.id) + "'><circle cx='" +
+          s += "<g class='node" + act + ndim + "' data-page='" + esc(nd.id) + "'>" + tip + "<circle cx='" +
                r2(nd.x) + "' cy='" + r2(nd.y) + "' r='7' fill='" + fill + "'/>" + label + "</g>";
         }
       }
@@ -994,17 +1121,26 @@
     // it: a few dense layouts never fully quiesce below the motion threshold (collision + per-
     // cluster gravity keep a couple of nodes jittering), and without the cap the init reheat would
     // spin rAF forever. The budget is topped up while a node is being dragged (user-driven).
-    var SETTLE_FRAMES = 400, frameBudget = 0;
+    // While the sim runs the labels are re-culled every 10th frame (and once more when it stops),
+    // not every frame. #graph[data-sim] says whether it is still running.
+    var SETTLE_FRAMES = 400, frameBudget = 0, frameNo = 0;
     function frame() {
-      var moving = simStep();
+      var moving = simStep(), more;
+      if (dragNode) { frameBudget = SETTLE_FRAMES; more = true; }
+      else more = moving > 0.4 && frameBudget-- > 0;
+      frameNo++;
+      if (!more || frameNo % 10 === 0) labelDirty = true;
       draw();
-      if (dragNode) { frameBudget = SETTLE_FRAMES; raf = requestAnimationFrame(frame); }
-      else if (moving > 0.4 && frameBudget-- > 0) { raf = requestAnimationFrame(frame); }
-      else { animating = false; raf = null; }
+      if (more) { raf = requestAnimationFrame(frame); }
+      else { animating = false; raf = null; if (svg) svg.setAttribute("data-sim", "idle"); }
     }
     function reheat() {
       frameBudget = SETTLE_FRAMES;
-      if (!animating) { animating = true; raf = requestAnimationFrame(frame); }
+      if (!animating) {
+        animating = true;
+        if (svg) svg.setAttribute("data-sim", "running");
+        raf = requestAnimationFrame(frame);
+      }
     }
 
     function size() {
@@ -1090,8 +1226,10 @@
       // viewport (fall back to the 600x420 defaults when the pane isn't measurable yet).
       var r = svg.getBoundingClientRect ? svg.getBoundingClientRect() : null;
       if (r && r.width && r.height) { W = r.width; H = r.height; }
-      svg.innerHTML = "<g id='gzoom'></g>";
+      svg.innerHTML = "<g id='gzoom'></g><text id='gmeasure' font-size='" + LABEL_PX +
+        "' visibility='hidden' aria-hidden='true'></text>";
       gzoom = document.getElementById("gzoom");
+      measureEl = document.getElementById("gmeasure");
       buildModel();
       settle();
       refit();
@@ -1230,14 +1368,13 @@
   // fact and the first contradiction — so "find the contradictions in this page" is one click.
   function statsHtml(p) {
     var out = "";
-    if (p.cites) out += "<span class='stat stat-cite' title='citations to raw sources'>&#8220;" +
-      p.cites + " citation" + (p.cites === 1 ? "" : "s") + "</span>";
+    if (p.cites) out += "<span class='stat stat-cite' title='" + esc(t("stat_cite_title")) + "'>&#8220;" +
+      esc(tn("citations", p.cites)) + "</span>";
     if (p.llm) out += "<a class='stat stat-llm' href='#' data-jump='llm' " +
-      "title='jump to the first model-supplied fact'>LLM " + p.llm + " note" +
-      (p.llm === 1 ? "" : "s") + "</a>";
+      "title='" + esc(t("stat_llm_title")) + "'>" + esc(tn("llm_notes", p.llm)) + "</a>";
     if (p.contradictions) out += "<a class='stat stat-contra' href='#' data-jump='contra' " +
-      "title='jump to the first contradiction'>&#9888; " + p.contradictions + " contradiction" +
-      (p.contradictions === 1 ? "" : "s") + "</a>";
+      "title='" + esc(t("stat_contra_title")) + "'>&#9888; " + esc(tn("contradictions", p.contradictions)) +
+      "</a>";
     return out ? "<div class='stats'>" + out + "</div>" : "";
   }
 
@@ -1351,7 +1488,7 @@
     var key, header;
     if (isLlm) {
       key = "__llm__";
-      header = "<span class='src-label'>Model knowledge (LLM)</span>";
+      header = "<span class='src-label'>" + esc(t("model_knowledge")) + "</span>";
     } else if (isExt) {
       var target = linkEl.getAttribute("title") || linkEl.textContent || "";
       key = "ext:" + target;
@@ -1361,7 +1498,7 @@
       header = linkEl.outerHTML;
     } else {
       key = "__unresolved__";
-      header = "<span class='src-label'>unresolved citations</span>";
+      header = "<span class='src-label'>" + esc(t("unresolved_citations")) + "</span>";
     }
     return { fid: fid, key: key, header: header, date: d.date, locator: locator, note: note };
   }
@@ -1407,16 +1544,27 @@
     }).join("");
     var details = document.createElement("details");
     details.className = "sources";
-    details.innerHTML = "<summary>Sources (" + defs.length + ")</summary>" + body;
+    details.innerHTML = "<summary>" + esc(t("sources_count", defs.length)) + "</summary>" + body;
     head.parentNode.insertBefore(details, head);
     removable.forEach(function (n) { if (n.parentNode) n.parentNode.removeChild(n); });
     if (head.parentNode) head.parentNode.removeChild(head);
+  }
+
+  // Display-only relabel of the page's structural "## See also" heading into the UI language. The
+  // markdown keeps the literal English heading (validate.py's section-order check parses it), so
+  // only the rendered h2 changes — and it runs before the TOC is built so its entry matches.
+  function relabelSeeAlso(reader) {
+    if (!I18N_LOCALIZED) return;
+    Array.prototype.forEach.call(reader.querySelectorAll("h2"), function (h) {
+      if (/^see also$/i.test((h.textContent || "").trim())) h.textContent = t("see_also");
+    });
   }
 
   // Add a collapsible table of contents for any page/source with enough headings, giving every
   // heading a stable id to jump to.
   function decorateReader(reader) {
     compactSources(reader);
+    relabelSeeAlso(reader);
     var hs = reader.querySelectorAll("h2, h3");
     if (hs.length < 3) return;
     var items = [];
@@ -1426,7 +1574,7 @@
       items.push("<a class='" + cls + "' data-h='" + id + "' href='#'>" + esc(h.textContent) +
         "</a>");
     });
-    var toc = "<details class='toc' open><summary>On this page</summary>" + items.join("") +
+    var toc = "<details class='toc' open><summary>" + esc(t("toc_title")) + "</summary>" + items.join("") +
       "</details>";
     var hr = reader.querySelector("hr");
     if (hr) hr.insertAdjacentHTML("afterend", toc);
@@ -1435,7 +1583,7 @@
 
   function backlinkList(label, rels) {
     if (!rels.length) return "";
-    return "<div class='backlinks'>" + label + " " + rels.map(function (r) {
+    return "<div class='backlinks'>" + esc(label) + " " + rels.map(function (r) {
       return "<a href='#" + encodeURIComponent(r) + "' data-page='" + esc(r) + "'>" +
         esc(PAGES[r] ? PAGES[r].title : r) + "</a>";
     }).join(", ") + "</div>";
@@ -1462,7 +1610,7 @@
       return shared[b] - shared[a] ||
         (PAGES[a] ? PAGES[a].title : a).localeCompare(PAGES[b] ? PAGES[b].title : b);
     });
-    return backlinkList("Related:", rels.slice(0, 6));
+    return backlinkList(t("related"), rels.slice(0, 6));
   }
 
   function openPage(rel) {
@@ -1485,7 +1633,7 @@
       "</div>";
     renderReader("<h1>" + esc(p.title) + "</h1>" + meta + statsHtml(p) +
       (p.description ? "<p class='desc'>" + esc(p.description) + "</p>" : "") +
-      backlinkList("Referenced by:", p.inbound) + backlinkList("Links to:", p.outbound) +
+      backlinkList(t("referenced_by"), p.inbound) + backlinkList(t("links_to"), p.outbound) +
       relatedList(p) + "<hr>" + mdToHtml(p.body, p.rel_path, fnSrc), rel);
     Graph.setActive(rel);
     markActiveNav();
@@ -1498,7 +1646,7 @@
   function rawFileLink(s, label) {
     if (!s.href || s.missing) return "";
     return "<a class='rawfile' href='" + esc(s.href) + "' target='_blank' rel='noopener'" +
-      " title='" + esc(rawFileTitle(s)) + "'>" + label + " ↗</a>";
+      " title='" + esc(rawFileTitle(s)) + "'>" + esc(label) + " ↗</a>";
   }
 
   // The same affordance shrunk to a bare arrow, for places a full button would not fit: the
@@ -1512,15 +1660,15 @@
       " title='" + name + "' aria-label='" + name + "'>↗</a>";
   }
 
-  function rawFileTitle(s) { return "Open the original file (" + (s.display || s.id) + ")"; }
+  function rawFileTitle(s) { return t("raw_file_title", s.display || s.id); }
 
-  function lineSpan(a, b) { return a === b ? ("line " + a) : ("lines " + a + "–" + b); }
+  function lineSpan(a, b) { return a === b ? t("line_one", a) : t("line_range", a, b); }
 
   // A muted "⋯ lines X–Y not embedded" row between/around embedded segments, with an
   // open-the-original affordance (reusing the source's href) for the elided passage.
   function segGap(s, from, to) {
-    var link = rawFileLink(s, "open the original file");
-    return "<div class='seg-gap'>⋯ " + lineSpan(from, to) + " not embedded" +
+    var link = rawFileLink(s, t("open_original_gap"));
+    return "<div class='seg-gap'>" + esc(t("not_embedded", lineSpan(from, to))) +
       (link ? " — " + link : "") + "</div>";
   }
 
@@ -1531,7 +1679,7 @@
     (s.segments || []).forEach(function (g) {
       if (g.start > prev + 1) out.push(segGap(s, prev + 1, g.start - 1));
       out.push("<div class='seg' data-seg-start='" + g.start + "' data-seg-end='" + g.end +
-        "'><div class='seg-label'>" + lineSpan(g.start, g.end) + "</div>" +
+        "'><div class='seg-label'>" + esc(lineSpan(g.start, g.end)) + "</div>" +
         mdToHtml(g.text, sid, {}) + "</div>");
       prev = g.end;
     });
@@ -1544,50 +1692,43 @@
     if (!s) return;
     var want = "src:" + encodeURIComponent(sid);
     if ((location.hash || "").slice(1) !== want) { location.hash = want; }
-    var open = rawFileLink(s, "Open original file");
+    var open = rawFileLink(s, t("open_original"));
     // Provenance line: which model actually served this source's session, what it cost in that
     // backend's own unit, its token volume, and when it was last verified — each shown only when
     // the manifest carries it.
     var prov = sourceProvenance(s).map(function (part, i) {
-      return "<span class='" + part.cls + "'>" + (i === 0 ? "via " : "\u00b7 ") + esc(part.text) + "</span>";
+      return "<span class='" + part.cls + "'>" + (i === 0 ? esc(t("via")) + " " : "\u00b7 ") + esc(part.text) +
+        "</span>";
     }).join(" ");
     // The human-facing path (the key collapsed against the configured raw roots, computed at
     // build time by config.display_key) — an out-of-workspace source's `id` is an absolute-path
     // join that would flood the meta line, so the short form wins wherever a path is DISPLAYED.
     var shown = s.display || s.id;
-    var meta = "<div class='meta'><span class='ptype src'>Source</span> <span class='src-id'>" +
-      esc(shown) + "</span>" + (prov ? " " + prov : "") + (open ? " " + open : "") + "</div>";
+    var meta = "<div class='meta'><span class='ptype src'>" + esc(t("source_kind")) +
+      "</span> <span class='src-id'>" + esc(shown) + "</span>" + (prov ? " " + prov : "") + (open ? " " + open : "") + "</div>";
     var body;
     if (s.missing) {
-      body = "<div class='callout'><div class='callout-title'>SOURCE UNAVAILABLE</div>" +
-        "<div class='callout-body'>The raw file <code>" + esc(shown) +
-        "</code> was not found when this viewer was generated. Re-run <code>citadel view</code> " +
-        "with the source present to embed its content.</div></div>";
+      body = "<div class='callout'><div class='callout-title'>" + esc(t("source_unavailable")) + "</div>" +
+        "<div class='callout-body'>" + t("source_unavailable_html", esc(shown)) + "</div></div>";
     } else if (s.kind === "binary") {
       // A PDF or other binary: we can't render it inline without a heavy dependency, so open the
       // original file (the browser shows a PDF natively).
-      body = "<div class='callout'><div class='callout-title'>BINARY SOURCE</div>" +
-        "<div class='callout-body'>This source is a binary file (e.g. a PDF) and can't be " +
-        "rendered inline. " + (s.href
-          ? "Use <strong>Open original file</strong> above — a PDF opens directly in your browser."
-          : "Open the raw file <code>" + esc(shown) + "</code> directly to read it.") +
+      body = "<div class='callout'><div class='callout-title'>" + esc(t("binary_source")) + "</div>" +
+        "<div class='callout-body'>" + esc(t("binary_body")) + " " + (s.href
+          ? t("binary_open_html", esc(t("open_original")))
+          : t("binary_raw_html", esc(shown))) +
         "</div></div>";
     } else {
-      body = (s.kind === "office"
-        ? "<p class='desc'>Text extracted from the original document.</p>"
-        : s.kind === "audio"
-          ? "<p class='desc'>Machine transcript of the original audio/video recording.</p>"
-          : s.kind === "pdf"
-            ? "<p class='desc'>Text layer extracted from the original PDF.</p>" : "") +
+      var desc = { office: t("desc_office"), audio: t("desc_audio"), pdf: t("desc_pdf") }[s.kind];
+      body = (desc ? "<p class='desc'>" + esc(desc) + "</p>" : "") +
         (s.segments ? renderSegments(s, sid) : mdToHtml(s.body, sid, {}));
       if (s.truncated) {
-        body += "<div class='callout'><div class='callout-title'>TRUNCATED</div>" +
-          "<div class='callout-body'>This source was longer than the embed limit and was " +
-          "truncated. Open the original file to read it in full.</div></div>";
+        body += "<div class='callout'><div class='callout-title'>" + esc(t("truncated")) + "</div>" +
+          "<div class='callout-body'>" + esc(t("truncated_body")) + "</div></div>";
       }
     }
     renderReader("<h1>" + esc(s.title) + "</h1>" + meta +
-      backlinkList("Cited by:", s.cited_by) + "<hr>" + body, "src:" + sid);
+      backlinkList(t("cited_by"), s.cited_by) + "<hr>" + body, "src:" + sid);
     Graph.setActive("src:" + sid);
     markActiveNav();
   }
@@ -1626,7 +1767,8 @@
       if (typeof u.tokens_out === "number") tok.push(fmtTokens(u.tokens_out) + " out");
       var raw = rawFileIcon(s);
       return "<tr><td><a href='#src:" + encodeURIComponent(id) + "' data-source='" + esc(id) +
-        "' data-pop='" + esc(id) + "'>" + esc(name) + "</a>" + (s.missing ? " <span class='ext'>(missing)</span>" : "") +
+        "' data-pop='" + esc(id) + "'>" + esc(name) + "</a>" +
+        (s.missing ? " <span class='ext'>" + esc(t("missing")) + "</span>" : "") +
         "</td><td class='src-raw'>" + (raw || "—") +
         "</td><td class='src-folder' title='" + esc(full) + "'>" + esc(folder || "—") +
         "</td><td>" + (s.model ? esc(s.model) : "—") +
@@ -1636,27 +1778,32 @@
         "</td><td>" + (s.checked ? esc(String(s.checked).slice(0, 10)) : "—") +
         "</td><td>" + s.cited_by.length + "</td></tr>";
     }).join("");
-    var totals = [ids.length + " source" + (ids.length === 1 ? "" : "s")];
-    if (anyCost) totals.push("recorded cost " + fmtCost(totCost) + (anyAic ? " (" + fmtAic(totAic) + " AIC)" : ""));
-    else if (anyAic) totals.push("recorded " + fmtAic(totAic) + " AIC");
-    if (anySec) totals.push("recorded time " + fmtDuration(totSec));
+    var totals = [tn("source_total", ids.length)];
+    if (anyCost) {
+      totals.push(t("recorded_cost", fmtCost(totCost) + (anyAic ? " (" + fmtAic(totAic) + " AIC)" : "")));
+    }
+    else if (anyAic) totals.push(t("recorded_aic", fmtAic(totAic)));
+    if (anySec) totals.push(t("recorded_time", fmtDuration(totSec)));
     if (anyIn || anyOut) {
       totals.push((anyIn ? fmtTokens(totIn) + " in" : "") + (anyIn && anyOut ? " / " : "") +
         (anyOut ? fmtTokens(totOut) + " out" : ""));
     }
-    var html = "<h1>Sources</h1><div class='meta'><span class='ptype src'>Overview</span> " +
-      totals.map(function (t) { return "<span class='src-usage'>" + esc(t) + "</span>"; }).join(" · ") +
-      "</div><div class='tbl-wrap'><table class='src-table'><thead><tr><th>File</th>" +
-      "<th title='Open the original raw file'>Original</th><th>Folder</th>" +
-      "<th>Model</th><th>Cost</th><th>Time</th><th>Tokens</th><th>Checked</th><th>Cited</th></tr></thead><tbody>" +
-      rows + "</tbody></table></div>";
+    function th(label) { return "<th>" + esc(label) + "</th>"; }
+    var html = "<h1>" + esc(t("overview_title")) + "</h1><div class='meta'><span class='ptype src'>" +
+      esc(t("overview_kind")) + "</span> " +
+      totals.map(function (x) { return "<span class='src-usage'>" + esc(x) + "</span>"; }).join(" · ") +
+      "</div><div class='tbl-wrap'><table class='src-table'><thead><tr>" + th(t("col_file")) +
+      "<th title='" + esc(t("col_original_title")) + "'>" + esc(t("col_original")) + "</th>" +
+      th(t("col_folder")) + th(t("col_model")) + th(t("col_cost")) + th(t("col_time")) +
+      th(t("col_tokens")) + th(t("col_checked")) + th(t("col_cited")) +
+      "</tr></thead><tbody>" + rows + "</tbody></table></div>";
     // The could-not-ingest catalog: a reader must be able to SEE that a relevant file was skipped
     // — a document the wiki never mentions and a document that failed to import look identical
     // without this section.
     if (FAILURES.length) {
-      html += "<h2>Could not ingest (" + FAILURES.length + ")</h2><div class='tbl-wrap'>" +
-        "<table class='src-table fail-table'><thead><tr><th>File</th><th>Folder</th><th>Reason</th>" +
-        "<th>Detail</th><th>Attempts</th></tr></thead><tbody>" +
+      html += "<h2>" + esc(t("could_not_ingest", FAILURES.length)) + "</h2><div class='tbl-wrap'>" +
+        "<table class='src-table fail-table'><thead><tr>" + th(t("col_file")) + th(t("col_folder")) +
+        th(t("col_reason")) + th(t("col_detail")) + th(t("col_attempts")) + "</tr></thead><tbody>" +
         FAILURES.map(function (f) {
           var full = String(f.display || f.key);
           var cut = full.lastIndexOf("/");
@@ -1668,9 +1815,7 @@
             "</td><td class='fail-detail'>" + esc(f.detail || "") +
             "</td><td>" + (f.attempts ? esc(String(f.attempts)) : "—") + "</td></tr>";
         }).join("") + "</tbody></table></div>" +
-        "<p class='desc'>These files were seen but could not be folded into the wiki — " +
-        "<code>citadel ingest --retry</code> re-runs them. Files skipped by ignore/include " +
-        "patterns or a size limit are listed by <code>citadel status</code>.</p>";
+        "<p class='desc'>" + t("fail_note_html") + "</p>";
     }
     renderReader(html, "sources");
     Graph.setActive(null);
@@ -1694,13 +1839,13 @@
   function showPop(sid, anchor) {
     var s = SOURCES[sid]; if (!s) return;
     if (!pop) pop = document.getElementById("srcpop");
-    var note = s.missing ? " · (file unavailable)"
-      : (s.kind === "binary" ? " · (binary — opens original)" : "");
+    var note = s.missing ? " · " + t("pop_unavailable")
+      : (s.kind === "binary" ? " · " + t("pop_binary") : "");
     var provText = sourceProvenance(s).map(function (p) { return p.text; }).join(" · ");
     pop.innerHTML = "<div class='sp-title'>" + esc(s.title) + "</div><div class='sp-meta'>" +
-      esc(s.display || s.id) + (provText ? " · " + esc(provText) : "") + note + "</div>" +
+      esc(s.display || s.id) + (provText ? " · " + esc(provText) : "") + esc(note) + "</div>" +
       (s.snippet ? "<div class='sp-snip'>" + esc(s.snippet) + "…</div>" : "") +
-      "<div class='sp-hint'>Click to open source</div>";
+      "<div class='sp-hint'>" + esc(t("pop_open_source")) + "</div>";
     positionPop(anchor);
   }
   // Hover preview for a wiki-page link: title, type chip, description, and a short text excerpt —
@@ -1713,7 +1858,7 @@
       "<div class='sp-meta'><span class='sp-type'>" + esc(p.type) + "</span></div>" +
       (p.description ? "<div class='sp-desc'>" + esc(p.description) + "</div>" : "") +
       (snip ? "<div class='sp-snip'>" + esc(snip) + (p.flat.length > 200 ? "…" : "") + "</div>" : "") +
-      "<div class='sp-hint'>Click to open page</div>";
+      "<div class='sp-hint'>" + esc(t("pop_open_page")) + "</div>";
     positionPop(anchor);
   }
   function hidePop() { if (pop) pop.classList.remove("show"); }
@@ -1897,7 +2042,7 @@
   }
   window.addEventListener("hashchange", route);
 
-  document.getElementById("wiki-name").textContent = BUNDLE.wiki_name || "Wiki";
+  document.getElementById("wiki-name").textContent = BUNDLE.wiki_name || t("wiki_fallback");
   renderTags();
   renderSidebar();
   // Restore the map's colour mode + both hidden sets BEFORE the first layout so the initial map
@@ -1938,7 +2083,7 @@
         return chip(c.key, c.label, c.color, c.hidden, false) + c.size + "</span></span>";
       }).join("");
       if (tl.other) {
-        html += chip("__other__", "other", "var(--muted)", tl.other.hidden, false) +
+        html += chip("__other__", t("legend_other"), "var(--muted)", tl.other.hidden, false) +
           tl.other.size + "</span></span>";
       }
     } else {
@@ -1951,7 +2096,7 @@
     }
     if (Object.keys(SOURCES).length) {
       var nSrc = Object.keys(SOURCES).filter(function (id) { return SOURCES[id].cited_by.length; }).length;
-      html += chip("__source__", "Source", SOURCE_COLOR, !Graph.showsSources(), true) +
+      html += chip("__source__", t("legend_source"), SOURCE_COLOR, !Graph.showsSources(), true) +
         nSrc + "</span></span>";
     }
     box.innerHTML = html;
@@ -1981,10 +2126,6 @@
   var content = document.getElementById("content");
   var app = document.getElementById("app");
 
-  // Hint the search operators in the placeholder (ASCII, set here since template.html is package
-  // data and untouched by this build).
-  document.getElementById("search").placeholder = "Search... (tag:x type:y, / to focus)";
-
   // Remember the reading position per doc: save the reader's scrollTop (throttled) as the user
   // scrolls, keyed by the currently rendered doc; renderReader restores it when no query is active.
   (function () {
@@ -2007,7 +2148,7 @@
     content.classList.toggle("map-collapsed", c);
     if (c) { content.classList.remove("map-expanded"); expandBtn.classList.remove("active"); }
     collapseBtn.textContent = c ? "▸" : "▾";
-    collapseBtn.title = c ? "Show map" : "Collapse map";
+    collapseBtn.title = c ? t("map_show") : t("map_collapse");
     try {
       localStorage.setItem("okf_map_collapsed", c ? "1" : "0");
       // Collapse and expand are mutually exclusive: persist the cleared state too, so collapsing an
@@ -2021,7 +2162,7 @@
     if (x) setCollapsed(false);
     content.classList.toggle("map-expanded", x);
     expandBtn.classList.toggle("active", x);
-    expandBtn.title = x ? "Restore map height" : "Expand map to full height";
+    expandBtn.title = x ? t("map_restore") : t("map_expand");
     try { localStorage.setItem("okf_map_expanded", x ? "1" : "0"); } catch (e) {}
     Graph.refit();
   }
@@ -2042,7 +2183,7 @@
   function setShowSources(on) {
     Graph.setShowSources(on);
     srcBtn.classList.toggle("active", on);
-    srcBtn.title = on ? "Hide sources in the map" : "Show sources in the map";
+    srcBtn.title = on ? t("map_sources_hide") : t("map_sources_show");
     try { localStorage.setItem("okf_show_sources", on ? "1" : "0"); } catch (e) {}
     renderLegend();  // keep the Source legend chip in sync with the toolbar button
   }
@@ -2062,7 +2203,7 @@
     if (!initial) Graph.setColorMode(m);
     var topic = Graph.colorMode() === "topic";
     colorBtn.classList.toggle("active", topic);
-    colorBtn.title = topic ? "Colour: topic (click for type)" : "Colour: type (click for topic)";
+    colorBtn.title = topic ? t("color_topic") : t("color_type");
     try { localStorage.setItem("okf_color_mode", topic ? "topic" : "type"); } catch (e) {}
     renderLegend();
   }
@@ -2132,7 +2273,7 @@
   function setFont(i) {
     fi = (((i | 0) % 3) + 3) % 3;  // coerce NaN/corrupt values to a valid slot
     document.getElementById("reader").style.setProperty("--reader-font", FONTS[fi] + "px");
-    fontBtn.title = "Reading font size: " + FONTS[fi] + "px (click to change)";
+    fontBtn.title = t("font_title", FONTS[fi]);
     try { localStorage.setItem("okf_reader_font", String(fi)); } catch (e) {}
   }
   fontBtn.addEventListener("click", function () { setFont(fi + 1); });
@@ -2140,13 +2281,14 @@
 
   // Theme cycle (auto -> light -> dark), persisted; "auto" defers to the OS via prefers-color-scheme.
   var THEMES = ["auto", "light", "dark"], themeBtn = document.getElementById("g-theme");
-  function setTheme(t) {
-    if (t !== "light" && t !== "dark") t = "auto";  // coerce unknown/corrupt stored values back to auto
-    if (t === "auto") document.documentElement.removeAttribute("data-theme");
-    else document.documentElement.setAttribute("data-theme", t);
-    themeBtn.textContent = t === "light" ? "☀" : (t === "dark" ? "☾" : "◐");
-    themeBtn.title = "Theme: " + t + " (click to change)";
-    try { localStorage.setItem("okf_theme", t); } catch (e) {}
+  function setTheme(mode) {
+    if (mode !== "light" && mode !== "dark") mode = "auto";  // coerce unknown/corrupt stored values back to auto
+    if (mode === "auto") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", mode);
+    themeBtn.textContent = mode === "light" ? "☀" : (mode === "dark" ? "☾" : "◐");
+    var names = { auto: t("theme_auto"), light: t("theme_light"), dark: t("theme_dark") };
+    themeBtn.title = t("theme_state", names[mode]);
+    try { localStorage.setItem("okf_theme", mode); } catch (e) {}
   }
   themeBtn.addEventListener("click", function () {
     var cur = document.documentElement.getAttribute("data-theme") || "auto";

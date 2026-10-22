@@ -20,7 +20,10 @@ from __future__ import annotations
 
 import os
 import re
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass
+from pathlib import Path
 
 from . import config, grammar, okf, store
 from .okf import Page
@@ -45,15 +48,97 @@ class Issue:
     detail: str
 
 
+# Parsed tracked-key sets per manifest file, keyed by path and invalidated by (mtime_ns, size).
+# Bounded LRU: every staging copy is its own path, so an unbounded dict would grow per source in a
+# long-lived `citadel serve`. Guarded by a lock — `--jobs N` workers validate concurrently.
+_TRACKED_CACHE: OrderedDict[str, tuple[tuple[int, int], frozenset[str]]] = OrderedDict()
+_TRACKED_CACHE_MAX = 8
+_TRACKED_LOCK = threading.Lock()
+
+
+def manifest_keys(path: Path) -> frozenset[str]:
+    """The source keys of the manifest at ``path`` (empty when missing/unreadable), cached by
+    (mtime_ns, size) — the excluded-citation guard runs per citation, per page, and must not
+    re-parse the manifest each time. Side-effect-free (:func:`manifest.peek_sources`): it never
+    displaces the meta stash a running lifecycle's own ``manifest.load()`` left."""
+    from . import manifest  # call-time import: manifest is heavier and not needed by every caller
+
+    try:
+        st = path.stat()
+        stamp = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return frozenset()
+    key = str(path)
+    with _TRACKED_LOCK:
+        cached = _TRACKED_CACHE.get(key)
+        if cached is not None and cached[0] == stamp:
+            _TRACKED_CACHE.move_to_end(key)
+            return cached[1]
+    keys = frozenset(manifest.peek_sources(path))
+    with _TRACKED_LOCK:
+        _TRACKED_CACHE[key] = (stamp, keys)
+        _TRACKED_CACHE.move_to_end(key)
+        while len(_TRACKED_CACHE) > _TRACKED_CACHE_MAX:
+            _TRACKED_CACHE.popitem(last=False)
+    return keys
+
+
+def _tracked_keys() -> frozenset[str]:
+    """The tracked-source keys the citation guard trusts: inside an ingest/curate session the set
+    captured from the LIVE manifest before the session (:func:`config.session_tracked_keys` — the
+    staging copy's manifest is agent-writable), else this context's manifest."""
+    trusted = config.session_tracked_keys()
+    if trusted is not None:
+        return trusted
+    return manifest_keys(config.manifest_path())
+
+
+def excluded_citation(resolved: str) -> str | None:
+    """The reason a cited raw file is OUT of the corpus (hidden / ignored / not included /
+    oversized — discovery's own predicate, :func:`ingest_scan.exclusion_reason`), or None when the
+    citation is legitimate: not excluded, TRACKED in the manifest (it was ingested — e.g. an
+    allowlist narrowed after the fact keeps its pages, and an explicitly named path wins), or the
+    source the running session was started for (:func:`config.session_source_key`)."""
+    from . import ingest_scan  # call-time import: ingest_scan imports manifest/extract/repo
+
+    reason = ingest_scan.exclusion_reason(resolved)
+    if reason is None:
+        return None
+    key = config.rel_or_abs_posix(resolved)
+    if key == config.session_source_key() or key in _tracked_keys():
+        return None
+    return reason
+
+
+# What an `[^llmN]` definition is left with once its boilerplate is gone: a trailing `(added ...)`
+# stamp, a leading `LLM` label, and separators. No letter left = an empty note.
+_LLM_ADDED_RE = re.compile(r"\(\s*added\b[^)]*\)\s*$", re.IGNORECASE)
+_LLM_LABEL_RE = re.compile(r"^\s*LLM\b", re.IGNORECASE)
+
+
+def _empty_llm_note(rest: str) -> bool:
+    text = _LLM_ADDED_RE.sub("", rest.strip())
+    text = _LLM_LABEL_RE.sub("", text)
+    return not re.search(r"[^\W\d_]", text)
+
+
 def source_issues(rel_path: str, body: str) -> list[str]:
     """Structural guard against fabricated/unverifiable provenance. Returns a detail string
     for each problem found:
 
       1. a raw-fact definition (``[^sN]``, not ``[^llmN]``) whose linked file does not exist;
       2. a raw-fact definition with no resolvable ``[..](path)`` link (bare/malformed line);
-      3. a footnote marker used on a fact but never defined in ``## Sources``.
+      3. a footnote marker used on a fact but never defined in ``## Sources``;
+      4. a model-supplied ``[^llmN]`` marker used but never defined, or an ``[^llmN]`` definition
+         with no note left once its ``LLM`` label and ``(added ...)`` stamp are removed (``schema.md``
+         § Per-fact provenance requires every marker defined; an empty note explains nothing);
+      5. a raw-fact definition citing a file discovery EXCLUDES from the corpus (an ignore glob on
+         it or a parent folder, a hidden component, outside the include allowlist, over the size
+         cap) that is neither tracked nor the running session's own source — the post-hoc net
+         for an agent that read an excluded file (:func:`excluded_citation`).
 
-    Model-supplied (``[^llmN]``) facts are exempt — they cite "LLM", not a raw file. Purely
+    Model-supplied (``[^llmN]``) facts are exempt from the raw-file checks — they cite "LLM" — but
+    not from being defined with a real note (4). Purely
     STRUCTURAL: confirms a citation points at a real file and is defined; does NOT verify the
     cited file actually contains the fact. Definitions are read only inside the ``## Sources``
     section and code fences are skipped, so a page documenting the citation format is not
@@ -76,6 +161,10 @@ def source_issues(rel_path: str, body: str) -> list[str]:
         resolved = grammar.link_abs(rel_path, target)
         if not os.path.exists(resolved):
             bad.append(target)
+            continue
+        reason = excluded_citation(resolved)
+        if reason is not None:
+            bad.append(f"{target} (excluded from the corpus: {reason} - must not be read or cited)")
 
     # A raw-fact marker used but never defined in ## Sources is unverifiable provenance. Markers
     # are collected outside code fences and headings; def lines themselves never match USED_MARKER_RE
@@ -85,8 +174,15 @@ def source_issues(rel_path: str, body: str) -> list[str]:
         if in_code or line.strip().startswith("#"):
             continue
         used.update(grammar.USED_MARKER_RE.findall(line))
+    llm_defined: set[str] = set()
+    for marker_id, rest in grammar.llm_definitions(body):
+        llm_defined.add(marker_id)
+        if _empty_llm_note(rest):
+            bad.append(f"[^{marker_id}]: empty note")
     for marker_id in sorted(used - defined):
         if grammar.is_llm_marker(marker_id):
+            if marker_id not in llm_defined:
+                bad.append(f"[^{marker_id}] used but undefined")
             continue
         bad.append(f"[^{marker_id}] used but undefined")
     return bad

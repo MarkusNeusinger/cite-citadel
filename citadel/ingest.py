@@ -38,7 +38,22 @@ from concurrent import futures
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import config, failures, llm, manifest, pagecache, pdftext, repo, resume, runlock, store, transcribe, wikigit
+from . import (
+    config,
+    failures,
+    ledger,
+    llm,
+    manifest,
+    pagecache,
+    pdftext,
+    readdeny,
+    repo,
+    resume,
+    runlock,
+    store,
+    transcribe,
+    wikigit,
+)
 from .ingest_scan import _candidates as _candidates
 from .ingest_scan import _dedup_by_basename as _dedup_by_basename
 
@@ -50,6 +65,7 @@ from .ingest_scan import (
     _discover_repos,
     _discover_walk,
     _human_bytes,
+    _is_folder_note,
     _is_untrackable_key,
     _partition_repos,
     _partition_sources,
@@ -61,6 +77,7 @@ from .ingest_scan import _is_included_name as _is_included_name
 from .ingest_scan import _is_ingestible as _is_ingestible
 from .ingest_scan import _is_repo_source as _is_repo_source
 from .ingest_scan import _is_wiki_internal as _is_wiki_internal
+from .ingest_scan import _pending_order as _pending_order
 from .ingest_sessions import _checkpoint_delta as _checkpoint_delta
 from .ingest_sessions import (
     _office_write_temp,
@@ -175,6 +192,24 @@ class IngestReport:
     # failed sources included (their money was spent too; only the manifest stamp is
     # success-only). None when no backend reported anything (copilot, the test fakes).
     usage: llm.SessionUsage | None = None
+    # Tool calls the backend's permission layer DENIED, as `source: tool: input` — typically a Read
+    # of an excluded file stopped by the per-path denies (readdeny). Passive: never a failure.
+    denials: list[str] = field(default_factory=list)
+    # Read-deny entries left unenforced (a lower bound) — the per-session cap (readdeny.DENY_CAP)
+    # overflow plus ignored folders that could not be fully listed; partial enforcement is stated,
+    # never silent. 0 when everything was enforced (or nothing was due).
+    deny_unenforced: int = 0
+    # PDFs whose text layer is garbled on some pages (pdftext.unreliable_pages): those pages were
+    # handed to the agent to read visually — or, when every text page was garbled, the whole PDF
+    # was read without its text layer. One ASCII line per source.
+    visual_pdf_pages: list[str] = field(default_factory=list)
+    # How many source attempts actually ran an agent session (a deletion nothing cites runs none) —
+    # the run ledger's skip rule: a run that paid for nothing writes no line.
+    sessions_attempted: int = 0
+    # Whether this run's run-ledger line was written (exactly once, in-run or on the exception
+    # path), and the note when writing it failed — rendered like `wiki_git`, never a failure.
+    ledger_written: bool = False
+    ledger_note: str = ""
 
     def render(self) -> str:
         """Human-readable multi-line summary for CLI/MCP."""
@@ -279,6 +314,20 @@ class IngestReport:
                 "  These did not fail the sources that found them. Run `citadel lint` for the full "
                 "picture, and `citadel curate` to have them repaired."
             )
+        if self.visual_pdf_pages:
+            lines.append("PDF pages read visually (unreliable text layer):")
+            lines.extend(f"  - {n}" for n in self.visual_pdf_pages)
+        if self.denials:
+            lines.append(
+                "WARNING — the agent tried tool calls its permissions denied (the narrowed shell, or an excluded-file Read deny):"
+            )
+            lines.extend(f"  - {d}" for d in self.denials)
+        if self.deny_unenforced:
+            lines.append(
+                f"WARNING — at least {self.deny_unenforced} excluded path(s) were NOT enforced by the per-session "
+                "Read denies (the deny cap, or an ignored folder that could not be fully listed) — instruction-only "
+                "for those; keep sensitive files outside every raw root."
+            )
         if self.broken_links:
             lines.append("WARNING — broken cross-links (run `citadel lint`):")
             lines.extend(f"  - {src} -> {tgt}" for src, tgt in self.broken_links)
@@ -294,6 +343,8 @@ class IngestReport:
             # ...but a retry is not the whole story when the failure left damage in the wiki.
             for hint in self.failure_hints:
                 lines.append(f"  {hint}")
+        if self.ledger_note:
+            lines.append(self.ledger_note)
         if self.wiki_git:
             lines.append(self.wiki_git)
         return "\n".join(lines)
@@ -355,6 +406,13 @@ class _SourceJob:
     warn_no_pages: bool = False
     expects_changes: bool = False
     failure_hint: str = ""
+    # A folder note (README/INDEX/ABOUT/_index/00-…, ingest_scan._is_folder_note): under --jobs N the
+    # notes of a file group run as a FIRST phase, so every sibling session clones a wiki that already
+    # holds what the note says about the files beside it.
+    folder_note: bool = False
+    # Report lines build_sessions leaves behind (a PDF's pages read visually), booked on the MAIN
+    # thread by _record_source_run — never written into the report from a worker.
+    notes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -505,7 +563,7 @@ def _attempt_source(job: _SourceJob, index: int, total: int, emit, concurrent: b
     return run
 
 
-def _record_spend(outcome: _SourceOutcome, report: IngestReport) -> None:
+def _record_spend(outcome: _SourceOutcome, report: IngestReport, key: str = "") -> None:
     """Book what one attempt COST and what it REUSED — the two facts that hold whatever its verdict
     was, so they have exactly one owner instead of one per branch.
 
@@ -521,12 +579,60 @@ def _record_spend(outcome: _SourceOutcome, report: IngestReport) -> None:
     usage has no surface to appear on — the completed sources' manifest stamps were already saved
     per-source with their usage intact."""
     report.usage = llm.combine_usage([report.usage, outcome.usage])
+    report.deny_unenforced = readdeny.unenforced()
+    if outcome.ran_sessions:
+        report.sessions_attempted += 1
+    if isinstance(outcome.usage, llm.SessionUsage):
+        for denial in outcome.usage.denials:
+            line = f"{key}: {denial}" if key else denial
+            if line not in report.denials:
+                report.denials.append(line)
     # The first session that NAMES its model upgrades the report's label from "what we asked for"
     # to "what actually ran" (the manifest entries are stamped with the same id per source).
     if isinstance(outcome.usage, llm.SessionUsage) and outcome.usage.model:
         report.model = config.model_label_for(outcome.usage.model)
     if outcome.resumed_note:
         report.resumed.append(outcome.resumed_note)
+
+
+def _visual_pages_per_pass(passes, text: str, flagged: tuple[int, ...]) -> list[tuple[int, ...]]:
+    """Each pass's share of the flagged pages: a page belongs to the pass whose line window holds
+    its ``[p. N]`` marker line (formats/pdf.md: a unit belongs to the window it begins in); a
+    single-pass source gets them all."""
+    if len(passes) <= 1:
+        return [tuple(flagged)]
+    markers = pdftext.page_marker_lines(text)
+    out: list[tuple[int, ...]] = []
+    for _read_key, _segment, window in passes:
+        if window is None:
+            out.append(tuple(flagged))
+            continue
+        lo, hi = window
+        out.append(tuple(p for p in flagged if lo <= markers.get(p, 0) <= hi))
+    return out
+
+
+def _write_run_ledger(report: IngestReport, lifecycle: str, started: str, flags: dict, interrupted: bool) -> None:
+    """Append this run's ledger line once (skipped when no agent session ran) — counts are the
+    report's own list lengths, never a key or path. A failed write is a report note."""
+    if report.ledger_written or report.sessions_attempted == 0:
+        return
+    report.ledger_written = True
+    line = ledger.make_line(
+        lifecycle,
+        started=started,
+        model=report.model or config.ingest_model_label(),
+        usage=report.usage,
+        counts={
+            "processed": len(report.processed),
+            "sources_deleted": len(report.sources_deleted),
+            "reingest_cleaned": len(report.reingest_cleaned),
+            "errors": len(report.errors),
+        },
+        flags=flags,
+        interrupted=interrupted,
+    )
+    report.ledger_note = ledger.append(line)
 
 
 def _record_source_run(run: _JobRun, emit, report: IngestReport, failures_dict, model, stall=None) -> None:
@@ -555,7 +661,10 @@ def _record_source_run(run: _JobRun, emit, report: IngestReport, failures_dict, 
     outcome = run.outcome
     if outcome is None:  # an interrupted attempt: the caller re-raises, nothing to book
         return
-    _record_spend(outcome, report)  # cost + any restored checkpoint, before the ok/failed branch
+    for note in job.notes:
+        if note not in report.visual_pdf_pages:
+            report.visual_pdf_pages.append(note)
+    _record_spend(outcome, report, job.key)  # cost + any restored checkpoint, before the ok/failed branch
     if not outcome.ok:
         # Nothing was promoted (the live wiki is untouched) and the source is NOT marked
         # done, so it is retried next run. Persist the failure for triage.
@@ -637,7 +746,29 @@ def _run_source_jobs(
     doing its work; the un-attempted sources stay pending for the next run."""
     if workers <= 1 or len(jobs) <= 1:
         return _run_serially(list(enumerate(jobs, 1)), len(jobs), emit, report, failures_dict, model, stall)
+    notes = [job for job in jobs if job.folder_note]
+    rest = [job for job in jobs if not job.folder_note]
+    if notes and rest:
+        # A barrier, not best effort: every folder note is promoted (or has failed) — its raced
+        # re-runs included — before any sibling clones the live wiki, because a sibling folded in
+        # without its folder's caveat is silent misattribution check/lint never flag. The group
+        # stays ONE group for progress: notes are 1..k, the rest k+1..n, total n.
+        total = len(jobs)
+        interrupt = _run_phase(notes, 1, total, emit, report, failures_dict, model, workers, stall)
+        if interrupt is not None or (stall is not None and stall.tripped):
+            return interrupt
+        return _run_phase(rest, len(notes) + 1, total, emit, report, failures_dict, model, workers, stall)
     return _run_source_jobs_parallel(jobs, emit, report, failures_dict, model, workers, stall)
+
+
+def _run_phase(
+    jobs: list[_SourceJob], start: int, total: int, emit, report, failures_dict, model, workers: int, stall
+) -> BaseException | None:
+    """One phase of a two-phase group: the parallel driver, or the serial one for a single job,
+    numbered ``start..start+len-1`` of ``total``."""
+    if len(jobs) <= 1:
+        return _run_serially(list(enumerate(jobs, start)), total, emit, report, failures_dict, model, stall)
+    return _run_source_jobs_parallel(jobs, emit, report, failures_dict, model, workers, stall, start=start, total=total)
 
 
 def _run_serially(
@@ -659,7 +790,16 @@ def _run_serially(
 
 
 def _run_source_jobs_parallel(
-    jobs: list[_SourceJob], emit, report: IngestReport, failures_dict, model, workers: int, stall=None
+    jobs: list[_SourceJob],
+    emit,
+    report: IngestReport,
+    failures_dict,
+    model,
+    workers: int,
+    stall=None,
+    *,
+    start: int = 1,
+    total: int | None = None,
 ) -> BaseException | None:
     """Run one group's sources through a bounded thread pool, then re-run serially whichever of
     them raced another source's promote.
@@ -680,8 +820,11 @@ def _run_source_jobs_parallel(
     cancelled and their workers told to stop before starting anything new, in-flight ones roll
     themselves back — and it is returned for the caller's capture-finalize-reraise. Sources that had
     already finished cleanly are still recorded, so an interrupt never throws away work the run
-    already paid for and promoted."""
-    total = len(jobs)
+    already paid for and promoted.
+
+    ``start``/``total`` number the jobs ``start..`` of ``total`` (default: 1.. of this list) — a
+    two-phase group's second phase continues the first one's numbering."""
+    total = total if total is not None else len(jobs)
     abort = threading.Event()
     interrupt: BaseException | None = None
     conflicted: list[tuple[int, _SourceJob]] = []
@@ -706,8 +849,8 @@ def _run_source_jobs_parallel(
             stall.note(job, run.outcome)
         return run
 
-    with futures.ThreadPoolExecutor(max_workers=min(workers, total), thread_name_prefix="citadel-ingest") as pool:
-        submitted = [pool.submit(attempt, index, job) for index, job in enumerate(jobs, 1)]
+    with futures.ThreadPoolExecutor(max_workers=min(workers, len(jobs)), thread_name_prefix="citadel-ingest") as pool:
+        submitted = [pool.submit(attempt, index, job) for index, job in enumerate(jobs, start)]
         try:
             for future in futures.as_completed(submitted):
                 if future.cancelled():
@@ -731,7 +874,7 @@ def _run_source_jobs_parallel(
                     # but what it spent and what it replayed are facts of this run either way, and
                     # the source goes into the serial tail below (where it can no longer race
                     # anybody).
-                    _record_spend(run.outcome, report)
+                    _record_spend(run.outcome, report, run.job.key)
                     report.raced.append(run.job.key)
                     conflicted.append((run.index, run.job))
                     emit("source_retry", index=run.index, total=total, source=run.job.key, seconds=run.outcome.seconds)
@@ -827,6 +970,7 @@ def ingest(
     force: bool = False,
     jobs: int | None = None,
     reingest: bool = False,
+    lifecycle: str = "ingest",
 ) -> IngestReport:
     """Run one ingest. Exactly one source = one all-or-nothing agent job (a chunked source runs
     several ``llm.run_ingest_session`` passes inside that one job).
@@ -936,18 +1080,36 @@ def ingest(
     # ONE mutating run per workspace: the staging sweep, promote's prune, and the manifest/
     # failures saves are all destructive under concurrency (see runlock's module docstring).
     # A second run fails loud here instead of silently eating the first one's work.
-    with runlock.hold("ingest"):
+    with runlock.hold("ingest"), llm.system_prompt_scope():
         _sweep_stale_staging(config.wiki_dir())
         # Same place, same reason: under the exclusive lock, leftovers on disk belong to dead runs.
         # Age-based only — a checkpoint's own guards decide whether it is USABLE (see resume.sweep).
         resume.sweep()
         llm.reset_hermetic_refusals()  # the --bare verdict is per run (a serve process runs many)
         report = IngestReport([], [], [], [])
+        started = manifest.now_iso()
+        ledger_flags = {
+            "force": bool(force),
+            "reingest": bool(reingest),
+            "jobs": int(workers),
+            "guided": bool(config.INGEST_GUIDANCE),
+        }
         try:
             return _ingest_run(
-                paths, progress, report, full_rescan=full_rescan, force=force, jobs=workers, reingest=reingest
+                paths,
+                progress,
+                report,
+                full_rescan=full_rescan,
+                force=force,
+                jobs=workers,
+                reingest=reingest,
+                ledger_meta=(lifecycle, started, ledger_flags),
             )
         except BaseException as exc:
+            # Spend is recorded exactly once: an exception raised AFTER the in-run write leaves the
+            # line alone; one raised before it (success bookkeeping, the index/log/git work) still
+            # records what the completed sources cost. Still under the run lock.
+            _write_run_ledger(report, lifecycle, started, ledger_flags, interrupted=True)
             # The report rides along on whatever ends the run early — above all the Ctrl+C the
             # source loop captures and re-raises after finalizing, but equally one that lands in a
             # source's success bookkeeping or in the final index/log/git work. The CLI prints it,
@@ -966,6 +1128,7 @@ def _ingest_run(
     force: bool,
     jobs: int = 1,
     reingest: bool = False,
+    ledger_meta: tuple[str, str, dict] | None = None,
 ) -> IngestReport:
     """The body of :func:`ingest`, running under the exclusive workspace run lock. Fills in the
     ``report`` its caller holds, so the caller still has it when the run ends in an exception."""
@@ -1053,6 +1216,9 @@ def _ingest_run(
         # does not look hung.
         print("NOTE: --full-rescan: re-hashing every tracked source (sha256 still decides).", file=sys.stderr)
     walk = _discover_walk(paths)
+    # The per-session Read denies (claude) need EVERY excluded entry, not just those under the
+    # requested paths: an explicit-path run pays one extra stat-only walk for them.
+    readdeny.install_from_discovery(walk if paths is None else None)
     # The ONE sweep decision: None = NO deletion sweep this run — a path-scoped run, a
     # degraded walk (any error anywhere has an unknown blast radius), or the workspace guard
     # above — else exactly the roots discovery ENTERED (an unreachable root contributes no
@@ -1338,6 +1504,8 @@ def _ingest_run(
             kind = "reconcile" if rel_key in changed_keys else "ingest"
         office = scan.office_text.get(src)
 
+        notes: list[str] = []  # the visual-page note build() leaves for the report (main thread)
+
         def build() -> tuple[list, list[str], "_Resume | None"]:
             # A reingest source may only run its fresh session on a wiki its cleanup actually
             # cleaned: the cleanup job (group 1) pops the manifest key on success, so a key still
@@ -1361,6 +1529,9 @@ def _ingest_run(
             prepared = office
             run_kind = kind
             is_pdf = False
+            visual_text: str | None = None
+            flagged = ()
+            notes.clear()
             if is_audio:
                 prepared = transcribe.transcript_for(src, sha=sha_stat[0])
                 # A transcription can take minutes: refresh the run lock afterwards so the
@@ -1368,18 +1539,35 @@ def _ingest_run(
                 runlock.heartbeat()
             elif prepared is None and pdftext.is_pdf_text_source(src):
                 prepared = pdftext.text_for(src, sha=sha_stat[0])
+                flagged: tuple[int, ...] = ()
+                if prepared is not None:
+                    flagged = pdftext.unreliable_pages(prepared)
+                    bearing = pdftext.text_pages(prepared)
+                    if bearing and set(bearing) <= set(flagged):
+                        # EVERY text-bearing page is garbled: the extraction is worthless — read the
+                        # PDF as if it had no usable text layer (formats/pdf.md § B).
+                        prepared, flagged = None, ()
+                        notes.append(f"{rel_key} (every text page unreliable - read without its text layer)")
                 if prepared is not None:
                     # Only a source that ACTUALLY got an extraction takes the pdf propagation —
                     # the kind selects formats/pdf.md's prepared-extract rules (lines locators
                     # into the cached text); the fallback stays plain ingest/reconcile.
                     is_pdf = True
                     run_kind = "pdf-reconcile" if rel_key in changed_keys else "pdf"
+                    if flagged:
+                        notes.append(f"{rel_key} ({pdftext.format_pages(flagged)})")
+                        visual_text = prepared
             passes, tmpdirs = _prepare_passes(src, prepared, is_image, is_audio=is_audio, is_pdf=is_pdf)
+            visual = _visual_pages_per_pass(passes, visual_text, flagged) if visual_text else None
             sessions = [
-                (lambda rp=read_key, sg=segment, lw=window, k=run_kind: _pending_session(rel_key, k, rp, sg, lw))
-                for read_key, segment, window in passes
+                (
+                    lambda rp=read_key, sg=segment, lw=window, k=run_kind, vp=(visual[i] if visual else ()): (
+                        _pending_session(rel_key, k, rp, sg, lw, vp) if vp else _pending_session(rel_key, k, rp, sg, lw)
+                    )
+                )
+                for i, (read_key, segment, window) in enumerate(passes)
             ]
-            return sessions, tmpdirs, _resume_context(rel_key, run_kind, sha_stat[0], passes, model, rules_ver)
+            return sessions, tmpdirs, _resume_context(rel_key, run_kind, sha_stat[0], passes, model, rules_ver, visual)
 
         def done(usage: llm.SessionUsage | None, seconds: float | None = None) -> None:
             # mark_done records exactly what discovery hashed (sha_stat above). On a forced
@@ -1433,6 +1621,14 @@ def _ingest_run(
             # session means the agent did not work, not that there was nothing to do.
             warn_no_pages=rel_key not in changed_keys,
             expects_changes=rel_key not in changed_keys,
+            folder_note=_is_folder_note(src.name),
+            notes=notes,
+            failure_hint=(
+                f"Folder note {rel_key} failed, so files beside it may have been folded in without what it "
+                "says. Once it ingests, re-read them with `citadel ingest --reingest <paths>`."
+                if _is_folder_note(src.name)
+                else ""
+            ),
         )
 
     # Repo sources: each git repository under raw/ is folded in by ONE session reading a
@@ -1602,6 +1798,12 @@ def _ingest_run(
         # root and the load-time warning keeps its promise that one completed `citadel ingest`
         # run makes it stop, a no-op run included.
         manifest.save(manifest_dict)
+
+    # The run ledger line: after the session loop and the manifest saves, BEFORE the finalize
+    # gate — so the run's own wiki-history commit includes it, a run whose every session failed
+    # still records its spend, and a captured Ctrl+C is recorded as interrupted.
+    if ledger_meta is not None:
+        _write_run_ledger(report, *ledger_meta, interrupted=pending_interrupt is not None)
 
     failures_changed = failures_dict != failures_before
     if (

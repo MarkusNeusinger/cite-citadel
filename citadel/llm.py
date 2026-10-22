@@ -51,12 +51,13 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import config
+from . import config, readdeny
 from .llm_usage import AIC_USD as AIC_USD
 
 # --- Facade re-exports (the session-usage accounting layer, split into llm_usage.py) ------------
@@ -331,6 +332,75 @@ _RULES_LINE = {
     "local": "- Workspace house rules: {}",
 }
 
+# The roles CITADEL_RULES_IN_SYSTEM_PROMPT moves into claude's system prompt, in prompt order.
+_SYSTEM_PROMPT_ROLES = ("schema", "core")
+_SYSTEM_PROMPT_LINE = (
+    "- Format contract and how you work: {} and {} - both are ALREADY in your system prompt, in "
+    "full; do not read them again"
+)
+
+
+# How many configured exclusion patterns the prompt's bullet names before eliding the rest — the
+# prompt stays a couple thousand chars whatever the .env holds (the WinError 206 discipline).
+_EXCLUSIONS_SHOWN = 20
+
+
+def _exclusion_bullet() -> str | None:
+    """The run instruction's ``Excluded from this corpus`` bullet, or None when the user
+    configured no exclusion: their OWN ignore globs (never the built-in junk ones), the include
+    allowlist, the size ceiling. Discovery already keeps these files out of the source list; the
+    bullet is what keeps a session from opening one on its own (a sidecar beside its source, a
+    related-source lookup) — read uncited, excluded content would shape prose with no citation
+    ever surfacing it. Patterns are elided past :data:`_EXCLUSIONS_SHOWN`."""
+    if not config.has_user_exclusions():
+        return None
+    parts: list[str] = []
+    budget = _EXCLUSIONS_SHOWN
+
+    def shown(patterns: list[str]) -> str:
+        nonlocal budget
+        head = patterns[: max(budget, 0)]
+        budget -= len(head)
+        rest = len(patterns) - len(head)
+        return ", ".join(head) + (f", +{rest} more" if rest else "")
+
+    ignored = config.user_ignore_patterns()
+    if ignored:
+        parts.append("every file or folder whose name matches " + shown(ignored))
+    if config.INCLUDE_PATTERNS:
+        parts.append("every file whose name does NOT match " + shown(list(config.INCLUDE_PATTERNS)))
+    if config.MAX_SOURCE_BYTES > 0:
+        parts.append(f"every file larger than {config.MAX_SOURCE_BYTES} bytes")
+    return (
+        "- Excluded from this corpus (the user keeps these out on purpose): " + "; ".join(parts) + " — "
+        "under the raw directories. Never open, list, search, or cite such a file, not even beside "
+        "your source or under the related-source budget; the source named above is the only exception"
+    )
+
+
+# How many page ranges the unreliable-text-layer bullet names before eliding the rest.
+_VISUAL_RANGES_SHOWN = 30
+
+
+def _visual_pages_bullet(pages) -> str:
+    """``- Unreliable text layer - ...: p. 2, pp. 5-7`` (ASCII), capped at
+    :data:`_VISUAL_RANGES_SHOWN` ranges."""
+    from . import pdftext
+
+    ranges = pdftext.format_pages(pages).split(", ")
+    shown = ", ".join(ranges[:_VISUAL_RANGES_SHOWN])
+    if len(ranges) > _VISUAL_RANGES_SHOWN:
+        hidden = sum(
+            (int(b) - int(a) + 1) if "-" in r else 1
+            for r in ranges[_VISUAL_RANGES_SHOWN:]
+            for a, _, b in [r.replace("pp. ", "").replace("p. ", "").partition("-")]
+        )
+        shown += f" (+{hidden} more pages: apply the same rule to any page whose extracted lines are scrambled)"
+    return (
+        "- Unreliable text layer - read these pages from the original PDF's page images (open only "
+        f"these pages if your reader takes a page range), in either PDF mode: {shown}"
+    )
+
 
 def _build_instruction(
     rel_key: str,
@@ -338,6 +408,8 @@ def _build_instruction(
     read_path: str | None = None,
     segment: tuple[int, int] | None = None,
     line_range: tuple[int, int] | None = None,
+    visual_pages: tuple[int, ...] | None = None,
+    rules_in_system_prompt: bool = False,
 ) -> str:
     """The short, paths-only agent prompt: ONLY the code-invariant frame. Everything the agent
     must KNOW lives in the rules tree (``citadel/rules/``, see its README) and is referenced BY
@@ -378,7 +450,11 @@ def _build_instruction(
     ``line_range`` when it is large enough to be folded in over several line windows of that one
     file), or a repo digest — the agent reads it for content while citing ``rel_key`` as the
     source of record (per the task/format briefs). A chunked PLAIN-TEXT source has no prepared
-    file at all: ``read_path`` stays None and ``line_range`` bounds the pass on the source itself."""
+    file at all: ``read_path`` stays None and ``line_range`` bounds the pass on the source itself.
+
+    ``rules_in_system_prompt`` (``CITADEL_RULES_IN_SYSTEM_PROMPT``, claude only) replaces the
+    schema.md and core.md lines with ONE line saying both are already in the system prompt; every
+    other line is unchanged."""
     wiki_rel = _agent_path(config.wiki_dir())
     # The raw-dir bullet names the root that COVERS this source (in a multi-root corpus a
     # second-root source must not be pointed at the primary); an out-of-root explicit path
@@ -393,9 +469,14 @@ def _build_instruction(
         "Read these rules files FIRST and follow them exactly:",
     ]
     genres: list[Path] = []
+    in_system_prompt: list[str] = []
     for role, path in _referenced_rules(rel_key, kind, read_path, segment):
         if role == "genre":
             genres.append(path)  # last in the canonical order — collected onto one line below
+        elif rules_in_system_prompt and role in _SYSTEM_PROMPT_ROLES:
+            in_system_prompt.append(_agent_path(path))
+            if len(in_system_prompt) == len(_SYSTEM_PROMPT_ROLES):
+                lines.append(_SYSTEM_PROMPT_LINE.format(*in_system_prompt))
         else:
             lines.append(_RULES_LINE[role].format(_agent_path(path)))
     if genres:
@@ -406,7 +487,16 @@ def _build_instruction(
 
     lines += ["", "Session variables (use these paths verbatim):"]
     lines.append(f"- {spec.subject_prefix}: {rel_key}")
-    lines.append(f"- Wiki directory: {wiki_rel}/")
+    wiki_line = f"- Wiki directory: {wiki_rel}/"
+    if not Path(wiki_rel).is_absolute():
+        # A relative name is relative to the session's cwd (the workspace root). Spell out the
+        # absolute form too: with raw/rules outside the workspace a session that changed directory
+        # resolved it against THEIR tree and wrote pages nobody imports (silent data loss).
+        wiki_line += (
+            f" (absolute: {config.native_form(config.wiki_dir()).as_posix()}/ — always resolve it "
+            "against the workspace root, never against the raw or rules directories)"
+        )
+    lines.append(wiki_line)
     lines.append(f"- Raw directory: {raw_rel}/")
     if read_path:
         lines.append(f"- Prepared file — read THIS for the source's content: {read_path}")
@@ -459,9 +549,18 @@ def _build_instruction(
             "- Fallback date — the source file's own date, used only when the source's content "
             f"states no date: {fallback_date}"
         )
+    # Today's date for the `(ingested …)` / `(added …)` stamps — without it a session reused the
+    # Fallback date (the raw file's mtime) as the ingest date.
+    lines.append(
+        f"- Today: {time.strftime('%Y-%m-%d')} — the date for every `(ingested …)` / `(added …)` stamp you write"
+    )
     lines.append(f"- Wiki language: {config.WIKI_LANG}")
     if fmt == "formats/pdf.md":
         lines.append(f"- PDF mode: {'images' if config.PDF_MODE == 'images' else 'text'}")
+    # The pages whose extracted text layer is garbled (pdftext.unreliable_pages) — read from the
+    # original PDF's page images in EITHER mode (formats/pdf.md § A). pdf kinds only.
+    if visual_pages and kind in ("pdf", "pdf-reconcile"):
+        lines.append(_visual_pages_bullet(visual_pages))
     if config.STYLE_PROFILES:
         lines.append("- Style profiling: ON")
     # Related-source budget (CITADEL_RELATED_SOURCES): how many OTHER raw files this session may
@@ -478,6 +577,13 @@ def _build_instruction(
             "not explain, each cited for whatever is taken from it (see `core.md` § Related "
             "sources); the source above stays the source of record"
         )
+    # Exclusions (CITADEL_IGNORE_PATTERNS user entries / CITADEL_INCLUDE_PATTERNS /
+    # CITADEL_MAX_SOURCE_BYTES): for every kind that may open raw files on its own — source-reading
+    # kinds and curate (which re-reads cited sources); never delete (it opens nothing).
+    if spec.reads_source or kind == "curate":
+        excluded = _exclusion_bullet()
+        if excluded:
+            lines.append(excluded)
     # Operator guidance (--guidance / CITADEL_INGEST_GUIDANCE): a per-run steer from the human
     # running ingest — unlike text inside a source, it comes from the run instruction itself, so
     # following it is legitimate. Only for kinds that read a source (a delete cleanup has no source
@@ -504,14 +610,66 @@ def _build_instruction(
         f"move, or delete anything there. Never create or edit {wiki_rel}/index.md, "
         f"{wiki_rel}/log.md, any */index.md, or any dotfile, and make no changes outside "
         f"{wiki_rel}/. When your edits "
-        "are complete, run `citadel check` (or `uv run python -m "
-        "citadel check`) ONCE; only if it reports errors, fix them and run it again to confirm.",
+        "are complete, run `citadel check` (or `uv run python -m citadel check`) ONCE, as a "
+        "shell command of its own — exactly that, with nothing around it: no pipe, `||`, `&&`, "
+        "`;`, `cd`, redirect or parentheses (the shell refuses any combined command, so a wrapped "
+        "check never runs); only if it reports errors, fix them and run it again to confirm. "
+        "Run every other shell command (a page `rm`/`mv`/`mkdir`) on its own too, one per call.",
     ]
     return "\n".join(lines)
 
 
+# claude's tool allowlist, one rule per argv element after the variadic --allowedTools (so no
+# separator question arises). NO bare `Bash`: that auto-approves every shell command, and any Read
+# restriction is moot while `python -c "open(...)"` runs unasked. The shell is narrowed to exactly
+# what the rules permit — the `citadel check` self-check and page-file deletes/renames.
+_CLAUDE_CHECK_COMMANDS = ("citadel check", "uv run python -m citadel check", "python -m citadel check")
+_CLAUDE_FILE_COMMANDS = ("rm", "rmdir", "mv", "mkdir")
+
+
+def _claude_allowed_tools() -> list[str]:
+    rules = ["Read", "Edit", "Write", "Grep", "Glob"]
+    shells = ["Bash", "PowerShell"] if sys.platform == "win32" else ["Bash"]
+    for shell in shells:
+        for command in _CLAUDE_CHECK_COMMANDS:
+            rules += [f"{shell}({command})", f"{shell}({command} *)"]
+    rules += [f"Bash({command} *)" for command in _CLAUDE_FILE_COMMANDS]
+    return rules
+
+
+# Read-only shell commands claude would otherwise run without approval in every mode: searching
+# the raw tree through them sidesteps both the Grep/Glob tools the rules require and the per-path
+# Read denies. Nothing in the rules needs `cp`.
+_CLAUDE_DISALLOWED_TOOLS = ("Bash(grep *)", "Bash(rg *)", "Bash(find *)", "Bash(cp *)")
+
+# copilot's deny list (`--deny-tool` takes precedence over --allow-all-tools): interpreters and
+# file readers that would sidestep the run instruction's file discipline — the F12 one-liner path.
+# copilot has no per-file read deny and runs --allow-all-paths, so reads stay instruction-only.
+_COPILOT_DENIED_TOOLS = (
+    "shell(python)",
+    "shell(python3)",
+    "shell(py)",
+    "shell(node)",
+    "shell(perl)",
+    "shell(ruby)",
+    "shell(cat)",
+    "shell(head)",
+    "shell(tail)",
+    "shell(grep)",
+    "shell(rg)",
+    "shell(find)",
+    "shell(cp)",
+)
+
+
+def _advertises(cli_path: str, flag: str) -> bool:
+    """Whether the installed binary's ``--help`` names ``flag`` (exact token) — the probe that gates
+    every optional flag, so an older CLI is never handed one it would reject."""
+    return bool(re.search(re.escape(flag) + r"(?![\w-])", _cli_help_text(cli_path)))
+
+
 def _build_invocation(
-    cli: str, cli_path: str, prompt: str, extra_dirs: list[str] | None = None
+    cli: str, cli_path: str, prompt: str, extra_dirs: list[str] | None = None, settings_path: str | None = None
 ) -> tuple[list[str], str | None]:
     """Return ``(argv, stdin_text)`` for the chosen CLI in agentic, non-interactive mode.
 
@@ -526,15 +684,23 @@ def _build_invocation(
     is not (the knob has no default, so an unset workspace runs each CLI on its own default model
     rather than being handed a foreign model id).
 
-    All three CLIs run in their fully autonomous mode (each backend's headless YOLO equivalent);
-    which files the agent may touch and which tools it should use is governed by the run
-    instruction (:func:`_build_instruction`) — ``raw/`` is read-only, edits go only under the
-    wiki, and the shell is reserved for the ``citadel check`` self-check and page deletes/renames —
-    not by divergent per-CLI permission flags."""
+    The run instruction (:func:`_build_instruction`) is the common floor every backend gets —
+    ``raw/`` is read-only, edits go only under the wiki, excluded files are never opened, and the
+    shell is reserved for the ``citadel check`` self-check and page deletes/renames. On top of it,
+    each backend gets whatever ENFORCEMENT it offers, because instructions alone have failed
+    silently: claude a narrowed tool allowlist (no bare ``Bash``), read-only shell searches
+    disallowed, ``--permission-prompts none`` (anything else is denied, not left to a prompt), and
+    a per-session ``--settings`` file of per-path Read denies (``settings_path``, built by
+    :func:`_read_deny_settings`); copilot a ``--deny-tool`` list of interpreters and file readers;
+    agy has only ``--dangerously-skip-permissions`` and stays instruction-only. Everything
+    security-relevant lives here in argv — never in :data:`_HERMETIC_FLAGS`, which the auth retry
+    drops."""
     extra_dirs = extra_dirs or []
     if cli == "claude":
         # acceptEdits auto-applies file edits; the allowlist scopes tools (Read/Edit/Write to
-        # author pages, Grep/Glob to search the wiki, Bash so the agent can run `citadel check`).
+        # author pages, Grep/Glob to search the wiki, the shell ONLY for `citadel check` and the
+        # page-file rm/rmdir/mv/mkdir the rules permit — listed explicitly so deletes/renames work
+        # on every claude version instead of relying on acceptEdits auto-approving them).
         # cwd=workspace root covers everything under it; --add-dir grants access to what is not —
         # an out-of-workspace wiki/raw (network drive) and the packaged rules under site-packages —
         # since claude's file tools are otherwise scoped to cwd. No extra_dirs in the
@@ -547,8 +713,14 @@ def _build_invocation(
             "--permission-mode",
             "acceptEdits",
             "--allowedTools",
-            "Read Edit Write Grep Glob Bash",
+            *_claude_allowed_tools(),
+            "--disallowedTools",
+            *_CLAUDE_DISALLOWED_TOOLS,
         ]
+        if _advertises(cli_path, "--permission-prompts"):
+            argv += ["--permission-prompts", "none"]
+        if settings_path and _advertises(cli_path, "--settings"):
+            argv += ["--settings", settings_path]
         for d in extra_dirs:
             argv += ["--add-dir", d]
         if config.INGEST_MODEL:
@@ -573,6 +745,8 @@ def _build_invocation(
             "--output-format",
             "json",
         ]
+        for tool in _COPILOT_DENIED_TOOLS:
+            argv += ["--deny-tool", tool]
         if config.INGEST_MODEL:
             argv += ["--model", config.INGEST_MODEL]
         return argv, None
@@ -591,6 +765,109 @@ def _build_invocation(
         return argv, None
     # Unknown CLI: a plain headless prompt as an argument (best effort).
     return [cli_path, "-p", prompt], None
+
+
+# CITADEL_RULES_IN_SYSTEM_PROMPT: schema.md + core.md delivered through claude's
+# --append-system-prompt-file. ONE file per run, built at the first session that needs it (under a
+# lock: --jobs N sessions run in worker threads) in a private mkdtemp() dir — a guessable name in a
+# shared temp dir would be a prompt-injection vector, since everything in it becomes system prompt —
+# so it is byte-identical for every session of the run, whatever its kind. system_prompt_scope()
+# (entered by ingest() and curate()) removes it at run end; a session outside any scope builds its
+# own and removes it after the session.
+_SYSTEM_PROMPT_LOCK = threading.Lock()
+_SYSTEM_PROMPT_DEPTH = 0
+_SYSTEM_PROMPT_FILE: str | None = None
+_RULES_DELIVERY_NOTED: set[str] = set()
+
+
+def _system_prompt_text() -> str:
+    """The effective ``schema.md`` then ``core.md`` (a workspace-ejected copy wins), each under a
+    header naming the path the prompt and the other rules files use for it, so ``core.md § …``
+    cross-references still resolve."""
+    parts = []
+    for name in ("schema.md", "core.md"):
+        path = config.effective_rules_file(name)
+        parts.append(f"# Rules file: {_agent_path(path)}\n\n{path.read_text(encoding='utf-8')}")
+    return "\n\n".join(parts)
+
+
+def _write_system_prompt_file() -> str:
+    directory = tempfile.mkdtemp(prefix="citadel-sysprompt-")
+    path = os.path.join(directory, "rules.md")
+    with open(path, "w", encoding="utf-8", newline="") as fh:
+        fh.write(_system_prompt_text())
+    return path
+
+
+def _remove_system_prompt_file(path: str) -> None:
+    with contextlib.suppress(OSError):
+        os.remove(path)
+    with contextlib.suppress(OSError):
+        os.rmdir(os.path.dirname(path))
+
+
+def _system_prompt_file() -> tuple[str, bool]:
+    """``(path, owned)``: the run's shared file inside a :func:`system_prompt_scope`, else a fresh
+    one the caller owns (and removes)."""
+    global _SYSTEM_PROMPT_FILE
+    with _SYSTEM_PROMPT_LOCK:
+        if _SYSTEM_PROMPT_DEPTH <= 0:
+            return _write_system_prompt_file(), True
+        if _SYSTEM_PROMPT_FILE is None:
+            _SYSTEM_PROMPT_FILE = _write_system_prompt_file()
+        return _SYSTEM_PROMPT_FILE, False
+
+
+@contextlib.contextmanager
+def system_prompt_scope():
+    """One RUN of system-prompt delivery: the file built inside is shared by every session and
+    removed on exit (return, raise, or Ctrl+C); the one-per-run fallback notice is re-armed."""
+    global _SYSTEM_PROMPT_DEPTH, _SYSTEM_PROMPT_FILE
+    with _SYSTEM_PROMPT_LOCK:
+        _SYSTEM_PROMPT_DEPTH += 1
+        if _SYSTEM_PROMPT_DEPTH == 1:
+            _RULES_DELIVERY_NOTED.clear()
+    try:
+        yield
+    finally:
+        with _SYSTEM_PROMPT_LOCK:
+            _SYSTEM_PROMPT_DEPTH -= 1
+            path = _SYSTEM_PROMPT_FILE if _SYSTEM_PROMPT_DEPTH == 0 else None
+            if path is not None:
+                _SYSTEM_PROMPT_FILE = None
+        if path is not None:
+            _remove_system_prompt_file(path)
+
+
+def _advertises_system_prompt_file(cli_path: str) -> bool:
+    """claude's ``--help`` names ``--append-system-prompt-file`` only inside ``--bare``'s description,
+    as ``--append-system-prompt[-file]`` — so the exact-token probe alone would miss it."""
+    return _advertises(cli_path, "--append-system-prompt-file") or (
+        "--append-system-prompt[-file]" in _cli_help_text(cli_path)
+    )
+
+
+def rules_delivery(cli: str, cli_path: str) -> tuple[int, str]:
+    """``(level, note)``: the EFFECTIVE ``CITADEL_RULES_IN_SYSTEM_PROMPT`` level for this backend —
+    the configured one, lowered (2 → 1 → 0) to what the installed binary advertises, never handing
+    it an unadvertised flag — and why it was lowered ("" when it was not). Non-claude backends: 0."""
+    wanted = config.RULES_IN_SYSTEM_PROMPT
+    if wanted <= 0 or cli != "claude":
+        return 0, ""
+    if not _advertises_system_prompt_file(cli_path):
+        return 0, "claude does not advertise --append-system-prompt-file; the rules stay path lines"
+    if wanted >= 2 and not _advertises(cli_path, "--exclude-dynamic-system-prompt-sections"):
+        return 1, "claude does not advertise --exclude-dynamic-system-prompt-sections; using level 1"
+    return wanted, ""
+
+
+def _note_rules_delivery(note: str) -> None:
+    """Print a delivery fallback once per run (the first session that meets it)."""
+    with _SYSTEM_PROMPT_LOCK:
+        if note in _RULES_DELIVERY_NOTED:
+            return
+        _RULES_DELIVERY_NOTED.add(note)
+    _echo_stderr(f"  ! CITADEL_RULES_IN_SYSTEM_PROMPT: {note}.\n")
 
 
 # --help output per resolved CLI binary, probed at most once per process (the hermetic-flag
@@ -625,9 +902,33 @@ def _cli_help_text(cli_path: str) -> str:
 
 # Per-CLI session-isolation flags: what to pass so the user's PERSONAL agent configuration
 # (~/.claude hooks, CLAUDE.md context, MCP-server discovery) does not leak into citadel's agent
-# sessions — the session then runs on the rules tree alone, reproducibly. Only claude documents
-# such a switch today; copilot/agy have no equivalent (no entry, so nothing is probed or passed).
-_HERMETIC_FLAGS: dict[str, tuple[str, ...]] = {"claude": ("--bare",)}
+# sessions — the session then runs on the rules tree alone, reproducibly. claude's --bare skips hooks,
+# CLAUDE.md discovery and MCP servers (and, on some machines, the credentials too); copilot's
+# --no-custom-instructions skips its instruction files (AGENTS.md, CLAUDE.md, .github/...); agy
+# documents no such switch (no entry, so nothing is probed or passed).
+_HERMETIC_FLAGS: dict[str, tuple[str, ...]] = {"claude": ("--bare",), "copilot": ("--no-custom-instructions",)}
+
+# What each backend loads as INSTRUCTIONS from the session cwd and every directory above it when it
+# is NOT isolated (vendor docs; agy per the Antigravity CLI docs, unverified against a binary) —
+# kept beside the flags that suppress them. `citadel doctor`'s "agent instructions" line scans for
+# these; subdirectory files that load on demand cannot be predicted offline and are not scanned.
+_INSTRUCTION_FILES: dict[str, tuple[str, ...]] = {
+    "claude": ("CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md", ".claude/rules", "AGENTS.md", ".claude/AGENTS.md"),
+    "copilot": (
+        ".github/copilot-instructions.md",
+        ".github/instructions",
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".claude/CLAUDE.md",
+        "GEMINI.md",
+    ),
+    "agy": ("AGENTS.md", "GEMINI.md"),
+}
+
+# The isolation flags that ALSO skip where a CLI may keep its credentials — the only ones an
+# auth-shaped failure can be blamed on, so the only ones that trigger the auth hint and the
+# one-shot retry without isolation. copilot's --no-custom-instructions skips instruction files only.
+_CREDENTIAL_STRIPPING_FLAGS = frozenset({"--bare"})
 
 # Binaries whose isolation flag is PROVEN to strip their credentials on this machine: a session
 # under the flag failed auth-shaped AND its retry without the flag succeeded (see
@@ -678,8 +979,7 @@ def _hermetic_flags(cli: str, cli_path: str) -> list[str]:
     flags = _HERMETIC_FLAGS.get(cli, ()) if config.HERMETIC else ()
     if not flags or _hermetic_refused(cli_path):
         return []
-    help_text = _cli_help_text(cli_path)
-    return [flag for flag in flags if re.search(re.escape(flag) + r"(?![\w-])", help_text)]
+    return [flag for flag in flags if _advertises(cli_path, flag)]
 
 
 # Auth-shaped failure signatures in a backend's own error text.
@@ -696,7 +996,7 @@ def _hermetic_auth_hint(cli: str, argv: list[str], message: str) -> str:
     again"*), which sends you looking in the wrong place, so name the knob that actually explains
     it. Derived from ``argv`` rather than the config, so the hint appears only when a flag really
     was passed (hermetic mode is probe-gated: an older binary is handed nothing)."""
-    flags = [flag for flag in _HERMETIC_FLAGS.get(cli, ()) if flag in argv]
+    flags = [flag for flag in _HERMETIC_FLAGS.get(cli, ()) if flag in argv and flag in _CREDENTIAL_STRIPPING_FLAGS]
     if not flags or not _AUTH_ERROR_RE.search(message):
         return ""
     return (
@@ -736,7 +1036,9 @@ def _echo_stderr(text: str) -> None:
         sys.stderr.flush()
 
 
-def _stream_subprocess(cli: str, argv: list[str], stdin_text: str | None) -> tuple[int, str, str]:
+def _stream_subprocess(
+    cli: str, argv: list[str], stdin_text: str | None, *, cwd: str | None = None, timeout: int | None = None
+) -> tuple[int, str, str]:
     """Run the CLI while TEEING its output to the terminal live (verbose mode), returning
     ``(returncode, stdout, stderr)`` exactly like the captured path so the shared error-detection
     and transcript-logging below are unchanged.
@@ -756,7 +1058,7 @@ def _stream_subprocess(cli: str, argv: list[str], stdin_text: str | None) -> tup
         encoding="utf-8",
         errors="replace",
         bufsize=1,
-        cwd=config.child_cwd(),
+        cwd=cwd or config.child_cwd(),
         env=config.child_env(),
     )
     if stdin_text is not None and proc.stdin is not None:
@@ -772,7 +1074,8 @@ def _stream_subprocess(cli: str, argv: list[str], stdin_text: str | None) -> tup
         with contextlib.suppress(OSError):
             proc.kill()
 
-    timer = threading.Timer(config.LLM_TIMEOUT, _kill)
+    limit = timeout or config.LLM_TIMEOUT
+    timer = threading.Timer(limit, _kill)
     timer.start()
     chunks: list[str] = []
     # All terminal echo is diagnostic — a closed/broken stderr (e.g. `2>|`, or a downstream pipe
@@ -792,8 +1095,74 @@ def _stream_subprocess(cli: str, argv: list[str], stdin_text: str | None) -> tup
     if timed_out["v"]:
         # Carry whatever was streamed before the kill so _run_session can log a useful PARTIAL
         # transcript for the timed-out session instead of an empty one.
-        raise subprocess.TimeoutExpired(argv, config.LLM_TIMEOUT, output="".join(chunks))
+        raise subprocess.TimeoutExpired(argv, limit, output="".join(chunks))
     return proc.returncode, "".join(chunks), ""
+
+
+def _log_kind(kind: str, rel_key: str, read_path: str | None) -> str:
+    """The DISPLAY kind a transcript is named after — how the session actually read its source,
+    which the internal ``kind`` hides: a PDF read through its pypdf text layer (``pdf-text``), a PDF
+    with no text layer the agent reads natively (``pdf-native`` — otherwise indistinguishable from a
+    markdown ingest), an Office file read through its extraction (``office-text``). Display-only:
+    the internal kind still selects the ``_KIND_SPECS`` row, the task brief and the resume identity.
+    Every log kind maps back to exactly one internal kind; log kinds contain no ``.``."""
+    if kind in ("pdf", "pdf-reconcile"):
+        return "pdf-text" + kind[len("pdf") :]
+    if kind in ("ingest", "reconcile"):
+        suffix = "" if kind == "ingest" else "-reconcile"
+        if read_path:
+            return "office-text" + suffix
+        if str(rel_key).lower().endswith(".pdf"):
+            return "pdf-native" + suffix
+    return kind
+
+
+# The transcript label budget (characters): keeps the whole `<stamp>.<pid>.<seq>.<label>.log` name
+# under 120 characters, MAX_PATH headroom for a long log dir.
+_TRANSCRIPT_LABEL_MAX = 80
+_TRANSCRIPT_HEAD_RE = re.compile(r"^([a-z][a-z-]*)((?:\.p\d+of\d+)?)\.(.+)$")
+
+
+def _transcript_safe(text: str) -> str:
+    return "".join(c if (c.isalnum() or c in "-._") else "_" for c in text)
+
+
+def _transcript_label(label: str | None) -> str:
+    """The filename part for one transcript label ``<logkind>[.pNofM].<source key>``, shortened by
+    PATH SEGMENT, never mid-name: the key is collapsed by :func:`config.display_key`, each segment
+    sanitized and joined with ``+`` (a literal ``+`` in a name becomes ``_``, so ``+`` only ever
+    means ``/``). Over :data:`_TRANSCRIPT_LABEL_MAX` it keeps the filename plus as many nearest
+    parent folders as fit, marking dropped leading folders by ``...`` after the head; only a
+    filename that alone does not fit has the middle of its stem cut (extension kept)."""
+    text = label or "session"
+    m = _TRANSCRIPT_HEAD_RE.match(text)
+    head, key = (m.group(1) + m.group(2), m.group(3)) if m else ("", text)
+    shown = config.display_key(key)
+    dropped = shown.startswith(".../")
+    if dropped:
+        shown = shown[len(".../") :]
+    segs = [_transcript_safe(s) for s in shown.split("/") if s] or ["session"]
+    joined = "+".join(segs)
+    full = f"{head}.{joined}" if head else joined
+    if not dropped and len(full) <= _TRANSCRIPT_LABEL_MAX:
+        return full
+    budget = _TRANSCRIPT_LABEL_MAX - len(head) - len("...")
+    tail = segs[-1]
+    if len(tail) > budget:
+        stem, dot, ext = tail.rpartition(".")
+        if not dot or not stem:
+            stem, ext = tail, ""
+        else:
+            ext = "." + ext
+        keep = max(budget - len(ext) - len("..."), 2)
+        tail = stem[: keep - keep // 2] + "..." + stem[len(stem) - keep // 2 :] + ext
+        return f"{head}...{tail}"
+    kept = tail
+    for seg in reversed(segs[:-1]):
+        if len(seg) + 1 + len(kept) > budget:
+            break
+        kept = f"{seg}+{kept}"
+    return f"{head}...{kept}"
 
 
 def _write_transcript(
@@ -824,14 +1193,8 @@ def _write_transcript(
             directory = config.WORKSPACE_ROOT / directory
         config.robust_mkdir(directory)
         stamp = time.strftime("%Y%m%d-%H%M%S")
-        safe = "".join(c if (c.isalnum() or c in "-._") else "_" for c in (label or "session"))
-        if len(safe) > 80:
-            # The label is `kind[.pNofM].<source key>`, and for an out-of-workspace source the key
-            # is a long absolute path whose FILENAME sits at the END — a plain head-cut keeps the
-            # noise (host + folders) and drops the one part that identifies the session. Keep both
-            # ends instead: the kind/pass prefix and the filename tail, with an ASCII `...` marking
-            # the cut (the full label is still inside the transcript itself).
-            safe = safe[:24] + "..." + safe[-53:]
+        # Shortened by path segment, never mid-folder (the full label is still inside the file).
+        safe = _transcript_label(label)
         path = directory / f"{stamp}.{os.getpid()}.{seq}.{safe}.log"
         body = [
             "# citadel ingest — LLM agent session transcript",
@@ -859,7 +1222,13 @@ def _write_transcript(
 
 
 def _run_session(
-    cli: str, argv: list[str], stdin_text: str | None, *, log_label: str | None = None
+    cli: str,
+    argv: list[str],
+    stdin_text: str | None,
+    *,
+    log_label: str | None = None,
+    cwd: str | None = None,
+    timeout: int | None = None,
 ) -> SessionUsage | None:
     """Run the agentic CLI once in the workspace root (``config.child_cwd()`` — the root in the
     spelling a child process can use; see ``config.NATIVE_FORMS``). Success = the session completed
@@ -877,11 +1246,15 @@ def _run_session(
     test that monkeypatches ``subprocess.run`` — is byte-for-byte the original behavior.
 
     Note: empty stdout is NOT a failure — an agent that legitimately changed nothing prints
-    nothing and exits 0 (ingest's snapshot diff then simply shows no changes)."""
+    nothing and exits 0 (ingest's snapshot diff then simply shows no changes).
+
+    ``cwd``/``timeout`` (keyword-only, default ``config.child_cwd()`` / ``config.LLM_TIMEOUT``) exist
+    for ``citadel doctor --probe``, which runs in a throwaway temp dir with a short limit."""
     started = time.monotonic()
+    limit = timeout or config.LLM_TIMEOUT
     try:
         if config.LLM_VERBOSE:
-            returncode, out_raw, err_raw = _stream_subprocess(cli, argv, stdin_text)
+            returncode, out_raw, err_raw = _stream_subprocess(cli, argv, stdin_text, cwd=cwd, timeout=timeout)
         else:
             proc = subprocess.run(
                 argv,
@@ -893,8 +1266,8 @@ def _run_session(
                 # undecodable byte from killing the run.
                 encoding="utf-8",
                 errors="replace",
-                timeout=config.LLM_TIMEOUT,
-                cwd=config.child_cwd(),
+                timeout=limit,
+                cwd=cwd or config.child_cwd(),
                 # The wiki this session must edit is passed EXPLICITLY (ingest's per-source staging
                 # copy, via config.wiki_redirect) rather than through a process-global
                 # os.environ assignment — two concurrent sessions each get their own.
@@ -916,9 +1289,9 @@ def _run_session(
             partial_err,
             log_label,
             time.monotonic() - started,
-            note=f"timed out after {config.LLM_TIMEOUT}s",
+            note=f"timed out after {limit}s",
         )
-        raise RuntimeError(f"the {cli!r} CLI timed out after {config.LLM_TIMEOUT}s") from exc
+        raise RuntimeError(f"the {cli!r} CLI timed out after {limit}s") from exc
     except OSError as exc:
         raise RuntimeError(f"failed to run the {cli!r} CLI: {exc}") from exc
 
@@ -981,12 +1354,110 @@ def _run_session(
     return usage
 
 
+# `citadel doctor --probe`: one tiny paid session that proves the backend actually authenticates
+# and accepts the configured model BEFORE the first source pays for finding out.
+PROBE_PROMPT = "Reply with exactly: OK"
+_PROBE_TIMEOUT = 120
+_PROBE_BUDGET_USD = "0.25"
+
+
+@dataclass
+class ProbeResult:
+    """One probe outcome: ``status`` is ``ok`` / ``warn`` / ``fail``; ``detail`` a single ASCII line;
+    ``usage`` what every leg spent (a failed leg included); ``sessions`` how many legs ran."""
+
+    status: str
+    detail: str
+    usage: SessionUsage | None = None
+    sessions: int = 0
+
+
+def _probe_text(message: str, limit: int = 300) -> str:
+    """Backend text folded to ONE ASCII line (doctor renders a plain ASCII block)."""
+    flat = " ".join(str(message).split()).encode("ascii", "replace").decode("ascii")
+    return flat if len(flat) <= limit else flat[: limit - 3] + "..."
+
+
+def probe_session() -> ProbeResult:
+    """Run the configured backend ONCE on :data:`PROBE_PROMPT`, the way ingest would (production
+    argv + the hermetic flags; for claude also ``--tools ""``, a ``--max-budget-usd`` cap and
+    ``--no-session-persistence`` when advertised), in a fresh empty temp dir that is removed
+    afterwards, with a short timeout. Follows ingest's retry rule: when the credential-stripping
+    flag is refused at auth, a second leg runs without it. Writes no workspace state."""
+    try:
+        cli = resolve_cli_name(config.LLM_CLI)
+        cli_path = _resolve_cli(cli)
+    except RuntimeError as exc:
+        return ProbeResult("fail", _probe_text(f"cannot launch the agent CLI: {exc}"))
+    argv, stdin_text = _build_invocation(cli, cli_path, PROBE_PROMPT, [])
+    if cli == "claude":
+        for flag, values in (
+            ("--tools", [""]),
+            ("--max-budget-usd", [_PROBE_BUDGET_USD]),
+            ("--no-session-persistence", []),
+        ):
+            if _advertises(cli_path, flag):
+                argv += [flag, *values]
+    hermetic = _hermetic_flags(cli, cli_path)
+    timeout = min(config.LLM_TIMEOUT, _PROBE_TIMEOUT)
+    spent: list[SessionUsage | None] = []
+    model = config.INGEST_MODEL
+
+    def served(usage: SessionUsage | None) -> str:
+        bits = []
+        if usage is not None and usage.model:
+            bits.append(f"served {config.model_label_for(usage.model)}")
+        requested = f"requested {model!r}" if model else "the CLI's default model"
+        bits.append(requested)
+        described = combine_usage(spent)
+        if described is not None and described.describe():
+            bits.append(described.describe())
+        return ", ".join(bits)
+
+    def failure(exc: RuntimeError, legs: int) -> ProbeResult:
+        message = str(exc)
+        if model and model.lower() in message.lower():
+            text = f"CITADEL_INGEST_MODEL={model} was rejected: {message}"
+        elif _AUTH_ERROR_RE.search(message):
+            text = f"not logged in for non-interactive use (the probe ran outside the workspace): {message}"
+        else:
+            text = message
+        return ProbeResult("fail", _probe_text(text), combine_usage(spent), legs)
+
+    with tempfile.TemporaryDirectory(prefix="citadel_probe_") as tmp:
+        try:
+            usage = _run_session(cli, argv + hermetic, stdin_text, log_label="probe", cwd=tmp, timeout=timeout)
+            spent.append(usage)
+            mode = f"hermetic ({' '.join(hermetic)})" if hermetic else "non-hermetic"
+            return ProbeResult("ok", _probe_text(f"session ran {mode}, {served(usage)}"), combine_usage(spent), 1)
+        except RuntimeError as exc:
+            spent.append(getattr(exc, "session_usage", None))
+            if not (hermetic and getattr(exc, "hermetic_auth_failure", False)):
+                return failure(exc, 1)
+        try:
+            usage = _run_session(cli, argv, stdin_text, log_label="probe", cwd=tmp, timeout=timeout)
+        except RuntimeError as exc:
+            spent.append(getattr(exc, "session_usage", None))
+            return failure(exc, 2)
+        spent.append(usage)
+        return ProbeResult(
+            "warn",
+            _probe_text(
+                f"{' '.join(hermetic)} strips this CLI's credentials here: every run pays one failed launch, then "
+                f"runs non-hermetic (CITADEL_HERMETIC=0 skips the failed launch); {served(usage)}"
+            ),
+            combine_usage(spent),
+            2,
+        )
+
+
 def run_ingest_session(
     rel_key: str,
     kind: str = "ingest",
     read_path: str | None = None,
     segment: tuple[int, int] | None = None,
     line_range: tuple[int, int] | None = None,
+    visual_pages: tuple[int, ...] | None = None,
 ) -> SessionUsage | None:
     """Run the configured agentic CLI once to propagate the raw source ``rel_key`` into the wiki.
 
@@ -1015,12 +1486,70 @@ def run_ingest_session(
     by ingest) on a missing/failed CLI or a timeout."""
     cli = resolve_cli_name(config.LLM_CLI)
     cli_path = _resolve_cli(cli)
-    prompt = _build_instruction(rel_key, kind, read_path, segment, line_range)
-    argv, stdin_text = _build_invocation(cli, cli_path, prompt, _external_dirs(rel_key, read_path))
-    # The segment goes in FRONT of the source key: when a transcript filename is composed the
-    # label is truncated in the MIDDLE (head + tail kept), so on a chunked source "which pass is
-    # this" and the source's basename both survive a long absolute key.
-    label = f"{kind}.p{segment[0]}of{segment[1]}.{rel_key}" if segment else f"{kind}.{rel_key}"
+    # CITADEL_RULES_IN_SYSTEM_PROMPT (claude only): schema.md + core.md through the system prompt.
+    level, note = rules_delivery(cli, cli_path) if config.RULES_IN_SYSTEM_PROMPT else (0, "")
+    if note:
+        _note_rules_delivery(note)
+    extra: dict = {}
+    if visual_pages:
+        extra["visual_pages"] = visual_pages
+    if level:
+        extra["rules_in_system_prompt"] = True
+    prompt = _build_instruction(rel_key, kind, read_path, segment, line_range, **extra)
+    system_flags: list[str] = []
+    owned_system_prompt = None
+    if level:
+        system_prompt, owned = _system_prompt_file()
+        if owned:
+            owned_system_prompt = system_prompt
+        system_flags = ["--append-system-prompt-file", system_prompt]
+        if level >= 2:
+            system_flags.append("--exclude-dynamic-system-prompt-sections")
+    # claude only: this session's per-path Read denies for the run's excluded files (readdeny),
+    # as a temp --settings file — a path, never inline JSON, so argv stays small. Removed in the
+    # finally below; the flag lives in argv, so the hermetic auth retry keeps it.
+    settings_path = None
+    if cli == "claude":
+        rules, unenforced = readdeny.session_rules(rel_key, read_path)
+        if unenforced:
+            readdeny.note_unenforced(unenforced)
+        if rules and _advertises(cli_path, "--settings"):
+            with contextlib.suppress(OSError):
+                settings_path = readdeny.write_settings(rules)
+    try:
+        return _run_ingest_session(
+            cli, cli_path, prompt, rel_key, kind, read_path, segment, settings_path, system_flags
+        )
+    finally:
+        if settings_path:
+            with contextlib.suppress(OSError):
+                os.remove(settings_path)
+        if owned_system_prompt:
+            _remove_system_prompt_file(owned_system_prompt)
+
+
+def _run_ingest_session(
+    cli: str,
+    cli_path: str,
+    prompt: str,
+    rel_key: str,
+    kind: str,
+    read_path: str | None,
+    segment: tuple[int, int] | None,
+    settings_path: str | None,
+    system_flags: list[str] | None = None,
+) -> SessionUsage | None:
+    """The launch half of :func:`run_ingest_session`: build argv, run, and the one hermetic retry.
+    ``system_flags`` (the system-prompt delivery) join argv, so the auth retry keeps them."""
+    argv, stdin_text = _build_invocation(
+        cli, cli_path, prompt, _external_dirs(rel_key, read_path), settings_path=settings_path
+    )
+    argv = argv + list(system_flags or [])
+    # The segment goes in FRONT of the source key: a transcript filename keeps the head and the
+    # filename end of a long key, so on a chunked source "which pass is this" and the source's
+    # basename both survive. The head names how the source was READ (_log_kind), display-only.
+    log_kind = _log_kind(kind, rel_key, read_path)
+    label = f"{log_kind}.p{segment[0]}of{segment[1]}.{rel_key}" if segment else f"{log_kind}.{rel_key}"
     hermetic = _hermetic_flags(cli, cli_path)  # session isolation (claude --bare), probe-gated
     try:
         return _run_session(cli, argv + hermetic, stdin_text, log_label=label)

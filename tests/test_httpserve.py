@@ -9,12 +9,10 @@ read-only switch, and the CLI wiring — is covered without a socket.
 from __future__ import annotations
 
 import pytest
+from starlette.testclient import TestClient  # noqa: E402 - after the citadel imports by convention
 
 from citadel import cli, config, httpserve, server
 
-
-starlette_testclient = pytest.importorskip("starlette.testclient")
-TestClient = starlette_testclient.TestClient
 
 TOKEN = "test-token-with-enough-entropy"
 # The app is built for this bind address, and DNS-rebinding protection checks the Host header
@@ -381,8 +379,10 @@ def test_serve_binds_a_wildcard_with_an_allowlist(tmp_citadel, monkeypatch, caps
 
 
 def test_build_app_normalizes_a_pathless_endpoint(tmp_citadel):
-    httpserve.build_app(TOKEN, host="127.0.0.1", port=8765, path="mcp")
-    assert server.mcp.settings.streamable_http_path == "/mcp"
+    app = httpserve.build_app(TOKEN, host="127.0.0.1", port=8765, path="mcp")
+    with TestClient(app, base_url=BASE_URL) as client:
+        response = client.post("/mcp", headers={"Authorization": f"Bearer {TOKEN}"}, json={})
+    assert response.status_code != 404  # served at the normalized /mcp
 
 
 @pytest.mark.parametrize("given", ["/mcp", "mcp"])
@@ -513,3 +513,77 @@ def seeded_http_wiki(tmp_citadel, seed_page):
 
     store.rebuild_indexes()
     return tmp_citadel
+
+
+# --- mcp 2.x (#173) ----------------------------------------------------------------------------
+
+
+_HEADERS = {
+    "Authorization": f"Bearer {TOKEN}",
+    "Accept": "application/json, text/event-stream",
+    "Content-Type": "application/json",
+}
+
+
+def _initialized(client, base_headers=_HEADERS):
+    init = client.post(
+        "/mcp",
+        headers=base_headers,
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": {"name": "t", "version": "0"},
+            },
+        },
+    )
+    assert init.status_code == 200, init.text
+    headers = {**base_headers, "mcp-session-id": init.headers["mcp-session-id"]}
+    client.post("/mcp", headers=headers, json={"jsonrpc": "2.0", "method": "notifications/initialized"})
+    return init, headers
+
+
+def test_initialize_reports_citadels_own_version(app):
+    import citadel
+
+    with TestClient(app, base_url=BASE_URL) as client:
+        init, _ = _initialized(client)
+    assert '"name":"citadel"' in init.text.replace(" ", "")
+    assert f'"version":"{citadel.__version__}"' in init.text.replace(" ", "")
+
+
+def test_a_tunnel_hostname_is_admitted_under_the_loopback_bind(tmp_citadel):
+    """The SDK auto-enables a loopback-only Host allowlist when transport_security is None on a
+    loopback bind; build_app always passes it explicitly, so bearer_guard stays the one policy."""
+    named = httpserve.build_app(TOKEN, host="127.0.0.1", port=8765, hosts=["127.0.0.1", "wiki.example.com"])
+    with TestClient(named, base_url="http://wiki.example.com") as client:
+        init, _ = _initialized(client)
+    assert init.status_code == 200
+
+
+def test_two_build_app_calls_in_one_process_both_serve(tmp_citadel):
+    for _ in range(2):
+        built = httpserve.build_app(TOKEN, host="127.0.0.1", port=8765, path="/mcp")
+        with TestClient(built, base_url=BASE_URL) as client:
+            _initialized(client)
+
+
+def test_a_traversal_resource_read_is_refused_and_the_session_survives(app):
+    with TestClient(app, base_url=BASE_URL) as client:
+        _, headers = _initialized(client)
+        bad = client.post(
+            "/mcp",
+            headers=headers,
+            json={
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "resources/read",
+                "params": {"uri": "wiki://page/../secrets.md"},
+            },
+        )
+        assert '"error"' in bad.text
+        listed = client.post("/mcp", headers=headers, json={"jsonrpc": "2.0", "id": 4, "method": "tools/list"})
+    assert listed.status_code == 200 and "wiki_search" in listed.text

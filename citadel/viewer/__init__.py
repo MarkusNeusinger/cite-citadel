@@ -46,6 +46,12 @@ The document shell, stylesheet, and viewer script are REAL files shipped as pack
 this module (``template.html`` / ``app.css`` / ``app.js``) and read at build time via
 ``importlib.resources`` — editable as HTML/CSS/JS, not as Python string literals.
 
+The UI CHROME (toolbar tooltips, sidebar/reader labels, table headers — never the wiki's own text)
+follows the wiki language: ``CITADEL_WIKI_LANG`` (or ``citadel view --lang``), normalized to its
+primary subtag, sets ``<html lang>`` and selects a dictionary from ``i18n.json``; only English
+(the per-key fallback) and that language are inlined, and a language without a dictionary keeps
+English chrome.
+
 Public surface: ``build_bundle`` (pure data, the test seam), ``build_html`` (the document),
 ``write_viewer`` (writes ``wiki/.citadel_viewer.html``), and ``view`` (CLI entry — write, open,
 print the path; on WSL it opens via ``wslview``/``explorer.exe`` and always prints a
@@ -95,6 +101,22 @@ _WHOLE_FILE_MAX_LINES = 120
 # First markdown ATX heading in a raw source — used as its human title when present.
 _HEADING_RE = re.compile(r"^#[ \t]+(.+?)[ \t]*$", re.MULTILINE)
 
+# A value that looks like a BCP 47 language tag ("de", "de-CH", "DE", "gsw-Latn-CH"). Only its
+# primary subtag matters to the viewer; anything else ("German", "") falls back to English.
+_LANG_TAG_RE = re.compile(r"^[A-Za-z]{2,3}(-[A-Za-z0-9]+)*$")
+_DEFAULT_LANG = "en"
+
+
+def normalize_lang(value: str | None) -> str:
+    """The viewer's language code for a free-form ``CITADEL_WIKI_LANG`` / ``--lang`` value: the
+    lowercase PRIMARY subtag when the value looks like a language tag (``de-CH`` and ``DE`` -> ``de``),
+    else ``en``. It drives ``<html lang>`` and picks the UI-chrome dictionary — the wiki's prose is
+    never touched."""
+    text = (value or "").strip()
+    if not _LANG_TAG_RE.match(text):
+        return _DEFAULT_LANG
+    return text.split("-", 1)[0].lower()
+
 
 def _page_stats(body: str) -> tuple[int, int, int]:
     """``(raw_citations, llm_facts, contradictions)`` for one page body — the counts the viewer
@@ -118,14 +140,15 @@ def _page_stats(body: str) -> tuple[int, int, int]:
     return cites, llm, contradictions
 
 
-def build_bundle(pages=None, out_dir: Path | None = None) -> dict:
+def build_bundle(pages=None, out_dir: Path | None = None, lang: str | None = None) -> dict:
     """Build the JSON-serializable bundle from the loaded wiki (pure data; no HTML, no I/O
     beyond ``store.load()`` and reading the cited raw sources). Deterministic — no timestamps —
     so a generated document round-trips back to this dict in tests.
 
     ``out_dir`` is where the viewer document will be written (default ``config.wiki_dir()``); the
     only thing it affects is the "open the original file" href of each source, which has to be
-    relative to the DOCUMENT, not to the wiki."""
+    relative to the DOCUMENT, not to the wiki. ``lang`` overrides ``config.WIKI_LANG`` (read at
+    call time) as the viewer's language; either way it is normalized by :func:`normalize_lang`."""
     if pages is None:
         pages = store.load()
     paths = {p.rel_path for p in pages}
@@ -159,6 +182,7 @@ def build_bundle(pages=None, out_dir: Path | None = None) -> dict:
     tags = {tag: [p.rel_path for p in tagged] for tag, tagged in store.tag_catalog(pages).items()}
     return {
         "wiki_name": config.wiki_dir().name,
+        "lang": normalize_lang(config.WIKI_LANG if lang is None else lang),
         "pages": pages_json,
         "tags": tags,
         "types": {k: sorted(v) for k, v in types.items()},
@@ -600,33 +624,52 @@ def _build_sources(pages, out_dir: Path | None = None) -> dict:
     return sources
 
 
-def build_html(pages=None, out_dir: Path | None = None) -> str:
+def _i18n_for(lang: str) -> dict[str, dict[str, str]]:
+    """The UI-chrome dictionaries to inline for ``lang``: always ``en`` (the per-key fallback),
+    plus ``lang`` itself when a dictionary ships for it. A language without one gets English chrome
+    (its ``<html lang>`` still follows the wiki)."""
+    catalog = json.loads(_asset("i18n.json"))
+    selected = {_DEFAULT_LANG: catalog[_DEFAULT_LANG]}
+    if lang in catalog:
+        selected[lang] = catalog[lang]
+    return selected
+
+
+def _inline_json(data) -> str:
+    """Compact JSON for an inert ``application/json`` script, with ``</`` escaped to ``<\\/`` so a
+    literal ``</script>`` inside the data cannot close the script early (json.dumps does NOT do
+    this)."""
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+
+
+def build_html(pages=None, out_dir: Path | None = None, lang: str | None = None) -> str:
     """Return the complete self-contained HTML document as one string: shell + inlined CSS +
-    inlined viewer JS + the bundle embedded as an inert ``application/json`` script. ``out_dir``
-    (where the document will live) is passed through to :func:`build_bundle` for the raw-file
-    links."""
-    bundle = build_bundle(pages, out_dir)
-    # Compact JSON; then escape '</' -> '<\/' so a literal '</script>' inside any page body
-    # OR embedded source cannot close the data <script> early. (json.dumps does NOT do this.)
-    blob = json.dumps(bundle, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
-    # Order matters: fill CSS and JS sentinels first, the data blob last, so a sentinel-like
-    # substring inside page data is never re-interpreted.
-    html = _asset("template.html").replace("/*__CSS__*/", _asset("app.css"))
+    inlined viewer JS + the bundle and the UI-chrome dictionaries embedded as inert
+    ``application/json`` scripts. ``out_dir`` (where the document will live) is passed through to
+    :func:`build_bundle` for the raw-file links; ``lang`` overrides the wiki language."""
+    bundle = build_bundle(pages, out_dir, lang)
+    blob = _inline_json(bundle)
+    # Order matters: fill the shell's own sentinels first (the language code is a validated
+    # tag, the dictionaries are package data), then CSS and JS, and the page data blob last, so a
+    # sentinel-like substring inside page data is never re-interpreted.
+    html = _asset("template.html").replace("/*__LANG__*/", bundle["lang"])
+    html = html.replace("/*__I18N__*/", _inline_json(_i18n_for(bundle["lang"])))
+    html = html.replace("/*__CSS__*/", _asset("app.css"))
     html = html.replace("/*__VIEWER_JS__*/", _asset("app.js"))
     html = html.replace("/*__BUNDLE__*/", blob)
     return html
 
 
-def write_viewer(out_path=None, pages=None) -> Path:
+def write_viewer(out_path=None, pages=None, lang: str | None = None) -> Path:
     """Write the viewer document; default ``config.wiki_dir()/.citadel_viewer.html``. Returns the
-    absolute path written."""
+    absolute path written. ``lang`` overrides the wiki language (``config.WIKI_LANG``)."""
     if out_path is None:
         out_path = config.wiki_dir() / VIEWER_FILENAME
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     # The raw-file links are relative to the document, so they are computed against where it is
     # actually written (`--out` can put it anywhere), not against the wiki.
-    out_path.write_text(build_html(pages, out_path.resolve().parent), encoding="utf-8")
+    out_path.write_text(build_html(pages, out_path.resolve().parent, lang), encoding="utf-8")
     return out_path.resolve()
 
 
@@ -712,12 +755,13 @@ def _open_obsidian() -> int:
     return 0
 
 
-def view(out=None, open_browser: bool = True, obsidian: bool = False) -> int:
+def view(out=None, open_browser: bool = True, obsidian: bool = False, lang: str | None = None) -> int:
     """Generate the viewer, optionally open it, and print its path. Returns a CLI exit code
-    (always 0 on a successful write, even if no browser could be launched)."""
+    (always 0 on a successful write, even if no browser could be launched). ``lang`` (``citadel
+    view --lang``) overrides ``CITADEL_WIKI_LANG`` for the viewer's language."""
     if obsidian:
         return _open_obsidian()
-    path = write_viewer(out)
+    path = write_viewer(out, lang=lang)
     print(f"wrote {path}")
     print(f"  {path.as_uri()}")
     # On WSL the file:// Linux path is useless to paste into a Windows browser, so always also
@@ -731,6 +775,6 @@ def view(out=None, open_browser: bool = True, obsidian: bool = False) -> int:
 
 
 def _asset(name: str) -> str:
-    """Read one of the viewer's package-data files (``template.html``/``app.css``/``app.js``).
-    Each asset file ends with a newline and its sentinel is replaced verbatim."""
+    """Read one of the viewer's package-data files (``template.html``/``app.css``/``app.js``/
+    ``i18n.json``). Each asset file ends with a newline and its sentinel is replaced verbatim."""
     return (resources.files(__package__) / name).read_text(encoding="utf-8")

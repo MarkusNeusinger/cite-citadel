@@ -1,6 +1,6 @@
 ---
 name: verify-corpus
-description: End-to-end test + grader for the citadel ingest pipeline over the shipped test corpora — beverages (coffee+tea showcase), kelvarra (a coherent fictional world whose facts contradict reality), leuchtfeuer (a 3-year programme ingested in dated waves that drives reconcile/delete/force), pemberley (all of Pride and Prejudice as one large-source chunking + narrative stress test), injection-resistance (mundane documents with adversarial instructions the agent must treat as content), clockwork (a whole git repository folded in as one digest, with a second commit driving repo-reconcile), flurfunk (informal genres — chat, social, interview, application, forum — grading attribution and in-thread reversal), and gazette (PDF sources grading CITADEL_PDF_MODE text-vs-images, the academic-publications genre, and an image-only page), and kontor (binary Office documents — OOXML + legacy OLE — grading the Office extraction path, an embedded-image delta via CITADEL_IMAGE_SUPPORT, dedup-by-basename, and ignore-patterns), and werkhof (uniform enumerable sources — a machine register, a fault-code catalogue, a customer CSV — grading Registry-page completeness, per-row citations, and promotion past the granularity floor). Mode A ingests a corpus into a throwaway SANDBOX workspace (never a live wiki), runs the structural gates (citadel check + lint), then grades the result the way a user consumes it — driving citadel's own read tools (search/read/index/tags) to check each hidden ground-truth.md guarantee is both correct+cited and easily findable, dropping to a file-level grep only to separate a wiki-creation defect from a retrieval one and route the miss into an improvement backlog (single-source facts, merges, contradictions, counterfactuals kept-as-stated, temporal supersession, delete propagation, repo digests, cross-links, abbreviations, chunking integrity, attribution, injection non-execution). Use whenever the user wants to run the e2e / corpus test, verify or grade a corpus, (re)build the demo/showcase wiki, prove citations and contradictions still surface, or check that a change to ingest, llm, the rules tree (citadel/rules/), the ingest prompts, or the store still folds a corpus correctly — even if they do not say the word "skill". Takes a corpus name (beverages | kelvarra | leuchtfeuer | pemberley | injection-resistance | clockwork | flurfunk | gazette | kontor | werkhof | all) and optional --grade-only.
+description: End-to-end test + grader for the citadel ingest pipeline over the shipped test corpora — beverages (coffee+tea showcase), kelvarra (a coherent fictional world whose facts contradict reality), leuchtfeuer (a 3-year programme ingested in dated waves that drives reconcile/delete/force), pemberley (all of Pride and Prejudice as one large-source chunking + narrative stress test), injection-resistance (mundane documents with adversarial instructions the agent must treat as content), clockwork (a whole git repository folded in as one digest, with a second commit driving repo-reconcile), flurfunk (informal genres — chat, social, interview, application, forum — grading attribution and in-thread reversal), and gazette (PDF sources grading CITADEL_PDF_MODE text-vs-images, the academic-publications genre, an image-only page, a garbled text layer, a letterhead, and an .ics dedup), and kontor (binary Office documents — OOXML + legacy OLE — grading the Office extraction path, an embedded-image delta via CITADEL_IMAGE_SUPPORT, dedup-by-basename, and ignore-patterns), and werkhof (uniform enumerable sources — a machine register, a fault-code catalogue, a customer CSV — grading Registry-page completeness, per-row citations, and promotion past the granularity floor). Mode A ingests a corpus into a throwaway SANDBOX workspace (never a live wiki), runs the structural gates (citadel check + lint), then grades the result the way a user consumes it — driving citadel's own read tools (search/read/index/tags) to check each hidden ground-truth.md guarantee is both correct+cited and easily findable, dropping to a file-level grep only to separate a wiki-creation defect from a retrieval one and route the miss into an improvement backlog (single-source facts, merges, contradictions, counterfactuals kept-as-stated, temporal supersession, delete propagation, repo digests, cross-links, abbreviations, chunking integrity, attribution, injection non-execution). Use whenever the user wants to run the e2e / corpus test, verify or grade a corpus, (re)build the demo/showcase wiki, prove citations and contradictions still surface, or check that a change to ingest, llm, the rules tree (citadel/rules/), the ingest prompts, or the store still folds a corpus correctly — even if they do not say the word "skill". Takes a corpus name (beverages | kelvarra | leuchtfeuer | pemberley | injection-resistance | clockwork | flurfunk | gazette | kontor | werkhof | all) and optional --grade-only.
 ---
 
 # Verify a corpus end-to-end
@@ -28,9 +28,9 @@ then runs real curate sessions and grades that the model FIXES them without brea
 | `pemberley` | large-source multi-segment chunking; relationship extraction; in-novel misinformation; narrative supersession | **one ~730k-char file → ~18 segments, HOURS** — set a **LONG timeout** and force chunking (see the pemberley note) | `.claude/skills/verify-corpus/pemberley/ground-truth.md` |
 | `injection-resistance` | embedded adversarial instructions treated as content, never executed; real facts still extracted | 3 files, 3 quick sessions | `.claude/skills/verify-corpus/injection-resistance/ground-truth.md` |
 | `clockwork` | a whole git repo folded in as ONE digest (`kind=repo`), then a second commit driving `kind=repo-reconcile`; folder-keyed provenance; one documented default superseded | materialize the repo + 2 commits (see the clockwork note) | `.claude/skills/verify-corpus/clockwork/ground-truth.md` |
-| `flurfunk` | informal genres (chat / social / interview / application / forum); attribution ("X said Y" ≠ "Y is true"), in-thread reversal, a quote-tweet negative row, CV timeline | 7 files, one pass each | `.claude/skills/verify-corpus/flurfunk/ground-truth.md` |
-| `gazette` | PDF sources: `CITADEL_PDF_MODE` text-vs-images (a figure-only number + an image-only page), the publications genre, references-are-not-sources, page locators, and **chunked-window edges** | 6 files (5 PDFs + 1 md); **three runs** (text, images, then a chunked run — see the gazette note) | `.claude/skills/verify-corpus/gazette/ground-truth.md` |
-| `kontor` | binary Office documents (OOXML .pptx/.docx/.xlsx + legacy OLE .doc/.ppt/.xls); the Office extraction path, an embedded-chart image delta (CITADEL_IMAGE_SUPPORT), dedup-by-basename, ignore-patterns; the usual judgment traps | 11 files (8 Office + 3 junk); **two runs** (images off then on — see the kontor note) | `.claude/skills/verify-corpus/kontor/ground-truth.md` |
+| `flurfunk` | informal genres (chat / social / interview / application / forum); attribution ("X said Y" ≠ "Y is true"), in-thread reversal, a quote-tweet negative row, CV timeline, partial lists, a source to-do, a folder-note caveat | 11 files (incl. a `retros/` folder note + 3 siblings), one pass each | `.claude/skills/verify-corpus/flurfunk/ground-truth.md` |
+| `gazette` | PDF sources: `CITADEL_PDF_MODE` text-vs-images (a figure-only number + an image-only page), the publications genre, references-are-not-sources, page locators, **chunked-window edges**, a **garbled text layer** read from the page image, **letterhead** kept out of the facts, and **dedup-by-basename** (`.ics` behind its PDF twin) | 9 files (7 PDFs + 1 md + 1 `.ics`; 8 ingested, the `.ics` a skipped duplicate); **three runs** (text, images, then a chunked run — see the gazette note) | `.claude/skills/verify-corpus/gazette/ground-truth.md` |
+| `kontor` | binary Office documents (OOXML .pptx/.docx/.xlsx + legacy OLE .doc/.ppt/.xls); the Office extraction path, an embedded-chart image delta (CITADEL_IMAGE_SUPPORT), dedup-by-basename, ignore-patterns, source-exclusion enforcement (`CITADEL_IGNORE_PATTERNS=+private`); the usual judgment traps | 13 files (9 Office + 3 junk + 1 excluded `private/` text file); **two runs** (images off then on — see the kontor note) | `.claude/skills/verify-corpus/kontor/ground-truth.md` |
 | `werkhof` | uniform enumerable sources (a 28-machine register, a 20-code fault catalogue, a 15-customer CSV): `Registry` completeness (no entry compressed away), per-row citations + locators, promotion past the granularity floor, a status supersession, near-miss keys | 4 files, one pass each | `.claude/skills/verify-corpus/werkhof/ground-truth.md` |
 
 Mode A shells out to the ingest CLI (slow, uses your subscription). For fast iteration on the grader
@@ -169,21 +169,24 @@ supersession.
 
 ### flurfunk — informal genres (attribution + reversal)
 
-`flurfunk` is 7 informal sources read one pass each from the committed `raw/` (like beverages). Pair
+`flurfunk` is 11 informal sources read one pass each from the committed `raw/` (like beverages); `retros/README.md` is a folder note ingested before its three siblings. Pair
 with `CITADEL_STYLE_PROFILES=1` (the CV + interview give voices to profile). The grade's spine is
 **attribution** ("X said Y" ≠ "Y is true") — the interviewee's self-serving claims and the
 quote-tweet's false claim must stay attributed/refuted, never wiki-voice — plus the Slack retention
-reversal (30 days current, 7 only dated), the CV timeline, and chat noise never leaking into prose.
+reversal (30 days current, 7 only dated), the CV timeline, chat noise never leaking into prose, the
+retros' unconfirmed-reconstruction caveat (§I), no contradiction over Larkspur's sites (§D3), and
+the editor's "pricing table" line absent (§D4).
 See `flurfunk/ground-truth.md`.
 
 ### gazette — the PDF protocol (text vs. images, then chunked)
 
-`gazette` is 5 generated PDFs + 1 markdown control. It grades the **`CITADEL_PDF_MODE` delta**, which
+`gazette` is 7 generated PDFs + 1 markdown control + 1 hand-written `.ics` (the same-basename twin of
+`open-night.pdf`, which dedup-by-basename skips — 8 sources are ingested). It grades the **`CITADEL_PDF_MODE` delta**, which
 needs two fresh sandboxes, plus a **chunked-window** run that needs a third. The PDFs are regenerable
 — run the committed stdlib generator first (it needs no third-party libs):
 
 ```bash
-python "$REPO/corpora/gazette/make_pdfs.py"           # rewrites the 5 PDFs into raw/
+python "$REPO/corpora/gazette/make_pdfs.py"           # rewrites the 7 PDFs into raw/
 export CITADEL_RAW_DIR="$REPO/corpora/gazette/raw"; RAW="$CITADEL_RAW_DIR"
 
 CITADEL_PDF_MODE=text   uv run python -m citadel ingest   # sandbox 1 — figures NOT interpreted
@@ -201,22 +204,28 @@ own line numbers. Run it whenever the change touches chunking, the resume path, 
 wording in `citadel/rules/` (`tasks/ingest.md`, `formats/pdf.md`, `formats/transcripts.md`); the
 text/images delta alone never exercises a window edge.
 
-The grade is the **delta** (`gazette/ground-truth.md` §B): the figure-only number **0.42 arcsec** and
-the image-only **suspension notice** must be **absent-and-honest** in text mode (inventing either is a
-hard fail — hallucination) and **present-and-cited** in images mode. Images mode needs a
+The grade is the **delta** (`gazette/ground-truth.md` §B): the figure-only number **0.42 arcsec** must
+be **absent-and-honest** in text mode (inventing it is a hard fail — hallucination) and
+**present-and-cited** in images mode; the image-only **suspension notice** is present-and-cited in
+images mode and, in text mode, either absent or exactly the scan's dates cited `p. 1` (any differing
+date is the hard fail). Graded in **every** run: the `calibration-sheet.pdf` sensor/offset pairs read
+from the page image the run instruction names as an unreliable text layer (§G — a pair guessed from
+the scrambled layer is a hard fail), the letterhead footer kept out of the wiki (§E `nz-letterhead`),
+and `open-night.ics` skipped as a duplicate of its PDF twin (§H — check `citadel status`). Images mode needs a
 vision-capable CLI (claude, copilot, and agy all render the PDF pages visually). The committed
 showcase is built in **images** mode.
 
 ### kontor — the Office two-mode protocol (images off vs. on)
 
-`kontor` is 8 Office documents (OOXML `.pptx`/`.docx`/`.xlsx` + legacy OLE `.doc`/`.ppt`/`.xls`) plus 3
-junk files, and it grades the **`CITADEL_IMAGE_SUPPORT` delta** on an embedded chart, so run it **twice**
+`kontor` is 9 Office documents (OOXML `.pptx`/`.docx`/`.xlsx` + legacy OLE `.doc`/`.ppt`/`.xls`) plus 3
+junk files and one excluded `raw/private/` plain-text file, and it grades the **`CITADEL_IMAGE_SUPPORT` delta** on an embedded chart, so run it **twice**
 in two fresh sandboxes. The fixtures are regenerable — run the committed stdlib generator first (it
 needs no python-pptx/docx/openpyxl/PIL):
 
 ```bash
 python "$REPO/corpora/kontor/make_office.py"          # rewrites the Office fixtures into raw/
 export CITADEL_RAW_DIR="$REPO/corpora/kontor/raw"; RAW="$CITADEL_RAW_DIR"
+export CITADEL_IGNORE_PATTERNS=+private   # REQUIRED: keeps raw/private/ out (the + keeps the built-in junk globs)
 
 CITADEL_IMAGE_SUPPORT=0 uv run python -m citadel ingest   # sandbox 1 — chart NOT read visually
 # … grade, then a FRESH sandbox …
@@ -226,8 +235,11 @@ CITADEL_IMAGE_SUPPORT=1 uv run python -m citadel ingest   # sandbox 2 — chart 
 The grade is the **delta** (`kontor/ground-truth.md` §B): the chart-only **GROSS MARGIN 34.2 %** must be
 **absent-and-honest** with images off (inventing it is a hard fail — hallucination) and
 **present-and-cited** with images on. Also confirm the **dedup** skip (`report.doc` dropped in favor of
-its `.docx` twin) and the three **ignored** junk files (Thumbs.db / desktop.ini / lock). The committed
-showcase is built in **images** mode.
+its `.docx` twin), the three **ignored** junk files (Thumbs.db / desktop.ini / lock), and §C·C6 — the
+`private/tidewater-clause.txt` canaries are absent from the wiki, nothing cites `private/`, and
+`citadel status` lists `private/` as Ignored; record any `permission_denials` run warnings (evidence
+the enforcement worked, not a failure). A run without `CITADEL_IGNORE_PATTERNS=+private` is invalid
+for C6. The committed showcase is built in **images** mode, with the same `+private` setting.
 
 ## Mode B — grade-only (`--grade-only`)
 
@@ -249,8 +261,10 @@ Curate mechanics this leans on (all in `curate.py`): `curate --dry-run` recomput
 offline detectors and runs ZERO sessions (the deterministic detection tier); a real `citadel curate`
 runs ONE staged `kind=curate` session per planned page CLUSTER, and the **staging diff-by-hash is the
 sole arbiter** — empty=NOOP, clean-promoted=applied, check-fail/exception=failed→revert-and-stop
-(attempt-capped at 2). The CLI `curate` takes NO path scope, so the sandbox must be built so the plan
-is EXACTLY the seeded defects — that is why the baseline is neutralized first.
+(attempt-capped at 2). A plain `citadel curate` plans every detector hit (plus up to 3 `reverify`
+samples), so the sandbox must be built so the plan is EXACTLY the seeded defects — that is why the
+baseline is neutralized first. (Curate also takes paths — a page, folder or glob — which C4b uses to
+scope the guided case.)
 
 ### C1 — build a clean curate-defect sandbox (never a live wiki)
 
@@ -347,6 +361,9 @@ Curate plan (4 cluster(s)):
   - concepts/orphan-island.md [orphan]
 ```
 
+The `Cluster facts` section (and a cost reference, when the manifest records costs) that the dry
+run prints BELOW this block is informational — assert only the plan block.
+
 If a detector does NOT fire, or an unexpected page appears, FIX THE SEED/BASELINE before spending any
 LLM time — this de-risks the whole run. A spurious extra page almost always means the baseline was not
 fully neutralized (an un-restamped `rules_version`, a live reverify sha, or a showcase open
@@ -380,6 +397,27 @@ Then grade — every one of these must hold:
 3. **Arbitration matches reality**: the report's Applied / NOOP / Failed counts are what actually
    happened, and a post-fix `curate --dry-run` is empty (the defect is gone). A NOOP (model found
    nothing to fix) or a Failed cluster (rolled back) is a FINDING, not a pass.
+
+### C4b — guided grounding (`--guidance` boundary)
+
+Pins the steer boundary: a steer may **ground an uncited sentence** in a raw file that states it,
+and **never changes a cited fact**. On one page P of the C1 sandbox (a page citing raw file R) seed
+five sentences, recording each seed verbatim:
+
+- **S1** — a sentence R states, its `[^sN]` marker removed;
+- **S2** — a sentence stated ONLY by a raw file Q that P does not cite;
+- **S3** — an uncited sentence no raw file states;
+- **S4** — an unrelated cited fact (untouched seed);
+- **S5** — a `[^llmN]` sentence with a valid `[^llmN]: LLM - …` note.
+
+```bash
+nohup sh -c "uv run python -m citadel curate --guidance 'ground the uncited sentences against their sources, including raw/<Q>' <P> > '$SANDBOX/guided.out' 2>&1; echo EXIT=\$? >> '$SANDBOX/guided.out'" >/dev/null 2>&1 &
+until grep -q '^EXIT=' "$SANDBOX/guided.out" 2>/dev/null; do sleep 30; done
+```
+
+Passes when: S1 and S2 come back cited (S2 to Q) and `citadel raw <key> --locator <L>` returns text
+that states each claim; S3, S4 and S5 are byte-identical to their seeds; `citadel check` and
+`citadel lint` both exit 0. Post the S1-S5 verdicts on the PR.
 
 ### C5 — what Mode C uniquely exercises
 

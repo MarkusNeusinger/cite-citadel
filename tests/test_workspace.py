@@ -464,3 +464,24 @@ def test_packaged_rules_resolve_to_real_absolute_files():
     actual_names = {p.name for p in config.PACKAGED_RULES_DIR.iterdir()}
     assert "SCHEMA.md" not in actual_names
     assert "AGENT_INGEST.md" not in actual_names
+
+
+def test_a_concurrent_manifest_load_cannot_disarm_the_mismatch_probe(tmp_citadel, monkeypatch):
+    """The meta stash is context-local: a reader's load on ANOTHER thread (a `citadel serve`
+    `wiki_status` during a `wiki_ingest`) that lands between ingest's load() and its
+    stamped_workspace_mismatch() must neither clear nor replace what ingest parsed — else the
+    deletion-sweep guard reads "no mismatch" and arms against a re-keyed key space."""
+    import threading
+
+    monkeypatch.setattr(manifest, "_warned_workspaces", set())
+    payload = {"meta": {"format": 2, "workspace": "/mnt/mount-a/team-wiki"}, "sources": {}}
+    tmp_citadel.manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+    manifest.load()  # the ingest thread's parse
+
+    # The concurrent reader's load clears the stash first and then parses nothing usable.
+    monkeypatch.setattr(manifest, "_read", lambda path=None: (None, "missing"))
+    reader = threading.Thread(target=manifest.load)
+    reader.start()
+    reader.join()
+
+    assert manifest.stamped_workspace_mismatch() == "/mnt/mount-a/team-wiki"

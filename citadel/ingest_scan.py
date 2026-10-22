@@ -17,7 +17,7 @@ import fnmatch
 import os
 import stat
 from dataclasses import dataclass, field
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath, PurePosixPath
 
 from . import config, extract, grammar, manifest, repo, transcribe
 
@@ -36,6 +36,12 @@ _TEXT_BYTES = bytes({7, 8, 9, 10, 11, 12, 13, 27} | set(range(0x20, 0x7F)) | set
 # AND magic bytes, so a renamed text file is not mistaken for an image — it falls through to the
 # normal text sniff instead. Gated by config.IMAGE_SUPPORT.
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff"}
+
+# Folder notes: a file that says what the files BESIDE it are (drafts, reconstructions, copies).
+# Matched on the EXACT case-folded stem before the first dot (README.md, readme.txt, About.pdf,
+# _index.md) or a `00-` name prefix — never a prefix match, because a note also runs AHEAD of its
+# siblings under --jobs N, so a false positive (about-us-flyer.pdf) is no longer free.
+_FOLDER_NOTE_STEMS = frozenset({"readme", "about", "index", "_index"})
 
 
 def _same_path(a: Path, b: Path) -> bool:
@@ -128,12 +134,81 @@ def _explicit_path(raw: str | os.PathLike) -> Path:
     return Path(os.path.expanduser(raw))
 
 
+def _ignored_component(path: Path) -> bool:
+    """True when a path component BELOW its raw root matches an ignore glob — the basename or any
+    parent folder (discovery never descends into an ignored folder, so everything under one is
+    excluded). A path under no configured root is judged by its basename alone."""
+    root = config.root_covering(path)
+    if root is None:
+        return _is_ignored_name(PurePath(path).name)
+    try:
+        parts = PurePath(path).relative_to(PurePath(root)).parts
+    except ValueError:
+        parts = (PurePath(path).name,)
+    return any(_is_ignored_name(part) for part in parts)
+
+
+def exclusion_reason(path: Path | str) -> str | None:
+    """Why discovery would keep ``path`` out of the corpus, or None — the ONE predicate scan and
+    check share, so a citation ``citadel check`` accepts is one discovery could have admitted.
+    Checked below the covering raw root: a hidden component (``hidden``), an ignore-matched
+    component (``ignored``), a basename the include allowlist does not admit (``not included``),
+    or a file over the size ceiling (``oversized``, best-effort stat). A path under no configured
+    root is never excluded — there is no discovery rule to apply to it."""
+    p = Path(path)
+    root = config.root_covering(p)
+    if root is None:
+        return None
+    try:
+        parts = PurePath(p).relative_to(PurePath(root)).parts
+    except ValueError:
+        return None
+    if not parts:
+        return None
+    if any(part.startswith(".") for part in parts):
+        return "hidden"
+    if any(_is_ignored_name(part) for part in parts):
+        return "ignored"
+    if not _is_included_name(parts[-1]):
+        return "not included"
+    if config.MAX_SOURCE_BYTES > 0:
+        try:
+            if _exceeds_size_cap(p.stat().st_size):
+                return "oversized"
+        except OSError:
+            pass
+    return None
+
+
+def _is_folder_note(name: str) -> bool:
+    """True for a folder note's file name (see :data:`_FOLDER_NOTE_STEMS`)."""
+    lowered = name.casefold()
+    return lowered.split(".", 1)[0] in _FOLDER_NOTE_STEMS or lowered.startswith("00-")
+
+
+def _pending_order(p: PurePath) -> tuple:
+    """The pending-source sort key: case-folded folder first (the SAME order on POSIX and Windows,
+    and every file of a folder before its sub-folders' files), a folder note leading its folder, then
+    the case-folded name, with the exact spellings as the tie-break (POSIX case twins)."""
+    return (
+        tuple(part.casefold() for part in p.parent.parts),
+        0 if _is_folder_note(p.name) else 1,
+        p.name.casefold(),
+        p.parent.parts,
+        p.name,
+    )
+
+
 def _is_untrackable_key(key: str) -> bool:
     """True for a tracked key that must not be tracked AT ALL any more — the run-start migration
-    sweep's predicate: an OS/junk basename (an ignore pattern added after it was recorded) or a
-    path inside the wiki itself (a page self-ingested before :func:`_is_wiki_internal` guarded
-    discovery). Both keep existing on disk, so deletion detection would never clean them up."""
-    return _is_ignored_name(PurePosixPath(key).name) or _is_wiki_internal(config.source_path_for_key(key))
+    sweep's predicate: an OS/junk basename or a file under an ignored FOLDER (an ignore pattern
+    added after it was recorded) or a path inside the wiki itself (a page self-ingested before
+    :func:`_is_wiki_internal` guarded discovery). Both keep existing on disk, so deletion detection
+    would never clean them up. Dropping the key leaves the pages that cite it: ``citadel check`` /
+    lint then flag the citation as excluded and curate's ``bad_source`` plans an explicit repair —
+    a pattern typo must never trigger a paid, destructive mass cleanup."""
+    path = config.source_path_for_key(key)
+    return _ignored_component(path) or _is_wiki_internal(path)
 
 
 def _exceeds_size_cap(size: int) -> bool:
@@ -192,6 +267,10 @@ class _Walk:
     # Directories skipped because they ARE (or are inside) the wiki — a raw root that sits above
     # the wiki dir. Reported once per run so the exclusion is visible, never inferred as absence.
     excluded_wiki: list[Path] = field(default_factory=list)
+    # (path, is_dir) for entries a CITADEL_IGNORE_PATTERNS glob skipped, spelled as walked. An
+    # ignored directory is one entry (never descended into); hidden names are never recorded.
+    # Read by `citadel status` (per-name counts) — the walk itself still only skips them.
+    ignored: list[tuple[Path, bool]] = field(default_factory=list)
 
 
 def _scan_tree(root: Path, walk: _Walk) -> None:
@@ -234,9 +313,16 @@ def _scan_tree(root: Path, walk: _Walk) -> None:
         subdirs: list[Path] = []
         for entry in entries:
             name = entry.name
-            if name.startswith(".") or _is_ignored_name(name):
+            if name.startswith("."):
                 continue
             path = Path(d) / name
+            if _is_ignored_name(name):
+                try:
+                    is_dir = entry.is_dir(follow_symlinks=False)
+                except OSError:
+                    is_dir = False
+                walk.ignored.append((path, is_dir))
+                continue
             try:
                 if entry.is_dir(follow_symlinks=False):
                     if _is_wiki_internal(path):
@@ -474,7 +560,11 @@ def _is_image_source(path: Path) -> bool:
 # .pptx and .pdf, a doc saved as .docx and .pdf, etc.). A group is collapsed ONLY when EVERY member
 # is one of these, so a hand-authored notes.md sharing a stem with notes.pdf is never dropped. The
 # order is the KEEP preference (earliest wins): PDF first, then modern Office, then legacy.
-_DEDUP_PRIORITY = [".pdf", ".docx", ".docm", ".doc", ".pptx", ".pptm", ".ppt", ".xlsx", ".xlsm", ".xls"]
+# Keep preference: PDF, modern Office, legacy Office, then a calendar export (.ics) — the PDF/Office
+# twin is the human-facing rendering (local times, body text), the .ics a machine subset with UTC
+# times and RFC 5545 line folding. .vcf/.eml are deliberately NOT ranked: a same-stem PDF beside
+# them is usually a different document (a letter about the person, the email's attachment).
+_DEDUP_PRIORITY = [".pdf", ".docx", ".docm", ".doc", ".pptx", ".pptm", ".ppt", ".xlsx", ".xlsm", ".xls", ".ics"]
 _DEDUP_EXTS = set(_DEDUP_PRIORITY)
 
 
@@ -493,13 +583,17 @@ def _dedup_by_basename(
     are ALL document formats (:data:`_DEDUP_EXTS`) is collapsed — so a plain-text/markdown/code/image
     source sharing a stem with a document is left alone.
 
-    Two cases:
-    - both formats are NEW this run → keep the preferred one (:func:`_dedup_rank`, PDF first), drop
-      the rest;
-    - a same-basename document was ALREADY ingested in another format (still on disk) → skip the new
-      one(s), keeping what is already in the wiki (so re-runs are stable and no second copy sneaks
-      in). Grouping is by the sources' posix identity keys, so pending and manifest members compare
-      in the same space."""
+    Dedup only ever gates NEW keys — a TRACKED member (in the manifest: pending because it CHANGED)
+    is always kept, so it runs as a reconcile and is never stranded with stale facts:
+
+    - the group has a tracked pending member, or an unchanged same-basename sibling is already
+      ingested (still on disk) → every NEW member is dropped as a duplicate of the best-ranked
+      tracked pending member, else of that sibling (re-runs stay stable, no second copy sneaks in);
+    - an all-new group with no tracked sibling → keep the preferred one (:func:`_dedup_rank`, PDF
+      first), drop the rest.
+
+    Grouping is by the sources' posix identity keys, so pending and manifest members compare in the
+    same space."""
     # A CHANGED document source is BOTH pending and in the manifest; excluding pending keys here
     # keeps it from matching itself as an "already-ingested sibling" and being dropped as a
     # duplicate of itself (which would stop it re-ingesting).
@@ -524,18 +618,26 @@ def _dedup_by_basename(
         if not all(m.suffix.lower() in _DEDUP_EXTS for m in members):
             kept.extend(members)  # a non-document shares this stem: leave the whole group alone
             continue
-        if gid in ingested:
+        tracked = [m for m in members if manifest.rel_key(m) in manifest_dict]
+        new = [m for m in members if manifest.rel_key(m) not in manifest_dict]
+        kept.extend(tracked)  # a changed tracked source is reconciled, never dropped
+        if tracked or gid in ingested:
             # A same-basename document is already in the wiki (another format): skip the new one(s).
-            for m in members:
+            anchor = (
+                manifest.rel_key(min(tracked, key=lambda m: (_dedup_rank(m.suffix.lower()), m.suffix.lower())))
+                if tracked
+                else ingested[gid]
+            )
+            for m in new:
                 dropped.add(m)
-                duplicates.append((manifest.rel_key(m), ingested[gid]))
+                duplicates.append((manifest.rel_key(m), anchor))
             continue
-        if len(members) == 1:
-            kept.append(members[0])
+        if len(new) == 1:
+            kept.append(new[0])
             continue
-        winner = min(members, key=lambda m: (_dedup_rank(m.suffix.lower()), m.suffix.lower()))
+        winner = min(new, key=lambda m: (_dedup_rank(m.suffix.lower()), m.suffix.lower()))
         kept.append(winner)
-        for m in members:
+        for m in new:
             if m is winner:
                 continue
             dropped.add(m)
@@ -803,7 +905,7 @@ def _partition_sources(
                 images.discard(p)
                 audio.discard(p)
     return _Scan(
-        pending=sorted(pending),
+        pending=sorted(pending, key=_pending_order),
         skipped=skipped,
         moved=moved,
         unreadable=unreadable,

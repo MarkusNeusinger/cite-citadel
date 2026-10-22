@@ -1,61 +1,50 @@
 ---
 type: Organization
 title: Larkspur
-description: The company behind Skylight, a real-time analytics dashboard, with a
-  team of around 30 people.
-tags:
-- software
-- analytics
-- company
+description: Company behind the Skylight real-time analytics dashboard, founded in
+  Lisbon in 2021.
 resource: raw/announcement.md
-timestamp: '2026-08-29T00:18:16Z'
-citadel_version: 0.6.0
+tags:
+- larkspur
+- analytics
+timestamp: '2026-10-22T18:30:30Z'
+citadel_version: 0.7.1
 ---
 
-Larkspur is the company behind [Skylight](../systems/skylight.md), a real-time analytics
-dashboard.[^s1] On 1 April 2026, Larkspur announced that Skylight 2.0, the latest release of the
-product, had reached general availability.[^s1] Larkspur describes reaching this milestone with a
-team of around 30 people as something the whole company is proud of.[^s1]
+# Larkspur
 
-[Priya Nadkarni](../persons/priya-nadkarni.md) is Larkspur's founder and CEO.[^s2] Larkspur was
-founded in 2021 in Lisbon: Nadkarni has said she had been working on analytics infrastructure at
-larger companies and kept running into products that called themselves "real-time" without
-actually being real-time, so she and a small founding group set out to build the product that
-became Skylight.[^s5]
+- Larkspur makes [Skylight](../systems/skylight.md), a real-time analytics dashboard.[^s1]
+- The company has around 30 people, according to its own announcement.[^s1] In the podcast interview, founder [Priya Nadkarni](../persons/priya-nadkarni.md) said the team is 28 people and "deliberately small", with engineering in Lisbon and Porto.[^s4] The two figures are compatible: "around 30" is approximate.
+- Larkspur was founded in 2021 in Lisbon, per Priya Nadkarni.[^s5]
+- [Priya Nadkarni](../persons/priya-nadkarni.md) is its founder and CEO.[^s2]
+- Larkspur has a Berlin office, per [Sofia Ruiz](../persons/sofia-ruiz.md) in the #platform Slack channel.[^s8]
+- Larkspur's #platform channel members include [Tom Alvarez](../persons/tom-alvarez.md) and [Wei Chen](../persons/wei-chen.md); see [Skylight default event-retention window](../concepts/skylight-event-retention-default.md).[^s9]
+- A March 2026 cover letter from [Dana Kessler](../persons/dana-kessler.md) applies for Larkspur's Senior Platform Engineer role; the applicant says they want to work at a company small enough that their work matters.[^s3]
 
-In an interview on The Build Loop podcast, Nadkarni put Larkspur's team at 28 people, calling the
-size deliberately small; she said the company has stayed lean on purpose, and that she thinks the
-pressure of staying lean is part of why the product is good.[^s6]
+## Claims the company's founder makes about itself
 
-In the same interview, Nadkarni said Larkspur has been profitable since its first month and has
-never taken a "lose money to grow" approach, adding that the company has never had a month in the
-red.[^s7][^s8] This is a financial claim from the company's own founder, not independently verified
-in this wiki.[^llm1]
+> [!NOTE]
+> These are self-promotional claims from the founder's interview, recorded as attributed statements, not as established facts.
 
-Larkspur runs a community forum for Skylight customers, staffed in part by its Skylight Support
-team.[^s3] [Sofia Ruiz](../persons/sofia-ruiz.md) works in Skylight Support and, in February 2026,
-helped a customer resolve a [Skylight](../systems/skylight.md) dashboard bug (see Skylight's Known
-issues).[^s4]
-
-Larkspur's internal #platform Slack channel includes Ruiz, [Tom Alvarez](../persons/tom-alvarez.md),
-and [Wei Chen](../persons/wei-chen.md), who together made several changes to Skylight's
-event-retention and dashboard defaults in February 2026 (see Skylight's Change Log).[^s9]
+- Priya Nadkarni claimed that Larkspur is "the only real-time analytics platform with true sub-second refresh" and that competitors do polling and call it streaming.[^s6] This conflicts with general knowledge that other analytics products also advertise sub-second refresh.[^llm1]
+- She claimed Larkspur has been profitable since its first month and has "never had a month in the red".[^s7] No other source on the wiki confirms or contradicts this.[^llm2]
 
 ## See also
+
 - [Skylight](../systems/skylight.md)
 - [Priya Nadkarni](../persons/priya-nadkarni.md)
-- [Sofia Ruiz](../persons/sofia-ruiz.md)
-- [Tom Alvarez](../persons/tom-alvarez.md)
-- [Wei Chen](../persons/wei-chen.md)
+- [Dana Kessler](../persons/dana-kessler.md)
 
 ## Sources
-[^s1]: [raw/announcement.md](../../raw/announcement.md), lines 5-7 — Skylight 2.0 general availability, 1 April 2026, team size and pride statement (ingested 2026-08-29)
-[^s2]: [raw/announcement.md](../../raw/announcement.md), lines 19-21 — Priya Nadkarni named founder & CEO, Larkspur (ingested 2026-08-29)
-[^s3]: [raw/forum-support-thread.md](../../raw/forum-support-thread.md), line 3 — forum byline: "Larkspur Community Forum → Skylight Support" (ingested 2026-08-29)
-[^s4]: [raw/forum-support-thread.md](../../raw/forum-support-thread.md), line 55 — Sofia Ruiz identified as Larkspur Support, accepted-answer badge (ingested 2026-08-29)
-[^s5]: [raw/interview-transcript-founder.md](../../raw/interview-transcript-founder.md), line 13 — Nadkarni: Larkspur founded 2021 in Lisbon, motivation for founding it (ingested 2026-08-29)
-[^s6]: [raw/interview-transcript-founder.md](../../raw/interview-transcript-founder.md), line 21 — Nadkarni: team of 28, deliberately small, lean-on-purpose philosophy (ingested 2026-08-29)
-[^s7]: [raw/interview-transcript-founder.md](../../raw/interview-transcript-founder.md), line 33 — Nadkarni: profitable since first month, never "lose money to grow" (ingested 2026-08-29)
-[^s8]: [raw/interview-transcript-founder.md](../../raw/interview-transcript-founder.md), line 37 — Nadkarni: never had a month in the red (ingested 2026-08-29)
-[^llm1]: LLM - a self-reported profitability claim by the company's own founder in a podcast interview; there is no independent financial disclosure or third-party corroboration in this wiki, and the claim doubles as marketing for the company's financial discipline (added 2026-08-29)
-[^s9]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), lines 1-4 — Slack export header: Workspace Larkspur, #platform channel (ingested 2026-08-29)
+
+[^s1]: [raw/announcement.md](../../raw/announcement.md), lines 5-7 — product and team size (ingested 2026-10-22)
+[^s2]: [raw/announcement.md](../../raw/announcement.md), lines 21-23 — quote attribution (ingested 2026-10-22)
+[^s3]: [raw/application-cover-letter.md](../../raw/application-cover-letter.md), lines 7-9 — application for Senior Platform Engineer role (ingested 2026-10-22)
+[^s4]: [raw/interview-transcript-founder.md](../../raw/interview-transcript-founder.md), line 21 — team size and engineering sites (ingested 2026-10-22)
+[^s5]: [raw/interview-transcript-founder.md](../../raw/interview-transcript-founder.md), line 13 — founding year and place (ingested 2026-10-22)
+[^s6]: [raw/interview-transcript-founder.md](../../raw/interview-transcript-founder.md), lines 25-29 — differentiator claim (ingested 2026-10-22)
+[^s7]: [raw/interview-transcript-founder.md](../../raw/interview-transcript-founder.md), lines 33-37 — profitability claim (ingested 2026-10-22)
+[^s8]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), line 54 — Berlin office (ingested 2026-10-22)
+[^s9]: [raw/slack-export-platform-team.txt](../../raw/slack-export-platform-team.txt), lines 1-7 — workspace and channel participants (ingested 2026-10-22)
+[^llm1]: LLM - model knowledge, not from a raw file: competing real-time analytics products also market sub-second refresh, so an "only one" claim conflicts with established knowledge of the market (added 2026-10-22)
+[^llm2]: LLM - model knowledge, not from a raw file: a founder's statement of never having had a loss-making month is a self-reported, unaudited claim (added 2026-10-22)

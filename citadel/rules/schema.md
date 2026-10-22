@@ -152,7 +152,8 @@ The raw files are the primary source of truth:
     containing **spaces** is written in the standard markdown angle form —
     `[my report](<../../raw/my report.pdf>)` — a bare spacey path does not parse.
   - model: `[^llm1]: LLM - model knowledge, not from a raw file (added 2026-06-21)` (no link) —
-    surfaced by lint for transparency/audit.
+    surfaced by lint for transparency/audit. An `[^llmN]` marker with no definition, or a
+    definition with no note after `LLM` (`[^llm1]: LLM`), fails `citadel check`.
 - **Multiple sources, one fact:** when several raw files support the **same** statement, cite
   them **all** behind it — `... fact.[^s1][^s2]` — and define each marker. When a new source
   corroborates a fact already on the page, ADD its marker next to the existing one; never drop or
@@ -173,7 +174,9 @@ pins where in the source the cited fact lives:
 ```
 
 - **Forms:** `p. 12` / `pp. 3-5` (a paginated source), `line 40` / `lines 40-52` (a text file),
-  `§ Heading name` (a heading in the source, copied verbatim).
+  `§ Heading name` (a heading in the source, copied verbatim). A PDF whose text layer was
+  extracted is cited `lines A-B` into that extraction (`formats/pdf.md` § A); `p. N` is for a PDF
+  with no text layer, or a fact visible only in its pixels.
 - **Required** for every citation into a **PDF or Office** source, and for citations into a
   **text source over 200 lines**. Everywhere else, add one whenever the fact's place is
   determinable — a bare file citation with no locator is a last resort, not a default. This
@@ -230,8 +233,19 @@ tension: state both figures **together in one place**, each behind its own `[^sN
 difference in the sentence ("the review reports 57 hires against the 52 the plan budgeted
 [^s1][^s2]") — never leave each number on its own page for the reader to reconcile.
 
+**Partial lists are not a contradiction either.** Two sources that each name SOME members of an
+open-ended set — a company's sites, a product range, a team's members, a person's languages — do
+not disagree. Merge them as a **union**, each member behind the marker of the source that names it
+("sites in Lisbon[^s1] and Porto[^s2]"). Only a list its source declares complete ("our only
+sites", "all three members", a stated count) can be contradicted by a member another source adds —
+and even then apply the date test first (a site opened later is an evolution,
+`genres/meeting-minutes.md` § Dates; a registry keeps an extra row beside its stated total,
+`genres/registry.md`). Two sources giving different values for the SAME member (a different city
+for the same site) remain a contradiction.
+
 **Cross-source sweep — run it before finalizing a page.** Compare every quantitative or
-categorical claim you are writing against the value stated for the SAME attribute elsewhere — in
+categorical claim (an open-ended list is compared member by member: a member one source omits is
+not a conflict) you are writing against the value stated for the SAME attribute elsewhere — in
 the other raw sources and on pages already in the wiki (search for the attribute; never rely on
 memory). A brand's or house's claim about itself (a temperature, a percentage, a
 "lowest/best/only" superlative) that diverges from the corpus's reference facts IS a

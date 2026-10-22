@@ -9,6 +9,7 @@
     citadel refresh [--limit N] [--min-age-days D] [--stale-rules] [--dry-run]  # re-verify the least-recently-checked sources
     citadel status               # per-source corpus state (ingested/failed/skipped/ignored/pending; mirrors wiki_status)
     citadel doctor               # read-only environment/setup health check (OK/WARN/FAIL lines)
+    citadel adopt                # record this workspace root after a move / writer switch (no session)
     citadel serve [--http [--host H] [--port P] [--path /mcp] [--read-only]]  # run the MCP server (stdio, or Streamable HTTP)
     citadel capture <text> [--from WHO] [--topic T]  # append a note to the raw/ capture log (mirrors wiki_capture)
     citadel search <query> [--limit N] [--tag T]
@@ -21,7 +22,7 @@
     citadel tags [tag]           # browse pages by tag
     citadel lint [--stale-days N]
     citadel check [paths ...]    # validate links/format/required-fields (the ingest gate)
-    citadel view [--out PATH] [--no-open] [--obsidian]   # offline single-file HTML viewer
+    citadel view [--out PATH] [--no-open] [--obsidian] [--lang CODE]   # offline single-file HTML viewer
     citadel rules list|show|eject   # inspect / fork the rules files the ingest agent reads
 
 The define/read/raw/neighbors/index/sources/capture/lint/status subcommands give an AI without MCP
@@ -102,7 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--log-dir",
         default=None,
         metavar="DIR",
-        help="Write a transcript file per source (prompt + full CLI output + exit/duration) to "
+        help="Write a transcript file per agent session (prompt + full CLI output + exit/duration) to "
         "DIR, so you can inspect what the model did even in headless mode. Overrides "
         "CITADEL_LLM_LOG_DIR.",
     )
@@ -198,8 +199,9 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="TEXT",
         help="Free-text steer for this run's curate sessions (e.g. \"retitle the machine pages to "
         "'<machine no> <model>' and move them into registries/\"), written into every cluster's "
-        "findings checklist. A STRUCTURAL steer only — naming, typing, routing, splitting, "
-        "merging, cross-linking; it can never change, add, or re-attribute a fact. Naming PATHS "
+        "findings checklist. It steers structure — naming, typing, routing, splitting, merging, "
+        "cross-linking — and may ground an uncited sentence in a raw file that states it; it never "
+        "changes a cited fact. Naming PATHS "
         "alongside it curates exactly those pages, even ones no detector flagged. Overrides "
         "CITADEL_CURATE_GUIDANCE; max 2000 chars.",
     )
@@ -259,7 +261,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--log-dir",
         default=None,
         metavar="DIR",
-        help="Write a transcript file per source to DIR (see `citadel ingest --log-dir`). "
+        help="Write a transcript file per agent session to DIR (see `citadel ingest --log-dir`). "
         "Overrides CITADEL_LLM_LOG_DIR.",
     )
     p_refresh.add_argument(
@@ -298,7 +300,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Diagnose the setup (workspace / rules / agent CLI / raw roots / manifest / billing) "
         "with OK/WARN/FAIL lines; read-only, exits 1 only on a FAIL. Runs without a workspace.",
     )
+    p_doctor.add_argument(
+        "--probe",
+        action="store_true",
+        help="ALSO run one tiny PAID agent session per configured model (in a throwaway temp dir) to prove "
+        "the backend authenticates non-interactively and accepts the model - before a real ingest pays to "
+        "find out. Plain `citadel doctor` never starts a session.",
+    )
     p_doctor.set_defaults(func=cmd_doctor, needs_workspace=False)
+
+    p_adopt = sub.add_parser(
+        "adopt",
+        help="Record THIS workspace root in the manifest after a move or a writer switch (no agent "
+        "session) — stops the 'written by a workspace rooted at ...' warning. Run it on the writer "
+        "machine only, never on a read-only mirror.",
+    )
+    p_adopt.set_defaults(func=cmd_adopt)
 
     p_serve = sub.add_parser(
         "serve", help="Run the MCP server (13 tools: 11 read-only + the mutating wiki_capture/wiki_ingest)."
@@ -424,6 +441,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Open the wiki folder as an Obsidian vault instead (best-effort deep link).",
     )
+    p_view.add_argument(
+        "--lang",
+        default=None,
+        metavar="CODE",
+        help="Language of the viewer's UI chrome and <html lang> (default: CITADEL_WIKI_LANG, else en).",
+    )
     p_view.set_defaults(func=cmd_view, open_browser=True)
 
     p_rules = sub.add_parser("rules", help="Inspect and customize the rules files the ingest agent reads.")
@@ -444,6 +467,55 @@ def build_parser() -> argparse.ArgumentParser:
     p_rules_eject.set_defaults(func=cmd_rules_eject, needs_workspace=False)
 
     return parser
+
+
+_ADOPT_MISSING_SHOWN = 10
+
+
+def cmd_adopt(args: argparse.Namespace) -> int:
+    """Record the current workspace root in ``meta.workspaces`` (``manifest.adopt``), under the run
+    lock, then commit the wiki when it is a history repo. 0 = adopted or nothing to do; 1 = a
+    corrupt manifest or a re-keyed key space (nothing written)."""
+    from . import config, manifest, runlock, wikigit
+
+    with runlock.hold("adopt"):
+        result = manifest.adopt()
+        if result.status == "corrupt":
+            print(
+                f"error: the manifest {config.manifest_path()} is not valid JSON; refusing to rewrite it.",
+                file=sys.stderr,
+            )
+            return 1
+        if result.status == "nothing":
+            print("citadel adopt: nothing to do (no manifest yet, or this workspace root is already recorded).")
+            return 0
+        if result.status == "rekeyed":
+            print(
+                f"error: the manifest was written by a workspace rooted at {result.previous}, and most of its\n"
+                "source keys do not resolve here - this is a re-keyed or moved checkout, not a second path to\n"
+                "the same workspace. Nothing was written. Fix the mount / CITADEL_*_DIR settings, or, if the\n"
+                "move is intentional, run `citadel ingest --full-rescan` once.",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"citadel adopt: recorded workspace root {config.WORKSPACE_ROOT} (was {result.previous}).")
+        print(f"  {result.resolved} relative source key(s) resolve here.")
+        if result.missing:
+            print(
+                f"  {len(result.missing)} do NOT resolve - the next path-less `citadel ingest` will treat these as deleted:"
+            )
+            for key in result.missing[:_ADOPT_MISSING_SHOWN]:
+                print(f"    {key}")
+            if len(result.missing) > _ADOPT_MISSING_SHOWN:
+                print(f"    +{len(result.missing) - _ADOPT_MISSING_SHOWN} more")
+        note = ""
+        try:
+            note = wikigit.autocommit("citadel adopt: record workspace root") or ""
+        except Exception as exc:  # noqa: BLE001 - best-effort: git never changes the exit code
+            note = f"wiki git: skipped ({exc})"
+        if note:
+            print(note)
+    return 0
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -722,7 +794,13 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     MISSING workspace; returns 1 only when some check FAILs, else 0."""
     from . import doctor
 
-    report = doctor.run()
+    if args.probe:
+        print(
+            "doctor --probe: starting ONE short paid agent session per configured model "
+            '("Reply with exactly: OK") to prove the backend authenticates and accepts the model.',
+            file=sys.stderr,
+        )
+    report = doctor.run(probe=args.probe)
     print(report.render(), end="")
     return 0 if report.ok else 1
 
@@ -838,8 +916,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
     are rejected the same way rather than silently ignored — a ``--port`` that did nothing would be
     a security surprise waiting to happen.
 
-    An installed MCP SDK that cannot provide what the server imports (mcp 2.x dropped
-    ``mcp.server.fastmcp``) exits 1 with the reinstall command instead of a ModuleNotFoundError
+    An installed MCP SDK that cannot provide what the server imports (a 1.x SDK has no
+    ``mcp.server.mcpserver``) exits 1 with the reinstall command instead of a ModuleNotFoundError
     traceback — see :func:`_import_mcp_server`."""
     http = getattr(args, "http", False)
     if not http:
@@ -1099,7 +1177,9 @@ def cmd_view(args: argparse.Namespace) -> int:
     """Generate the offline single-file HTML viewer and open it (unless --no-open)."""
     from . import viewer
 
-    return viewer.view(out=args.out, open_browser=args.open_browser, obsidian=args.obsidian)
+    return viewer.view(
+        out=args.out, open_browser=args.open_browser, obsidian=args.obsidian, lang=getattr(args, "lang", None)
+    )
 
 
 def _interrupt_message(args: argparse.Namespace, report=None) -> str:

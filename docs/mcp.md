@@ -1,6 +1,6 @@
 # MCP server
 
-`citadel serve` runs a FastMCP **stdio** server that exposes your synthesized wiki to any AI
+`citadel serve` runs an MCP SDK (2.x `MCPServer`) **stdio** server that exposes your synthesized wiki to any AI
 client (`--http` swaps in the [Streamable HTTP transport](#remote-access-streamable-http) for a
 client that is not on this machine). The AI queries the cited wiki instead of re-reading your raw notes — and because every MCP
 tool has a CLI twin (`citadel read`, `citadel search`, …), an AI without MCP access can do the same
@@ -139,6 +139,15 @@ Any MCP client that speaks stdio launches the same command:
 - **env:** at minimum `CITADEL_WORKSPACE` pointing at your workspace; add `CITADEL_LLM_CLI` /
   `CITADEL_INGEST_MODEL` if the client should be able to ingest.
 
+## Concurrency
+
+Tools run on worker threads (the MCP 2.x SDK), so readers stay responsive while a long `wiki_ingest`
+runs. A second `wiki_ingest` while one is in flight is refused with an "already in progress" error
+instead of queuing. During an in-process ingest the page cache is paused, so readers stay correct
+but run uncached until it finishes. Ctrl+C on `citadel serve` during an in-flight `wiki_ingest`
+is expected to wait for that ingest to finish (the SDK does not abandon its worker thread) rather
+than abort it; run `citadel check` afterwards if you ever interrupt one.
+
 ## Remote access (Streamable HTTP)
 
 Everything above is **stdio**: the client spawns the server, and nothing listens on a socket. That
@@ -215,6 +224,10 @@ A client is then configured with the URL and the header, e.g.:
 names it would accept, whether the writers are exposed — and warns about a too-short token, a
 public bind, or a wildcard bind with no allowlist before you ever start it. Note that one server
 serves one workspace: `CITADEL_WORKSPACE` is resolved once at start-up.
+
+The SDK's HTTP defaults apply: a session idle for more than **30 minutes** is reaped (a remote
+client must then re-initialize), at most 10,000 sessions are held, and a request body is capped at
+**4 MiB**.
 
 ## If the server won't start
 

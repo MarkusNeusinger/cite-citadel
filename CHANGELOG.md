@@ -6,7 +6,93 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Upgrade notes
+
+Read these before upgrading — three one-time effects:
+
+- **Every ingested source shows `(stale)`.** The rules batch below changes `rules_version`. Clear
+  it a budget at a time with `citadel refresh --stale-rules --limit N` (`citadel status` prints the
+  right N); nothing is wrong with the wiki until then.
+- **Open resume checkpoints restart once.** The checkpoint identity now also covers the corpus
+  exclusions, the unreliable PDF pages and the rules version, so a chunked source interrupted under
+  0.7.x starts again at segment 1 on its next run (the documented floor, not a failure).
+- **The MCP SDK moves to 2.x (`mcp>=2,<3`).** An environment that pins `mcp` 1.x alongside citadel
+  will not resolve; upgrade `mcp`, or stay on citadel 0.7.x. `citadel doctor` checks the installed
+  version.
+
 ### Fixed
+
+- **Agent sessions keep their self-check and their pages under claude's narrowed shell.** Found by
+  the 2026-10-22 corpus runs: the agent wrapped its `citadel check` (`(… || …) | tail`, `cd … &&`),
+  which the #157 allowlist refuses, so most sessions never self-validated; and with raw outside the
+  workspace a session resolved the RELATIVE staging wiki against the raw's tree and wrote pages
+  nobody imported (gazette's chunked run silently lost 10 of 36 registry rows). The run instruction
+  now names the wiki directory absolutely too, asks for a bare `citadel check` with nothing around
+  it (one shell command per call), and gives today's date for the `(ingested …)` / `(added …)`
+  stamps instead of letting the file-date fallback stand in. The denied-tool-call warning no longer
+  claims every denial was an excluded-file read.
+
+- **The `curate --guidance` boundary is stated precisely; re-verification is documented (#172).**
+  A steer directs structure and may now explicitly **ground an uncited sentence** (give it a
+  `[^sN]` to a raw file that states it — one the cluster cites or one the steer names by path —
+  with a verifying locator), and it **never changes a cited fact** (no rewording beyond the source,
+  no moved or dropped marker, no change of speaker; `[^llmN]` sentences are left alone). The same
+  wording now runs through the curate frames, `tasks/curate.md`, the CLI help and the docs.
+  `docs/maintenance.md` gains a "Re-verification: the quality pass" section: the 3-page `reverify`
+  sample every curate run plans, how it is ranked, that an unchanged page is sampled again, and
+  what a cluster costs.
+
+- **Curate keeps verifiable PDF locators (#161).** A curate session never saw the pypdf text layer
+  ingest had read, so it could only re-cite a PDF by page (`p. N`) — an offline-verifiable
+  `lines A-B` locator became unverifiable. Each cluster's findings file now names the PDF mode and
+  points at a copy of the cached text layer of every cited PDF (up to 10 per cluster), and a cluster
+  whose edit replaces a PDF's `lines A-B` locators with page-only ones is failed and rolled back.
+
+- **A PDF page with a garbled text layer is read from its page image (#165).** A scanned PDF whose
+  OCR layer serialized a label/value table out of order (labels first, then a detached run of
+  numbers) was routed to the text path and its main content silently left out. Each page of the
+  pypdf extraction is now checked (a column-serialized table or OCR noise); flagged pages are named
+  to the session, which reads them visually in either `CITADEL_PDF_MODE` and cites them `p. N`,
+  while the rest keep their verifiable `lines A-B` locators. A PDF whose every text page is garbled
+  is read as if it had no text layer. The run report lists both cases.
+
+- **Lint noise cut; `[^llmN]` notes are now validated (#166).** The undefined-abbreviation nudge no
+  longer reads link targets, skips email-subject prefixes (`AW:`, `WG:`), legal forms after a name
+  (`Muster AG`) and units/currencies beside a number by context, and drops a short built-in list of
+  universal terms (`CITADEL_ABBREV_STOPLIST` replaces or `+`-extends it). "Missing citations" no
+  longer splits sentences after `z. B.`, `Dr.`, `1. März` or an initial, ignores a lead-in sentence
+  ending in `:` above a list, and ignores navigational sentences ("This page ...", "Siehe ...").
+  **Possible new `check`/`lint` failures:** an `[^llmN]` marker with no definition, or a definition
+  with no note (`[^llm1]: LLM`), is now a `bad_source` error, as `schema.md` always required. Fix it
+  by writing the note (`[^llm1]: LLM - <what the model supplied> (added YYYY-MM-DD)`) or dropping the
+  marker; `citadel curate` plans the repair. A page that already carried one does not fail the next
+  ingest of an unrelated source.
+
+- **Folder notes are folded in before the files beside them (#159).** A `README`/`INDEX`/`ABOUT`/
+  `_index`/`00-…` file saying "these year files are unconfirmed reconstructions" was ingested AFTER
+  its siblings (digit names sort first), so every sibling was attributed as a first-hand account.
+  Pending sources are now ordered folder by folder (the same on POSIX and Windows), a folder note
+  first; under `--jobs N` the notes run as a first phase before any sibling session starts; a failed
+  note names `citadel ingest --reingest` for its siblings.
+
+- **A changed, already-ingested twin is never dropped as a duplicate (#169).** Same-basename dedup
+  decided by format rank alone, so an edited, tracked `report.docx` with a freshly exported
+  `report.pdf` beside it was skipped as a duplicate of the PDF — its old facts stayed in the wiki
+  next to the PDF's and it was pending (and dropped) again on every run. Dedup now gates only NEW
+  keys: a tracked member is always kept and reconciled, and new same-stem files are recorded as
+  duplicates of it.
+
+- **`citadel status` counts what the ignore globs keep out, not distinct names.** `Ignored (N)` was
+  the number of distinct matched basenames from a second `os.walk` that disagreed with discovery
+  (other roots, descended into repo sources). It now reads discovery's own walk (`_Walk.ignored`)
+  and renders one row per distinct name with the files behind it — `Ignored (7 files, 2 names)`,
+  `INDEX.md  (3 files)`, `private/  (1 folder, 4 files)` — with a skipped folder's files counted
+  bounded (`1000+` when capped). `status --json` keeps `ignored` and adds `ignored_detail` (#170).
+- **Transcript names say how the source was read and are never cut mid-folder.** A scanned PDF read
+  natively was named `ingest.` like a markdown file; transcripts now use a display kind
+  (`pdf-text`, `pdf-native`, `office-text`, else the session kind), spell `/` as `+`, and shorten a
+  long key by whole path segments (`pdf-native...board-meetings+2019-annual-summary.pdf`). The docs
+  now say "one transcript per agent session" — a chunked source writes one per pass (#170).
 
 - **`curate` no longer re-pays the same rules-drift clusters on every run.** Curate re-checks
   pages, never whole sources, so it never re-stamps a source's `rules_version` — the `(stale)`
@@ -16,7 +102,129 @@ All notable changes to this project are documented here. The format is based on
   `--limit`), and whenever drift is planned the curate report says the marker stays until the
   source is re-verified (#162, Part A).
 
+### Changed
+
+- **Rules batch — every ingested source shows `(stale)` after this upgrade.** One release carries
+  all of this cycle's edits under `citadel/rules/`, so `rules_version` changes once:
+  - `core.md`: a new § Letterhead & page furniture (issuer letterhead, register numbers, VAT IDs,
+    bank details and board names are context, not facts — #160); a source's own housekeeping
+    (to-dos, "to follow", "TBD") is never a fact (#160); house rules refine style within
+    `schema.md`, and the schema wins on a format collision (#160); a folder note's caveats apply to
+    the files beside it (#159); excluded sources are off-limits, including for related-source
+    lookups (#157).
+  - `schema.md`: partial lists from different sources are merged as a union, not flagged as a
+    contradiction (#160); a text-layer PDF is cited `lines A-B` into its extraction (#161); an
+    undefined or empty `[^llmN]` fails `citadel check` (#166).
+  - `tasks/curate.md`: dissolve a callout that is not a contradiction (#160); never downgrade a PDF
+    locator (#161); the `--guidance` boundary — a steer may ground an uncited sentence and never
+    changes a cited fact (#172).
+  - `formats/pdf.md`: pages named as an unreliable text layer are read from the page image (#165).
+
+  Clear the marker a budget at a time with `citadel refresh --stale-rules --limit N`
+  (`citadel status` prints the command with the right N); `citadel curate --stale-rules` re-checks
+  the citing pages but does not clear it.
+
+- **Viewer: UI chrome follows the wiki language; map labels no longer pile up (#171).** `citadel view`
+  now localizes everything AROUND the pages — toolbar tooltips, the search placeholder, "On this
+  page", the "Sources (N)" summaries, "Referenced by:"/"Links to:"/"Related:", the sources overview
+  and could-not-ingest tables — from `CITADEL_WIKI_LANG` (normalized to its primary subtag: `de-CH`
+  → `de`), overridable per run with `citadel view --lang CODE`, and sets `<html lang>` to match. Ships
+  English and German (`citadel/viewer/i18n.json`); a language without a dictionary keeps English
+  chrome but still declares its own `<html lang>`. A page's `## See also` heading is relabeled for
+  display only — the page files keep the literal English structural headings the format requires.
+  The map's labels now keep a constant on-screen size, are budgeted to the top 40% of pages by link
+  degree, and are culled so no two labels overlap (the hovered node and its neighbours always win);
+  every node carries its full title as a native tooltip, and long titles are shortened in the middle
+  ("Annual m…port 2019") so same-prefix pages stay distinguishable.
+
+- **The MCP server runs on the mcp 2.x SDK (`mcp>=2,<3`) (#173).** `citadel/server.py` builds on
+  `MCPServer` and `citadel serve --http` on its keyword `streamable_http_app` settings (DNS-rebinding
+  checks stay with citadel's own Host/Origin guard, passed explicitly so a tunnel hostname is never
+  421'd). Behavior changes: tools run on worker threads, so readers answer while a `wiki_ingest`
+  runs (a second ingest is refused); a traversal resource URI (`wiki://page/../x`) is refused at the
+  protocol layer instead of returning an `error: unsafe path` body; HTTP sessions idle for 30 minutes
+  are reaped and request bodies are capped at 4 MiB; `serverInfo.version` is citadel's own version.
+  `citadel doctor` checks `mcp.server.mcpserver` and the new range; CI runs the server tests on the
+  `mcp==2.0.0` floor. Users who must stay on mcp 1.x pin citadel to 0.7.x.
+
+- **Page length is measured in characters too, and `curate --dry-run` shows what a run will
+  read (#167).** A page is now over the length thresholds when it exceeds EITHER 400/800 body lines
+  or 32,000/64,000 body characters, so a dense page (88 KB in 554 lines) gets its split. Lint's long-
+  page list shows each page's size, and the split finding names it. `curate --dry-run` adds one
+  `Cluster facts` line per planned cluster (page size, cited sources and bytes, PDFs by text-layer
+  state, link neighbors) and a labelled rough cost reference, and no longer prints the meaningless
+  Applied/NOOP/Failed counters; `refresh --dry-run` shows each source's last recorded session cost.
+
+- **`curate --stale-rules` checks each page once per rules version, and shows what each cluster
+  cost (#162, Part B).** A new per-cluster record, `wiki/.citadel_curate.json` (outcome, reasons,
+  rules version, model, usage per anchor page; saved once per real run, never on `--dry-run`), puts
+  each cluster's cost on its Applied/NOOP/Failed line plus a NOOP-spend total, and lets rules drift
+  converge: a page curated (applied or NOOP) under the current rules is not planned for drift again
+  until the rules change. `rules/README.md` — the tree's index, which no session reads — no longer
+  feeds `rules_version`, so editing it cannot re-stale a corpus. This changes the hash formula, so
+  every source shows `(stale)` once after upgrading; `citadel refresh --stale-rules --limit K`
+  clears it.
+
+- **A calendar export (`.ics`) is deduped behind its PDF/Office twin (#169).** A same-folder
+  `<stem>.ics` + `<stem>.pdf` pair (an appointment confirmation and its printout) was ingested twice;
+  `.ics` now ranks after every document format, so the PDF/Office twin is the one read (it carries
+  local times and the body text). `.vcf` and `.eml` are deliberately not ranked (a same-stem PDF is
+  usually a different document). No retroactive effect: a pair where both twins are already tracked
+  stays tracked. To drop a redundant tracked twin, delete it or move it out of every raw root — the
+  next full ingest's delete cleanup strips its facts (an ignore pattern alone keeps its pages).
+
 ### Added
+
+- **`CITADEL_RULES_IN_SYSTEM_PROMPT` (experimental, claude only, default `0`) (#164).** `1` delivers
+  `schema.md` + `core.md` through claude's `--append-system-prompt-file` — one private temp file per
+  run, shared by every session so the prompt cache can reuse it — instead of as files the agent
+  reads with tool calls; `2` also passes `--exclude-dynamic-system-prompt-sections`. Probe-gated
+  with a one-level fallback, ignored by copilot/agy, never part of `rules_version`. A measurement
+  knob: the default stays `0` until a bench shows it pays.
+
+- **`citadel doctor --probe` and an `agent instructions` line (#158).** Plain `citadel doctor` now
+  lists the `CLAUDE.md` / `AGENTS.md` / `.github/copilot-instructions.md` files in or above the
+  workspace that a NON-isolated session would load next to citadel's rules, and says whether
+  isolation is in effect. The opt-in `--probe` runs one tiny paid session per configured model (in a
+  throwaway temp dir, short timeout, claude capped with `--max-budget-usd`) and reports the model
+  that actually served it, its cost, whether `--bare` strips this machine's credentials, a CLI not
+  logged in for non-interactive use, or a rejected `CITADEL_INGEST_MODEL` — before a real ingest
+  pays to find out. copilot sessions now get `--no-custom-instructions` under `CITADEL_HERMETIC`
+  (when advertised); it never triggers the credential retry.
+
+- **`citadel adopt` records a moved workspace root without an ingest run (#168).** A workspace in a
+  sync folder or moved to a new path warned "written by a workspace rooted at ..." on every command
+  until a path-less ingest happened to run with nothing pending. `citadel adopt` records the current
+  root in the manifest (no agent session, under the run lock, with a wiki-history commit), lists any
+  relative keys that do not resolve here, refuses a re-keyed key space (fix the mount or run
+  `ingest --full-rescan`), and never rewrites a corrupt manifest. The warning and `citadel doctor`
+  name the matching remedy. Run it on the writer only, never on a read-only mirror.
+
+- **An append-only run ledger makes lifetime spend visible (#163).** `citadel status`' cost total
+  was a snapshot of each source's LAST session, so curate clusters, forced reconciles/refreshes,
+  failed sources and delete cleanups were paid for and then invisible (a real run showed $69 of $89).
+  Every ingest/refresh/curate run that ran an agent session now appends one line to
+  `wiki/.citadel_runs.jsonl` — the run's usage totals, counts and flags only, never a source key,
+  page path or guidance text — and `citadel status` shows `Spend to date: $X over N run(s) since
+  DATE (ingest $A, curate $B, refresh $C)` beside the renamed snapshot line `Current corpus cost`.
+  `status --json` gains `spend` (null without a ledger). Interrupted runs are recorded as such; a
+  ledger write that fails is a report note, never a failure. Spend from before the ledger cannot be
+  recovered.
+
+- **Corpus exclusions now reach the agent sessions (#157).** Files kept out by your own
+  `CITADEL_IGNORE_PATTERNS` entries, `CITADEL_INCLUDE_PATTERNS` or `CITADEL_MAX_SOURCE_BYTES` were
+  only kept out of the source LIST — a session could still open one (a sidecar beside its source)
+  and its content could shape the prose uncited. Now every source-reading and curate prompt lists
+  the exclusions; claude sessions run with a narrowed shell (no bare `Bash`: only `citadel check` and
+  page `rm`/`rmdir`/`mv`/`mkdir`; `grep`/`rg`/`find`/`cp` disallowed; `--permission-prompts none`)
+  and a per-session `--settings` file of per-path Read denies built from the discovery walk; copilot
+  gets a `--deny-tool` list of interpreters and file readers; agy stays instruction-only. A citation
+  to an untracked excluded file fails `citadel check` (so the source fails, lint exits 3, curate plans
+  `bad_source`), claude's denied tool calls are listed as a run warning, a manifest key under a newly
+  ignored FOLDER is dropped like one with an ignored name, and `citadel doctor` prints how far your
+  backend enforces the exclusions. None of this is a security boundary: keeping sensitive files outside
+  every raw root and the workspace is a precaution (copilot runs with `--allow-all-paths`, agy without
+  permission checks); for a guarantee, deny the agent's OS account access or run ingest in a sandbox.
 
 - **`citadel refresh --stale-rules`** narrows the refresh queue to the `(stale)` sources
   (oldest-checked first, composes with `--min-age-days`), so `--limit K` re-verifies exactly the

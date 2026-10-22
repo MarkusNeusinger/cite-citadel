@@ -30,7 +30,7 @@ uv run python -m citadel <subcommand>
 
 Subcommands: `init [DIR]` (scaffold a workspace: `citadel.toml` marker, `.env`, `raw/`, `wiki/`;
 idempotent), `ingest [paths…]` (fold raw/ into the wiki; `--verbose`/`-v` streams the agent
-session, `--log-dir DIR` writes a transcript per source, `--quiet` drops the live progress display,
+session, `--log-dir DIR` writes a transcript per agent session (named after how the source was read — `pdf-text`/`pdf-native`/`office-text` — shortened by path segment), `--quiet` drops the live progress display,
 `--jobs N`/`-j` folds N sources in CONCURRENTLY (default 1 = serial; `CITADEL_JOBS`),
 `--full-rescan` distrusts the manifest's stat cache and re-hashes every tracked source,
 `--force <paths>` deliberately re-reads already-ingested sources as a reconcile — it requires
@@ -56,15 +56,25 @@ that marker after a rules edit), `curate [--dry-run] [--limit N] [--stale-rules]
 [--diff PATH] [--retry] [--guidance TEXT] [paths…]` (the SECOND lifecycle: improve EXISTING pages —
 re-sort/split/re-ground/resolve
 contradictions/fix locators — against a recomputed findings checklist; `--guidance` is the curate
-twin of ingest's steer — STRUCTURAL only, carried in the cluster's findings file, and the paths it
+twin of ingest's steer — it directs structure and may ground an uncited sentence but never changes
+a cited fact, carried in the cluster's findings file, and the paths it
 names (a page, a folder, a glob) are curated even when no detector flagged them), `status` (read-only
 per-source state table: ingested / failed / skipped-duplicate / ignored / oversized / pending; MCP twin
 `wiki_status`), `doctor`
 (read-only setup health check — OK/WARN/FAIL lines for workspace / rules / config-parse fallbacks /
 agent CLI / the configured ingest model / raw roots / wiki placement
 (the wiki nested inside a raw root) / child paths (the UNC-vs-drive-letter cwd) /
-manifest / billing / the MCP SDK (`mcp.server.fastmcp` imports, version inside the `mcp>=1.10,<2` pin) / the HTTP-serve posture / wiki-git state / a best-effort PyPI update check / workspace coherence; every check runs isolated, so one that raises is its own FAIL line, never a traceback; needs no workspace, exits 1 only on a FAIL),
-`serve [--http [--host H] [--port P] [--path /mcp] [--read-only]]` (the MCP server — stdio by
+manifest / billing / `agent instructions` (instruction files in/above the workspace a NON-isolated
+session would load, per backend — `llm._INSTRUCTION_FILES`) / the MCP SDK (`mcp.server.mcpserver` imports, version inside the `mcp>=2,<3` pin; CI's `mcp-floor` job runs the server tests on exactly 2.0.0) / the HTTP-serve posture / wiki-git state / a best-effort PyPI update check / workspace coherence; every check runs isolated, so one that raises is its own FAIL line, never a traceback; needs no workspace, exits 1 only on a FAIL; `--probe` ADDS one tiny paid
+session per configured model — `llm.probe_session`, production argv + hermetic flags, claude also
+`--tools ""`/`--max-budget-usd`/`--no-session-persistence` when advertised, in a throwaway temp dir
+with a ≤120 s timeout, following ingest's `--bare` retry rule — so a credential-stripping `--bare`, a
+CLI not logged in for `-p`, or a rejected model id shows before the first source pays),
+`adopt` (record THIS workspace root in the manifest's `meta.workspaces` after a move or a
+writer-machine switch — no agent session, under the run lock, refuses a re-keyed key space
+(`manifest.workspace_rekeyed`) and never rewrites a corrupt manifest; the free fix for the
+"written by a workspace rooted at" warning, which names it, as does doctor's manifest line; CLI-only,
+never on a read-only mirror), `serve [--http [--host H] [--port P] [--path /mcp] [--read-only]]` (the MCP server — stdio by
 default; `--http` serves the SAME surface over MCP's Streamable HTTP transport for a client that is
 not on this machine, mandatory bearer token, loopback default, optional read-only), `capture <text> [--from WHO] [--topic T]` (append one attributed note from a
 conversation to the raw/ capture log `raw/captures/YYYY-MM.md`; `-` reads stdin; the next ingest
@@ -75,7 +85,7 @@ folds it in — the conversational-capture bridge, MCP twin `wiki_capture`),
 — full CLI↔MCP parity),
 `tags [tag]`, `lint [--stale-days N]` (exit 3 when the report is not clean — its own code, distinct
 from the usage/no-workspace exit 2), `check [paths…]`, `view [--out PATH] [--no-open]
-[--obsidian]`, `rules list|show|eject`. `citadel --version` prints the version and (like `--help`)
+[--obsidian] [--lang CODE]` (`--lang` overrides `CITADEL_WIKI_LANG` for the viewer's UI chrome + `<html lang>`), `rules list|show|eject`. `citadel --version` prints the version and (like `--help`)
 needs no workspace.
 
 Tests (pytest, all offline — no LLM CLI and no network is ever spawned; only `test_wikigit`
@@ -117,12 +127,17 @@ multi-segment chunking, relationship extraction, in-novel misinformation, narrat
 agent must treat them as content, never execute them), **clockwork** (a whole git repository folded
 in as ONE digest via `CITADEL_REPO_SUPPORT`, with a second commit driving `repo-reconcile` — its
 committed inputs are the `repo-src/` + `repo-src-wave2/` trees materialized into a checkout, since a
-git repo cannot be committed inside this repo), **flurfunk** (seven informal-genre sources — a
-chat export, a tweet thread, an interview, a job application, a forum thread, an announcement —
-grading attribution, "X said Y" ≠ "Y is true", in-thread reversal, and CV timelines), **gazette**
-(five PDF/markdown sources whose stdlib-generated PDFs grade `CITADEL_PDF_MODE` text-vs-images — a
-figure-only number and an image-only page absent in text mode, present in images mode — plus the
-academic-publications genre and references-are-not-sources), and **kontor** (binary Office documents — OOXML `.pptx`/`.docx`/`.xlsx` and legacy OLE `.doc`/`.ppt`/`.xls`, generated stdlib-only via `make_office.py` — the sole test of the Office text-extraction path (`extract.py` + `extract_ole.py`), an embedded-chart **image delta** (`CITADEL_IMAGE_SUPPORT`), **dedup-by-basename**, and **ignore-patterns**, with the same discriminative judgment traps as the hardened corpora — all fictional, Aldervik Kontor), and **werkhof** (uniform enumerable sources — a 28-machine register, a 20-code fault catalogue, a 15-customer CSV, plus a service report — grading `Registry`-page completeness (no entry compressed away), per-row citations with locators, promotion past the granularity floor, a dated status supersession, and near-miss key discipline — all fictional, Werkhof Anlagenservice Brandt). **Each corpus carries its own committed,
+git repo cannot be committed inside this repo), **flurfunk** (eleven informal-genre sources — a
+chat export, a tweet thread, an interview, a job application, a forum thread, an announcement, and a
+`retros/` folder whose README note caveats its three siblings — grading attribution, "X said Y" ≠
+"Y is true", in-thread reversal, CV timelines, partial lists as a union, a source's own to-do kept
+out, and folder-note caveats), **gazette**
+(nine PDF/markdown/`.ics` sources whose stdlib-generated PDFs grade `CITADEL_PDF_MODE` text-vs-images —
+a figure-only number and an image-only page absent in text mode, present in images mode — plus the
+academic-publications genre, references-are-not-sources, a garbled OCR layer read from the page image
+(`pdftext.unreliable_pages`), a letterhead footer kept out of the facts, and an `.ics` deduped behind
+its PDF twin), and **kontor** (binary Office documents — OOXML `.pptx`/`.docx`/`.xlsx` and legacy OLE `.doc`/`.ppt`/`.xls`, generated stdlib-only via `make_office.py` — the sole test of the Office text-extraction path (`extract.py` + `extract_ole.py`), an embedded-chart **image delta** (`CITADEL_IMAGE_SUPPORT`), **dedup-by-basename**, **ignore-patterns**, and **source-exclusion enforcement** (an excluded
+`raw/private/` file under `CITADEL_IGNORE_PATTERNS=+private`, with canaries), with the same discriminative judgment traps as the hardened corpora — all fictional, Aldervik Kontor), and **werkhof** (uniform enumerable sources — a 28-machine register, a 20-code fault catalogue, a 15-customer CSV, plus a service report — grading `Registry`-page completeness (no entry compressed away), per-row citations with locators, promotion past the granularity floor, a dated status supersession, and near-miss key discipline — all fictional, Werkhof Anlagenservice Brandt). **Each corpus carries its own committed,
 graded showcase wiki** at `corpora/<name>/wiki/` (its own nested `citadel.toml` marker,
 `meta.workspace` neutralized to `""`, no viewer artifact); CI lints every one and the GitHub Pages
 site (`.github/workflows/pages.yml`) builds a **gallery** with one offline viewer per corpus. Each
@@ -316,7 +331,11 @@ addressing them through `ingest`. The flow per source:
   Under it the promote is **base-aware** — it prunes only what its own clone had and its staging
   lacks (else it would delete a concurrent source's new pages), and it REFUSES, before writing a
   byte, if a path it would touch has moved since the clone; that source is then re-run SERIALLY at
-  the end of its group, where it merges into the winner's page (reported as `raced`). What
+  the end of its group, where it merges into the winner's page (reported as `raced`). Folder notes
+  (`ingest_scan._is_folder_note`: README/ABOUT/INDEX/_index stems or a `00-` name) lead their
+  folder in the pending order (`_pending_order`, case-folded so POSIX and Windows agree) and, under
+  `--jobs N`, run as a FIRST phase of their group — a barrier, so every sibling clones a wiki that
+  already holds the note; a failed note carries a `--reingest` failure hint. What
   parallelism costs is cross-linking, not safety — concurrent sessions cannot see each other's new
   pages — which is why the default is 1. The redirect this rides on is context-local
   (`config.wiki_redirect` → a ContextVar behind `config.wiki_dir()`; children get their wiki via
@@ -332,7 +351,10 @@ addressing them through `ingest`. The flow per source:
 agentic mode (`cwd` = `config.child_cwd()` — the workspace root in its child-friendly spelling —
 autonomous file tools). The prompt is **paths-only** — it references
 the source and rules by path, never embeds file content — which keeps argv tiny (the Windows
-`WinError 206` fix). One per-kind spec table (`_KIND_SPECS`) maps each `kind` to its task-rule
+`WinError 206` fix). The one exception is opt-in and still paths-only on argv:
+`CITADEL_RULES_IN_SYSTEM_PROMPT` (claude only) hands `schema.md` + `core.md` to claude through
+`--append-system-prompt-file` — a file the CLI reads, built once per run in a private temp dir
+inside `llm.system_prompt_scope()` (entered by `ingest()`/`curate()`), removed at run end. One per-kind spec table (`_KIND_SPECS`) maps each `kind` to its task-rule
 file, whether it reads a source, and its format policy; an unknown kind fails loud. `kind` selects
 the propagation: `ingest` (new), `reconcile` (changed source — update/remove stale facts, don't
 just append), `delete` (source removed — strip its provenance), `repo`/`repo-reconcile` (a whole
@@ -362,6 +384,22 @@ the backend plus what actually ran, and falls back to the configured label only 
 named nothing (an Ollama/proxy backend, or agy left on its own default), so the manifest never
 claims a model that never ran.
 
+**Corpus exclusions reach the agent sessions** (`readdeny.py`, `llm._exclusion_bullet`): what
+discovery keeps out (user ignore globs — never the built-in junk ones — the include allowlist, the
+size cap) is listed in every source-reading/curate prompt as "never open, list, search or cite";
+claude additionally gets ENFORCEMENT — a narrowed `--allowedTools` (no bare `Bash`: only the
+`citadel check` self-check and page `rm`/`rmdir`/`mv`/`mkdir`), `--disallowedTools` for
+`grep`/`rg`/`find`/`cp`, `--permission-prompts none` and a per-session `--settings` temp file of
+`Read(//abs/path)` denies built from the run's own discovery walk (`_Walk.ignored`, not-included,
+oversized; folders collapse to one `/**` rule; never the session's source/prepared file, the wiki,
+the caches, the rules or `docs/`; capped at `readdeny.DENY_CAP`, the rest reported), each optional
+flag probe-gated like `--bare` and kept in argv so the hermetic retry keeps it; copilot a
+`--deny-tool` list; agy stays instruction-only (`citadel doctor`'s exclusions line says which).
+The post-hoc net is `validate.source_issues`: a `[^sN]` into a file `ingest_scan.exclusion_reason`
+excludes that is neither tracked nor the running session's source (`config.session_source`, passed
+to the agent's `citadel check` as `CITADEL_SESSION_SOURCE`) is a check error, so the source fails;
+claude's `permission_denials` ride `SessionUsage.denials` onto a run warning, never a failure.
+
 **Two checking layers, one implementation** (`validate.py`):
 - `citadel check` / `wiki_validate` — the **strict per-page gate** (required fields, honest/defined
   citations, relative non-broken links, no `[[wikilinks]]`). The ingest agent self-runs it; ingest
@@ -377,7 +415,14 @@ claims a model that never ran.
   `docs/` is legal provenance (never a broken link), and a link inside a ``` code fence is literal text.
 
 **Curate is the second wiki lifecycle** (`curate.py`, `citadel curate`). It has **no persisted
-queue — the plan is recomputed from offline detectors every run** (the wiki IS the database):
+queue — the plan is recomputed from offline detectors every run** (the wiki IS the database); the
+one curate state it persists beyond the failures catalog is the per-cluster RECORD
+`wiki/.citadel_curate.json` (`load_records`/`save_records`, saved atomically once per real run,
+never on `--dry-run`, interrupt included): per anchor page the last outcome
+(applied/noop/failed), reasons, rules version, model and the manifest-shaped usage stamp — the only
+home of per-cluster curate cost (shown on every Applied/NOOP/Failed line plus a NOOP-spend total),
+and what lets rules drift CONVERGE: a page re-checked APPLIED/NOOP under the current rules is not
+planned for drift again (a failed record does not count; a rules edit re-opens it):
 `rules_version_drift` (planned ONLY under `--stale-rules`: curate re-checks pages, never whole
 sources, so it never re-stamps a manifest entry and cannot clear `(stale)` — in the default plan
 drift would be a permanent paid item that also starves the lower-ranked detectors under `--limit`;
@@ -385,7 +430,10 @@ whenever drift is planned the report names `citadel refresh --stale-rules --limi
 `refresh.stale_count()`), `page_length_hard`, `contradiction`, `orphan`, `llm_drift`, `resort`
 (type↔folder mismatch via `okf.folder_for_type`), `bad_source` (a `[^sN]` citation that does not
 verify, via `validate.source_issues` — e.g. the dangling citations a failed deletion cleanup
-leaves, closing ingest's failure-hint loop), and `locator` (from `lint.check_locators`);
+leaves, closing ingest's failure-hint loop), `locator` (from `lint.check_locators`), and
+`reverify` (up to `REVERIFY_SAMPLE_K` = 3 citing pages of sha-unchanged sources per run, ranked
+page-`timestamp` age × (in-degree + 1) — so every plain curate run on an ingested wiki plans up to 3
+paid sessions, and a NOOP page is sampled again since it keeps its timestamp);
 fact re-verification is pre-filtered offline through manifest shas (`reverify_candidates` — changed
 = reconcile's job, gone = delete's job). Each planned page CLUSTER (page + cited raw files + link
 neighbors) runs ONE staged `kind="curate"` session over ingest's existing staging machinery, its
@@ -393,7 +441,12 @@ findings written to a temp file referenced by path. **The staging diff-by-hash i
 arbiter** (empty = NOOP, clean promoted = applied, exception/check-fail = failed → revert-and-stop).
 A failed cluster lands in the failures catalog keyed by page rel_path with an additive `attempts`
 counter (default cap 2, never auto-retried until an explicit retry). `--dry-run` prints the plan
-with zero sessions; `--limit`/`--stale-rules` shape it; `--diff PATH` writes a per-page change
+with zero sessions — plus one `Cluster facts` line per cluster (page size, cited sources + bytes,
+PDFs by cached text-layer state read off the MANIFEST sha — nothing hashed — link neighbors) and a
+labelled run-wide cost reference (median recorded curate, else ingest, session cost; never a
+per-cluster quote); page length is over a threshold by lines OR characters
+(`lint.page_size`/`over_page_limit`, `CURATE_PAGE_{SOFT,HARD}_{LINES,CHARS}` = 400/800 lines,
+32k/64k chars); `--limit`/`--stale-rules` shape it; `--diff PATH` writes a per-page change
 report; `--retry` re-includes attempt-capped clusters (the explicit retry that bypasses the cap);
 curate sessions run under `CITADEL_CURATE_MODEL` (falling back to the ingest model).
 `--guidance TEXT` (env `CITADEL_CURATE_GUIDANCE`, the shared 2000-char cap) is the lifecycle's own
@@ -419,6 +472,11 @@ page that does not exist is failed and rolled back whole. Compared by dangling T
 per-cluster baseline of the live wiki, never by `(page, target)` pair — a cluster MOVES pages, so a
 pre-existing dangling link would otherwise look brand new the moment its page is renamed (the same
 blame-scoping `_validate_and_restamp`'s inherited carve-out exists for).
+A cluster citing a PDF also gets that PDF's cached pypdf text layer (copied beside the findings
+file, `_TEXT_LAYERS_SHOWN` per cluster, plus the `CITADEL_PDF_MODE` line), so a curate session can
+keep `lines A-B` locators instead of re-citing by page, and a second post-condition
+(`_no_locator_downgrade`) fails a cluster that replaces a PDF's verifiable `lines A-B` locators with
+page-only `p. N` ones.
 
 **Refresh is the third lifecycle** (`refresh.py`, `citadel refresh`): budget-controlled
 re-verification of existing SOURCES, so an aging wiki is brought up to the current model + rules a
@@ -453,10 +511,14 @@ table — ingested
 `K (stale) source(s): re-verify with citadel refresh --stale-rules --limit K` hint (the same K as
 the curate report's), `checked YYYY-MM-DD` from
 the `ingested_at` stamp, the last session's cost when recorded, with copilot's AI credits shown
-beside the dollars they converted into — with `Recorded LLM cost` / `Recorded AI credits` corpus
-totals above the table, and a `NO PAGES (nothing cites this source)` marker on every ingested
+beside the dollars they converted into — with `Current corpus cost` / `Current corpus AI credits` snapshot
+totals (each source's last verifying session) plus a `Spend to date` lifetime line from the
+append-only run ledger `wiki/.citadel_runs.jsonl` (`ledger.py`: one JSONL line per mutating run that
+ran a session — usage totals, counts and flags only, never a key, path or steer; written in-run
+before the finalize gate or once on the exception path, atomically, a failed write a report note)
+above the table, and a `NO PAGES (nothing cites this source)` marker on every ingested
 source the wiki does not cite — a paid session that produced zero entries), failed (reason, attempts),
-skipped-duplicate, ignored (pattern), oversized (over `CITADEL_MAX_SOURCE_BYTES`, with the size),
+skipped-duplicate, ignored (one row per distinct ignored name with the files it keeps out — read off discovery's own walk via `_Walk.ignored`, a skipped folder's files counted bounded), oversized (over `CITADEL_MAX_SOURCE_BYTES`, with the size),
 not-included (outside `CITADEL_INCLUDE_PATTERNS` — the row is hidden entirely when no allowlist is
 configured, but the JSON key is always there),
 pending — closing with a `citadel ingest --retry` hint whenever anything is failed or uncited.
@@ -512,7 +574,13 @@ when pypdf imports, which it always does unless deliberately uninstalled) a
 genuine PDF's (`%PDF-` magic) text layer is extracted once per content into a `[p. N]`-page-marked
 line-stable text, cached content-addressed in `.citadel_pdftext/` beside the wiki — the agent
 reads it under the `pdf`/`pdf-reconcile` kinds while citing the original `.pdf` with `lines A-B`
-locators the same cache lets `lint`/`wiki_raw`/the viewer verify offline; `text_for` is the ingest
+locators the same cache lets `lint`/`wiki_raw`/the viewer verify offline; A page whose extracted layer is garbled (`pdftext.unreliable_pages`: a column-serialized
+table — a run of ≥4 number-only lines — or OCR noise, judged per `[p. N]` page, pure and
+deterministic over the cached text, the extraction itself never changed) is named to the session
+in a `- Unreliable text layer` bullet (per pass, by the window its marker line begins in; hashed
+into the resume plan shape) so the agent reads THAT page from the page image (`p. N`); when every
+text-bearing page is garbled the source is read as if it had no text layer; both land on the run
+report's `PDF pages read visually` list. `text_for` is the ingest
 seam, strictly best-effort (scanned / encrypted / corrupt / pypdf force-removed → None → the
 agent-native read with agent-verified `p. N` locators — never a failed source).
 `resume.py` is the chunked-source resume-checkpoint store (`CITADEL_RESUME`): after each completed segment ingest banks the promote-shaped delta in `.citadel_resume/` beside the wiki, guarded by identity (source sha, model, rules version, segment content, prompt knobs), blob integrity, per-page live base state, re-validation of the replay and an attempt cap — so an interrupted large source continues at its failed segment instead of re-buying the earlier ones, and every guard failure degrades to a full restart. `curate.py` is the second lifecycle (offline detectors + staged cluster sessions; see above).
@@ -549,7 +617,7 @@ display).
 curate) it commits the whole wiki dir as ONE commit (and pushes to `CITADEL_WIKI_GIT_REMOTE` when
 set), so every change is a reviewable diff; `auto` (default) only acts when the wiki dir is already
 its own git repo, `CITADEL_WIKI_GIT=1` also `git init`s it on first use (refusing an embedded repo
-inside another working tree), and any git problem is a report note, never a failed run. `server.py` is the FastMCP stdio server (13
+inside another working tree), and any git problem is a report note, never a failed run. `server.py` is the MCP SDK 2.x (`MCPServer`, `version=` citadel's own) stdio server — sync tools on worker threads, so readers run during a `wiki_ingest` while a second ingest is refused by `_INGEST_LOCK`; a traversal resource URI is refused at the protocol layer by the SDK's `ResourceSecurity` (13
 tools — 11 read-only incl. `wiki_raw` (the cited-source reader, backed by `rawsource.py`),
 `wiki_neighbors` (a page's links-out/backlinks/cited-sources graph), `wiki_lint` (with a tunable
 `stale_days`) and `wiki_status` (the per-source state view), plus two mutating:
@@ -611,7 +679,7 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   that writes files into the temp wiki. No test spawns a real LLM CLI. Follow that pattern; keep
   tests offline.
 - **Never hand-edit generated files** — `index.md`, `log.md`, any `*/index.md`, `sources/index.md`,
-  `.citadel_viewer.html`, and `.citadel_ingested.json` are regenerated. The ingest agent prompt and
+  `.citadel_viewer.html`, `.citadel_ingested.json`, `.citadel_curate.json`, and `.citadel_runs.jsonl` are regenerated. The ingest agent prompt and
   `store.delete_page` both refuse to touch them. In the REPO, `.github/copilot-instructions.md` is
   generated too: it is THIS file with a swapped header (both agents get one instruction set, so a
   feature can't be documented for one and not the other). Edit `CLAUDE.md`, then regenerate with
@@ -635,9 +703,13 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   `CITADEL_INGEST_MODEL` (passed as `--model` to EVERY backend - claude, copilot and agy all
   honor it; unset (the default) means "run the CLI's own default model"),
   `CITADEL_CURATE_MODEL` (model for `citadel curate` sessions; falls back to
-  `CITADEL_INGEST_MODEL`), `CITADEL_LLM_TIMEOUT`, `CITADEL_HERMETIC` (session isolation — append claude's `--bare` when the
-  installed binary advertises it, so personal `~/.claude` config never leaks into ingest; default
-  on, probe-gated), `CITADEL_PAGE_CACHE` (the serve-side page snapshot cache: `auto` = on in
+  `CITADEL_INGEST_MODEL`), `CITADEL_LLM_TIMEOUT`, `CITADEL_HERMETIC` (session isolation — append claude's `--bare` / copilot's
+  `--no-custom-instructions` when the installed binary advertises it, so personal config and project
+  instruction files never leak into ingest; default on, probe-gated; only the credential-stripping
+  `--bare` (`llm._CREDENTIAL_STRIPPING_FLAGS`) can trigger the auth retry), `CITADEL_RULES_IN_SYSTEM_PROMPT` (experimental, claude only: `1` delivers
+  `schema.md` + `core.md` via `--append-system-prompt-file`, `2` adds
+  `--exclude-dynamic-system-prompt-sections`; probe-gated with a one-level fallback, never part of
+  `rules_version`, part of the resume knob stamp; default 0), `CITADEL_PAGE_CACHE` (the serve-side page snapshot cache: `auto` = on in
   `citadel serve` only, `1` = everywhere, `0` = never), the `CITADEL_HTTP_*` serving knobs
   (`TOKEN` — mandatory for `serve --http`, no default; `HOST`/`PORT`/`PATH` — loopback:8765/mcp;
   `READ_ONLY`), `CITADEL_LLM_VERBOSE`, `CITADEL_LLM_LOG_DIR`,
@@ -664,13 +736,17 @@ save-the-transcript-as-a-file lane for whole conversations). `rawsource.py` back
   allowlist keeps its pages instead of reading as deleted — the sweep's `.exists()` confirm. What it
   filtered out is reported: ingest's `Not included` section, `citadel status`' bucket, and a
   `citadel doctor` line that WARNs when the allowlist admits nothing),
+  `CITADEL_ABBREV_STOPLIST` (universal terms lint's undefined-abbreviation nudge never lists —
+  `config._DEFAULT_ABBREV_STOPLIST`; a list replaces, a `+` extends; email-subject prefixes, legal
+  forms and units are skipped by CONTEXT in `lint._abbrev_in_exempt_context`, not by the list),
   `CITADEL_MAX_SOURCE_BYTES` (the SIZE complement to those globs: a raw file bigger than this many
   bytes is skipped at discovery — never hashed, never tracked, but reported; 0 = no limit, the
   default; an explicitly named path always wins), `CITADEL_WIKI_LANG`
-  (target language of all wiki prose, default `en`; verbatim quotes stay original),
+  (target language of all wiki prose, default `en`; verbatim quotes stay original; it also picks the offline viewer's UI-chrome language, en fallback),
   `CITADEL_INGEST_GUIDANCE` (free-text steer appended to each source-reading session's prompt —
   usually passed per run as `ingest --guidance` instead; permanent house rules belong in
-  `rules/local.md`), `CITADEL_CURATE_GUIDANCE` (its curate twin — STRUCTURAL only, carried in the
+  `rules/local.md`), `CITADEL_CURATE_GUIDANCE` (its curate twin — directs structure, may ground an uncited sentence,
+  never changes a cited fact; carried in the
   cluster findings file, usually passed as `curate --guidance "…" <paths>`),
   `CITADEL_RELATED_SOURCES` (how many OTHER raw sources one source-reading session may consult to
   resolve a term/code/reference its own source never explains — found through the wiki, cited to

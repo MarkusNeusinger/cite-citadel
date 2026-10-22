@@ -21,7 +21,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import config, extract, llm, manifest, okf, resume, store
+from . import config, extract, llm, manifest, okf, resume, store, validate
 from .ingest_staging import (
     _LIVE_WIKI_LOCK,
     _ConcurrentChange,
@@ -97,7 +97,7 @@ class _Resume:
     checkpoint: resume.Checkpoint | None = None
 
 
-def _plan_shape(passes) -> str:
+def _plan_shape(passes, visual: list[tuple[int, ...]] | None = None) -> str:
     """Fingerprint a chunked source's pass plan by CONTENT — the chunking threshold, each pass's
     segment/line-window position, and the sha256 of the prepared text it hands the agent.
 
@@ -111,8 +111,13 @@ def _plan_shape(passes) -> str:
     ``CITADEL_MAX_SOURCE_CHARS``: a stated model context tightens the threshold, so hashing the raw
     value would let a checkpoint planned under one segment shape be replayed under another."""
     digest = hashlib.sha256(f"{config.source_chunk_chars()}".encode())
-    for read_key, segment, window in passes:
+    for i, (read_key, segment, window) in enumerate(passes):
         digest.update(f"\x1e{segment}|{window}|".encode())
+        # The pages a pass is told to read visually are part of what it does; a pass with none
+        # hashes exactly as before.
+        named = visual[i] if visual and i < len(visual) else ()
+        if named:
+            digest.update(f"v{','.join(map(str, named))}|".encode())
         if read_key:
             try:
                 # A read_key is workspace-RELATIVE when the temp landed inside the workspace and
@@ -124,7 +129,9 @@ def _plan_shape(passes) -> str:
     return digest.hexdigest()
 
 
-def _resume_context(rel_key: str, kind: str, sha: str | None, passes, model: str, rules_ver: str) -> _Resume | None:
+def _resume_context(
+    rel_key: str, kind: str, sha: str | None, passes, model: str, rules_ver: str, visual=None
+) -> _Resume | None:
     """The :class:`_Resume` context for one pending source, or None when resume does not apply.
 
     It applies to CHUNKED sources only (a single-pass source has no earlier segment to save) and
@@ -145,7 +152,7 @@ def _resume_context(rel_key: str, kind: str, sha: str | None, passes, model: str
     part of the identity."""
     if not resume.enabled() or len(passes) < 2 or not sha:
         return None
-    shape = _plan_shape(passes)
+    shape = _plan_shape(passes, visual)
     if not shape:
         return None
     plan = resume.Plan(
@@ -264,7 +271,12 @@ def _checkpoint_delta(
 
 
 def _adopt_checkpoint(
-    ctx: _Resume, staging: Path, live: Path, rel_key: str, carried: list[str] | None = None
+    ctx: _Resume,
+    staging: Path,
+    live: Path,
+    rel_key: str,
+    carried: list[str] | None = None,
+    tracked: frozenset[str] | None = None,
 ) -> tuple[list, list, list] | None:
     """Replay ``ctx``'s checkpoint into the fresh ``staging`` copy and return the
     ``(created, updated, deleted)`` it landed there, or None when it must not be used.
@@ -288,7 +300,7 @@ def _adopt_checkpoint(
     have its inherited breakage validated once, waved through, and never surfaced. The caller merges
     it only when the adoption SUCCEEDS — a refused replay is discarded whole, and its findings with
     it."""
-    with _redirect_wiki(staging):
+    with _redirect_wiki(staging), config.session_source(rel_key, tracked):
         # Baseline the cross-links BEFORE the replay: staging is still a byte copy of live here, so
         # this is the set of breakages the wiki already lives with (which resume must not be blamed
         # for, and must not repair).
@@ -446,6 +458,9 @@ def _run_agent_sessions(
     if not session_fns:
         return _SourceOutcome(True, ran_sessions=False)
     live = config.wiki_dir()
+    # The excluded-citation guard's TRUSTED tracked set, read from the LIVE manifest before any
+    # session runs: the staging copy's manifest is agent-writable (see config.session_source).
+    tracked = validate.manifest_keys(config.manifest_path())
     base: dict[str, str] | None = None
     cloned: dict[str, str] | None = None
     staging: Path | None = None
@@ -497,7 +512,7 @@ def _run_agent_sessions(
             # checkpoint is discarded whole (staging included), so its findings describe a state
             # this run never went on to promote.
             replay_issues: list[str] = []
-            seeded = _adopt_checkpoint(resume_ctx, staging, live, rel_key, carried=replay_issues)
+            seeded = _adopt_checkpoint(resume_ctx, staging, live, rel_key, carried=replay_issues, tracked=tracked)
             if seeded is None:
                 resume.clear(rel_key)
                 resume_ctx.checkpoint = None
@@ -511,7 +526,10 @@ def _run_agent_sessions(
                 carried = dict(resume_ctx.checkpoint.usage)
                 carried_issues.extend(replay_issues)
                 resumed_note = f"{rel_key} (segments 1-{start_at} of {len(session_fns)} restored from checkpoint)"
-        with _redirect_wiki(staging):
+        # The session-source mark exempts THIS source from the excluded-citation guard (an
+        # explicitly named excluded file wins) — in this process's validation and, via
+        # config.child_env, in the agent's own `citadel check`.
+        with _redirect_wiki(staging), config.session_source(rel_key, tracked):
             prev_pages = store.load()
             prev = _hash_pages(prev_pages)
             # The wiki as this source FOUND it, kept across every segment (``prev_pages`` is
@@ -817,6 +835,7 @@ def _pending_session(
     read_key: str | None,
     segment: tuple[int, int] | None = None,
     line_range: tuple[int, int] | None = None,
+    visual_pages: tuple[int, ...] | None = None,
 ) -> llm.SessionUsage | None:
     """Drive ONE ingest/reconcile agent session, passing through the backend's usage report
     (:class:`llm.SessionUsage` or None) for the outcome's accounting. When ``read_key`` is set
@@ -826,7 +845,12 @@ def _pending_session(
     ``(part, total)`` for a chunked source, ``line_range`` the line window of a chunked pass (the
     lines of the one full text — source file or prepared extraction — this pass processes); each
     is passed to the backend ONLY when set, so every pre-existing call shape stays byte-for-byte
-    unchanged."""
+    unchanged. ``visual_pages`` (a PDF's unreliable text-layer pages in this pass) likewise rides
+    only when non-empty."""
+    if visual_pages:
+        return llm.run_ingest_session(
+            rel_key, kind=kind, read_path=read_key, segment=segment, line_range=line_range, visual_pages=visual_pages
+        )
     if line_range is not None:
         return llm.run_ingest_session(rel_key, kind=kind, read_path=read_key, segment=segment, line_range=line_range)
     if read_key and segment is not None:

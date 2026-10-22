@@ -99,13 +99,13 @@ def test_read_only_tools_are_annotated_read_only():
         "wiki_status",
     )
     for name in readers:
-        assert tools[name].annotations is not None and tools[name].annotations.readOnlyHint is True
-    assert tools["wiki_ingest"].annotations.readOnlyHint is False
+        assert tools[name].annotations is not None and tools[name].annotations.read_only_hint is True
+    assert tools["wiki_ingest"].annotations.read_only_hint is False
     # wiki_capture mutates only the raw capture log: not read-only, but append-only (never
     # destructive) and closed-world (no external CLI is spawned).
-    assert tools["wiki_capture"].annotations.readOnlyHint is False
-    assert tools["wiki_capture"].annotations.destructiveHint is False
-    assert tools["wiki_capture"].annotations.openWorldHint is False
+    assert tools["wiki_capture"].annotations.read_only_hint is False
+    assert tools["wiki_capture"].annotations.destructive_hint is False
+    assert tools["wiki_capture"].annotations.open_world_hint is False
 
 
 def test_initialize_instructions_are_set():
@@ -822,9 +822,9 @@ def test_resources_and_template_registered():
     """The three concrete wiki:// documents plus the one per-page template are published."""
     res = asyncio.run(server.mcp.list_resources())
     assert sorted(str(r.uri) for r in res) == ["wiki://index", "wiki://sources", "wiki://tags"]
-    assert all(r.description and r.mimeType == "text/markdown" for r in res)
+    assert all(r.description and r.mime_type == "text/markdown" for r in res)
     templates = asyncio.run(server.mcp.list_resource_templates())
-    assert [t.uriTemplate for t in templates] == ["wiki://page/{folder}/{name}"]
+    assert [t.uri_template for t in templates] == ["wiki://page/{folder}/{name}"]
 
 
 def test_catalog_resources_match_their_tool_twins(seeded_wiki):
@@ -849,15 +849,59 @@ def test_page_resource_serves_the_full_uncapped_page(seeded_wiki):
 
 
 def test_page_resource_shares_the_never_raise_contract(seeded_wiki):
-    """A missing page or a traversal attempt reads back as an 'error: …' body — the resource
-    surface can never crash the server or escape the wiki root."""
+    """A missing page reads back as an 'error: …' body; a traversal attempt is refused by the SDK's
+    ResourceSecurity before the handler runs (a protocol error, never a crashed server or an escape
+    from the wiki root)."""
     missing = list(asyncio.run(server.mcp.read_resource("wiki://page/concepts/nope.md")))
     assert missing[0].content.startswith("error: page not found")
-    traversal = list(asyncio.run(server.mcp.read_resource("wiki://page/../secrets.md")))
-    assert traversal[0].content.startswith("error: unsafe path")
+    with pytest.raises(Exception, match="security validation|Unknown resource"):
+        list(asyncio.run(server.mcp.read_resource("wiki://page/../secrets.md")))
 
 
 def test_index_resource_error_body_before_first_ingest(tmp_citadel):
     """An empty workspace reads as the tool's clear error string, not a protocol failure."""
     contents = list(asyncio.run(server.mcp.read_resource("wiki://index")))
     assert contents[0].content == "error: wiki index not found (run `citadel ingest` first)."
+
+
+def test_tools_run_concurrently_and_a_second_ingest_is_refused(tmp_citadel, fake_agent, cite_page):
+    """mcp 2.x runs sync tools on worker threads: while one wiki_ingest is in flight a reader
+    completes and a second wiki_ingest gets the fail-loud refusal; afterwards the promoted page is
+    readable through the page cache."""
+    import threading
+
+    from citadel import pagecache
+
+    (tmp_citadel.raw / "a.md").write_text("a source\n", encoding="utf-8")
+    started, release = threading.Event(), threading.Event()
+
+    def blocking(rel_key, **kw):
+        started.set()
+        assert release.wait(10)
+        cite_page("misc/a.md", rel_key, "A fact.")
+
+    fake_agent(side_effect=blocking)
+    pagecache.enable()
+    try:
+
+        async def scenario():
+            ingest_task = asyncio.create_task(server.mcp.call_tool("wiki_ingest", {}))
+            await asyncio.to_thread(started.wait, 10)
+            search = await server.mcp.call_tool("wiki_search", {"query": "anything"})
+            second = await server.mcp.call_tool("wiki_ingest", {})
+            release.set()
+            await ingest_task
+            read = await server.mcp.call_tool("wiki_read", {"rel_path": "misc/a.md"})
+            return search, second, read
+
+        search, second, read = asyncio.run(scenario())
+    finally:
+        release.set()
+        pagecache.disable()
+
+    def text(result):
+        return str(result)
+
+    assert "already in progress" in text(second)
+    assert "A fact." in text(read)
+    assert search is not None

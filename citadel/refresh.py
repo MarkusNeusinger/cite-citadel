@@ -40,7 +40,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
-from . import config, ingest, manifest
+from . import config, ingest, llm, manifest
 
 
 @dataclass
@@ -53,6 +53,9 @@ class RefreshCandidate:
     ingested_at: str | None
     model: str | None
     stale_rules: bool
+    # The last session's recorded cost for this source (manifest usage stamp) — a refresh re-runs
+    # the same source, so it is the closest offline predictor of what refreshing it costs.
+    cost_usd: float | None = None
 
 
 @dataclass
@@ -95,8 +98,14 @@ class RefreshReport:
                 parts.append(f"by {c.model}")
             if c.stale_rules:
                 parts.append("(stale rules)")
+            if c.cost_usd is not None:
+                parts.append(f"last session {llm.format_cost(c.cost_usd)}")
             lines.append("  " + "  ".join(parts))
         if self.dry_run:
+            costs = [c.cost_usd for c in self.selected if c.cost_usd is not None]
+            if costs:
+                lines.append("")
+                lines.append(f"Last recorded sessions for these sources: {llm.format_cost(sum(costs))} total.")
             lines.append("")
             lines.append("Dry run: no agent sessions were started.")
         elif self.ingest_report is not None:
@@ -141,7 +150,13 @@ def plan(min_age_days: int = 0, stale_only: bool = False) -> list[RefreshCandida
         if not config.source_path_for_key(key).exists():
             continue
         out.append(
-            RefreshCandidate(key=key, ingested_at=manifest.entry_ingested_at(entry), model=model, stale_rules=stale)
+            RefreshCandidate(
+                key=key,
+                ingested_at=manifest.entry_ingested_at(entry),
+                model=model,
+                stale_rules=stale,
+                cost_usd=manifest.entry_usage(entry).get("cost_usd"),
+            )
         )
     out.sort(key=lambda c: (c.ingested_at or "", c.key))
     return _age_floor(out, min_age_days)
@@ -199,5 +214,5 @@ def refresh(
     # Hand ingest ABSOLUTE paths: manifest keys are workspace-relative, but ingest resolves
     # requested path strings against the CWD — which need not be the workspace root.
     paths = [str(config.source_path_for_key(c.key)) for c in selected]
-    report.ingest_report = ingest.ingest(paths, progress=progress, force=True, jobs=jobs)
+    report.ingest_report = ingest.ingest(paths, progress=progress, force=True, jobs=jobs, lifecycle="refresh")
     return report

@@ -18,7 +18,7 @@
 
 **Alex:** How big is the team now?
 
-**Priya:** We're 28 people. Deliberately small. We've stayed lean on purpose — I think the pressure of staying lean is part of why the product is any good.
+**Priya:** We're 28 people. Deliberately small. Engineering sits in Lisbon and Porto. We've stayed lean on purpose — I think the pressure of staying lean is part of why the product is any good.
 
 **Alex:** Let's talk about the market. There are a lot of analytics tools out there. What's the honest differentiator?
 

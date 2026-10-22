@@ -1,0 +1,19 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Cinder Peak Observatory//Outreach desk//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+BEGIN:VEVENT
+UID:open-night-2026-06-13@cinderpeak.example
+DTSTAMP:20260501T090000Z
+DTSTART:20260613T203000Z
+DTEND:20260613T233000Z
+SUMMARY:Public Open Night at Cinder Peak
+LOCATION:Cinder Peak Observatory\, visitor terrace
+ORGANIZER;CN=Cinder Peak Observatory outreach desk:mailto:outreach@cinderpe
+ ak.example
+DESCRIPTION:Tour the dome and look through the new 1.2-metre telescope\, we
+ ather permitting. Entry is free\; places are limited and must be booked in
+  advance with the outreach desk.
+END:VEVENT
+END:VCALENDAR
