@@ -1,0 +1,11 @@
+{
+  "raw/open-night.ics": {
+    "ctime_ns": 1792322016461474300,
+    "detail": "same basename as raw/open-night.pdf, which was ingested instead",
+    "hashed_at_ns": 1792691250700183092,
+    "mtime_ns": 1792322016461474300,
+    "reason": "duplicate",
+    "sha256": "cc3cee319d0e41d4c2e6067c270da499005707c356322e3d3a5a2d571133b373",
+    "size": 637
+  }
+}

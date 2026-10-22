@@ -2,5 +2,4 @@
 
 The pages in this folder. Generated — do not edit.
 
-- [Cinder Peak Observatory](cinder-peak-observatory.md) — An astronomical observatory on Cinder Peak that has surveyed median nightly atmospheric seeing since it opened in 1998, and whose new 1.2-metre telescope achieved first light in 2026.
-- [The Meridian Gazette](the-meridian-gazette.md) — A newspaper with a science section and science desk.
+- [Cinder Peak Observatory](cinder-peak-observatory.md) — Observatory with an instrument desk (calibration sheet), a seeing brief and an outreach desk running a public open night.

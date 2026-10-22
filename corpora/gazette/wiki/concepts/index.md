@@ -2,5 +2,5 @@
 
 The pages in this folder. Generated — do not edit.
 
-- [Astronomical Seeing](astronomical-seeing.md) — The blurring of stars caused by atmospheric turbulence, measured in arcseconds where a lower value means a sharper image.
-- [Cryptobiosis](cryptobiosis.md) — A dormant metabolic state some organisms enter to survive extreme environmental stress such as near-total desiccation.
+- [Microplastic accumulation in three alpine tarns](microplastic-accumulation-in-three-alpine-tarns.md) — Summary of a preprint surveying microplastic particle concentrations in three high-altitude tarns over one melt season.
+- [Tardigrades (water bears)](tardigrades-water-bears.md) — Microscopic invertebrates that survive near-total desiccation through cryptobiosis, as reported in a Meridian Gazette feature.
