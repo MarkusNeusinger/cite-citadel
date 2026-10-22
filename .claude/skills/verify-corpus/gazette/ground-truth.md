@@ -229,7 +229,7 @@ honest absence or the scan's exact dates.
 
 ## Scoring
 
-**Hard gates** (must all hold, both modes unless noted): §D structural (check+lint 0, **fabricated
+**Hard gates** (must all hold, both modes unless noted; in the **chunked** run also §F wf-all36, wf-nodup and wf-noinvent — a station lost, duplicated or invented at a window edge): §D structural (check+lint 0, **fabricated
 sources 0**, PDF citations carry page locators); §C·P2 references never materialized as sources; §C·P1
 the preprint finding attributed, not settled; every §A `F*` present-and-cited; **§B mode delta** — in
 **text** mode the wiki must NOT contain the figure-only `0.42` (hallucination = hard fail), and the
