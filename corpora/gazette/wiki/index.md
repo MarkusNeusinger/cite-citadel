@@ -2,102 +2,113 @@
 
 The wiki's home index: every page grouped by type (with backlinks), plus tags and the source/open-point catalogs. Generated — do not edit.
 
-See also: [abbreviations](abbreviations/index.md) · [concepts](concepts/index.md) · [organizations](organizations/index.md) · [projects](projects/index.md) · [registries](registries/index.md) · [sources](sources/index.md)
-
-## Abbreviation
-- [TDP — Tardigrade-specific Intrinsically Disordered Proteins](abbreviations/tdp-tardigrade-specific-intrinsically-disordered-proteins.md) — Proteins unique to tardigrades that vitrify as the animal dries, protecting its cells.
-  - ↳ referenced by: [Tardigrades (water bears)](concepts/tardigrades-water-bears.md)
+See also: [concepts](concepts/index.md) · [misc](misc/index.md) · [objects](objects/index.md) · [organizations](organizations/index.md) · [persons](persons/index.md) · [registries](registries/index.md) · [sources](sources/index.md)
 
 ## Concept
-- [Microplastic accumulation in three alpine tarns](concepts/microplastic-accumulation-in-three-alpine-tarns.md) — Summary of a preprint surveying microplastic particle concentrations in three high-altitude tarns over one melt season.
-- [Tardigrades (water bears)](concepts/tardigrades-water-bears.md) — Microscopic invertebrates that survive near-total desiccation through cryptobiosis, as reported in a Meridian Gazette feature.
-  - ↳ referenced by: [TDP — Tardigrade-specific Intrinsically Disordered Proteins](abbreviations/tdp-tardigrade-specific-intrinsically-disordered-proteins.md)
+- [Atmospheric seeing at Cinder Peak Observatory](concepts/atmospheric-seeing-at-cinder-peak-observatory.md) — Median nightly seeing measured at Cinder Peak Observatory through 2025, as summarised in the 2025 seeing brief.
+  - ↳ referenced by: [Cinder Peak 1.2-metre telescope](objects/cinder-peak-1-2-metre-telescope.md), [Cinder Peak Observatory](organizations/cinder-peak-observatory.md)
+- [Cinder Peak treeline transect](concepts/cinder-peak-treeline-transect.md) — The Meridian Gazette environment desk's fixed 36-plot treeline transect on Cinder Peak, its survey method and second-season finding.
+  - ↳ referenced by: [Station registry — Cinder Peak treeline transect](registries/station-registry-cinder-peak-treeline-transect.md)
+- [Microplastic accumulation in three alpine tarns](concepts/microplastic-accumulation-in-three-alpine-tarns.md) — A non-peer-reviewed preprint surveying microplastic particle concentrations in three high-altitude tarns over one melt season.
+- [Tardigrade Cryptobiosis](concepts/tardigrade-cryptobiosis.md) — How tardigrades (water bears) survive near-total desiccation by entering a dormant state, and the 2007 FOTON-M3 spaceflight exposure experiment.
+
+## Event
+- [Public Open Night at Cinder Peak](misc/public-open-night-at-cinder-peak.md) — Public open night at Cinder Peak Observatory on Saturday 13 June 2026, with a dome tour and telescope session.
+  - ↳ referenced by: [Cinder Peak 1.2-metre telescope](objects/cinder-peak-1-2-metre-telescope.md), [Cinder Peak Observatory](organizations/cinder-peak-observatory.md)
+
+## Object
+- [Cinder Peak 1.2-metre telescope](objects/cinder-peak-1-2-metre-telescope.md) — The 1.2-metre reflecting telescope at Cinder Peak Observatory, which replaced the original 0.6-metre instrument and reached first light on 1 May 2026.
+  - ↳ referenced by: [Atmospheric seeing at Cinder Peak Observatory](concepts/atmospheric-seeing-at-cinder-peak-observatory.md), [Cinder Peak Observatory](organizations/cinder-peak-observatory.md)
 
 ## Organization
-- [Cinder Peak Observatory](organizations/cinder-peak-observatory.md) — Observatory with an instrument desk (calibration sheet), a seeing brief and an outreach desk running a public open night.
-  - ↳ referenced by: [Sensor calibration offsets — Cinder Peak Observatory](registries/sensor-calibration-offsets-cinder-peak-observatory.md)
+- [Cinder Peak Observatory](organizations/cinder-peak-observatory.md) — Observatory whose instrument desk issues sensor calibration sheets.
+  - ↳ referenced by: [Atmospheric seeing at Cinder Peak Observatory](concepts/atmospheric-seeing-at-cinder-peak-observatory.md), [Public Open Night at Cinder Peak](misc/public-open-night-at-cinder-peak.md), [Cinder Peak 1.2-metre telescope](objects/cinder-peak-1-2-metre-telescope.md), [Ines Varga](persons/ines-varga.md), [Sensor calibration offsets — Cinder Peak Observatory](registries/sensor-calibration-offsets-cinder-peak-observatory.md)
 
-## Project
-- [Cinder Peak treeline transect](projects/cinder-peak-treeline-transect.md) — A fixed line of thirty-six plots on Cinder Peak followed by the Meridian Gazette environment desk, with a second-season report on stand age, density, canopy closure and damage.
-  - ↳ referenced by: [Station registry — Cinder Peak treeline transect](registries/station-registry-cinder-peak-treeline-transect.md)
+## Person
+- [Ines Varga](persons/ines-varga.md) — Person who checked the Cinder Peak Observatory sensor calibration sheet of April 2026.
+  - ↳ referenced by: [Cinder Peak Observatory](organizations/cinder-peak-observatory.md), [Sensor calibration offsets — Cinder Peak Observatory](registries/sensor-calibration-offsets-cinder-peak-observatory.md)
 
 ## Registry
-- [Sensor calibration offsets — Cinder Peak Observatory](registries/sensor-calibration-offsets-cinder-peak-observatory.md) — The six observatory sensors with the calibration offset the instrument desk issued for each on 22 April 2026.
-  - ↳ referenced by: [Cinder Peak Observatory](organizations/cinder-peak-observatory.md)
-- [Station registry — Cinder Peak treeline transect](registries/station-registry-cinder-peak-treeline-transect.md) — The 36 fixed plots of the Cinder Peak treeline transect with elevation, aspect, substrate, stand age, stem density, canopy closure and damage, as reported in the Meridian Gazette's second-season report.
-  - ↳ referenced by: [Cinder Peak treeline transect](projects/cinder-peak-treeline-transect.md)
+- [Sensor calibration offsets — Cinder Peak Observatory](registries/sensor-calibration-offsets-cinder-peak-observatory.md) — Calibration offsets of the six sensors on the Cinder Peak Observatory instrument desk's sheet issued 22 April 2026.
+  - ↳ referenced by: [Cinder Peak Observatory](organizations/cinder-peak-observatory.md), [Ines Varga](persons/ines-varga.md)
+- [Station registry — Cinder Peak treeline transect](registries/station-registry-cinder-peak-treeline-transect.md) — The 36 fixed plots of the Cinder Peak treeline transect with elevation, aspect, substrate, stand age, stem density, canopy closure and damage from the second-season report.
+  - ↳ referenced by: [Cinder Peak treeline transect](concepts/cinder-peak-treeline-transect.md)
 
 ## Tags
 
 ### alpine-lakes (1)
 - [Microplastic accumulation in three alpine tarns](concepts/microplastic-accumulation-in-three-alpine-tarns.md)
 
-### biology (1)
-- [Tardigrades (water bears)](concepts/tardigrades-water-bears.md)
+### atmospheric-turbulence (1)
+- [Atmospheric seeing at Cinder Peak Observatory](concepts/atmospheric-seeing-at-cinder-peak-observatory.md)
 
-### calibration (2)
+### biology (1)
+- [Tardigrade Cryptobiosis](concepts/tardigrade-cryptobiosis.md)
+
+### calibration (3)
 - [Cinder Peak Observatory](organizations/cinder-peak-observatory.md)
+- [Ines Varga](persons/ines-varga.md)
 - [Sensor calibration offsets — Cinder Peak Observatory](registries/sensor-calibration-offsets-cinder-peak-observatory.md)
 
-### cinder-peak (2)
-- [Cinder Peak treeline transect](projects/cinder-peak-treeline-transect.md)
+### event (1)
+- [Public Open Night at Cinder Peak](misc/public-open-night-at-cinder-peak.md)
+
+### extremophiles (1)
+- [Tardigrade Cryptobiosis](concepts/tardigrade-cryptobiosis.md)
+
+### field-survey (2)
+- [Cinder Peak treeline transect](concepts/cinder-peak-treeline-transect.md)
 - [Station registry — Cinder Peak treeline transect](registries/station-registry-cinder-peak-treeline-transect.md)
 
-### cryptobiosis (1)
-- [Tardigrades (water bears)](concepts/tardigrades-water-bears.md)
-
-### environment (1)
-- [Cinder Peak treeline transect](projects/cinder-peak-treeline-transect.md)
-
-### field-data (1)
+### forestry (2)
+- [Cinder Peak treeline transect](concepts/cinder-peak-treeline-transect.md)
 - [Station registry — Cinder Peak treeline transect](registries/station-registry-cinder-peak-treeline-transect.md)
 
-### forest-survey (2)
-- [Cinder Peak treeline transect](projects/cinder-peak-treeline-transect.md)
-- [Station registry — Cinder Peak treeline transect](registries/station-registry-cinder-peak-treeline-transect.md)
+### instrument (1)
+- [Cinder Peak 1.2-metre telescope](objects/cinder-peak-1-2-metre-telescope.md)
 
 ### microplastics (1)
 - [Microplastic accumulation in three alpine tarns](concepts/microplastic-accumulation-in-three-alpine-tarns.md)
 
-### observatory (2)
+### observatory (6)
+- [Atmospheric seeing at Cinder Peak Observatory](concepts/atmospheric-seeing-at-cinder-peak-observatory.md)
+- [Public Open Night at Cinder Peak](misc/public-open-night-at-cinder-peak.md)
+- [Cinder Peak 1.2-metre telescope](objects/cinder-peak-1-2-metre-telescope.md)
 - [Cinder Peak Observatory](organizations/cinder-peak-observatory.md)
+- [Ines Varga](persons/ines-varga.md)
 - [Sensor calibration offsets — Cinder Peak Observatory](registries/sensor-calibration-offsets-cinder-peak-observatory.md)
+
+### outreach (1)
+- [Public Open Night at Cinder Peak](misc/public-open-night-at-cinder-peak.md)
 
 ### preprint (1)
 - [Microplastic accumulation in three alpine tarns](concepts/microplastic-accumulation-in-three-alpine-tarns.md)
 
-### proteins (1)
-- [TDP — Tardigrade-specific Intrinsically Disordered Proteins](abbreviations/tdp-tardigrade-specific-intrinsically-disordered-proteins.md)
-
 ### seeing (1)
-- [Cinder Peak Observatory](organizations/cinder-peak-observatory.md)
+- [Atmospheric seeing at Cinder Peak Observatory](concepts/atmospheric-seeing-at-cinder-peak-observatory.md)
 
 ### sensors (1)
 - [Sensor calibration offsets — Cinder Peak Observatory](registries/sensor-calibration-offsets-cinder-peak-observatory.md)
 
-### tardigrades (2)
-- [TDP — Tardigrade-specific Intrinsically Disordered Proteins](abbreviations/tdp-tardigrade-specific-intrinsically-disordered-proteins.md)
-- [Tardigrades (water bears)](concepts/tardigrades-water-bears.md)
+### tardigrades (1)
+- [Tardigrade Cryptobiosis](concepts/tardigrade-cryptobiosis.md)
+
+### telescope (1)
+- [Cinder Peak 1.2-metre telescope](objects/cinder-peak-1-2-metre-telescope.md)
 
 ### treeline (2)
-- [Cinder Peak treeline transect](projects/cinder-peak-treeline-transect.md)
+- [Cinder Peak treeline transect](concepts/cinder-peak-treeline-transect.md)
 - [Station registry — Cinder Peak treeline transect](registries/station-registry-cinder-peak-treeline-transect.md)
 
 ## Sources
 
 8 ingested raw source(s) — full catalog with the importing model in [sources/index.md](sources/index.md).
 
-- [raw/calibration-sheet.pdf](../raw/calibration-sheet.pdf) — cited by 2 pages
-- [raw/feature-article.pdf](../raw/feature-article.pdf) — cited by 2 pages
+- [raw/calibration-sheet.pdf](../raw/calibration-sheet.pdf) — cited by 3 pages
+- [raw/feature-article.pdf](../raw/feature-article.pdf) — cited by 1 page
 - [raw/field-survey.pdf](../raw/field-survey.pdf) — cited by 2 pages
-- [raw/figure-brief.pdf](../raw/figure-brief.pdf) — cited by 1 page
-- [raw/open-night.pdf](../raw/open-night.pdf) — cited by 1 page
+- [raw/figure-brief.pdf](../raw/figure-brief.pdf) — cited by 3 pages
+- [raw/open-night.pdf](../raw/open-night.pdf) — cited by 2 pages
 - [raw/preprint.pdf](../raw/preprint.pdf) — cited by 1 page
-- [raw/press-release.md](../raw/press-release.md) — cited by 1 page
-- [raw/scanned-notice.pdf](../raw/scanned-notice.pdf) — cited by 1 page
-
-## Abbreviations
-
-| Abbreviation | Expansion | Page |
-| --- | --- | --- |
-| TDP | Tardigrade-specific Intrinsically Disordered Proteins | [TDP — Tardigrade-specific Intrinsically Disordered Proteins](abbreviations/tdp-tardigrade-specific-intrinsically-disordered-proteins.md) |
+- [raw/press-release.md](../raw/press-release.md) — cited by 3 pages
+- [raw/scanned-notice.pdf](../raw/scanned-notice.pdf) — cited by 2 pages
