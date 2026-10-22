@@ -318,7 +318,9 @@ class IngestReport:
             lines.append("PDF pages read visually (unreliable text layer):")
             lines.extend(f"  - {n}" for n in self.visual_pdf_pages)
         if self.denials:
-            lines.append("WARNING — the agent tried tool calls its permissions denied (excluded files stay unread):")
+            lines.append(
+                "WARNING — the agent tried tool calls its permissions denied (the narrowed shell, or an excluded-file Read deny):"
+            )
             lines.extend(f"  - {d}" for d in self.denials)
         if self.deny_unenforced:
             lines.append(

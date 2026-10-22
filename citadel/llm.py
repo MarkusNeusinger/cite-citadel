@@ -487,7 +487,16 @@ def _build_instruction(
 
     lines += ["", "Session variables (use these paths verbatim):"]
     lines.append(f"- {spec.subject_prefix}: {rel_key}")
-    lines.append(f"- Wiki directory: {wiki_rel}/")
+    wiki_line = f"- Wiki directory: {wiki_rel}/"
+    if not Path(wiki_rel).is_absolute():
+        # A relative name is relative to the session's cwd (the workspace root). Spell out the
+        # absolute form too: with raw/rules outside the workspace a session that changed directory
+        # resolved it against THEIR tree and wrote pages nobody imports (silent data loss).
+        wiki_line += (
+            f" (absolute: {config.native_form(config.wiki_dir()).as_posix()}/ — always resolve it "
+            "against the workspace root, never against the raw or rules directories)"
+        )
+    lines.append(wiki_line)
     lines.append(f"- Raw directory: {raw_rel}/")
     if read_path:
         lines.append(f"- Prepared file — read THIS for the source's content: {read_path}")
@@ -540,6 +549,11 @@ def _build_instruction(
             "- Fallback date — the source file's own date, used only when the source's content "
             f"states no date: {fallback_date}"
         )
+    # Today's date for the `(ingested …)` / `(added …)` stamps — without it a session reused the
+    # Fallback date (the raw file's mtime) as the ingest date.
+    lines.append(
+        f"- Today: {time.strftime('%Y-%m-%d')} — the date for every `(ingested …)` / `(added …)` stamp you write"
+    )
     lines.append(f"- Wiki language: {config.WIKI_LANG}")
     if fmt == "formats/pdf.md":
         lines.append(f"- PDF mode: {'images' if config.PDF_MODE == 'images' else 'text'}")
@@ -596,8 +610,11 @@ def _build_instruction(
         f"move, or delete anything there. Never create or edit {wiki_rel}/index.md, "
         f"{wiki_rel}/log.md, any */index.md, or any dotfile, and make no changes outside "
         f"{wiki_rel}/. When your edits "
-        "are complete, run `citadel check` (or `uv run python -m "
-        "citadel check`) ONCE; only if it reports errors, fix them and run it again to confirm.",
+        "are complete, run `citadel check` (or `uv run python -m citadel check`) ONCE, as a "
+        "shell command of its own — exactly that, with nothing around it: no pipe, `||`, `&&`, "
+        "`;`, `cd`, redirect or parentheses (the shell refuses any combined command, so a wrapped "
+        "check never runs); only if it reports errors, fix them and run it again to confirm. "
+        "Run every other shell command (a page `rm`/`mv`/`mkdir`) on its own too, one per call.",
     ]
     return "\n".join(lines)
 

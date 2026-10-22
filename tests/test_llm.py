@@ -10,6 +10,7 @@ real CLI is ever spawned.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import threading
@@ -1757,3 +1758,14 @@ def test_ingest_task_brief_states_the_window_numbering_is_the_files_own():
     assert "line numbers are the locator line numbers" in brief
     assert "never renumber" in brief
     assert "sliced" not in brief and "all there is" not in brief
+
+
+def test_prompt_names_the_wiki_absolutely_and_the_self_check_bare(tmp_citadel):
+    """Verify-corpus 2026-10-22: with raw outside the workspace a session resolved the RELATIVE
+    staging wiki against the raw's tree and wrote pages nobody imported; and a wrapped self-check
+    (`(citadel check || …) | tail`) is denied by claude's narrowed shell, so the check never ran."""
+    prompt = llm._build_instruction("raw/notes.md")
+    wiki_line = next(line for line in prompt.splitlines() if line.startswith("- Wiki directory:"))
+    assert f"(absolute: {config.wiki_dir().as_posix()}/" in wiki_line
+    assert "nothing around it" in prompt and "no pipe" in prompt
+    assert re.search(r"^- Today: \d{4}-\d{2}-\d{2} ", prompt, re.MULTILINE)

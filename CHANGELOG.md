@@ -22,6 +22,16 @@ Read these before upgrading — three one-time effects:
 
 ### Fixed
 
+- **Agent sessions keep their self-check and their pages under claude's narrowed shell.** Found by
+  the 2026-10-22 corpus runs: the agent wrapped its `citadel check` (`(… || …) | tail`, `cd … &&`),
+  which the #157 allowlist refuses, so most sessions never self-validated; and with raw outside the
+  workspace a session resolved the RELATIVE staging wiki against the raw's tree and wrote pages
+  nobody imported (gazette's chunked run silently lost 10 of 36 registry rows). The run instruction
+  now names the wiki directory absolutely too, asks for a bare `citadel check` with nothing around
+  it (one shell command per call), and gives today's date for the `(ingested …)` / `(added …)`
+  stamps instead of letting the file-date fallback stand in. The denied-tool-call warning no longer
+  claims every denial was an excluded-file read.
+
 - **The `curate --guidance` boundary is stated precisely; re-verification is documented (#172).**
   A steer directs structure and may now explicitly **ground an uncited sentence** (give it a
   `[^sN]` to a raw file that states it — one the cluster cites or one the steer names by path —

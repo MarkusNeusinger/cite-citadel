@@ -287,7 +287,9 @@ class CurateReport:
             )
         if self.denials:
             lines.append("")
-            lines.append("WARNING — the agent tried tool calls its permissions denied (excluded files stay unread):")
+            lines.append(
+                "WARNING — the agent tried tool calls its permissions denied (the narrowed shell, or an excluded-file Read deny):"
+            )
             lines.extend(f"  - {d}" for d in self.denials)
         if self.deny_unenforced:
             lines.append("")
