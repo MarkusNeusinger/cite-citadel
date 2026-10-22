@@ -99,7 +99,7 @@ singular; runs nest under it.)*
 - **Mode:** each corpus copied (`citadel.toml` + `raw/` only) to a mktemp dir and built there — in this container claude's `--bare` is refused at auth, so sessions run non-hermetic, and an in-repo build loads the repo `CLAUDE.md` (input ~700k vs ~400k tokens/session) with the hidden ground truth on disk. Wikis neutralized (`meta.workspace` ""), copied back, check + lint against the repo copy.
 - **Model:** `claude:claude-sonnet-5-5` · `rules_version 80c7358f3239` · gazette $1.94, flurfunk $2.72, kontor 2 × ~$1.5.
 - **Result:** gazette (images) 36/36 stations, 0.42 arcsec `p. 1`, no letterhead, `.ics` never cited; flurfunk §I caveat cited, no pricing table, no sites callout. kontor: both attempts put the 142/138 pair together and cited, but neither promoted the 3-role leave/remote table to a `Registry` page (it stays a cited table on the handbook concept page) — VCB-033.
-- **Verdict:** gazette + flurfunk committed (f767d51); kontor pending a decision · misses: VCB-033.
+- **Verdict:** gazette + flurfunk committed (f767d51); kontor attempt 1 committed (a8c8c32) with the role table left as a cited concept table · misses: VCB-033.
 
 ### 2026-10-22 beverages (Mode C — curate lifecycle: C1–C4, C4b guided grounding, #160 control)
 
