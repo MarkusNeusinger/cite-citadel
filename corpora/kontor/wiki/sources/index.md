@@ -4,14 +4,14 @@ Provenance for every ingested raw source: the model that actually imported it, w
 
 | Source | Model | Cost | Tokens | Checked | Referenced by |
 | --- | --- | --- | --- | --- | --- |
-| [raw/budget-2026.xlsx](../../raw/budget-2026.xlsx) | claude:claude-sonnet-5-5 | $0.3337 | 601,836 in / 2,730 out | 2026-10-22 | [Department budget and headcount registry — 2026](../registries/department-budget-and-headcount-registry-2026.md) |
-| [raw/legacy-deck.ppt](../../raw/legacy-deck.ppt) | claude:claude-sonnet-5-5 | $0.2765 | 326,188 in / 1,442 out | 2026-10-22 | [Aldervik Kontor](../organizations/aldervik-kontor.md) |
-| [raw/legacy-ledger.xls](../../raw/legacy-ledger.xls) | claude:claude-sonnet-5-5 | $0.2989 | 500,897 in / 1,594 out | 2026-10-22 | [Aldervik Kontor](../organizations/aldervik-kontor.md) |
-| [raw/legacy-memo.doc](../../raw/legacy-memo.doc) | claude:claude-sonnet-5-5 | $0.3323 | 684,630 in / 2,300 out | 2026-10-22 | [Aldervik Kontor](../organizations/aldervik-kontor.md) |
-| [raw/onboarding-checklist.docx](../../raw/onboarding-checklist.docx) | claude:claude-sonnet-5-5 | $0.3103 | 501,999 in / 2,353 out | 2026-10-22 | [Warehouse Manager Onboarding Checklist](../concepts/warehouse-manager-onboarding-checklist.md) |
-| [raw/policy-handbook.docx](../../raw/policy-handbook.docx) | claude:claude-sonnet-5-5 | $0.3189 | 591,729 in / 2,208 out | 2026-10-22 | [Staff Handbook Policies](../concepts/staff-handbook-policies.md) |
-| [raw/q3-review.pptx](../../raw/q3-review.pptx) | claude:claude-sonnet-5-5 | $0.3401 | 684,722 in / 3,029 out | 2026-10-22 | [Aldervik Kontor](../organizations/aldervik-kontor.md) |
-| [raw/report.docx](../../raw/report.docx) | claude:claude-sonnet-5-5 | $0.3221 | 597,827 in / 1,870 out | 2026-10-22 | [Aldervik Kontor](../organizations/aldervik-kontor.md) |
+| [raw/budget-2026.xlsx](../../raw/budget-2026.xlsx) | claude:claude-sonnet-5-5 | $0.1824 | 284,112 in / 1,986 out | 2026-10-22 | [Budget 2026](../concepts/budget-2026.md), [Aldervik Kontor](../organizations/aldervik-kontor.md) |
+| [raw/legacy-deck.ppt](../../raw/legacy-deck.ppt) | claude:claude-sonnet-5-5 | $0.1689 | 333,385 in / 1,434 out | 2026-10-22 | [Aldervik Kontor](../organizations/aldervik-kontor.md) |
+| [raw/legacy-ledger.xls](../../raw/legacy-ledger.xls) | claude:claude-sonnet-5-5 | $0.1723 | 335,960 in / 1,481 out | 2026-10-22 | [Aldervik Kontor](../organizations/aldervik-kontor.md) |
+| [raw/legacy-memo.doc](../../raw/legacy-memo.doc) | claude:claude-sonnet-5-5 | $0.1787 | 337,743 in / 1,821 out | 2026-10-22 | [Aldervik Kontor](../organizations/aldervik-kontor.md) |
+| [raw/onboarding-checklist.docx](../../raw/onboarding-checklist.docx) | claude:claude-sonnet-5-5 | $0.2014 | 402,895 in / 2,854 out | 2026-10-22 | [Warehouse Manager onboarding checklist](../concepts/warehouse-manager-onboarding-checklist.md), [Aldervik Kontor](../organizations/aldervik-kontor.md) |
+| [raw/policy-handbook.docx](../../raw/policy-handbook.docx) | claude:claude-sonnet-5-5 | $0.1756 | 277,102 in / 2,047 out | 2026-10-22 | [Staff Handbook policies](../concepts/staff-handbook-policies.md) |
+| [raw/q3-review.pptx](../../raw/q3-review.pptx) | claude:claude-sonnet-5-5 | $0.2018 | 344,513 in / 3,176 out | 2026-10-22 | [Aldervik Kontor](../organizations/aldervik-kontor.md) |
+| [raw/report.docx](../../raw/report.docx) | claude:claude-sonnet-5-5 | $0.1808 | 340,841 in / 1,611 out | 2026-10-22 | [Aldervik Kontor](../organizations/aldervik-kontor.md) |
 
 ## Could not ingest (1)
 
