@@ -2,70 +2,63 @@
 
 The wiki's home index: every page grouped by type (with backlinks), plus tags and the source/open-point catalogs. Generated — do not edit.
 
-See also: [organizations](organizations/index.md) · [registries](registries/index.md) · [sources](sources/index.md) · [open points](open-points/index.md)
+See also: [concepts](concepts/index.md) · [organizations](organizations/index.md) · [registries](registries/index.md) · [sources](sources/index.md)
+
+## Concept
+- [Staff Handbook Policies](concepts/staff-handbook-policies.md) — Support hours, leave and remote-work entitlements by role, and probation length from the Aldervik Trading Kontor staff handbook.
+- [Warehouse Manager Onboarding Checklist](concepts/warehouse-manager-onboarding-checklist.md) — The onboarding steps Aldervik Kontor sets for a new warehouse manager.
+  - ↳ referenced by: [Staff Handbook Policies](concepts/staff-handbook-policies.md), [Aldervik Kontor](organizations/aldervik-kontor.md)
 
 ## Organization
-- [Aldervik Trading Kontor](organizations/aldervik-trading-kontor.md) — A company founded in 2011 in Aldervik harbour, originally importing dried goods and textiles.
-  - ↳ referenced by: [Staff leave & remote-work entitlements — Aldervik Trading Kontor](registries/staff-leave-remote-work-entitlements-aldervik-trading-kontor.md)
+- [Aldervik Kontor](organizations/aldervik-kontor.md) — Company founded in 2011 in Aldervik harbour, originally an importer of dried goods and textiles.
+  - ↳ referenced by: [Staff Handbook Policies](concepts/staff-handbook-policies.md), [Warehouse Manager Onboarding Checklist](concepts/warehouse-manager-onboarding-checklist.md)
 
 ## Registry
-- [Departmental budget & headcount — 2026](registries/departmental-budget-headcount-2026.md) — 2026 budget allocation and planned headcount (FTE) for each department.
-  - ↳ referenced by: [Aldervik Trading Kontor](organizations/aldervik-trading-kontor.md)
-- [Staff leave & remote-work entitlements — Aldervik Trading Kontor](registries/staff-leave-remote-work-entitlements-aldervik-trading-kontor.md) — Annual leave and remote-work days per week by staff role, from the staff handbook.
-  - ↳ referenced by: [Aldervik Trading Kontor](organizations/aldervik-trading-kontor.md)
+- [Department budget and headcount registry — 2026](registries/department-budget-and-headcount-registry-2026.md) — Per-department 2026 budget (EUR) and full-time-equivalent headcount from the 2026 budget workbook.
+  - ↳ referenced by: [Aldervik Kontor](organizations/aldervik-kontor.md)
 
 ## Tags
 
-### 2026 (1)
-- [Departmental budget & headcount — 2026](registries/departmental-budget-headcount-2026.md)
-
-### aldervik (2)
-- [Aldervik Trading Kontor](organizations/aldervik-trading-kontor.md)
-- [Staff leave & remote-work entitlements — Aldervik Trading Kontor](registries/staff-leave-remote-work-entitlements-aldervik-trading-kontor.md)
-
 ### budget (1)
-- [Departmental budget & headcount — 2026](registries/departmental-budget-headcount-2026.md)
+- [Department budget and headcount registry — 2026](registries/department-budget-and-headcount-registry-2026.md)
 
 ### company (1)
-- [Aldervik Trading Kontor](organizations/aldervik-trading-kontor.md)
+- [Aldervik Kontor](organizations/aldervik-kontor.md)
 
-### finance (2)
-- [Aldervik Trading Kontor](organizations/aldervik-trading-kontor.md)
-- [Departmental budget & headcount — 2026](registries/departmental-budget-headcount-2026.md)
+### departments (1)
+- [Department budget and headcount registry — 2026](registries/department-budget-and-headcount-registry-2026.md)
+
+### handbook (1)
+- [Staff Handbook Policies](concepts/staff-handbook-policies.md)
 
 ### headcount (1)
-- [Departmental budget & headcount — 2026](registries/departmental-budget-headcount-2026.md)
+- [Department budget and headcount registry — 2026](registries/department-budget-and-headcount-registry-2026.md)
 
 ### history (1)
-- [Aldervik Trading Kontor](organizations/aldervik-trading-kontor.md)
+- [Aldervik Kontor](organizations/aldervik-kontor.md)
 
-### hr (1)
-- [Staff leave & remote-work entitlements — Aldervik Trading Kontor](registries/staff-leave-remote-work-entitlements-aldervik-trading-kontor.md)
+### hr (2)
+- [Staff Handbook Policies](concepts/staff-handbook-policies.md)
+- [Warehouse Manager Onboarding Checklist](concepts/warehouse-manager-onboarding-checklist.md)
 
-### leave (1)
-- [Staff leave & remote-work entitlements — Aldervik Trading Kontor](registries/staff-leave-remote-work-entitlements-aldervik-trading-kontor.md)
+### onboarding (1)
+- [Warehouse Manager Onboarding Checklist](concepts/warehouse-manager-onboarding-checklist.md)
 
 ### policy (1)
-- [Staff leave & remote-work entitlements — Aldervik Trading Kontor](registries/staff-leave-remote-work-entitlements-aldervik-trading-kontor.md)
+- [Staff Handbook Policies](concepts/staff-handbook-policies.md)
 
-### sustainability (1)
-- [Aldervik Trading Kontor](organizations/aldervik-trading-kontor.md)
-
-### textiles (1)
-- [Aldervik Trading Kontor](organizations/aldervik-trading-kontor.md)
+### warehouse (1)
+- [Warehouse Manager Onboarding Checklist](concepts/warehouse-manager-onboarding-checklist.md)
 
 ## Sources
 
-7 ingested raw source(s) — full catalog with the importing model in [sources/index.md](sources/index.md).
+8 ingested raw source(s) — full catalog with the importing model in [sources/index.md](sources/index.md).
 
-- [raw/budget-2026.xlsx](../raw/budget-2026.xlsx) — cited by 2 pages
+- [raw/budget-2026.xlsx](../raw/budget-2026.xlsx) — cited by 1 page
 - [raw/legacy-deck.ppt](../raw/legacy-deck.ppt) — cited by 1 page
 - [raw/legacy-ledger.xls](../raw/legacy-ledger.xls) — cited by 1 page
 - [raw/legacy-memo.doc](../raw/legacy-memo.doc) — cited by 1 page
-- [raw/policy-handbook.docx](../raw/policy-handbook.docx) — cited by 2 pages
+- [raw/onboarding-checklist.docx](../raw/onboarding-checklist.docx) — cited by 1 page
+- [raw/policy-handbook.docx](../raw/policy-handbook.docx) — cited by 1 page
 - [raw/q3-review.pptx](../raw/q3-review.pptx) — cited by 1 page
 - [raw/report.docx](../raw/report.docx) — cited by 1 page
-
-## Open Points
-
-1 tracked open point(s), 1 still open — full timeline in [open-points/index.md](open-points/index.md).
